@@ -39,8 +39,8 @@ static int g16_render_build_fragment(void)
 	 * emitEndOfTileArgumentsEarly supplies common+c8 / reg15380.
 	 * Resource 35 contains BGO loaders at +0/+240 and EOT at +480.
 	 */
-	D(0x588, 0x10000158000ULL, 8);
-	D(0x6e0, 0x10000158480ULL, 8);
+	D(0x588, g16_render_bg_base(), 8);
+	D(0x6e0, g16_render_eot_base(), 8);
 	D(0x7d0, GPU(0x28000), 8);
 	D(0x7d8, GPU(0x29000), 8);
 	D(0x7e0, GPU(0x29000), 8);
@@ -103,8 +103,8 @@ static int g16_render_build_fragment(void)
 	g16_render_put(work + 0x68, g.blocks, 4);
 	g16_render_put(work + 0x78, g.tiles, 4);
 	/* Same native submitBuffer mirrors used by firmware diagnostics. */
-	g16_render_put(work + 0x900, 0x10000158000ULL, 8);
-	g16_render_put(work + 0x9fc, 0x10000158480ULL, 8);
+	g16_render_put(work + 0x900, g16_render_bg_base(), 8);
+	g16_render_put(work + 0x9fc, g16_render_eot_base(), 8);
 	g16_render_put(work + 0xc46, g16_initdata_live_barrier_va + 0xe00, 8);
 	g16_render_put(work + 0xc57, base + 0x60100, 8);
 	g16_render_put(work + 0x9d8, mode, 8);
@@ -249,7 +249,9 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 		    g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4) == end &&
 		    !g16_render_get(queue + J713_QUEUE_BUSY_OFFSET, 4)) {
 			pr_info("g16_lab: render: fragment diagnostic retired stamp=%#x ring=%u; pixel verification still required\n", stamp, end);
-			return g16_render_verify_pixels();
+			/* Client commands are checked by their application. Never compare
+			 * arbitrary draws against the lab's canned RGB image. */
+			return g16_drm_active_job ? 0 : g16_render_verify_pixels();
 		}
 		ret = g16_asc_recv_timeout(asc, &message, &endpoint, 10000);
 		if (!ret && endpoint == 1 &&

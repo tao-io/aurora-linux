@@ -9,6 +9,7 @@
 static struct task_struct *g16_render_thread;
 static struct dentry *g16_render_service_file;
 static DEFINE_MUTEX(g16_render_service_mutex);
+static DEFINE_SPINLOCK(g16_render_service_state_lock);
 static DECLARE_COMPLETION(g16_render_service_done);
 static bool g16_render_service_ready;
 static bool g16_render_service_stopped;
@@ -38,6 +39,8 @@ static ssize_t g16_render_service_write(struct file *file, const char __user *bu
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
+	if (render_drm_submit)
+		return -EOPNOTSUPP;
 	if (!count || count > 16)
 		return -EINVAL;
 	ret = kstrtou32_from_user(buf, count, 10, &sequence);
@@ -77,8 +80,10 @@ static const struct file_operations g16_render_service_fops = {
 
 static void g16_render_service_finish(int result)
 {
+	spin_lock(&g16_render_service_state_lock);
 	WRITE_ONCE(g16_render_service_ready, false);
 	WRITE_ONCE(g16_render_service_result, result);
+	spin_unlock(&g16_render_service_state_lock);
 	complete_all(&g16_render_service_done);
 }
 
@@ -104,6 +109,11 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 		}
 		sequence = smp_load_acquire(&g16_render_service_pending);
 		if (sequence) {
+			if (g16_drm_active_job) {
+				ret = g16_drm_job_enter(g16_drm_active_job);
+				if (ret)
+					break;
+			}
 			ret = g16_render_buffer_begin();
 			if (ret)
 				break;
@@ -113,12 +123,16 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 			ret = g16_render_test_ta(asc, crashlog_iova, crashlog_pages);
 			if (!ret || ret == -ENODATA)
 				ret = g16_render_test_fragment(asc, crashlog_iova, crashlog_pages);
+			if (!ret && g16_drm_active_job)
+				ret = g16_drm_job_leave(g16_drm_active_job);
 			if (!ret)
 				g16_render_buffer_end(0);
 			WRITE_ONCE(g16_render_service_result, ret);
 			if (!ret)
 				smp_store_release(&g16_render_service_completed, sequence);
 			WRITE_ONCE(g16_render_service_pending, 0);
+			if (!ret && g16_drm_active_job)
+				g16_drm_job_complete(0);
 			complete_all(&g16_render_service_done);
 			if (ret)
 				break;
@@ -157,6 +171,7 @@ static int g16_render_thread_fn(void *unused)
 	/* Failed/cancelled work releases its fence only after firmware teardown. */
 	g16_render_buffer_end(READ_ONCE(stage_result) ?: -ECANCELED);
 	g16_render_service_finish(READ_ONCE(stage_result));
+	g16_drm_job_complete(READ_ONCE(stage_result) ?: -ECANCELED);
 	smp_store_release(&g16_render_service_stopped, true);
 	return ret;
 }

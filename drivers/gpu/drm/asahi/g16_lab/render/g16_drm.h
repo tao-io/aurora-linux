@@ -7,6 +7,7 @@
 #include <drm/drm_file.h>
 #include <drm/drm_gem_shmem_helper.h>
 #include <drm/drm_ioctl.h>
+#include <drm/drm_syncobj.h>
 #include "g16_drm_uapi.h"
 #include "g16_drm_vm.h"
 
@@ -20,6 +21,8 @@ struct g16_drm_file {
 	u64 bytes_created;
 	u32 objects_created;
 	u32 next_vm_id;
+	u32 next_queue_id;
+	u32 queue_id;
 	struct g16_drm_vm *vm;
 };
 
@@ -146,6 +149,10 @@ static int g16_drm_vm_destroy_ioctl(struct drm_device *dev, void *data, struct d
 		ret = -ENOENT;
 		goto out;
 	}
+	if (priv->queue_id) {
+		ret = -EBUSY;
+		goto out;
+	}
 	g16_drm_vm_free(priv->vm);
 	priv->vm = NULL;
 out:
@@ -197,7 +204,12 @@ static int g16_drm_lab_target_ioctl(struct drm_device *dev, void *data, struct d
 	return 0;
 }
 
+#include "g16_drm_submit.h"
+
 static const struct drm_ioctl_desc g16_drm_ioctls[] = {
+	DRM_IOCTL_DEF_DRV(ASAHI_QUEUE_CREATE, g16_drm_queue_create_ioctl, DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(ASAHI_QUEUE_DESTROY, g16_drm_queue_destroy_ioctl, DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(ASAHI_SUBMIT, g16_drm_submit_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(G16_LAB_TARGET, g16_drm_lab_target_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(G16_VM_CREATE, g16_drm_vm_create_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(G16_VM_DESTROY, g16_drm_vm_destroy_ioctl, DRM_RENDER_ALLOW),
@@ -209,7 +221,7 @@ static const struct drm_ioctl_desc g16_drm_ioctls[] = {
 DEFINE_DRM_GEM_FOPS(g16_drm_fops);
 
 static const struct drm_driver g16_drm_driver = {
-	.driver_features = DRIVER_GEM | DRIVER_RENDER,
+	.driver_features = DRIVER_GEM | DRIVER_RENDER | DRIVER_SYNCOBJ,
 	.open = g16_drm_open,
 	.postclose = g16_drm_postclose,
 	.ioctls = g16_drm_ioctls,

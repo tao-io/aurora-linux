@@ -2676,6 +2676,10 @@ MODULE_PARM_DESC(render_varying, "Experimental linear vertex color interpolation
 static bool render_drm_target;
 module_param(render_drm_target, bool, 0444);
 MODULE_PARM_DESC(render_drm_target, "Export the userspace-paced render target as a fenced GEM buffer");
+
+static bool render_drm_submit;
+module_param(render_drm_submit, bool, 0444);
+MODULE_PARM_DESC(render_drm_submit, "Accept bounded Asahi render submissions from root-owned GEM VMs");
 static bool render_service;
 module_param(render_service, bool, 0444);
 MODULE_PARM_DESC(render_service, "Bounded userspace-paced RGB rendering service");
@@ -19248,6 +19252,8 @@ static int __init g16_lab_init(void)
 
 	if (render_drm_target && !render_service)
 		return -EINVAL;
+	if (render_drm_submit && (!render_service || render_drm_target))
+		return -EINVAL;
 	if (render_service && (!render_mesa_vertex || !render_mesa_fragment || render_frames != 8))
 		return -EINVAL;
 	if (render_ta_probe && !render_queue_probe)
@@ -19288,7 +19294,7 @@ static int __init g16_lab_init(void)
 		    compute_macos_direct_capture || compute_macos_ocean ||
 		    compute_macos_direct_pb_hardware_base_alias)
 			return -EINVAL;
-		if (render_drm_target) {
+		if (render_drm_target || render_drm_submit) {
 			ret = g16_drm_start();
 			if (ret)
 				return ret;

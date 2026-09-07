@@ -17,6 +17,7 @@ import zlib
 from experiment_watchdog import ExperimentWatchdog
 
 EXPECTED = '792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1'
+ACTIVE_RESULT = None
 PARAMS = [
     'stage=rtkit-initdata-exact-offscreen-store',
     'compute_macos_iadd=1', 'compute_mandelbrot=1',
@@ -31,6 +32,7 @@ def output(*args):
 
 
 def main():
+    global ACTIVE_RESULT
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--module', type=Path, default=Path('/root/g16_lab.ko'))
     parser.add_argument('--results', type=Path, default=Path('/root/g16-results'))
@@ -63,6 +65,9 @@ def main():
                         help='experimental linear vertex color; implies generated stream')
     parser.add_argument('--render-drm-target', action='store_true',
                         help='fenced GEM target read by a separate unprivileged process')
+    parser.add_argument('--render-drm-submit', action='store_true',
+                        help='Asahi command submissions using client-created GEM resources')
+    parser.add_argument('--drm-submit-test', type=Path, default=Path('/root/g16submittest'))
     parser.add_argument('--drm-target-test', type=Path, default=Path('/root/g16targettest'))
     parser.add_argument('--render-service', action='store_true',
                         help='request eight RGB frames from a retained firmware worker')
@@ -77,7 +82,9 @@ def main():
     parser.add_argument('--render-varying-rhw', action='store_true',
                         help='interpolate reciprocal W to isolate coefficient setup')
     args = parser.parse_args()
-    if args.render_drm_target:
+    if args.render_drm_submit and args.render_drm_target:
+        parser.error('client submission and lab target export are separate tests')
+    if args.render_drm_target or args.render_drm_submit:
         args.render_service = True
     if args.render_service:
         args.render_mesa_fragment = args.render_mesa_vertex = True
@@ -132,6 +139,8 @@ def main():
         params += ['render_service=1']
     if args.render_drm_target:
         params += ['render_drm_target=1']
+    if args.render_drm_submit:
+        params += ['render_drm_submit=1']
     if args.render_mesa_fragment:
         params += ['render_mesa_fragment=1']
     if args.render_mesa_vertex:
@@ -198,12 +207,15 @@ def main():
         subprocess.run(['mount', '-t', 'debugfs', 'debugfs', str(debug)], check=True)
     result = args.results / (datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + ('-render-ta' if args.render_ta else '-render-queues' if args.render_queues else '-mandelbrot'))
     result.mkdir(parents=True, exist_ok=False)
+    ACTIVE_RESULT = result
     metadata = {
         'kernel': release,
         'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
         'module_sha256': hashlib.sha256(args.module.read_bytes()).hexdigest(),
         'parameters': params,
     }
+    if args.render_drm_submit:
+        metadata['drm_submit_test_sha256'] = hashlib.sha256(args.drm_submit_test.read_bytes()).hexdigest()
     os.sync()
     watchdog = ExperimentWatchdog()
     metadata['watchdog'] = watchdog.arm()
@@ -236,11 +248,24 @@ def main():
                 with service.open('wb', buffering=0) as control:
                     control.write(payload)
             except OSError as error:
-                if error.errno != errno.EINVAL:
+                if error.errno != (errno.EOPNOTSUPP if args.render_drm_submit else errno.EINVAL):
                     raise
             else:
                 raise RuntimeError('service accepted an invalid sequence')
-        if args.render_drm_target:
+        if args.render_drm_submit:
+            nodes = list(Path('/dev/dri').glob('renderD*'))
+            if len(nodes) != 1:
+                raise RuntimeError('expected one lab render node')
+            target = subprocess.run([str(args.drm_submit_test), str(nodes[0]),
+                                     str(debug / 'g16_lab_render'), str(result)],
+                                    capture_output=True, text=True, timeout=15)
+            (result / 'drm-submit.stdout').write_text(target.stdout)
+            (result / 'drm-submit.stderr').write_text(target.stderr)
+            target.check_returncode()
+            metadata['drm_submit'] = json.loads(target.stdout)
+            if not metadata['drm_submit'].get('passed'):
+                raise RuntimeError('DRM submit check failed')
+        elif args.render_drm_target:
             nodes = list(Path('/dev/dri').glob('renderD*'))
             if len(nodes) != 1:
                 raise RuntimeError('expected one lab render node')
@@ -346,7 +371,7 @@ def main():
         metadata['fragment_job_submitted'] = 'render: submitted fragment diagnostic after retired TA' in current_log
         metadata['fragment_job_retired'] = 'render: fragment diagnostic retired stamp=0x100 ring=2' in current_log
         metadata['vertex_fragment_pixels_verified'] = False
-        if args.render_fragment:
+        if args.render_fragment and not args.render_drm_submit:
             metadata['generated_shader_bodies'] = args.render_generated_shaders
             metadata['render_size'] = args.render_size
             metadata['render_xy'] = args.render_xy
@@ -402,7 +427,7 @@ def main():
             # A firmware crash or incomplete queue still fails the outer gate.
             passed = (passed and metadata['fragment_job_retired']
                       and metadata['vertex_fragment_pixels_verified'])
-        if args.render_bindings:
+        if args.render_bindings and not args.render_drm_submit:
             old_ranges = ((0x10000148000, 0, 164), (0x10000158000, 0x640, 84),
                           (0x10000128000, 0xa0, 8), (0x10000090000, 0, 24))
             erased = True
@@ -414,7 +439,7 @@ def main():
                     erased = erased and len(data) >= offset + count and not any(data[offset:offset + count])
             metadata['old_bindings_erased'] = erased
             passed = passed and erased and 'generated relocated loaders and vertex bindings; old entries erased' in current_log
-        if args.render_stream:
+        if args.render_stream and not args.render_drm_submit:
             stream_file = result / 'render-resources/resource-1000018000.bin'
             vertices_file = result / 'render-resources/resource-10000148000.bin'
             valid_stream = False
@@ -438,7 +463,7 @@ def main():
                                 and vertices[0x5100:0x5130] == expected_vertices)
             metadata['old_stream_erased_and_inputs_verified'] = valid_stream
             passed = passed and valid_stream
-        if args.render_varying:
+        if args.render_varying and not args.render_drm_submit:
             trace_path = result / 'render-resources/resource-100000a8000.bin'
             reads = None
             if trace_path.exists() and trace_path.stat().st_size >= 0x100c:
@@ -461,7 +486,7 @@ def main():
             if not args.render_varying_rgb and trace_path.exists() and trace_path.stat().st_size >= 0x2400:
                 coefficients = list(struct.unpack_from('<256I', trace_path.read_bytes(), 0x2000))
                 metadata['fragment_coefficient_readback'] = coefficients
-        if args.render_triangle:
+        if args.render_triangle and not args.render_drm_submit:
             from g16image import detile_rgba8, triangle_reference, linear_varying_reference, rgb_varying_reference, write_png
             frames = []
             for frame in range(args.render_frames):
@@ -481,6 +506,12 @@ def main():
                 frames.append(info)
             metadata['frames'] = frames
             passed = passed and all(frame['verified'] for frame in frames)
+        if args.render_drm_submit:
+            metadata['vertex_fragment_pixels_verified'] = metadata.get('drm_submit', {}).get('passed', False)
+            metadata['client_vm_publications'] = current_log.count('DRM submit: publishing ')
+            passed = (passed and metadata['vertex_fragment_pixels_verified']
+                      and metadata['client_vm_publications'] == 8
+                      and metadata['fragment_job_retired'])
         passed = passed and metadata['render_queues_passed']
     if passed:
         unload = subprocess.run(['rmmod', 'g16_lab'], capture_output=True, text=True)
@@ -493,7 +524,7 @@ def main():
     metadata['new_kernel_fault'] = any(marker in new_log for marker in
                                         ('WARNING:', 'BUG:', 'Oops:', 'Unable to handle kernel'))
     passed = passed and not metadata['new_kernel_fault']
-    if args.render_drm_target:
+    if args.render_drm_target or args.render_drm_submit:
         metadata['render_node_removed'] = set(Path('/dev/dri').glob('renderD*')) == initial_render_nodes
         passed = passed and metadata['render_node_removed']
     metadata['passed'] = passed
@@ -510,4 +541,17 @@ def main():
     return 0 if passed else 1
 
 if __name__ == '__main__':
-    raise SystemExit(main())
+    try:
+        raise SystemExit(main())
+    except Exception as error:
+        # A failed client must not skip diagnostics before watchdog recovery.
+        # Do not unload a possibly active GPU or disarm the watchdog here.
+        if ACTIVE_RESULT is not None:
+            (ACTIVE_RESULT / 'exception.txt').write_text(repr(error) + '\n')
+            (ACTIVE_RESULT / 'dmesg-failure.log').write_text(output('dmesg'))
+            for name in ('g16_lab_crashlog', 'g16_lab_ktrace', 'g16_lab_render_prepared'):
+                source = Path('/sys/kernel/debug') / name
+                if source.exists():
+                    (ACTIVE_RESULT / (name + '-failure.bin')).write_bytes(source.read_bytes())
+            os.sync()
+        raise

@@ -8,6 +8,7 @@
 #include "g16_render_fragment.h"
 #include "g16_render_geometry.h"
 #include "g16_render_uat.h"
+#include "g16_drm_job.h"
 #include "g16_vertex_marker.h"
 #include "g16_generated_graphics.h"
 #include "g16_mesa_graphics.h"
