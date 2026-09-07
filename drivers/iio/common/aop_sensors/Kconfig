@@ -16,6 +16,7 @@ config IIO_AOP_SENSOR_ALS
 	depends on RUST
 	depends on SYSFS
 	select APPLE_AOP
+	select RUST_FW_LOADER_ABSTRACTIONS
 	help
 	  Module to handle the ambient light sensor attached to the AOP
 	  coprocessor on Apple laptops.

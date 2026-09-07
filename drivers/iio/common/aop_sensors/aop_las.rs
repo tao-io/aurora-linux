@@ -18,8 +18,8 @@ use kernel::{
 struct MsgProc;
 
 impl MessageProcessor for MsgProc {
-    fn process(&self, message: &[u8]) -> u32 {
-        message[1] as u32
+    fn process(&self, message: &[u8]) -> Result<u32> {
+        Ok(*message.get(1).ok_or(EIO)? as u32)
     }
 }
 

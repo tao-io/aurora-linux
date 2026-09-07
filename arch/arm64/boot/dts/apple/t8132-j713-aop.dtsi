@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0+ OR MIT
 /*
  * Copyright The Asahi Linux Contributors
- * J713 AOP motion support from the local M4 bring-up tree.
+ * J713 AOP motion and ambient light support from the local M4 bring-up tree.
  */
 
 &soc {
@@ -83,5 +83,23 @@
 			];
 		};
 
+		als {
+			compatible = "apple,t8132-aop-als", "apple,aop-als";
+			apple,calibration-11 = [
+				01 02 00 00 00 00 00 00 00 01 c1 00 99 59 fa 00
+				64 00 63 00 3e 00 06 06 06 06 05 05 78 b1 03 ba
+				3c 38 2b 3b 1f 24 df 3c a0 98 14 3d b6 64 9a 3c
+				44 55 a8 46 5c 1b 7f c4 86 85 92 45 8b 81 93 c5
+				02 9a 19 45 06 00 00 00 00 0d 00 00 80 00 80 00
+				80 00 80 d5 7f eb 7f 1d 80 10 80 af 7f 04 00 00
+				00 00 05 00 00 80 00 80 00 80 00 80 f6 7f 01 80
+				24 80 1f 80 c0 7f 04 00 00 00 00 0a 00 00 80 00
+				80 00 80 00 80 cb 7f 06 80 42 80 50 80 7a 80 07
+				00 00 00 00 07 00 00 80 00 80 00 80 00 80 dc 7f
+				ff 7f 3c 80 1d 80 1f 80 05 00 00 00 00 09 00 00
+				80 00 80 00 80 00 80 cb 7f f0 7f 1b 80 47 80 d8
+				7f
+			];
+		};
 	};
 };

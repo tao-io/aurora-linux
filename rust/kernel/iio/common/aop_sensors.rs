@@ -24,7 +24,7 @@ use kernel::{
 /// TODO: add documentation
 pub trait MessageProcessor {
     /// TODO: add documentation
-    fn process(&self, message: &[u8]) -> u32;
+    fn process(&self, message: &[u8]) -> Result<u32>;
 }
 
 /// TODO: add documentation
@@ -53,7 +53,7 @@ impl<T: MessageProcessor> AopSensorData<T> {
 impl<T: MessageProcessor> FakehidListener for AopSensorData<T> {
     fn process_fakehid_report(&self, _timestamp: u64, data: &[u8]) -> Result<()> {
         self.value
-            .store(self.msg_proc.process(data), Ordering::Relaxed);
+            .store(self.msg_proc.process(data)?, Ordering::Relaxed);
         Ok(())
     }
 }

@@ -20,9 +20,14 @@ const EPIC_SUBTYPE_GET_AOP_PROPERTY: u16 = 0xa;
 const EPIC_SUBTYPE_SET_ALS_PROPERTY: u16 = 0x4;
 const LUX_OFFSET_CT720: usize = 0x1d;
 const LUX_OFFSET_VD6286: usize = 0x28;
+const J713_CALIBRATION_LEN: usize = 193;
 
 fn get_lux_offset(aop: &dyn AOP, dev: &platform::Device, svc: &EPICService) -> Result<usize> {
-    let name = get_aop_property(aop, svc, 0xf, 16)?.1;
+    let (status, name) = get_aop_property(aop, svc, 0xf, 16)?;
+    if status != 0 {
+        return Err(EIO);
+    }
+    dev_info!(dev.as_ref(), "ALS sensor {:?}", core::str::from_utf8(&name));
     match name.as_slice() {
         b"Redbird\0" => Ok(LUX_OFFSET_VD6286),
         b"FireFish2\0" => Ok(LUX_OFFSET_CT720),
@@ -38,9 +43,32 @@ fn get_lux_offset(aop: &dyn AOP, dev: &platform::Device, svc: &EPICService) -> R
 }
 
 fn enable_als(aop: &dyn AOP, dev: &platform::Device, svc: &EPICService) -> Result<()> {
-    let fw = Firmware::request(c_str!("apple/aop-als-cal.bin"), dev.as_ref())?;
-    set_als_property(aop, svc, 0xb, fw.data())?;
-    set_als_property(aop, svc, 0, &200000u32.to_le_bytes())?;
+    let fwnode = dev.as_ref().fwnode().ok_or(EIO)?;
+    let property = c_str!("apple,calibration-11");
+    let status = if fwnode.property_present(property) {
+        let length = fwnode.property_count_elem::<u8>(property)?;
+        if length != J713_CALIBRATION_LEN {
+            dev_err!(dev.as_ref(), "Invalid J713 ALS calibration length {}", length);
+            return Err(EINVAL);
+        }
+        let calibration = fwnode
+            .property_read_array_vec::<u8>(property, length)?
+            .required_by(dev.as_ref())?;
+        set_als_property(aop, svc, 0xb, &calibration)?
+    } else {
+        let fw = Firmware::request(c_str!("apple/aop-als-cal.bin"), dev.as_ref())?;
+        set_als_property(aop, svc, 0xb, fw.data())?
+    };
+    if status != 0 {
+        dev_err!(dev.as_ref(), "AOP rejected ALS calibration: {:#x}", status);
+        return Err(EIO);
+    }
+    let status = set_als_property(aop, svc, 0, &200000u32.to_le_bytes())?;
+    if status != 0 {
+        dev_err!(dev.as_ref(), "AOP rejected ALS reporting interval: {:#x}", status);
+        return Err(EIO);
+    }
+    dev_info!(dev.as_ref(), "ALS calibration accepted; reporting interval 200000 us");
 
     Ok(())
 }
@@ -89,10 +117,11 @@ fn f32_to_u32(f: u32) -> u32 {
 struct MsgProc(usize);
 
 impl MessageProcessor for MsgProc {
-    fn process(&self, message: &[u8]) -> u32 {
+    fn process(&self, message: &[u8]) -> Result<u32> {
         let offset = self.0;
-        let raw = u32::from_le_bytes(message[offset..offset + 4].try_into().unwrap());
-        f32_to_u32(raw)
+        let bytes = message.get(offset..offset + 4).ok_or(EIO)?;
+        let raw = u32::from_le_bytes(bytes.try_into().map_err(|_| EIO)?);
+        Ok(f32_to_u32(raw))
     }
 }
 
