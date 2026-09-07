@@ -61,6 +61,9 @@ def main():
                         help='generated relocated direct draws; implies generated bindings')
     parser.add_argument('--render-varying', action='store_true',
                         help='experimental linear vertex color; implies generated stream')
+    parser.add_argument('--render-drm-target', action='store_true',
+                        help='fenced GEM target read by a separate unprivileged process')
+    parser.add_argument('--drm-target-test', type=Path, default=Path('/root/g16targettest'))
     parser.add_argument('--render-service', action='store_true',
                         help='request eight RGB frames from a retained firmware worker')
     parser.add_argument('--render-mesa-fragment', action='store_true',
@@ -74,6 +77,8 @@ def main():
     parser.add_argument('--render-varying-rhw', action='store_true',
                         help='interpolate reciprocal W to isolate coefficient setup')
     args = parser.parse_args()
+    if args.render_drm_target:
+        args.render_service = True
     if args.render_service:
         args.render_mesa_fragment = args.render_mesa_vertex = True
         args.render_frames = 8
@@ -125,6 +130,8 @@ def main():
         params += ['render_varying=1']
     if args.render_service:
         params += ['render_service=1']
+    if args.render_drm_target:
+        params += ['render_drm_target=1']
     if args.render_mesa_fragment:
         params += ['render_mesa_fragment=1']
     if args.render_mesa_vertex:
@@ -182,6 +189,7 @@ def main():
         if not resource.exists() or hashlib.sha256(resource.read_bytes()).hexdigest() != expected_resource:
             parser.error('install the checksummed encoded M4 render-reference.bin first')
     before = output('dmesg')
+    initial_render_nodes = set(Path('/dev/dri').glob('renderD*'))
     marker = Path('/run/g16-lab-firmware-used')
     if marker.exists() or 'GFX RTKit' in before or Path('/sys/module/g16_lab').exists():
         parser.error('GPU firmware already used this boot; reboot before a new dispatch')
@@ -232,17 +240,30 @@ def main():
                     raise
             else:
                 raise RuntimeError('service accepted an invalid sequence')
-        for sequence in range(1, 9):
-            start = time.monotonic()
-            with service.open('wb', buffering=0) as control:
-                control.write(f'{sequence}\n'.encode())
-            current = status()
-            if current['completed'] != sequence or current['result'] != 0:
-                raise RuntimeError(f'render service failed: {current}')
-            events.append({'sequence': sequence, 'seconds': time.monotonic() - start,
-                           'status': current})
-            if sequence < 8:
-                time.sleep(0.2)
+        if args.render_drm_target:
+            nodes = list(Path('/dev/dri').glob('renderD*'))
+            if len(nodes) != 1:
+                raise RuntimeError('expected one lab render node')
+            target = subprocess.run([str(args.drm_target_test), str(nodes[0]), str(service)],
+                                    capture_output=True, text=True, timeout=15)
+            (result / 'drm-target.stdout').write_text(target.stdout)
+            (result / 'drm-target.stderr').write_text(target.stderr)
+            target.check_returncode()
+            metadata['drm_target'] = json.loads(target.stdout)
+            if not metadata['drm_target'].get('passed'):
+                raise RuntimeError('DRM target check failed')
+        else:
+            for sequence in range(1, 9):
+                start = time.monotonic()
+                with service.open('wb', buffering=0) as control:
+                    control.write(f'{sequence}\n'.encode())
+                current = status()
+                if current['completed'] != sequence or current['result'] != 0:
+                    raise RuntimeError(f'render service failed: {current}')
+                events.append({'sequence': sequence, 'seconds': time.monotonic() - start,
+                               'status': current})
+                if sequence < 8:
+                    time.sleep(0.2)
         while not status()['stopped']:
             if time.monotonic() >= deadline:
                 raise RuntimeError('render worker did not stop')
@@ -466,9 +487,20 @@ def main():
         metadata['rmmod_rc'] = unload.returncode
         (result / 'rmmod.txt').write_text(unload.stdout + unload.stderr)
         passed = unload.returncode == 0
+    final_log = output('dmesg')
+    (result / 'dmesg-final.log').write_text(final_log)
+    new_log = final_log[len(before):] if final_log.startswith(before) else final_log
+    metadata['new_kernel_fault'] = any(marker in new_log for marker in
+                                        ('WARNING:', 'BUG:', 'Oops:', 'Unable to handle kernel'))
+    passed = passed and not metadata['new_kernel_fault']
+    if args.render_drm_target:
+        metadata['render_node_removed'] = set(Path('/dev/dri').glob('renderD*')) == initial_render_nodes
+        passed = passed and metadata['render_node_removed']
     metadata['passed'] = passed
     (result / 'manifest.json').write_text(json.dumps(metadata, indent=2) + '\n')
     os.sync()
+    if Path('/sys/module/g16_lab').exists():
+        raise RuntimeError('module still loaded after experiment; leaving watchdog armed')
     watchdog.disarm()
     metadata['watchdog']['armed'] = False
     metadata['watchdog']['disarmed_after_evidence_collection'] = True

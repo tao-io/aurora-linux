@@ -52,6 +52,21 @@ struct g16_drm_vm_bind {
 	__u64 userptr;
 };
 
+/* Lab extension, deliberately outside the pinned Asahi ioctl subset. */
+struct g16_drm_lab_target {
+	__u32 flags;
+	__u32 handle;
+	__u64 size;
+	__u32 offset;
+	__u32 width;
+	__u32 height;
+	__u32 layout;
+	__u64 pad;
+};
+#define G16_LAB_LAYOUT_MORTON_64_RGBA8 1
+#define DRM_G16_LAB_TARGET 0x3e
+#define DRM_IOCTL_G16_LAB_TARGET DRM_IOWR(DRM_COMMAND_BASE + DRM_G16_LAB_TARGET, struct g16_drm_lab_target)
+
 #define DRM_G16_VM_CREATE 2
 #define DRM_G16_VM_DESTROY 3
 #define DRM_G16_VM_BIND 4

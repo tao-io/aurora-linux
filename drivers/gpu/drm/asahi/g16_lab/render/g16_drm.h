@@ -13,7 +13,7 @@
 /* Memory-side bring-up first. Keep an explicit lab name so Mesa cannot
  * mistake this intermediate frontend for an executable Asahi device. */
 static struct device *g16_drm_parent;
-static struct drm_device *g16_drm_device;
+
 
 struct g16_drm_file {
 	struct mutex lock;
@@ -174,7 +174,31 @@ static int g16_drm_vm_bind_ioctl(struct drm_device *dev, void *data, struct drm_
 	return ret;
 }
 
+/* A lab-only accessor, not an Asahi submit ioctl. The image is Morton tiled,
+ * with an explicit payload offset; no linear scanout/modifier support implied.
+ */
+static int g16_drm_lab_target_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
+{
+	struct g16_drm_lab_target *args = data;
+	int ret;
+
+	if (args->flags || args->pad)
+		return -EINVAL;
+	if (!render_drm_target || !g16_render_target_obj || !READ_ONCE(g16_render_service_ready))
+		return -EAGAIN;
+	ret = drm_gem_handle_create(file, g16_render_target_obj, &args->handle);
+	if (ret)
+		return ret;
+	args->size = g16_render_target_obj->size;
+	args->offset = g16_render_target_offset();
+	args->width = args->height = render_size;
+	args->layout = G16_LAB_LAYOUT_MORTON_64_RGBA8;
+	args->pad = 0;
+	return 0;
+}
+
 static const struct drm_ioctl_desc g16_drm_ioctls[] = {
+	DRM_IOCTL_DEF_DRV(G16_LAB_TARGET, g16_drm_lab_target_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(G16_VM_CREATE, g16_drm_vm_create_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(G16_VM_DESTROY, g16_drm_vm_destroy_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(G16_VM_BIND, g16_drm_vm_bind_ioctl, DRM_RENDER_ALLOW),

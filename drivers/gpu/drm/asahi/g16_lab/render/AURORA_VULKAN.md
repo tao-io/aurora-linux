@@ -137,3 +137,11 @@ The module unloaded, its render node disappeared, and no new kernel fault was
 logged. Evidence was saved before watchdog disarm. See
 `validation/j713-drm-vm-20260908.json`. No GPU firmware started in this test;
 public Vulkan drawing and window presentation remain outstanding.
+
+
+## Hyprland focus
+
+The current implementation and validation target is Hyprland GLES through
+Zink/Honeykrisp. `HYPRLAND.md` records the installed compositor's source
+requirements, GLES 3.0 fallback, dependency order, and the first successful
+GPU-backed GEM/DMA-BUF target and completion-fence test on J713.

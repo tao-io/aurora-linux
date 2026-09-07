@@ -1,0 +1,86 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "module_sha256": "89450aaa89cd0c81caa419f3eeccc4411dddee4f87917d0354586347bb22de6e",
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": false,
+    "disarmed_after_evidence_collection": true
+  },
+  "drm_target": {
+    "passed": true,
+    "frames": 8,
+    "pixels_verified": 524288,
+    "reader_uid": 1000,
+    "exporter_closed_before_dispatch": true,
+    "initial_fence_pending": true,
+    "sync_file_completed": true,
+    "dma_buf_poll_and_cpu_sync": true
+  },
+  "render_service": {
+    "idle_verified": true,
+    "invalid_requests_rejected": 4,
+    "events": [],
+    "final_status": {
+      "ready": 0,
+      "pending": 0,
+      "completed": 8,
+      "result": 0,
+      "stopped": 1
+    }
+  },
+  "stage_result": 0,
+  "firmware_ktrace_valid": true,
+  "frames": [
+    {
+      "frame": 0,
+      "verified": true,
+      "sha256": "bdadefa277c87b2950ae3a9bab99240dfce66b262a344010561f3ebee8528302"
+    },
+    {
+      "frame": 1,
+      "verified": true,
+      "sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb"
+    },
+    {
+      "frame": 2,
+      "verified": true,
+      "sha256": "bdadefa277c87b2950ae3a9bab99240dfce66b262a344010561f3ebee8528302"
+    },
+    {
+      "frame": 3,
+      "verified": true,
+      "sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb"
+    },
+    {
+      "frame": 4,
+      "verified": true,
+      "sha256": "bdadefa277c87b2950ae3a9bab99240dfce66b262a344010561f3ebee8528302"
+    },
+    {
+      "frame": 5,
+      "verified": true,
+      "sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb"
+    },
+    {
+      "frame": 6,
+      "verified": true,
+      "sha256": "bdadefa277c87b2950ae3a9bab99240dfce66b262a344010561f3ebee8528302"
+    },
+    {
+      "frame": 7,
+      "verified": true,
+      "sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb"
+    }
+  ],
+  "rmmod_rc": 0,
+  "passed": true,
+  "platform": "J713/T8132/G16G",
+  "firmware_build": "25G83",
+  "layout": "uncompressed RGBA8, 64x64 Morton tiles; 16KiB prefix",
+  "public_vulkan_submission": false,
+  "compositor_accelerated": false
+}

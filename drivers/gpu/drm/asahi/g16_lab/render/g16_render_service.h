@@ -104,12 +104,17 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 		}
 		sequence = smp_load_acquire(&g16_render_service_pending);
 		if (sequence) {
+			ret = g16_render_buffer_begin();
+			if (ret)
+				break;
 			g16_render_frame = sequence - 1;
 			if (g16_render_frame)
 				g16_render_next_frame();
 			ret = g16_render_test_ta(asc, crashlog_iova, crashlog_pages);
 			if (!ret || ret == -ENODATA)
 				ret = g16_render_test_fragment(asc, crashlog_iova, crashlog_pages);
+			if (!ret)
+				g16_render_buffer_end(0);
 			WRITE_ONCE(g16_render_service_result, ret);
 			if (!ret)
 				smp_store_release(&g16_render_service_completed, sequence);
@@ -149,6 +154,8 @@ static int g16_render_thread_fn(void *unused)
 
 	if (ret || READ_ONCE(stage_result) == -EINPROGRESS)
 		WRITE_ONCE(stage_result, ret);
+	/* Failed/cancelled work releases its fence only after firmware teardown. */
+	g16_render_buffer_end(READ_ONCE(stage_result) ?: -ECANCELED);
 	g16_render_service_finish(READ_ONCE(stage_result));
 	smp_store_release(&g16_render_service_stopped, true);
 	return ret;

@@ -2,6 +2,7 @@
 #ifndef G16_RENDER_PREPARE_H
 #define G16_RENDER_PREPARE_H
 
+#include "g16_render_buffer.h"
 #include "g16_render_pack.h"
 #include "g16_render_ta.h"
 #include "g16_render_fragment.h"
@@ -91,9 +92,11 @@ static void g16_render_release(void)
 	vfree(g16_render_pool);
 	g16_render_pool = NULL;
 	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
-		vfree(g16_render_resources[i].data);
+		if (g16_render_resources[i].data != g16_render_target_map.vaddr)
+			vfree(g16_render_resources[i].data);
 		memset(&g16_render_resources[i], 0, sizeof(g16_render_resources[i]));
 	}
+	g16_render_buffer_release();
 }
 
 static u64 g16_render_resource_flags(const struct g16_render_resource *r)
@@ -634,6 +637,22 @@ static int g16_render_prepare(void)
 			0x4000, i, job.sku.command_va & ((1ULL << 42) - 1), &first, 1);
 		if (ret)
 			goto out;
+	}
+	if (render_drm_target) {
+		for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+			struct g16_render_resource *r = &g16_render_resources[i];
+
+			if (r->va != g16_render_target_va())
+				continue;
+			ret = g16_render_buffer_allocate(&r->data, r->size);
+			if (ret)
+				goto out;
+			r->blob.data = r->data;
+		}
+		if (!g16_render_target_obj) {
+			ret = -ENOENT;
+			goto out;
+		}
 	}
 	ret = g16_render_prepare_uat();
 	if (ret)

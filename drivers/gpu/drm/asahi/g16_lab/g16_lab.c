@@ -2673,6 +2673,9 @@ MODULE_PARM_DESC(render_stream, "Generate a relocated direct draw stream and alt
 static bool render_varying;
 module_param(render_varying, bool, 0444);
 MODULE_PARM_DESC(render_varying, "Experimental linear vertex color interpolation with fixed geometry");
+static bool render_drm_target;
+module_param(render_drm_target, bool, 0444);
+MODULE_PARM_DESC(render_drm_target, "Export the userspace-paced render target as a fenced GEM buffer");
 static bool render_service;
 module_param(render_service, bool, 0444);
 MODULE_PARM_DESC(render_service, "Bounded userspace-paced RGB rendering service");
@@ -19243,6 +19246,8 @@ static int __init g16_lab_init(void)
 		return ret;
 	}
 
+	if (render_drm_target && !render_service)
+		return -EINVAL;
 	if (render_service && (!render_mesa_vertex || !render_mesa_fragment || render_frames != 8))
 		return -EINVAL;
 	if (render_ta_probe && !render_queue_probe)
@@ -19283,12 +19288,18 @@ static int __init g16_lab_init(void)
 		    compute_macos_direct_capture || compute_macos_ocean ||
 		    compute_macos_direct_pb_hardware_base_alias)
 			return -EINVAL;
+		if (render_drm_target) {
+			ret = g16_drm_start();
+			if (ret)
+				return ret;
+		}
 		ret = g16_render_prepare();
-		if (ret)
-			return ret;
-		ret = render_service ? g16_render_service_start() : g16_lab_uat_initdata_map_test();
-		if (ret)
+		if (!ret)
+			ret = render_service ? g16_render_service_start() : g16_lab_uat_initdata_map_test();
+		if (ret) {
 			g16_render_release();
+			g16_drm_stop();
+		}
 		return ret;
 	}
 
@@ -19502,7 +19513,6 @@ static int __init g16_lab_init(void)
 
 static void __exit g16_lab_exit(void)
 {
-	g16_drm_stop();
 	g16_render_service_stop();
 	if (g16_ocean_thread) {
 		int ret = kthread_stop_put(g16_ocean_thread);
@@ -19521,6 +19531,7 @@ static void __exit g16_lab_exit(void)
 	g16_lab_remove_gfx_data_export();
 	pr_info("g16_lab: stage=%s unloaded\n", stage);
 	g16_render_release();
+	g16_drm_stop();
 }
 
 module_init(g16_lab_init);
