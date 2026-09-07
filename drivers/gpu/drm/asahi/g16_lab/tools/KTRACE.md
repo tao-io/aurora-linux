@@ -63,3 +63,11 @@ names are assigned. Unknown events and all raw bytes remain available.
 Compressed raw traces, manifests and summaries are under `render/validation/`.
 These are native Linux firmware traces from M4, not macOS framework traces
 or a transferred Neo hardware-success claim.
+
+The integrated runner was then verified in 200449Z (boot
+87743ead-51fc-4482-b63d-5020d6acb282) with mask 1: 20 records, no losses,
+and `firmware_ktrace_valid: true`. Basic mode retains the relevant start,
+finish and completion events with substantially less volume. Its manifest
+correctly keeps the overall render result failed because output verification
+has not passed. Decoder tests cover both malformed synthetic inputs and the
+actual compute/TA captures.

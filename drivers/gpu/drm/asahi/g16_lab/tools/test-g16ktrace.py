@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: GPL-2.0-only
 """Exercise the M4 record ABI, loss reports and malformed input handling."""
+import gzip
+from pathlib import Path
 import unittest
 from g16ktrace import RECORD, decode
 
@@ -27,6 +29,23 @@ class DecodeTests(unittest.TestCase):
         self.assertEqual(result['firmware_reported_lost_records'], 9)
         self.assertEqual(result['records'][2]['name'], 'event_abcdef')
         self.assertEqual(result['records'][2]['relative_ticks'], 2)
+
+    def test_captured_m4_compute_and_ta(self):
+        fixtures = Path(__file__).resolve().parent.parent / 'render' / 'validation'
+        compute = decode(gzip.decompress((fixtures /
+            '20260907T195911Z-mandelbrot-ktrace.bin.gz').read_bytes()))
+        self.assertEqual(compute['record_count'], 976)
+        self.assertEqual(compute['firmware_reported_lost_records'], 0)
+        self.assertEqual(compute['event_counts']['FinishCompute'], 1)
+        self.assertNotIn('StartTA', compute['event_counts'])
+        ta = decode(gzip.decompress((fixtures /
+            '20260907T200100Z-render-ta-ktrace.bin.gz').read_bytes()))
+        self.assertEqual(ta['record_count'], 1458)
+        self.assertEqual(ta['firmware_reported_lost_records'], 0)
+        stamp = next(r for r in ta['records'] if r['name'] == 'StampUpdateTA')
+        self.assertEqual([int(a, 16) for a in stamp['args']],
+                         [0x100, 112, 0xfffffc300000c900, 0x16000001])
+        self.assertNotIn('Start3D', ta['event_counts'])
 
     def test_reject_truncation_and_legacy_stride(self):
         for length in (1, 56, 71, 73):
