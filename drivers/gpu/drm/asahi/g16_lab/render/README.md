@@ -280,3 +280,11 @@ triggered reason-3 recovery/IRQ 35. Context 6 advanced to submitted generation
 pass. A bounded 5 ms observer now preserves banks 0..7 of the same M4 MMU fault
 registers used by the existing compute observer, restoring the bank selector
 after sampling. It does not acknowledge the interrupt or alter firmware.
+
+The next run, with the launch observer (boot
+4c3914c1-23ce-4ff2-9902-e9ba97396e26), lost SSH connectivity while insertion
+was outstanding. No post-run diagnostic was retrieved, so the precise stop
+point is unknown. Extra direct reads of the VDM, tile-map and PB-base registers
+have been removed from the observer; it now reads only the existing fault/IRQ
+diagnostic interface. That reduced observer is compiled but not yet tested.
+Capture kernel output over a separate live SSH stream for subsequent tests.

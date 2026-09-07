@@ -143,8 +143,8 @@ static void g16_render_observe_launch(void __iomem *sgx)
 		}
 		udelay(1);
 	} while (ktime_get_ns() < deadline);
-	pr_info("g16_lab: render: launch irq=%#llx fault-captured=%u VDM=%#llx tilemap=%#llx PB-base=%#llx\n",
-		irq, capture.captured, readq(sgx + 0x1c880), readq(sgx + 0x1c038), readq(sgx + 0x1218));
+	pr_info("g16_lab: render: launch irq=%#llx fault-captured=%u\n",
+		irq, capture.captured);
 	if (capture.captured)
 		for (i = 0; i < 8; i++) {
 			u64 info = capture.info[i];
