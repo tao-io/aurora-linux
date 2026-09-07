@@ -6424,6 +6424,30 @@ static int g16_lab_dump_engine_recovery_state(void)
 	return 0;
 }
 
+static void g16_lab_read_stopped_render_fault(void)
+{
+	void __iomem *registers;
+	u64 info, address;
+
+	/* The firmware has finished selecting its fault bank and is waiting for
+	 * our recovery acknowledgement. Do not race it by changing the selector. */
+	registers = ioremap(J713_SGX_MAIN_BASE + J713_SGX_GPU_FAULT_BANK_OFFSET, SZ_4K);
+	if (!registers)
+		return;
+	pr_info("g16_lab: render: reading selected fault bank during firmware pre-stop\n");
+	info = readq(registers + J713_SGX_GPU_FAULT_INFO_OFFSET);
+	pr_info("g16_lab: render: stopped fault info=%#llx\n", info);
+	address = readq(registers + J713_SGX_GPU_FAULT_ADDR_OFFSET);
+	pr_info("g16_lab: render: stopped fault valid=%u reason=%llu read=%u level=%llu unit=%#llx context=%llu VA=%#llx\n",
+		!!(info & J713_SGX_GPU_FAULT_INFO_VALID),
+		(u64)FIELD_GET(J713_SGX_GPU_FAULT_INFO_REASON, info),
+		!!(info & J713_SGX_GPU_FAULT_INFO_READ),
+		(u64)FIELD_GET(J713_SGX_GPU_FAULT_INFO_LEVEL, info),
+		(u64)FIELD_GET(J713_SGX_GPU_FAULT_INFO_UNIT, info),
+		(u64)FIELD_GET(J713_SGX_GPU_FAULT_INFO_CONTEXT, info), address << 6);
+	iounmap(registers);
+}
+
 static int g16_lab_service_firmware_recovery(void)
 {
 	struct g16_fw_recovery_summary recovery_summary;
@@ -6471,6 +6495,8 @@ static int g16_lab_service_firmware_recovery(void)
 			recovery_summary.recovery_reason,
 			recovery_summary.gpu_configuration_flags,
 			recovery_summary.firmware_feature_flags);
+		if (render_ta_probe && recovery_summary.recovery_reason == 3)
+			g16_lab_read_stopped_render_fault();
 		ret = g16_lab_log_fault_generation_state(
 			recovery_summary.engine_context_id, "recovery-pre-stop");
 		if (ret)
