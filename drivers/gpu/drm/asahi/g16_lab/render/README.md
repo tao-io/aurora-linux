@@ -495,8 +495,10 @@ python3 /root/run-g16-render-queues.py --module /root/g16_lab-render.ko \
 
 This is bounded sequential rendering, not a continuous application API,
 ring-wrap stress test, desktop driver or hardware-varying interpolation test.
-The next graphics work is true vertex-color varyings and generated binding
-state, followed by depth/uniform/texture workloads and a userspace interface.
+The next graphics work is true vertex-color varyings, followed by
+depth/uniform/texture workloads and a userspace interface. The updated
+[Vulkan and Zink direction](AURORA_VULKAN.md) records the Aurora sources and
+offline checks for this integration; generated bindings are described below.
 
 ### Generated vertex/fragment state loaders and bindings
 
