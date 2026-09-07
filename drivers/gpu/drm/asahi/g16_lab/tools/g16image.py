@@ -33,6 +33,22 @@ def write_png(path, rgba, size):
     path.write_bytes(image + chunk(b'IEND', b''))
 
 
+def linear_varying_reference(flip=False, uniform=False):
+    """Pixel-center linear interpolation, fixed clip-space right triangle.
+
+    Red attributes are (0,1,0), or (1,0,1) on alternate frames. This is
+    comparison data only and must never be uploaded as render-target content.
+    """
+    def red(x):
+        if uniform:
+            return 0 if flip else 255
+        return (((511 - 2*x) if flip else (2*x + 1)) * 255 + 256) // 512
+
+    return bytes(channel for y in range(256) for x in range(256)
+                 for channel in ((red(x),
+                                   0, 0, 255) if x < y else (0, 0, 0, 0)))
+
+
 def triangle_reference(expanded=False):
     """CPU comparison only; never copied into the GPU target."""
     return bytes(v for y in range(256) for x in range(256)

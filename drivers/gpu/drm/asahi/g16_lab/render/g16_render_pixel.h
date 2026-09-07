@@ -160,6 +160,14 @@ static int g16_render_verify_pixels(void)
 					else
 						expected = 0; /* fixture preserves the zero background */
 				}
+				if (render_varying) {
+					u32 numerator = (g16_render_frame & 1) ? 511 - 2 * x : 2 * x + 1;
+
+					if (render_varying_uniform)
+						numerator = (g16_render_frame & 1) ? 0 : 512;
+					expected = x < y ? 0xff000000 |
+						DIV_ROUND_CLOSEST(numerator * 255, 512) : 0;
+				}
 			}
 			actual = g16_render_get(r->data + g16_render_target_offset() + index * 4, 4);
 

@@ -429,6 +429,51 @@ static int g16_render_prepare(void)
 		}
 		pr_info("g16_lab: render: generated direct VDM stream at 0x1c000; old stream erased\n");
 	}
+	if (render_varying) {
+		for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+			struct g16_render_resource *r = &g16_render_resources[i];
+			u8 *data = r->data;
+
+			if (r->va == 0x10000000000ULL) {
+				memset(data + 0x540, 0, 0x80);
+			} else if (r->va == 0x10000148000ULL) {
+				BUILD_BUG_ON(sizeof(g16_generated_vertex_varying) > 0x800);
+				memcpy(data + 0x4000, g16_generated_vertex_varying_loader,
+				       sizeof(g16_generated_vertex_varying_loader));
+				memcpy(data + 0x5800, g16_generated_vertex_varying,
+				       sizeof(g16_generated_vertex_varying));
+				BUILD_BUG_ON(sizeof(g16_generated_fragment_varying) > 0x1000);
+				memset(data + 0x7000, 0, 0x1000);
+				memcpy(data + 0x7000, g16_generated_fragment_varying,
+				       sizeof(g16_generated_fragment_varying));
+				memset(data + 0x5100, 0, 0x60);
+				for (j = 0; j < 3; j++) {
+					g16_render_put(data + 0x5100 + j * 16,
+						       j == 1 ? 0x3f800000 : 0xbf800000, 4);
+					g16_render_put(data + 0x5104 + j * 16,
+						       j == 2 ? 0x3f800000 : 0xbf800000, 4);
+					g16_render_put(data + 0x5108 + j * 16,
+						       (render_varying_uniform || j == 1) ? 0x3f800000 : 0, 4);
+				}
+				/* Mesa CF_BINDING: RHW slot + one user slot, one
+				 * coefficient; scalar linear binding from user slot 1.
+				 */
+				g16_render_put(data + 0x5400, 0x102, 4);
+				g16_render_put(data + 0x5404, 0x10c, 4);
+			} else if (r->va == 0x1000018000ULL) {
+				g16_render_put(data + 0x4010, 0x505, 4);
+			} else if (r->va == 0x1000058000ULL) {
+				/* HAL200 fragment record: one binding, absolute VIT.
+				 * Output select enables interpolation; UVS has 5 words.
+				 */
+				g16_render_put(data + 4, 0x10100, 4);
+				g16_render_put(data + 8, 0x14d400, 4);
+				g16_render_put(data + 0x20, 0x10000, 4);
+				g16_render_put(data + 0x2c, 5, 4);
+			}
+		}
+		pr_info("g16_lab: render: linear vertex varying, fixed geometry, coefficient table at 0x1000014d400\n");
+	}
 	if (render_ta_probe && !render_generated_shaders) {
 		bool patched = false;
 

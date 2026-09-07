@@ -92,8 +92,11 @@ class Encoder:
         return self.emit('agx3_tex_stage_copy', dest, source, slot, wait)
 
     def interpolate(self, dest, coefficient, first=False):
+        # Match agx3_pack_binary.c:agx3_emit_interp(): AGX3b fragment-center
+        # uses f11=1 even for linear varyings. The raw codec's "perspective"
+        # argument is not the shade model; the coefficient table selects it.
         return self.emit('agx3_vary_interp_at_start', dest, coefficient,
-                         False, 0, first)
+                         True, 0, first)
 
 
 if __name__ == '__main__':

@@ -327,7 +327,14 @@ static void g16_render_next_frame(void)
 		if (r->va == g16_render_target_va()) {
 			memset(r->data, 0, r->size);
 			g16_lab_dcache_clean(r->data, r->size);
-		} else if (render_stream && r->va == 0x1000018000ULL) {
+		} else if (render_varying && r->va == 0x10000148000ULL) {
+			unsigned int vertex;
+
+			for (vertex = 0; vertex < 3; vertex++)
+				g16_render_put(r->data + 0x5108 + vertex * 16,
+					       ((render_varying_uniform || vertex == 1) ^ (g16_render_frame & 1)) ? 0x3f800000 : 0, 4);
+			g16_lab_dcache_clean(r->data, r->size);
+		} else if (render_stream && !render_varying && r->va == 0x1000018000ULL) {
 			/* Buffer contents are fixed; exercise the draw's first-vertex field. */
 			g16_render_put(r->data + 0x4000 + 0x70, (g16_render_frame & 1) * 3, 4);
 			g16_lab_dcache_clean(r->data, r->size);
