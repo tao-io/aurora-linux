@@ -32,7 +32,6 @@
 
 #include <asm/memory.h>
 
-#include "render/g16_render_prepare.h"
 
 /* Alpha has no retained pmptool snapshot API; reject that diagnostic. */
 static u32 g16_lab_pmptool_size(void)
@@ -19038,6 +19037,8 @@ static int g16_lab_pmp_dvfs_config(void)
 
 	return 0;
 }
+
+#include "render/g16_render_prepare.h"
 
 static int g16_lab_ocean_thread_fn(void *unused)
 {

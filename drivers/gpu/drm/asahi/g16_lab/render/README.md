@@ -10,6 +10,12 @@ the hardware parameter-manager state and builds TA/fragment job envelopes and
 SKU streams. It exports a 64 KiB preparation snapshot as
 `/sys/kernel/debug/g16_lab_render_prepared`. Module removal releases all of
 these allocations. This stage does not publish UAT mappings or submit work.
+It builds private 42-bit UAT trees and verifies every leaf against its allocated
+Linux page: 475 user leaves in ten table pages, plus four firmware leaves in
+three table pages on the tested J713 run. The firmware tree contains only the
+new command graph; it still needs the shared firmware mappings before use.
+Captured-resource permissions currently use the working compute AP2 executable
+tuple provisionally, rather than claiming captured render PTE evidence.
 The register blocks currently contain only their stage's initial register;
 the remaining render registers, pool/queue bindings and submission are pending.
 

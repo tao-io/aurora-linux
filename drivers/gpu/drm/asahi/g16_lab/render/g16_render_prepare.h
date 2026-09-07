@@ -3,6 +3,7 @@
 #define G16_RENDER_PREPARE_H
 
 #include "g16_render_pack.h"
+#include "g16_render_uat.h"
 
 #define G16_RENDER_RESOURCE_COUNT 34
 #define G16_RENDER_GRAPH_BYTES 0x10000
@@ -22,6 +23,8 @@ static u8 *g16_render_graph;
 static void *g16_render_pool;
 static struct dentry *g16_render_graph_file;
 static struct debugfs_blob_wrapper g16_render_graph_blob;
+static struct g16_render_uat g16_render_user_uat;
+static struct g16_render_uat g16_render_fw_uat;
 
 static void g16_render_release(void)
 {
@@ -31,6 +34,8 @@ static void g16_render_release(void)
 	g16_render_graph_file = NULL;
 	g16_render_graph_blob.data = NULL;
 	g16_render_graph_blob.size = 0;
+	g16_render_uat_free(&g16_render_user_uat);
+	g16_render_uat_free(&g16_render_fw_uat);
 	vfree(g16_render_graph);
 	g16_render_graph = NULL;
 	vfree(g16_render_pool);
@@ -39,6 +44,63 @@ static void g16_render_release(void)
 		vfree(g16_render_resources[i].data);
 		memset(&g16_render_resources[i], 0, sizeof(g16_render_resources[i]));
 	}
+}
+
+static int g16_render_prepare_uat(void)
+{
+	const u64 mask = (1ULL << 42) - 1;
+	unsigned int i;
+	int ret;
+
+	/*
+	 * Provisional captured-resource permissions use the working G16 compute
+	 * AP2 executable tuple. Render-specific live leaf permissions are not
+	 * captured yet. These trees stay private until submission is qualified.
+	 */
+	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+		struct g16_render_resource *r = &g16_render_resources[i];
+
+		ret = g16_render_uat_map(&g16_render_user_uat, r->va, r->data,
+					r->size, J713_UAT_USER_CAPTURE_GPU_EXEC_SHARED_FLAGS);
+		if (ret)
+			return ret;
+	}
+	ret = g16_render_uat_map(&g16_render_user_uat, G16_RENDER_POOL_VA,
+		g16_render_pool, G16_RENDER_POOL_BYTES, J713_UAT_USER_CAPTURE_GPU_DATA_SHARED_FLAGS);
+	if (ret)
+		return ret;
+	ret = g16_render_uat_map(&g16_render_user_uat, G16_RENDER_GRAPH_VA & mask,
+		g16_render_graph, G16_RENDER_GRAPH_BYTES, J713_UAT_USER_CAPTURE_GPU_DATA_SHARED_FLAGS);
+	if (ret)
+		return ret;
+	ret = g16_render_uat_map(&g16_render_fw_uat, G16_RENDER_GRAPH_VA & mask,
+		g16_render_graph, G16_RENDER_GRAPH_BYTES, J713_UAT_FW_SHARED_FLAGS);
+	if (ret)
+		return ret;
+	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+		struct g16_render_resource *r = &g16_render_resources[i];
+
+		ret = g16_render_uat_verify(&g16_render_user_uat, r->va, r->data,
+					r->size, J713_UAT_USER_CAPTURE_GPU_EXEC_SHARED_FLAGS);
+		if (ret)
+			return ret;
+	}
+	ret = g16_render_uat_verify(&g16_render_user_uat, G16_RENDER_POOL_VA,
+		g16_render_pool, G16_RENDER_POOL_BYTES, J713_UAT_USER_CAPTURE_GPU_DATA_SHARED_FLAGS);
+	if (ret)
+		return ret;
+	ret = g16_render_uat_verify(&g16_render_user_uat, G16_RENDER_GRAPH_VA & mask,
+		g16_render_graph, G16_RENDER_GRAPH_BYTES, J713_UAT_USER_CAPTURE_GPU_DATA_SHARED_FLAGS);
+	if (ret)
+		return ret;
+	ret = g16_render_uat_verify(&g16_render_fw_uat, G16_RENDER_GRAPH_VA & mask,
+		g16_render_graph, G16_RENDER_GRAPH_BYTES, J713_UAT_FW_SHARED_FLAGS);
+	if (ret)
+		return ret;
+	pr_info("g16_lab: render-prepare: software-verified unpublished UAT trees: user=%u tables/%u leaves firmware=%u tables/%u leaves\n",
+		g16_render_user_uat.count, g16_render_user_uat.leaves,
+		g16_render_fw_uat.count, g16_render_fw_uat.leaves);
+	return 0;
 }
 
 /* Preparation only: no TTBR/PTE publication, MMIO, firmware or queue writes. */
@@ -171,6 +233,9 @@ static int g16_render_prepare(void)
 		if (ret)
 			goto out;
 	}
+	ret = g16_render_prepare_uat();
+	if (ret)
+		goto out;
 	g16_render_graph_blob.data = g16_render_graph;
 	g16_render_graph_blob.size = G16_RENDER_GRAPH_BYTES;
 	g16_render_graph_file = debugfs_create_blob("g16_lab_render_prepared", 0400,
