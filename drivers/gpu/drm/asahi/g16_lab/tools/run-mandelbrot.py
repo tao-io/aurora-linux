@@ -54,7 +54,11 @@ def main():
                         help='sequential frames with alternating geometry; requires triangle')
     parser.add_argument('--render-bindings', action='store_true',
                         help='generated relocated loaders and vertex bindings; implies triangle')
+    parser.add_argument('--render-stream', action='store_true',
+                        help='generated relocated direct draws; implies generated bindings')
     args = parser.parse_args()
+    if args.render_stream:
+        args.render_bindings = True
     if args.render_bindings:
         args.render_triangle = True
     if args.render_frames > 1 and not args.render_triangle:
@@ -87,6 +91,8 @@ def main():
         params += ['render_xy=1']
     if args.render_bindings:
         params += ['render_bindings=1']
+    if args.render_stream:
+        params += ['render_stream=1']
     if args.render_triangle:
         params += ['render_triangle=1', f'render_frames={args.render_frames}']
     if args.render_loader_marker:
@@ -240,6 +246,7 @@ def main():
             metadata['render_triangle'] = args.render_triangle
             metadata['render_frames'] = args.render_frames
             metadata['generated_bindings'] = args.render_bindings
+            metadata['generated_stream'] = args.render_stream
             target_va = 0x10000058000 if args.render_size == 4 else 0x10001000000
             target_offset = 0x100 if args.render_size == 4 else 0x4000
             pixel_bytes = args.render_size * args.render_size * 4
@@ -286,6 +293,19 @@ def main():
                     erased = erased and len(data) >= offset + count and not any(data[offset:offset + count])
             metadata['old_bindings_erased'] = erased
             passed = passed and erased and 'generated relocated loaders and vertex bindings; old entries erased' in current_log
+        if args.render_stream:
+            stream_file = result / 'render-resources/resource-1000018000.bin'
+            vertices_file = result / 'render-resources/resource-10000148000.bin'
+            valid_stream = False
+            if stream_file.exists() and vertices_file.exists():
+                stream, vertices = stream_file.read_bytes(), vertices_file.read_bytes()
+                expected_vertices = struct.pack('<12f', -1, -1, 1, -1, -1, 1, -1, -1, 3, -1, -1, 3)
+                valid_stream = (len(stream) >= 0x4078 and len(vertices) >= 0x5130
+                                and not any(stream[:120])
+                                and struct.unpack_from('<I', stream, 0x4070)[0] == ((args.render_frames - 1) & 1) * 3
+                                and vertices[0x5100:0x5130] == expected_vertices)
+            metadata['old_stream_erased_and_vertices_fixed'] = valid_stream
+            passed = passed and valid_stream
         if args.render_triangle:
             from g16image import detile_rgba8, triangle_reference, write_png
             frames = []

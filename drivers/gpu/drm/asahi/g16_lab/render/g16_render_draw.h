@@ -35,7 +35,7 @@ static int g16_render_build_ta(void)
 #define GPU(o) g16_render_gpu_address(base + (o))
 #define TILER(o) (((base + (o)) & ((1ULL << 42) - 1)) - G16_RENDER_COMPACT_BASE)
 	/* Native normal -> compact range-1 address for captured VDM resource 29. */
-	D(0xea8, 0x18000, 8);
+	D(0xea8, render_stream ? 0x1c000 : 0x18000, 8);
 	/* Zero-backed dedicated preemption storage; size is provisional. */
 	D(0xf48, GPU(0x40000), 8);
 	D(0xf50, GPU(0x50000), 8);
@@ -123,8 +123,8 @@ static int g16_render_build_ta(void)
 		g16_render_put((u8 *)notifier + 0x24, 6, 4);
 		g16_render_put((u8 *)notifier + 0xb8, 0x16000001, 4);
 	}
-	pr_info("g16_lab: render: built experimental %ux%u TA registers=%d VDM=0x18000 PB=128 pages TPC=%llu bytes\n",
-		render_size, render_size, count, geometry.tpc_bytes);
+	pr_info("g16_lab: render: built experimental %ux%u TA registers=%d VDM=%#x PB=128 pages TPC=%llu bytes\n",
+		render_size, render_size, count, render_stream ? 0x1c000 : 0x18000, geometry.tpc_bytes);
 #undef GPU
 #undef TILER
 #undef D

@@ -10,6 +10,7 @@
 #include "g16_vertex_marker.h"
 #include "g16_generated_graphics.h"
 #include "g16_generated_bindings.h"
+#include "g16_render_stream.h"
 
 #define G16_RENDER_RESOURCE_COUNT 34
 #define G16_RENDER_GRAPH_BYTES 0x80000
@@ -401,6 +402,32 @@ static int g16_render_prepare(void)
 			}
 		}
 		pr_info("g16_lab: render: generated relocated loaders and vertex bindings; old entries erased\n");
+	}
+	if (render_stream) {
+		for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+			struct g16_render_resource *r = &g16_render_resources[i];
+			u8 *data = r->data;
+
+			if (r->va == 0x1000018000ULL) {
+				if (memchr_inv(data + 0x4000, 0, 0x1000)) {
+					ret = -EINVAL;
+					goto out;
+				}
+				ret = g16_render_pack_stream(data + 0x4000, 0x1000,
+							     0x1000014c000ULL, 3, 0);
+				if (ret < 0)
+					goto out;
+				memset(data, 0, G16_RENDER_STREAM_BYTES);
+			} else if (r->va == 0x10000148000ULL) {
+				/* A second, fixed oversized triangle follows the first.
+				 * Frames select 0..2 or 3..5 through the draw command.
+				 */
+				for (j = 0; j < 6; j++)
+					g16_render_put(data + 0x5118 + j * 4,
+						       j == 2 || j == 5 ? 0x40400000 : 0xbf800000, 4);
+			}
+		}
+		pr_info("g16_lab: render: generated direct VDM stream at 0x1c000; old stream erased\n");
 	}
 	if (render_ta_probe && !render_generated_shaders) {
 		bool patched = false;

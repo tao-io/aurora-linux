@@ -6,6 +6,7 @@
 #include "g16_render_ta.h"
 #include "g16_render_fragment.h"
 #include "g16_render_geometry.h"
+#include "g16_render_stream.h"
 
 static void test_init_pb(void)
 {
@@ -201,6 +202,38 @@ static void test_sku(void)
 	assert(g16_render_pack_sku(sku, 0x400, G16_RENDER_TA, &a) == -EINVAL);
 }
 
+static void test_stream(void)
+{
+	/* Qualified 25G83 direct-draw stream, independent of this encoder. */
+	static const u8 reference[120] = {
+		0x2e, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01,
+		0x00, 0x52, 0x00, 0x00, 0x04, 0x04, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+		0x00, 0x00, 0x00, 0x00, 0x00, 0x05, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00,
+		0x00, 0x07, 0x00, 0x00, 0x00, 0x80, 0x05, 0x00, 0x00, 0x05, 0x00, 0x00,
+		0x1c, 0x80, 0x05, 0x00, 0x00, 0x07, 0x00, 0x00, 0x30, 0x80, 0x05, 0x00,
+		0x00, 0x05, 0x00, 0x00, 0x4c, 0x80, 0x05, 0x00, 0x00, 0x0a, 0x00, 0x00,
+		0x00, 0x89, 0x06, 0x00, 0x00, 0x03, 0x00, 0x00, 0x60, 0x80, 0x05, 0x00,
+		0x00, 0x02, 0x00, 0x00, 0x6c, 0x80, 0x05, 0x00, 0x00, 0x02, 0x00, 0x00,
+		0x00, 0x80, 0x04, 0x00, 0x00, 0x06, 0xc4, 0x61, 0x03, 0x00, 0x00, 0x00,
+		0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0xc0,
+	};
+	u8 storage[122], before[122];
+
+	memset(storage, 0xa5, sizeof(storage));
+	assert(g16_render_pack_stream(storage + 1, 120, 0x10000148000ULL, 3, 0) == 120);
+	assert(!memcmp(storage + 1, reference, 120));
+	assert(storage[0] == 0xa5 && storage[121] == 0xa5);
+	memcpy(before, storage, sizeof(storage));
+	assert(g16_render_pack_stream(storage + 1, 119, 0x10000148000ULL, 3, 0) == -EINVAL);
+	assert(g16_render_pack_stream(storage + 1, 120, 0x10000148001ULL, 3, 0) == -EINVAL);
+	assert(g16_render_pack_stream(storage + 1, 120, 0x10000148000ULL, 4, 3) == -EINVAL);
+	assert(g16_render_pack_stream(storage + 1, 120, 0x10000148000ULL, 0, 0) == -EINVAL);
+	assert(!memcmp(storage, before, sizeof(storage)));
+	assert(g16_render_pack_stream(storage + 1, 120, 0x1000014c000ULL, 3, 3) == 120);
+	assert(g16_render_get(storage + 1 + 0xc, 4) == 0x5300);
+	assert(g16_render_get(storage + 1 + 0x70, 4) == 3);
+}
+
 int main(void)
 {
 	u8 descriptor[G16_RENDER_FRAGMENT_DESCRIPTOR_BYTES] = {0};
@@ -209,6 +242,7 @@ int main(void)
 	u64 mode;
 	int n;
 
+	test_stream();
 	test_init_pb();
 	test_geometry();
 	test_register_bounds();
@@ -221,6 +255,6 @@ int main(void)
 	assert(reg_value(regs, n, 0x10038) == mode && mode == 0x280);
 	assert(g16_render_fragment_registers(regs, n - 1, descriptor, sizeof(descriptor), &p, 0, &mode) == -ENOSPC);
 	assert(g16_render_fragment_registers(regs, 128, descriptor, sizeof(descriptor) - 1, &p, 0, &mode) == -EINVAL);
-	puts("PASS: register bounds, page IDs, SKU control flow, geometry, InitPB, PB descriptor and both stage producers");
+	puts("PASS: direct draw stream, register bounds, page IDs, SKU control flow, geometry, InitPB, PB descriptor and both stage producers");
 	return 0;
 }

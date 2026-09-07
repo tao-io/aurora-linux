@@ -525,3 +525,26 @@ This removes capture dependence for the two main state loaders and their
 vertex input binding. The VDM/PPP state, per-SR1 helper dispatch targets and
 background/end-of-tile programs still need independent generation. It does
 not qualify vertex-varying interpolation.
+
+### Generated direct draw stream and first-vertex selection
+
+`--render-stream` adds an independently packed, relocated 120-byte VDM
+command stream to generated bindings. The bounded encoder emits explicit
+vertex-loader address, position-output counts, PPP references, triangle
+primitive, vertex/instance count, first vertex and termination. Its default
+encoding matches the native reference byte-for-byte; host tests also cover
+short buffers, misaligned shader addresses and invalid vertex ranges without
+partial writes.
+
+TA now fetches the stream at compact VA `0x100001c000`, with the previous
+stream at `0x1000018000` erased. Six fixed vertices occupy the generated
+vertex buffer. Frames alternate first vertex zero/three instead of modifying
+vertex positions. The runner checks that both vertex sets remain unchanged
+and that the old stream remains zero.
+
+Run `20260907T212135Z` passed eight frames, all pixel and padding checks,
+clean queue retirement, loss-free KTrace and successful module removal under
+the mandatory watchdog. Manifest:
+`validation/j713-generated-stream-20260907.json`. PPP packets and graphics
+helper programs remain reference state; generated direct draws are not yet
+a capture-independent full graphics pipeline.
