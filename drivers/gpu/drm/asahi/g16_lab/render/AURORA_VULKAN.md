@@ -89,3 +89,13 @@ devices, and `agx_params_driver_supported()` requires its exact T8140 contract.
 M4 needs its own implementation and feature admission; relabeling it as G17P
 would bypass meaningful platform checks. Neo desktop results do not qualify
 M4 desktop rendering. No GPU experiments were run for this source refresh.
+
+## M4 interpolation implementation, 2026-09-08
+
+Steps 1 and 2 now pass on J713/25G83: Aurora-encoded UVSW/COPY/interpolation,
+scalar linear color and three-component RGB, including eight alternating
+frames and exact full-target comparisons. The separate PPP varying-count
+record was essential; VIT and output sizes alone yielded zero user coefficients.
+See `VARYING_BRINGUP.md` and its retained validation manifests. The original
+eight-frame generated-stream regression also passes. Captured helper state
+and firmware setup remain in use; public Vulkan integration is still pending.

@@ -333,6 +333,14 @@ static void g16_render_next_frame(void)
 			for (vertex = 0; vertex < 3; vertex++)
 				g16_render_put(r->data + 0x5108 + vertex * 16,
 					       ((render_varying_uniform || vertex == 1) ^ (g16_render_frame & 1)) ? 0x3f800000 : 0, 4);
+			if (render_varying_rgb) {
+				for (vertex = 0; vertex < 3; vertex++) {
+					g16_render_put(r->data + 0x5108 + vertex * 16,
+						       vertex == ((g16_render_frame & 1) ? 2 : 0) ? 0x3f800000 : 0, 4);
+					g16_render_put(r->data + 0x510c + vertex * 16,
+						       vertex == ((g16_render_frame & 1) ? 0 : 1) ? 0x3f800000 : 0, 4);
+				}
+			}
 			g16_lab_dcache_clean(r->data, r->size);
 		} else if (render_stream && !render_varying && r->va == 0x1000018000ULL) {
 			/* Buffer contents are fixed; exercise the draw's first-vertex field. */

@@ -56,3 +56,16 @@ def triangle_reference(expanded=False):
                             (x * 255 + 128) // 256,
                             ((256 - y) * 255 + 128) // 256, 255)
                            if x < y or expanded else (0, 0, 0, 0)))
+
+
+def rgb_varying_reference(flip=False):
+    """Barycentric RGB comparison at pixel centers; never GPU input."""
+    def color(x, y):
+        if x >= y:
+            return (0, 0, 0, 0)
+        r = ((y - x) * 255 + 128) // 256
+        g = ((2 * x + 1) * 255 + 256) // 512
+        b = ((511 - 2 * y) * 255 + 256) // 512
+        return (b, r, g, 255) if flip else (r, g, b, 255)
+
+    return bytes(c for y in range(256) for x in range(256) for c in color(x, y))

@@ -170,6 +170,14 @@ static int g16_render_verify_pixels(void)
 					expected = x < y ? 0xff000000 |
 						DIV_ROUND_CLOSEST(numerator * 255, 512) : 0;
 				}
+				if (render_varying_rgb) {
+					u32 r = DIV_ROUND_CLOSEST((y > x ? y - x : 0) * 255, 256);
+					u32 g = DIV_ROUND_CLOSEST((2 * x + 1) * 255, 512);
+					u32 b = DIV_ROUND_CLOSEST((511 - 2 * y) * 255, 512);
+
+					expected = x < y ? 0xff000000 | ((g16_render_frame & 1) ?
+						(g << 16 | r << 8 | b) : (b << 16 | g << 8 | r)) : 0;
+				}
 			}
 			actual = g16_render_get(r->data + g16_render_target_offset() + index * 4, 4);
 

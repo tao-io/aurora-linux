@@ -90,3 +90,29 @@ runner's `g16image.py`, `g16ktrace.py`, and `experiment_watchdog.py` helpers:
 python3 /root/run-render.py --module /root/g16_lab-varying.ko \
   --results /root/g16-render-results --firmware-ktrace 3 --render-varying
 ```
+
+## RGB interpolation, 2026-09-08
+
+`--render-varying-rgb` supplies float4 `(x,y,r,g)` inputs. The vertex shader
+computes `b = 1-r-g` and exports position plus RGB. There are seven UVS words,
+three linear f32 user outputs, and one three-component coefficient binding:
+PPP counts `0x30000`, VIT header `0x304`, binding `0x10e`, output count seven.
+The six-slot AGX3b scheduler exports the first six values, then waits for slot
+one before recycling it for blue at a distinct staging address. The existing
+loader allocation remains unchanged. The fragment shader reads coefficients
+0,1,2 directly and packs RGBA8; it does not read fragment coordinates.
+
+Frames alternate red/green/blue vertices with green/blue/red vertices, holding
+positions fixed. Vertex red-attribute readback and every target pixel are
+checked. The scalar coefficient diagnostic remains exclusive to scalar tests.
+
+* `20260907T220509Z`: original generated-stream regression, eight frames,
+  all 524,288 pixels pass after the scalar count fix.
+* `20260907T220647Z`: RGB one-frame test, all 65,536 pixels pass.
+* `20260907T220816Z`: eight RGB frames, all 524,288 pixels pass.
+
+All three runs report clean queue retirement, no lost firmware trace records,
+successful module removal and evidence collection before watchdog disarm.
+The host RGB oracle also matches a direct barycentric calculation for both
+color configurations (131,072 pixels). These qualify this bounded lab draw,
+not a public Vulkan implementation, arbitrary shaders, textures or WSI.

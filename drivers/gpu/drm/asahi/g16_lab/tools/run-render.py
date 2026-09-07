@@ -59,12 +59,16 @@ def main():
                         help='generated relocated direct draws; implies generated bindings')
     parser.add_argument('--render-varying', action='store_true',
                         help='experimental linear vertex color; implies generated stream')
+    parser.add_argument('--render-varying-rgb', action='store_true',
+                        help='three linear vertex color components')
     parser.add_argument('--render-varying-uniform', action='store_true',
                         help='equal vertex colors to isolate varying transport')
     parser.add_argument('--render-varying-rhw', action='store_true',
                         help='interpolate reciprocal W to isolate coefficient setup')
     args = parser.parse_args()
-    if args.render_varying_uniform or args.render_varying_rhw:
+    if args.render_varying_rgb and (args.render_varying_uniform or args.render_varying_rhw):
+        parser.error('RGB and scalar varying diagnostics are separate tests')
+    if args.render_varying_rgb or args.render_varying_uniform or args.render_varying_rhw:
         args.render_varying = True
     if args.render_varying:
         args.render_stream = True
@@ -106,6 +110,8 @@ def main():
         params += ['render_stream=1']
     if args.render_varying:
         params += ['render_varying=1']
+    if args.render_varying_rgb:
+        params += ['render_varying_rgb=1']
     if args.render_varying_uniform:
         params += ['render_varying_uniform=1']
     if args.render_varying_rhw:
@@ -265,6 +271,7 @@ def main():
             metadata['generated_bindings'] = args.render_bindings
             metadata['generated_stream'] = args.render_stream
             metadata['linear_vertex_varying'] = args.render_varying
+            metadata['rgb_vertex_varying'] = args.render_varying_rgb
             metadata['uniform_vertex_colors'] = args.render_varying_uniform
             metadata['coefficient_source_rhw'] = args.render_varying_rhw
             target_va = 0x10000058000 if args.render_size == 4 else 0x10001000000
@@ -296,6 +303,9 @@ def main():
                     expected_image = linear_varying_reference(bool((args.render_frames - 1) & 1), args.render_varying_uniform)
                     if args.render_varying_rhw:
                         expected_image = linear_varying_reference(False, True)
+                if args.render_varying_rgb:
+                    from g16image import rgb_varying_reference
+                    expected_image = rgb_varying_reference(bool((args.render_frames - 1) & 1))
                 from g16image import write_png
                 write_png(result / 'render.png', rgba, args.render_size)
                 metadata['vertex_fragment_pixels_verified'] = (
@@ -331,6 +341,10 @@ def main():
                     edge = float(not flip) if args.render_varying_uniform else float(flip)
                     expected_vertices = struct.pack('<12f', -1, -1, edge, 0,
                         1, -1, float(not flip), 0, -1, 1, edge, 0)
+                    if args.render_varying_rgb:
+                        colors = ((0,1), (0,0), (1,0)) if flip else ((1,0), (0,1), (0,0))
+                        expected_vertices = struct.pack('<12f',
+                            *(v for xy, rg in zip(((-1,-1), (1,-1), (-1,1)), colors) for v in (*xy, *rg)))
                     first = 0
                 valid_stream = (len(stream) >= 0x4078 and len(vertices) >= 0x5130
                                 and not any(stream[:120])
@@ -346,14 +360,16 @@ def main():
             flip = bool((args.render_frames - 1) & 1)
             wanted = [0x3f800000 if ((args.render_varying_uniform or i == 1) != flip) else 0
                       for i in range(3)]
+            if args.render_varying_rgb:
+                wanted = [0, 0, 0x3f800000] if flip else [0x3f800000, 0, 0]
             metadata['vertex_attribute_readback'] = reads
             metadata['vertex_attribute_reads_verified'] = reads == wanted
             passed = passed and reads == wanted
-            if trace_path.exists() and trace_path.stat().st_size >= 0x2400:
+            if not args.render_varying_rgb and trace_path.exists() and trace_path.stat().st_size >= 0x2400:
                 coefficients = list(struct.unpack_from('<256I', trace_path.read_bytes(), 0x2000))
                 metadata['fragment_coefficient_readback'] = coefficients
         if args.render_triangle:
-            from g16image import detile_rgba8, triangle_reference, linear_varying_reference, write_png
+            from g16image import detile_rgba8, triangle_reference, linear_varying_reference, rgb_varying_reference, write_png
             frames = []
             for frame in range(args.render_frames):
                 source = result / 'render-resources' / f'frame-{frame:02d}.bin'
@@ -364,6 +380,8 @@ def main():
                     reference = (lambda flip: linear_varying_reference(flip, args.render_varying_uniform)) if args.render_varying else triangle_reference
                     if args.render_varying_rhw:
                         reference = lambda flip: linear_varying_reference(False, True)
+                    if args.render_varying_rgb:
+                        reference = rgb_varying_reference
                     info['verified'] = (rgba == reference(bool(frame & 1)) and
                         f'render: verified frame={frame} pixels=65536 stamp={((frame + 1) << 8):#x}' in current_log)
                     write_png(result / f'frame-{frame:02d}.png', rgba, 256)

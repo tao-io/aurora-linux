@@ -1,0 +1,152 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "boot_id": "076099f7-b6c5-4865-8808-bca0e0d44a1d",
+  "module_sha256": "4dae4c0a4fd3053f5c54135571f170a997a0607d55bc9dfef8201ed433b7ce70",
+  "parameters": [
+    "stage=rtkit-initdata-exact-offscreen-store",
+    "compute_macos_iadd=1",
+    "compute_mandelbrot=1",
+    "compute_macos_iadd_capture_context=1",
+    "compute_macos_iadd_ap2_leaves=1",
+    "compute_exact_loader_iomap_all=1",
+    "compute_macos_iadd_aligned_uma_hardware_table=1",
+    "compute_macos_iadd_populated_usc_private_memory=1",
+    "render_queue_probe=1",
+    "render_ta_probe=1",
+    "render_fragment_probe=1",
+    "render_generated_shaders=1",
+    "render_size=256",
+    "render_xy=1",
+    "render_bindings=1",
+    "render_stream=1",
+    "render_triangle=1",
+    "render_frames=8",
+    "firmware_ktrace_mask=3"
+  ],
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": false,
+    "disarmed_after_evidence_collection": true
+  },
+  "insmod_rc": 0,
+  "stage_result": 0,
+  "firmware_ktrace_valid": true,
+  "firmware_ktrace": {
+    "platform": "J713/T8132/G16G",
+    "firmware_build": "25G83",
+    "record_size": 72,
+    "record_count": 2176,
+    "sha256": "d0a4a9ad5367af71151e9dfaded0e161a5d57ff48d82decfc50cc5b52f7ec79a",
+    "firmware_reported_lost_records": 0,
+    "event_counts": {
+      "EventNotify": 9,
+      "Finish3D": 8,
+      "FinishCompute": 1,
+      "FinishTA": 8,
+      "StampUpdate3D": 7,
+      "StampUpdateCompute": 1,
+      "StampUpdateTA": 8,
+      "Start3D": 8,
+      "StartCompute": 1,
+      "StartTA": 8,
+      "event_000005": 8,
+      "event_00000f": 2,
+      "event_000017": 8,
+      "event_00002c": 1,
+      "event_00004d": 8,
+      "event_00004f": 8,
+      "event_000054": 17,
+      "event_000056": 35,
+      "event_000100": 384,
+      "event_000101": 384,
+      "event_000102": 88,
+      "event_000103": 88,
+      "event_000105": 18,
+      "event_000106": 18,
+      "event_000109": 17,
+      "event_00010a": 17,
+      "event_00010c": 2,
+      "event_000111": 19,
+      "event_000112": 991,
+      "event_00013c": 2,
+      "event_00013e": 2
+    },
+    "host_dropped_records": 0,
+    "drain_result": 0
+  },
+  "output_bytes": 16384,
+  "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+  "colors": {
+    "ffffffff": 3416,
+    "ff000000": 680
+  },
+  "symmetric_rows": true,
+  "render_queues_passed": true,
+  "render_shaders_submitted": true,
+  "ta_retired_with_writes": false,
+  "fragment_job_submitted": true,
+  "fragment_job_retired": true,
+  "vertex_fragment_pixels_verified": true,
+  "generated_shader_bodies": true,
+  "render_size": 256,
+  "render_xy": true,
+  "render_triangle": true,
+  "render_frames": 8,
+  "generated_bindings": true,
+  "generated_stream": true,
+  "linear_vertex_varying": false,
+  "uniform_vertex_colors": false,
+  "coefficient_source_rhw": false,
+  "render_target_sha256": "a81886b14ee9f0c8db0b14d42c5fa5538a40dd8382519cb5a25ce8062d27269e",
+  "render_rgba_sha256": "5ceb90df2a02473dcfe54460880884aff775b48cd0eb398584c4ccaffa278a81",
+  "old_bindings_erased": true,
+  "old_stream_erased_and_inputs_verified": true,
+  "frames": [
+    {
+      "frame": 0,
+      "verified": true,
+      "sha256": "900314721bc8b607e27b4767d5149275af9714d720a78655458a47a1536e0b12"
+    },
+    {
+      "frame": 1,
+      "verified": true,
+      "sha256": "5ceb90df2a02473dcfe54460880884aff775b48cd0eb398584c4ccaffa278a81"
+    },
+    {
+      "frame": 2,
+      "verified": true,
+      "sha256": "900314721bc8b607e27b4767d5149275af9714d720a78655458a47a1536e0b12"
+    },
+    {
+      "frame": 3,
+      "verified": true,
+      "sha256": "5ceb90df2a02473dcfe54460880884aff775b48cd0eb398584c4ccaffa278a81"
+    },
+    {
+      "frame": 4,
+      "verified": true,
+      "sha256": "900314721bc8b607e27b4767d5149275af9714d720a78655458a47a1536e0b12"
+    },
+    {
+      "frame": 5,
+      "verified": true,
+      "sha256": "5ceb90df2a02473dcfe54460880884aff775b48cd0eb398584c4ccaffa278a81"
+    },
+    {
+      "frame": 6,
+      "verified": true,
+      "sha256": "900314721bc8b607e27b4767d5149275af9714d720a78655458a47a1536e0b12"
+    },
+    {
+      "frame": 7,
+      "verified": true,
+      "sha256": "5ceb90df2a02473dcfe54460880884aff775b48cd0eb398584c4ccaffa278a81"
+    }
+  ],
+  "rmmod_rc": 0,
+  "passed": true
+}
