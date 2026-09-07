@@ -3,6 +3,50 @@
 #include <assert.h>
 #include <stdio.h>
 #include "g16_render_pack.h"
+#include "g16_render_ta.h"
+
+static u64 reg_value(const struct g16_render_register *r, int n, u32 reg)
+{
+	int i;
+
+	for (i = 0; i < n; i++)
+		if (r[i].reg == reg)
+			return r[i].value;
+	assert(!"missing register");
+	return 0;
+}
+
+static void test_ta_registers(void)
+{
+	u8 descriptor[G16_RENDER_TA_DESCRIPTOR_BYTES] = {0};
+	struct g16_render_register regs[128];
+	struct g16_render_ta_platform p = {.accelerator_count_4e4 = 10};
+	u64 mode;
+	int n;
+
+	assert(g16_render_ta_registers(regs, 128, descriptor, sizeof(descriptor),
+				       &p, 0, &mode) == -EINVAL);
+	g16_render_put(descriptor + 0x1038, 1, 4);
+	g16_render_put(descriptor + 0xf48, 0x1000018000, 8);
+	g16_render_put(descriptor + 0x1040, 0x100001683f, 8);
+	descriptor[0x1410] = 3;
+	descriptor[0x1411] = 1;
+	p.pb_slot_word_28 = 0x600012345f;
+	n = g16_render_ta_registers(regs, 128, descriptor, sizeof(descriptor),
+				    &p, 0x1234, &mode);
+	assert(n > 60 && n <= 125);
+	assert(mode == 14 && reg_value(regs, n, 0x1c898) == mode);
+	assert(reg_value(regs, n, 0x10110) == 0x1000018000);
+	assert(reg_value(regs, n, 0x1c9b0) == 0x1000018000);
+	assert(reg_value(regs, n, 0x1c030) == 0x8000001000016800ULL);
+	assert(reg_value(regs, n, 0x1c9c0) == reg_value(regs, n, 0x1c030));
+	assert(reg_value(regs, n, 0x1c8f8) == 0x887c);
+	assert(reg_value(regs, n, 0x1ca30) == 0x6000123450);
+	assert(reg_value(regs, n, 0x16c38) == 0x6000123450);
+	assert(reg_value(regs, n, 0x1ca10) == 0x1234);
+	assert(g16_render_ta_registers(regs, n - 1, descriptor, sizeof(descriptor),
+				       &p, 0, &mode) == -ENOSPC);
+}
 
 static void test_register_bounds(void)
 {
@@ -106,6 +150,7 @@ int main(void)
 	test_register_bounds();
 	test_pages();
 	test_sku();
-	puts("PASS: render register boundaries, page IDs, SKU control flow and unaligned encoding");
+	test_ta_registers();
+	puts("PASS: register boundaries, page IDs, SKU control flow, unaligned encoding and TA register translation");
 	return 0;
 }

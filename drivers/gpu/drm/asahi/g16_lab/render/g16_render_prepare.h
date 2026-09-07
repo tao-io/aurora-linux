@@ -3,6 +3,7 @@
 #define G16_RENDER_PREPARE_H
 
 #include "g16_render_pack.h"
+#include "g16_render_ta.h"
 #include "g16_render_uat.h"
 
 #define G16_RENDER_RESOURCE_COUNT 34

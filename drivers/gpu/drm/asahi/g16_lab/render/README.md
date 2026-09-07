@@ -19,6 +19,16 @@ tuple provisionally, rather than claiming captured render PTE evidence.
 The register blocks currently contain only their stage's initial register;
 the remaining render registers, pool/queue bindings and submission are pending.
 
+`g16_render_ta.h` now translates the native TA register producer, including its
+65-write baseline, conditional registers, pointer masks, replicated register
+values and mode word. It takes an offset-labelled descriptor plus explicit
+platform/PB inputs and never dereferences native CPU pointers. Host tests cover
+its alias writes, masks and mode encoding; the header also compiles in the
+kernel build. This generator is not yet called by `render-prepare`: the
+descriptor's render geometry, private buffer addresses and platform defaults
+still need to be supplied from a reconstructed draw. Fragment register-value
+generation remains to be implemented.
+
 Prepare the firmware input with:
 
 ```sh
