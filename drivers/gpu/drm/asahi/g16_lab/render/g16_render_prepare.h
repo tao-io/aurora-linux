@@ -206,7 +206,7 @@ static int g16_render_prepare(void)
 		ret = -ENOMEM;
 		goto out;
 	}
-	/* prepareParameterBufferBlock uses getGPUVirtualAddressForHardware
+	/* prepareParameterBufferBlock uses getGPUVirtualAddressForUserProcess
 	 * (vtable +160), the compact range-1 alias, before shifting by 15.
 	 * The UAT mapping above uses the normal (+0x1000000000) address. */
 	for (i = 0; i < ARRAY_SIZE(pages); i++)
@@ -214,8 +214,8 @@ static int g16_render_prepare(void)
 	if (render_ta_probe) {
 		bool patched = false;
 
-		/* Prefix the 40-byte store sequence, preserving all 86 captured bytes.
-		 * The straight-line VS overwrites r0-r3 before using their values;
+		/* Prefix the 42-byte store sequence, preserving all 86 captured bytes.
+		 * The straight-line VS overwrites r1 before use; r2/r3/r8 are dead;
 		 * its uniform argument pointer and special-register inputs are untouched. */
 		BUILD_BUG_ON(sizeof(g16_vertex_marker_code) > 0x5c0 - 0x594);
 		for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
