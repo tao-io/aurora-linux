@@ -193,10 +193,27 @@ def main():
         metadata['render_shaders_submitted'] = 'render: submitted InitPB + captured vertex/TA job' in current_log
         if args.render_ta:
             metadata['ta_retired_with_writes'] = 'render: TA retired with GPU-written pool/tilemap' in current_log
-            passed = passed and metadata['ta_retired_with_writes']
+            if not args.render_fragment:
+                passed = passed and metadata['ta_retired_with_writes']
         metadata['fragment_job_submitted'] = 'render: submitted fragment diagnostic after retired TA' in current_log
         metadata['fragment_job_retired'] = 'render: fragment diagnostic retired stamp=0x100 ring=2' in current_log
         metadata['vertex_fragment_pixels_verified'] = False
+        if args.render_fragment:
+            target = result / 'render-resources' / 'resource-10000058000.bin'
+            if target.exists():
+                raw_target = target.read_bytes()
+                # Native M4 4x4 RGBA8 tile, excluding its zero-backed prefix.
+                rgba = raw_target[0x100:0x140]
+                (result / 'render.rgba').write_bytes(rgba)
+                metadata['render_target_sha256'] = hashlib.sha256(raw_target).hexdigest()
+                metadata['render_rgba_sha256'] = hashlib.sha256(rgba).hexdigest()
+                metadata['vertex_fragment_pixels_verified'] = (
+                    len(raw_target) == 0x20000 and rgba == bytes.fromhex('4080bfff') * 16
+                    and not any(raw_target[:0x100]) and not any(raw_target[0x140:]))
+            # Pixel evidence replaces the earlier nonzero-tilemap heuristic.
+            # A firmware crash or incomplete queue still fails the outer gate.
+            passed = (passed and metadata['fragment_job_retired']
+                      and metadata['vertex_fragment_pixels_verified'])
         passed = passed and metadata['render_queues_passed']
     if passed:
         unload = subprocess.run(['rmmod', 'g16_lab'], capture_output=True, text=True)

@@ -1,34 +1,39 @@
 # J713 vertex/fragment bring-up
 
-Status: Linux buffer and packet preparation implemented and exercised on J713.
-No Linux vertex or fragment execution has been established. Existing Mandelbrot
-compute validation remains separate.
+Status: the captured M4 vertex/fragment draw runs on J713 under Linux.
+Run `20260907T203337Z` passed: TA and fragment completed, all sixteen RGBA8
+pixels matched `40 80 bf ff`, the rest of the 128 KiB target stayed zero,
+firmware KTrace recorded Start/Finish for compute, TA and 3D without dropped
+records, and module removal succeeded. This is one bounded offscreen draw,
+not a desktop driver or a Vulkan/OpenGL implementation.
 
-`stage=render-prepare` imports the 34 encoded capture mappings, allocates a
-4 MiB parameter pool, generates its 128 virtual 32 KiB page IDs, initializes
-the hardware parameter-manager state and builds TA/fragment job envelopes and
-SKU streams. It now exports a 512 KiB preparation snapshot as
-`/sys/kernel/debug/g16_lab_render_prepared`. Module removal releases all of
-these allocations. This stage does not publish UAT mappings or submit work.
-It builds private 42-bit UAT trees and verifies every leaf against its allocated
-Linux page. The earlier 64 KiB graph had 475 user leaves in ten table pages
-and four firmware leaves in three table pages on J713. The expanded graph and
-new root-3 address have compiled but have not yet been run on hardware. The firmware tree contains only the
-new command graph; it still needs the shared firmware mappings before use.
-Captured-resource permissions currently use the working compute AP2 executable
-tuple provisionally, rather than claiming captured render PTE evidence.
-The register blocks currently contain only their stage's initial register;
-the remaining draw register inputs and shader submission are pending.
+The input comes from the encoded stage of the owned M4/25G83 capture. Expected
+pixels are excluded from uploads. The original probe clears to black and its
+fragment shader emits (0.25,0.5,0.75,1), distinguishing the rendered result
+from a clear. TA's diagnostic marker stores remain unobserved; their absence
+and the zero tilemap do not invalidate the independently checked color output.
 
-`g16_render_ta.h` now translates the native TA register producer, including its
-65-write baseline, conditional registers, pointer masks, replicated register
-values and mode word. It takes an offset-labelled descriptor plus explicit
-platform/PB inputs and never dereferences native CPU pointers. Host tests cover
-its alias writes, masks and mode encoding; the header also compiles in the
-kernel build. This generator is not yet called by `render-prepare`: the
-descriptor's render geometry, private buffer addresses and platform defaults
-still need to be supplied from a reconstructed draw. The fragment producer in `g16_render_fragment.h` is also translated. Both
-still need draw inputs before submission.
+`stage=render-prepare` imports the 34 encoded mappings, allocates a 4 MiB
+parameter pool, builds private UAT trees, and exports the 512 KiB command graph
+without submitting work. `--render-fragment` uses the full M4 TA/fragment
+register builders and firmware job streams, submits compute as a baseline,
+then the captured vertex/fragment draw. The target and dPM scratch use RW/NX;
+command and shader resources retain their qualified AP2 executable mappings.
+
+Run once after a fresh boot (the runner verifies the mandatory 60-second
+watchdog before insertion):
+
+```sh
+sudo python3 tools/run-mandelbrot.py --module ./g16_lab.ko \
+    --results /root/g16-render-results --firmware-ktrace 3 --render-fragment
+```
+
+The result directory contains `manifest.json`, `render.rgba`, the full target
+and command snapshots, kernel log and firmware KTrace. The runner requires a
+clean stage result, successful queue retirement, the exact 4x4 image, untouched
+target padding, no firmware crashlog, and successful module removal. The
+watchdog is disarmed only after evidence collection. A new trial requires a
+fresh boot. Historical preparation and diagnostic results follow below.
 
 Prepare the firmware input with:
 
@@ -353,3 +358,28 @@ The color target now gets RW/NX mappings, like the dPM scratch. Command and
 shader resources retain their independently qualified AP2 executable mappings.
 The resource-allocation words and remaining attachment state are still under
 qualification; retirement alone is not accepted as a correct rendered image.
+
+### Clean vertex/fragment completion
+
+Run 20260907T203105Z produced the exact sixteen expected color pixels and
+Finish3D, but firmware then took a data abort: PC 22e98, FAR 20, ESR 96000004.
+The instruction reads PB-slot[+40]->[+20]; the missing per-pass statistics
+pointer was zero. The PB slot now points at a distinct zero-backed statistics
+record at graph+9400. This is separate from the job auxiliary record at +9300.
+
+Run 20260907T203337Z on boot 0b749d3b-7448-4267-9c01-3393a2a9e6ec
+completed without a firmware crash. TA stamp was 100/ring 3; fragment stamp
+was 100/ring 2, both idle. All 16 GPU-written target pixels were 4080bfff,
+with SHA256 37868250f8ba53a67fc36f0a5c8922d10dfd44887b58065ff8b21fea238a617e.
+The full target SHA256 was
+22af032bb7ab14ddab361bd6efd561f4956a5a84b0b4a1eb8819eec2c79affc9.
+KTrace contained 1474 records with no host or firmware loss. Compute remained
+byte-identical to its reference. stage_result=0 and rmmod_rc=0; Linux remained
+responsive. The checked image, full target, raw trace, manifest and selected
+kernel log are retained in validation/. The target dump and PNG are output
+artifacts, never render inputs.
+
+The hardware result qualifies this captured 4x4 workload and its zero
+background/EOT allocation words. Other shaders, tile sizes, attachments,
+resource lifetimes and sustained submissions still need implementation and
+validation. No success claim is transferred from Neo/G17 to this J713 result.

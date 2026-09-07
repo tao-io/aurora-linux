@@ -63,6 +63,11 @@ static int g16_render_build_ta(void)
 	/* Native per-pass PB state starts with GPU/FW aliases of its scratch. */
 	g16_render_put(work + 0x9200, GPU(0x24000), 8);
 	g16_render_put(work + 0x9208, base + 0x24000, 8);
+	/* Firmware 25G83 completion at 22e94 unconditionally dereferences
+	 * PB slot +40 for the per-pass statistics record (at least 0x24 bytes).
+	 * Keep it separate from the command's auxiliary record at +9300.
+	 */
+	g16_render_put(work + 0x9240, base + 0x9400, 8);
 	platform.pb_slot_word_00 = GPU(0x24000);
 	platform.pb_slot_word_28 = 0;
 	job.notifier_va = base + 0xc000;

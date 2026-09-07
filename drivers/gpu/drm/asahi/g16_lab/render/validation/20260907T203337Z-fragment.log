@@ -1,0 +1,20 @@
+[  105.314938] g16_lab: render: attached independent TA/fragment pipes and root-3 graph before firmware boot
+[  107.775380] g16_lab: render: published context-6 under UAT handoff ttbr=0x601002efdc001/0x6010074814001
+[  107.775388] g16_lab: render: submitted TA queue barrier selector=112
+[  107.847547] g16_lab: render: TA barrier retired, queue idle for 50ms; no shader submitted
+[  107.847556] g16_lab: render: submitted fragment queue barrier selector=113
+[  107.919881] g16_lab: render: fragment barrier retired, queue idle for 50ms; no shader submitted
+[  107.919887] g16_lab: render: built experimental 4x4 TA registers=65 VDM=0x18000 PB=128 pages TPC=2048 bytes
+[  107.919892] g16_lab: render: kicking TA, direct MMIO observer=0
+[  107.919893] g16_lab: render: submitted InitPB + captured vertex/TA job; awaiting GPU-written tiling data
+[  107.923576] g16_lab: render: TA completion stamp=0x100 ring=3 busy=0; snapshotting issued state
+[  107.923590] g16_lab: render: vertex execution marker=0xcdcdcdcd expected=0x56535441
+[  107.923591] g16_lab: render: vertex loader marker=0xcdcdcdcd expected=0x45534c31
+[  107.923726] g16_lab: render: TA retired without expected pool/tilemap writes
+[  107.923731] g16_lab: render: built 4x4 fragment diagnostic registers=79 mode=0x280; pixel output not yet verified
+[  107.923737] g16_lab: render: submitted fragment diagnostic after retired TA
+[  107.935804] g16_lab: render: fragment diagnostic retired stamp=0x100 ring=2; pixel verification still required
+[  107.935808] g16_lab: render: verified 16 GPU-rendered RGBA pixels=4080bfff
+[  107.935810] g16_lab: render: independent queue gate result=0
+[  107.935858] g16_lab: KTrace captured=1474 host-dropped=0 drain-result=0 bytes=106128
+[  107.936116] g16_lab: render: removed context-6 and root-3 mappings after firmware stop

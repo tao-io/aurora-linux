@@ -118,6 +118,31 @@ out:
 	return ret;
 }
 
+static int g16_render_verify_pixels(void)
+{
+	unsigned int i, pixel;
+
+	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+		struct g16_render_resource *r = &g16_render_resources[i];
+
+		if (r->va != 0x10000058000ULL || r->size < 0x140)
+			continue;
+		g16_lab_dcache_invalidate(r->data + 0x100, 64);
+		for (pixel = 0; pixel < 16; pixel++) {
+			u32 actual = g16_render_get(r->data + 0x100 + pixel * 4, 4);
+
+			if (actual != 0xffbf8040) {
+				pr_err("g16_lab: render: pixel %u=%#x expected=0xffbf8040\n",
+					pixel, actual);
+				return -ENODATA;
+			}
+		}
+		pr_info("g16_lab: render: verified 16 GPU-rendered RGBA pixels=4080bfff\n");
+		return 0;
+	}
+	return -ENOENT;
+}
+
 static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 				    unsigned int crashlog_pages)
 {
@@ -168,7 +193,7 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 		    g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4) == 2 &&
 		    !g16_render_get(queue + J713_QUEUE_BUSY_OFFSET, 4)) {
 			pr_info("g16_lab: render: fragment diagnostic retired stamp=0x100 ring=2; pixel verification still required\n");
-			return -ENODATA;
+			return g16_render_verify_pixels();
 		}
 		ret = g16_asc_recv_timeout(asc, &message, &endpoint, 10000);
 		if (!ret && endpoint == 1 &&
