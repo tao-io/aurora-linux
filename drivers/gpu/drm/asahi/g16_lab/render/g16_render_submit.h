@@ -233,7 +233,7 @@ static int g16_render_test_queue(void __iomem *asc, unsigned int engine,
 	g16_render_put(barrier + 0x20, 0x80, 4);
 	/* An empty-queue barrier seeds DAG cursors from +24. The following
 	 * TA job uses stamp 0x100, so seed index one before registering it. */
-	if (render_ta_probe && !engine)
+	if ((render_ta_probe && !engine) || (render_fragment_probe && engine))
 		g16_render_put(barrier + 0x24, 0x100, 4);
 	g16_render_put(g16_render_graph + G16_RENDER_QUEUE_RING(engine),
 		G16_RENDER_GRAPH_VA + G16_RENDER_BARRIER(engine), 8);
@@ -304,6 +304,8 @@ static int g16_render_test_queue(void __iomem *asc, unsigned int engine,
 	return -ETIMEDOUT;
 }
 
+#include "g16_render_pixel.h"
+
 static int g16_render_queue_gate(void __iomem *asc, u64 crashlog_iova,
 				 unsigned int crashlog_pages)
 {
@@ -318,6 +320,8 @@ static int g16_render_queue_gate(void __iomem *asc, u64 crashlog_iova,
 		ret = g16_render_test_queue(asc, 1, crashlog_iova, crashlog_pages);
 	if (!ret && render_ta_probe)
 		ret = g16_render_test_ta(asc, crashlog_iova, crashlog_pages);
+	if (render_fragment_probe && render_ta_probe && (ret == 0 || ret == -ENODATA))
+		ret = g16_render_test_fragment(asc, crashlog_iova, crashlog_pages);
 	WRITE_ONCE(stage_result, ret);
 	pr_info("g16_lab: render: independent queue gate result=%d\n", ret);
 	/* Keep diagnostics readable; the outer bootstrap always stops firmware. */

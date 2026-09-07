@@ -2645,6 +2645,9 @@ module_param(compute_macos_iadd_ap2_leaves, bool, 0444);
 MODULE_PARM_DESC(compute_macos_iadd_ap2_leaves,
 	"Use hardware-accessible AP2 executable/data leaf tuples for the captured iadd graph");
 
+static bool render_fragment_probe;
+module_param(render_fragment_probe, bool, 0444);
+MODULE_PARM_DESC(render_fragment_probe, "Submit an experimental fragment job after TA retirement");
 static bool render_ta_probe;
 module_param(render_ta_probe, bool, 0444);
 MODULE_PARM_DESC(render_ta_probe, "Experimental captured vertex/tiling submission after render queue validation");

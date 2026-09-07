@@ -40,7 +40,11 @@ def main():
     parser.add_argument('--firmware-ktrace', type=lambda value: int(value, 0),
                         choices=(0, 1, 2, 3), default=0,
                         help='25G83 firmware trace mask: 1 basic, 2 detail, 3 both')
+    parser.add_argument('--render-fragment', action='store_true',
+                        help='experimental fragment job after TA (implies --render-ta)')
     args = parser.parse_args()
+    if args.render_fragment:
+        args.render_ta = True
     if args.render_loader_marker:
         args.render_ta = True
     if args.render_ta:
@@ -48,6 +52,8 @@ def main():
     params = PARAMS + (['render_queue_probe=1'] if args.render_queues else [])
     if args.render_ta:
         params += ['render_ta_probe=1']
+    if args.render_fragment:
+        params += ['render_fragment_probe=1']
     if args.render_loader_marker:
         params += ['render_loader_marker=1']
     if args.firmware_ktrace:
@@ -188,6 +194,8 @@ def main():
         if args.render_ta:
             metadata['ta_retired_with_writes'] = 'render: TA retired with GPU-written pool/tilemap' in current_log
             passed = passed and metadata['ta_retired_with_writes']
+        metadata['fragment_job_submitted'] = 'render: submitted fragment diagnostic after retired TA' in current_log
+        metadata['fragment_job_retired'] = 'render: fragment diagnostic retired stamp=0x100 ring=2' in current_log
         metadata['vertex_fragment_pixels_verified'] = False
         passed = passed and metadata['render_queues_passed']
     if passed:
