@@ -436,6 +436,11 @@ static int g16_render_prepare(void)
 
 			if (r->va == 0x10000000000ULL) {
 				memset(data + 0x540, 0, 0x80);
+			} else if (r->va == 0x1000000000ULL) {
+				/* Separate PPP varying-count record: one linear f32
+				 * user output (smooth/flat/linear are byte fields).
+				 */
+				g16_render_put(data + 0x44, 1 << 16, 4);
 			} else if (r->va == 0x10000148000ULL) {
 				BUILD_BUG_ON(sizeof(g16_generated_vertex_varying) > 0x800);
 				memcpy(data + 0x4000, g16_generated_vertex_varying_loader,
@@ -459,7 +464,7 @@ static int g16_render_prepare(void)
 				 * coefficient; scalar linear binding from user slot 1.
 				 */
 				g16_render_put(data + 0x5400, 0x102, 4);
-				g16_render_put(data + 0x5404, 0x10c, 4);
+				g16_render_put(data + 0x5404, render_varying_rhw ? 0xc : 0x10c, 4);
 			} else if (r->va == 0x1000018000ULL) {
 				g16_render_put(data + 0x4010, 0x505, 4);
 			} else if (r->va == 0x1000058000ULL) {

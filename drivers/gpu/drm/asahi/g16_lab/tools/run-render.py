@@ -61,8 +61,10 @@ def main():
                         help='experimental linear vertex color; implies generated stream')
     parser.add_argument('--render-varying-uniform', action='store_true',
                         help='equal vertex colors to isolate varying transport')
+    parser.add_argument('--render-varying-rhw', action='store_true',
+                        help='interpolate reciprocal W to isolate coefficient setup')
     args = parser.parse_args()
-    if args.render_varying_uniform:
+    if args.render_varying_uniform or args.render_varying_rhw:
         args.render_varying = True
     if args.render_varying:
         args.render_stream = True
@@ -106,6 +108,8 @@ def main():
         params += ['render_varying=1']
     if args.render_varying_uniform:
         params += ['render_varying_uniform=1']
+    if args.render_varying_rhw:
+        params += ['render_varying_rhw=1']
     if args.render_triangle:
         params += ['render_triangle=1', f'render_frames={args.render_frames}']
     if args.render_loader_marker:
@@ -262,6 +266,7 @@ def main():
             metadata['generated_stream'] = args.render_stream
             metadata['linear_vertex_varying'] = args.render_varying
             metadata['uniform_vertex_colors'] = args.render_varying_uniform
+            metadata['coefficient_source_rhw'] = args.render_varying_rhw
             target_va = 0x10000058000 if args.render_size == 4 else 0x10001000000
             target_offset = 0x100 if args.render_size == 4 else 0x4000
             pixel_bytes = args.render_size * args.render_size * 4
@@ -289,6 +294,8 @@ def main():
                 if args.render_varying:
                     from g16image import linear_varying_reference
                     expected_image = linear_varying_reference(bool((args.render_frames - 1) & 1), args.render_varying_uniform)
+                    if args.render_varying_rhw:
+                        expected_image = linear_varying_reference(False, True)
                 from g16image import write_png
                 write_png(result / 'render.png', rgba, args.render_size)
                 metadata['vertex_fragment_pixels_verified'] = (
@@ -342,6 +349,9 @@ def main():
             metadata['vertex_attribute_readback'] = reads
             metadata['vertex_attribute_reads_verified'] = reads == wanted
             passed = passed and reads == wanted
+            if trace_path.exists() and trace_path.stat().st_size >= 0x2400:
+                coefficients = list(struct.unpack_from('<256I', trace_path.read_bytes(), 0x2000))
+                metadata['fragment_coefficient_readback'] = coefficients
         if args.render_triangle:
             from g16image import detile_rgba8, triangle_reference, linear_varying_reference, write_png
             frames = []
@@ -352,6 +362,8 @@ def main():
                     rgba = detile_rgba8(source.read_bytes(), 256)
                     info['sha256'] = hashlib.sha256(rgba).hexdigest()
                     reference = (lambda flip: linear_varying_reference(flip, args.render_varying_uniform)) if args.render_varying else triangle_reference
+                    if args.render_varying_rhw:
+                        reference = lambda flip: linear_varying_reference(False, True)
                     info['verified'] = (rgba == reference(bool(frame & 1)) and
                         f'render: verified frame={frame} pixels=65536 stamp={((frame + 1) << 8):#x}' in current_log)
                     write_png(result / f'frame-{frame:02d}.png', rgba, 256)

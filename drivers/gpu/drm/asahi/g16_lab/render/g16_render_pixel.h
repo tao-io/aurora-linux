@@ -165,6 +165,8 @@ static int g16_render_verify_pixels(void)
 
 					if (render_varying_uniform)
 						numerator = (g16_render_frame & 1) ? 0 : 512;
+					if (render_varying_rhw)
+						numerator = 512;
 					expected = x < y ? 0xff000000 |
 						DIV_ROUND_CLOSEST(numerator * 255, 512) : 0;
 				}

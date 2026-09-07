@@ -2676,6 +2676,9 @@ MODULE_PARM_DESC(render_varying, "Experimental linear vertex color interpolation
 static bool render_varying_uniform;
 module_param(render_varying_uniform, bool, 0444);
 MODULE_PARM_DESC(render_varying_uniform, "Give all three vertices the same color to isolate varying transport");
+static bool render_varying_rhw;
+module_param(render_varying_rhw, bool, 0444);
+MODULE_PARM_DESC(render_varying_rhw, "Interpolate position reciprocal W to isolate coefficient-table setup");
 static bool render_ta_probe;
 module_param(render_ta_probe, bool, 0444);
 MODULE_PARM_DESC(render_ta_probe, "Experimental captured vertex/tiling submission after render queue validation");
@@ -19238,6 +19241,8 @@ static int __init g16_lab_init(void)
 	if (render_varying && !render_stream)
 		return -EINVAL;
 	if (render_varying_uniform && !render_varying)
+		return -EINVAL;
+	if (render_varying_rhw && !render_varying)
 		return -EINVAL;
 	if (!render_frames || render_frames > 8 || (render_frames > 1 && !render_triangle))
 		return -EINVAL;

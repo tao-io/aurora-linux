@@ -104,6 +104,12 @@ def fragment_varying(encoder):
     # Coefficient zero is a linear vertex attribute. No pixel-coordinate SR
     # read or coordinate-derived arithmetic contributes to the color.
     body = encoder.interpolate(0, 0, first=True)
+    # Trace the unpacked coefficient by pixel X. For this test its value is
+    # independent of Y, so every writer to a column records the same value.
+    # SR32 is used only to address diagnostics, never to compute the color.
+    body += assemble_g16('mov_imm r2, 0xaa000\nmov_imm r3, 0x100\n'
+                         'get_sr 0, r4, sr32\n'
+                         'device_store 0, i32, x, r0, r2_r3, r4, lsl 2, 0, wait 0, 1, 1\nstop\n')[:-2]
     packing = bytearray(assemble_g16('pack rg8unorm, r0l, r0, 0.0\nstop\n')[:-2])
     packing[1] |= 0x08
     body += packing

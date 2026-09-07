@@ -1,10 +1,11 @@
 # M4 scalar varying bring-up
 
 The `render_varying` module parameter is an opt-in diagnostic layered on
-`render_stream`. It is not a qualified rendering feature yet. The generated
+`render_stream`. Scalar linear interpolation now passes on J713/25G83. The generated
 vertex shader reads float4 records `(x,y,color,padding)` from the new input
 buffer and exports position plus one scalar. The fragment shader consumes
-coefficient zero and packs it into red; it does not read pixel coordinates.
+coefficient zero and packs it into red. A pixel-X read addresses diagnostic
+readback only; pixel coordinates do not contribute to the color.
 
 The geometry remains `(-1,-1), (1,-1), (-1,1)`. Frames alternate attributes
 `(0,1,0)` and `(1,0,1)`. `render_varying_uniform` instead supplies `(1,1,1)`
@@ -27,11 +28,18 @@ capture and evidence-before-disarm ordering.
 * Fragment main: `0x1000014f000` through the generated fragment loader.
 * Vertex-input readback: `0x100000a9000`, three words in the existing
   writable readback allocation. Only GPU stores populate those words.
+* Fragment coefficient readback: `0x100000aa000`, 256 words indexed by
+  pixel X. The selected color varies only with X, so all Y rows write the
+  same expected float per column. The uncovered final column retains its
+  initial sentinel. This separates interpolation from UNORM packing.
 
 HAL200 PPP fragment state carries the absolute coefficient-table address and
 one binding. Output-select bit16 enables interpolation; both VDM and PPP
-output counts include all five exported words. These mappings are derived
-from the pinned Mesa implementation and remain subject to M4 validation.
+output counts include all five exported words. The separate PPP record at `0x1000000040` must also declare one linear
+f32 varying: its counts word at +4 is `1 << 16`. Leaving it zero suppresses
+user coefficient transport even when the VIT and output sizes are correct.
+These mappings follow the pinned Mesa implementation and now pass the
+scalar M4 test.
 
 The diagnostic readback is emitted after the position COPY waits for the
 vertex input load. Its vertex-ID read is asynchronous and the store must
@@ -52,9 +60,26 @@ submitted attributes. Shader staging/exports use Aurora's AGX3b encoder.
   Only the first word changed; its store omitted the dependency wait on the
   immediately preceding vertex-ID read. This observer did not establish
   that the other vertices were missing. The next build adds that wait.
+* `20260907T215059Z`: the corrected observer reads exactly `(0,1,0)` from
+  the three vertices. Vertex input loading and indexed diagnostic stores
+  are established. The fragment target remains black; interpolation is
+  still unqualified. The next diagnostic records its unpacked float output.
 
-All four runs stopped firmware, saved KTrace and resource snapshots, then
-disarmed the verified watchdog. None qualifies varying interpolation. Full
+* `20260907T215354Z`: raw fragment coefficient readback is zero in every
+  covered column. The failure occurs before UNORM packing.
+* `20260907T215606Z`: binding coefficient zero to RHW slot zero produces
+  exact 1.0 readback and an exact red triangle. Both queues retire cleanly.
+* `20260907T220233Z`: setting the previously omitted PPP linear-f32 count
+  to one produces the expected user-color gradient. All 65,536 pixels,
+  target padding, input attributes, queue retirement and KTrace checks pass;
+  module removal succeeds. No staging-allocation change was needed.
+* `20260907T220340Z`: eight frames alternate `(0,1,0)` and `(1,0,1)`
+  with fixed positions. All 524,288 pixels pass, with eight TA/3D starts
+  and completions, no lost KTrace records and successful module removal.
+
+These runs stopped firmware, saved KTrace and resource snapshots, then
+disarmed the verified watchdog. Only the final run qualifies scalar linear
+user interpolation; the RHW run qualifies the system-value binding. Full
 local artifacts are under workspace `_provenance/omarchy-m4-render/hardware/`;
 compact failure manifests are retained in `validation/`.
 
