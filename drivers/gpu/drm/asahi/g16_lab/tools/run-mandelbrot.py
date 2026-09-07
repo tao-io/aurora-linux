@@ -34,12 +34,18 @@ def main():
                         help='after Mandelbrot, test TA/fragment queue barriers (no render shaders)')
     parser.add_argument('--render-ta', action='store_true',
                         help='experimental captured vertex/tiling submission after queue checks')
+    parser.add_argument('--render-loader-marker', action='store_true',
+                        help='instrument the vertex state loader (implies --render-ta)')
     args = parser.parse_args()
+    if args.render_loader_marker:
+        args.render_ta = True
     if args.render_ta:
         args.render_queues = True
     params = PARAMS + (['render_queue_probe=1'] if args.render_queues else [])
     if args.render_ta:
         params += ['render_ta_probe=1']
+    if args.render_loader_marker:
+        params += ['render_loader_marker=1']
     if os.geteuid() != 0:
         parser.error('run as root')
     compatible = Path('/sys/firmware/devicetree/base/compatible').read_bytes().split(b'\0')

@@ -35,7 +35,7 @@ Prepare the firmware input with:
 ```sh
 python3 tools/pack-render-resources.py render/reference /tmp/render-reference.bin
 sudo install -D -m 0644 /tmp/render-reference.bin /lib/firmware/g16/render-reference.bin
-sudo insmod ./g16_lab.ko stage=render-prepare
+sudo python3 tools/experiment_watchdog.py -- insmod ./g16_lab.ko stage=render-prepare
 sudo cp /sys/kernel/debug/g16_lab_render_prepared /tmp/render-prepared.bin
 sudo rmmod g16_lab
 ```
@@ -288,3 +288,25 @@ point is unknown. Extra direct reads of the VDM, tile-map and PB-base registers
 have been removed from the observer; it now reads only the existing fault/IRQ
 diagnostic interface. That reduced observer is compiled but not yet tested.
 Capture kernel output over a separate live SSH stream for subsequent tests.
+
+## 2026-09-07 tiling and shader-entry diagnostics
+
+The expanded graph and full 65-register TA producer now run on J713. Following
+queue barriers, InitPB and TA retire with stamp 0x100, ring read pointer 3 and
+busy zero. The firmware issued 71 registers including its six-word suffix.
+The compact parameter-page IDs fixed writes into the owned 4 MiB pool; 38
+nonzero bytes were observed. This is parameter-stream progress, not proof of
+vertex execution. Tilemap/TPC and the expected color target remain unchanged.
+
+Two separate markers now distinguish the captured vertex body from its state
+loader. The vertex body gets a 40-byte store prefix, preserving the complete
+86-byte captured shader and the following allocation. `--render-loader-marker`
+relocates the first straight-line ESL to unused space within its own allocation
+and prefixes a second store. Absolute binding and shader addresses are retained.
+The readback words start as 0xcdcdcdcd, with expected values 0x56535441 (vertex)
+and 0x45534c31 (loader). Neither marker was observed in runs 191812Z/192214Z;
+Mandelbrot and the queue barriers still passed. Their logs and manifests are
+in `validation/`. Shader execution remains unproven and no fragment job has
+yet been submitted. All live runs must arm the mandatory 60-second watchdog
+before inserting the module; `tools/run-mandelbrot.py` does this and saves the
+verification in its manifest.

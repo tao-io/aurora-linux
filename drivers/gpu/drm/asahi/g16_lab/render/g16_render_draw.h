@@ -33,6 +33,7 @@ static int g16_render_build_ta(void)
 		goto out;
 #define D(o, v, n) g16_render_put(d + (o), (v), (n))
 #define GPU(o) g16_render_gpu_address(base + (o))
+#define TILER(o) (((base + (o)) & ((1ULL << 42) - 1)) - G16_RENDER_COMPACT_BASE)
 	/* Native normal -> compact range-1 address for captured VDM resource 29. */
 	D(0xea8, 0x18000, 8);
 	/* Zero-backed dedicated preemption storage; size is provisional. */
@@ -41,15 +42,17 @@ static int g16_render_build_ta(void)
 	/* Same-M4 Metal endRenderPassCommon raw segment +b8/+c0. */
 	D(0xf88, 0x003a0012006b0003ULL, 8);
 	D(0xf90, 1, 4);
-	D(0x1000, GPU(0x38000), 8);
+	/* loadRenderTargetMemoryData takes the compact (+160) address for TA;
+	 * fragment uses the corresponding normal (+158) address instead. */
+	D(0x1000, TILER(0x38000), 8);
 	D(0x1008, base + 0x38000, 8);
 	D(0x1010, geometry.tpc_stride, 4);
-	D(0x1018, GPU(0x28000), 8);
+	D(0x1018, TILER(0x28000), 8);
 	D(0x1020, geometry.region_stride, 4);
 	D(0x1028, geometry.tpc_bytes, 8);
-	D(0x1030, GPU(0x29000), 8);
+	D(0x1030, TILER(0x29000), 8);
 	D(0x1038, 1, 4);
-	D(0x1040, GPU(0x29000), 8);
+	D(0x1040, TILER(0x29000), 8);
 	D(0x10a8, geometry.utile_config, 8);
 	D(0x10b8, geometry.pixels, 4);
 	D(0x10bc, geometry.screen, 4);
@@ -113,6 +116,7 @@ static int g16_render_build_ta(void)
 	pr_info("g16_lab: render: built experimental 4x4 TA registers=%d VDM=0x18000 PB=128 pages TPC=%llu bytes\n",
 		count, geometry.tpc_bytes);
 #undef GPU
+#undef TILER
 #undef D
 out:
 	kfree(regs);
@@ -224,8 +228,21 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 		if (g16_render_get(work + 0xc900, 4) == 0x100 &&
 		    g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4) == 3 &&
 		    !g16_render_get(queue + J713_QUEUE_BUSY_OFFSET, 4)) {
+			unsigned int i;
+
 			pr_info("g16_lab: render: TA completion stamp=0x100 ring=3 busy=0; snapshotting issued state\n");
 			g16_lab_dump_gpu_engine_issue_registers();
+			for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+				struct g16_render_resource *r = &g16_render_resources[i];
+
+				if (r->va != 0x100000a8000ULL)
+					continue;
+				g16_lab_dcache_invalidate(r->data, r->size);
+				pr_info("g16_lab: render: vertex execution marker=%#llx expected=0x56535441\n",
+					g16_render_get(r->data, 4));
+				pr_info("g16_lab: render: vertex loader marker=%#llx expected=0x45534c31\n",
+					g16_render_get((u8 *)r->data + 4, 4));
+			}
 			g16_lab_dcache_invalidate(g16_render_pool, G16_RENDER_POOL_BYTES);
 			g16_lab_dcache_invalidate(work + 0x28000, 0x1000);
 			if (!memchr_inv(g16_render_pool, 0, G16_RENDER_POOL_BYTES) ||

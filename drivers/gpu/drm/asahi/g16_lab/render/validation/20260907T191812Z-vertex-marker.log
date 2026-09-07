@@ -1,0 +1,1087 @@
+[    0.000000] Booting Linux on physical CPU 0x0000010100 [0x611f0531]
+[    0.000000] Linux version 7.1.9-dirtyroom-gpu1+ (council@mini) (clang version 22.1.8, LLD 22.1.8) #4 SMP PREEMPT Mon Sep  7 03:44:21 CEST 2026
+[    0.000000] KASLR disabled on command line
+[    0.000000] random: crng init done
+[    0.000000] Machine model: Apple MacBook Air (13-inch, M4, 2024)
+[    0.000000] efi: EFI v2.11 by Das U-Boot
+[    0.000000] efi: RTPROP=0x103d808d040 SMBIOS 3.0=0x103d9142000 INITRD=0x103d8048040 MEMRESERVE=0x103d8047040 
+[    0.000000] J713: reserved resident stage2 aperture 0x0000010002770000..0x0000010020000000
+[    0.000000] OF: reserved mem: 0x00000100055a8000..0x0000010005d43fff (7792 KiB) nomap non-reusable m1n1-chainload@100055a8000
+[    0.000000] OF: reserved mem: 0x00000103dd1e0000..0x00000103dd1e3fff (16 KiB) map non-reusable flash@103dd1e0000
+[    0.000000] OF: reserved mem: 0x0000010005534000..0x00000100055a7fff (464 KiB) map non-reusable flash@10005534000
+[    0.000000] NUMA: Faking a node at [mem 0x0000010002770000-0x00000103fffbbfff]
+[    0.000000] NODE_DATA(0) allocated [mem 0x103dc9c0b00-0x103dc9c32ff]
+[    0.000000] cma: Reserved 32 MiB at 0x0000010020000000
+[    0.000000] Zone ranges:
+[    0.000000]   DMA      [mem 0x0000010002770000-0x00000103fffbbfff]
+[    0.000000]   DMA32    empty
+[    0.000000]   Normal   empty
+[    0.000000] Movable zone start for each node
+[    0.000000] Early memory node ranges
+[    0.000000]   node   0: [mem 0x0000010002770000-0x00000100055a7fff]
+[    0.000000]   node   0: [mem 0x00000100055a8000-0x0000010005d43fff]
+[    0.000000]   node   0: [mem 0x0000010005d44000-0x0000010005de7fff]
+[    0.000000]   node   0: [mem 0x0000010005de8000-0x0000010005df3fff]
+[    0.000000]   node   0: [mem 0x0000010005df4000-0x0000010007113fff]
+[    0.000000]   node   0: [mem 0x0000010007114000-0x0000010007123fff]
+[    0.000000]   node   0: [mem 0x0000010007124000-0x0000010007127fff]
+[    0.000000]   node   0: [mem 0x0000010007128000-0x0000010007137fff]
+[    0.000000]   node   0: [mem 0x0000010007138000-0x000001000713bfff]
+[    0.000000]   node   0: [mem 0x000001000713c000-0x000001000714bfff]
+[    0.000000]   node   0: [mem 0x000001000714c000-0x000001000714ffff]
+[    0.000000]   node   0: [mem 0x0000010007150000-0x000001000715ffff]
+[    0.000000]   node   0: [mem 0x0000010007160000-0x0000010007163fff]
+[    0.000000]   node   0: [mem 0x0000010007164000-0x0000010007173fff]
+[    0.000000]   node   0: [mem 0x0000010007174000-0x0000010007177fff]
+[    0.000000]   node   0: [mem 0x0000010007178000-0x0000010007187fff]
+[    0.000000]   node   0: [mem 0x0000010007188000-0x000001000718bfff]
+[    0.000000]   node   0: [mem 0x000001000718c000-0x000001000719bfff]
+[    0.000000]   node   0: [mem 0x000001000719c000-0x000001000719ffff]
+[    0.000000]   node   0: [mem 0x00000100071a0000-0x00000100071affff]
+[    0.000000]   node   0: [mem 0x00000100071b0000-0x00000100071b3fff]
+[    0.000000]   node   0: [mem 0x00000100071b4000-0x00000100071c3fff]
+[    0.000000]   node   0: [mem 0x00000100071c4000-0x00000100071c7fff]
+[    0.000000]   node   0: [mem 0x00000100071c8000-0x000001000722bfff]
+[    0.000000]   node   0: [mem 0x000001000722c000-0x000001033f3fffff]
+[    0.000000]   node   0: [mem 0x000001033f400000-0x000001033f403fff]
+[    0.000000]   node   0: [mem 0x000001033f404000-0x00000103d808bfff]
+[    0.000000]   node   0: [mem 0x00000103d808c000-0x00000103d80b3fff]
+[    0.000000]   node   0: [mem 0x00000103d80b4000-0x00000103d9133fff]
+[    0.000000]   node   0: [mem 0x00000103d9134000-0x00000103d9137fff]
+[    0.000000]   node   0: [mem 0x00000103d9138000-0x00000103d913bfff]
+[    0.000000]   node   0: [mem 0x00000103d913c000-0x00000103d9143fff]
+[    0.000000]   node   0: [mem 0x00000103d9144000-0x00000103dd0effff]
+[    0.000000]   node   0: [mem 0x00000103dd0f0000-0x00000103dd0fffff]
+[    0.000000]   node   0: [mem 0x00000103dd100000-0x00000103dd1dbfff]
+[    0.000000]   node   0: [mem 0x00000103dd1e0000-0x00000103dd1e3fff]
+[    0.000000]   node   0: [mem 0x00000103fff70000-0x00000103fffbbfff]
+[    0.000000] Initmem setup node 0 [mem 0x0000010002770000-0x00000103fffbbfff]
+[    0.000000] On node 0, zone DMA: 2524 pages in unavailable ranges
+[    0.000000] On node 0, zone DMA: 1 pages in unavailable ranges
+[    0.000000] On node 0, zone DMA: 11107 pages in unavailable ranges
+[    0.000000] On node 0, zone DMA: 17 pages in unavailable ranges
+[    0.000000] percpu: Embedded 7 pages/cpu s67672 r8192 d38824 u114688
+[    0.000000] pcpu-alloc: s67672 r8192 d38824 u114688 alloc=7*16384
+[    0.000000] pcpu-alloc: [0] 00 [0] 01 [0] 02 [0] 03 [0] 04 [0] 05 [0] 06 [0] 07 
+[    0.000000] pcpu-alloc: [0] 08 [0] 09 
+[    0.000000] Detected PIPT I-cache on CPU0
+[    0.000000] CPU features: detected: Branch Target Identification
+[    0.000000] CPU features: detected: Address authentication (IMP DEF algorithm)
+[    0.000000] CPU features: detected: HCRX_EL2 register
+[    0.000000] CPU features: detected: Virtualization Host Extensions
+[    0.000000] CPU features: detected: Spectre-v4
+[    0.000000] CPU features: detected: Spectre-BHB
+[    0.000000] alternatives: applying boot alternatives
+[    0.000000] Kernel command line: BOOT_IMAGE=(hd0,gpt4)/EFI/omarchy/linux-alpha-gpu/Image apple_j713_reserve_stage2=1 console=tty0 console=ttySAC0,115200 loglevel=3 nohlt nokaslr clocksource.arm_arch_timer.evtstrm=0 iommu.passthrough=1 clk_ignore_unused pd_ignore_unused efi=noruntime panic=0 root=UUID=4f4d5801-524f-4f54-8713-000000000001 rootflags=subvol=@ rw systemd.unit=graphical.target firmware_class.path=/vendorfw
+[    0.000000] printk: log buffer data + meta data: 131072 + 458752 = 589824 bytes
+[    0.000000] Dentry cache hash table entries: 2097152 (order: 10, 16777216 bytes, linear)
+[    0.000000] Inode-cache hash table entries: 1048576 (order: 9, 8388608 bytes, linear)
+[    0.000000] software IO TLB: SWIOTLB bounce buffer size adjusted to 15MB
+[    0.000000] software IO TLB: area num 16.
+[    0.000000] software IO TLB: SWIOTLB bounce buffer size roundup to 16MB
+[    0.000000] software IO TLB: mapped [mem 0x00000103da088000-0x00000103db088000] (16MB)
+[    0.000000] Fallback order for Node 0: 0 
+[    0.000000] Built 1 zonelists, mobility grouping on.  Total pages: 1010351
+[    0.000000] Policy zone: DMA
+[    0.000000] mem auto-init: stack:all(zero), heap alloc:off, heap free:off
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=10, Nodes=1
+[    0.000000] rcu: Preemptible hierarchical RCU implementation.
+[    0.000000] rcu: 	RCU event tracing is enabled.
+[    0.000000] rcu: 	RCU restricting CPUs from NR_CPUS=512 to nr_cpu_ids=10.
+[    0.000000] 	Trampoline variant of Tasks RCU enabled.
+[    0.000000] 	Tracing variant of Tasks RCU enabled.
+[    0.000000] rcu: RCU calculated value of scheduler-enlistment delay is 25 jiffies.
+[    0.000000] rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=10
+[    0.000000] RCU Tasks: Setting shift to 4 and lim to 1 rcu_task_cb_adjust=1 rcu_task_cpu_ids=10.
+[    0.000000] NR_IRQS: 64, nr_irqs: 64, preallocated irqs: 0
+[    0.000000] Root IRQ handler: aic_handle_irq
+[    0.000000] Root FIQ handler: aic_handle_fiq
+[    0.000000] irq_apple_aic: Using Fast IPIs
+[    0.000000] irq_apple_aic: Initialized with 2048/4096 IRQs * 1/2 die(s), 7 FIQs, 32 vIPIs
+[    0.000000] rcu: srcu_init: Setting srcu_struct sizes based on contention.
+[    0.000000] clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+[    0.000000] arch_timer: cp15 timer running at 1000.00MHz (phys).
+[    0.000000] clocksource: arch_sys_counter: mask: 0x1fffffffffffffff max_cycles: 0x1cd42e4dffb, max_idle_ns: 881590591483 ns
+[    0.000000] sched_clock: 61 bits at 1000MHz, resolution 1ns, wraps every 4398046511103ns
+[    0.000279] Console: colour dummy device 80x25
+[    0.000281] printk: legacy console [tty0] enabled
+[    0.000302] Calibrating delay loop (skipped), value calculated using timer frequency.. 2000.00 BogoMIPS (lpj=4000000)
+[    0.000304] pid_max: default: 32768 minimum: 301
+[    0.000370] landlock: Up and running.
+[    0.000398] Mount-cache hash table entries: 32768 (order: 4, 262144 bytes, linear)
+[    0.000403] Mountpoint-cache hash table entries: 32768 (order: 4, 262144 bytes, linear)
+[    0.000445] VFS: Finished mounting rootfs on nullfs
+[    0.000743] rcu: Hierarchical SRCU implementation.
+[    0.000745] rcu: 	Max phase no-delay instances is 1000.
+[    0.000765] Timer migration: 2 hierarchy levels; 8 children per group; 2 crossnode level
+[    0.001180] EFI runtime services will be disabled.
+[    0.001223] smp: Bringing up secondary CPUs ...
+[    0.001289] Detected PIPT I-cache on CPU1
+[    0.001353] CPU1: Booted secondary processor 0x0000000000 [0x611f0521]
+[    0.001495] Detected PIPT I-cache on CPU2
+[    0.001549] CPU2: Booted secondary processor 0x0000000001 [0x611f0521]
+[    0.001662] Detected PIPT I-cache on CPU3
+[    0.001717] CPU3: Booted secondary processor 0x0000000002 [0x611f0521]
+[    0.001835] Detected PIPT I-cache on CPU4
+[    0.001891] CPU4: Booted secondary processor 0x0000000003 [0x611f0521]
+[    0.002008] Detected PIPT I-cache on CPU5
+[    0.002064] CPU5: Booted secondary processor 0x0000000004 [0x611f0521]
+[    0.002184] Detected PIPT I-cache on CPU6
+[    0.002241] CPU6: Booted secondary processor 0x0000000005 [0x611f0521]
+[    0.002354] Detected PIPT I-cache on CPU7
+[    0.002383] CPU7: Booted secondary processor 0x0000010101 [0x611f0531]
+[    0.002460] Detected PIPT I-cache on CPU8
+[    0.002486] CPU8: Booted secondary processor 0x0000010102 [0x611f0531]
+[    0.002566] Detected PIPT I-cache on CPU9
+[    0.002593] CPU9: Booted secondary processor 0x0000010103 [0x611f0531]
+[    0.002619] smp: Brought up 1 node, 10 CPUs
+[    0.002622] SMP: Total of 10 processors activated.
+[    0.002623] CPU: All CPU(s) started at EL2
+[    0.002624] CPU features: detected: ARMv8.4 Translation Table Level
+[    0.002625] CPU features: detected: Data cache clean to the PoU not required for I/D coherence
+[    0.002625] CPU features: detected: Common not Private translations
+[    0.002626] CPU features: detected: CRC32 instructions
+[    0.002627] CPU features: detected: Data independent timing control (DIT)
+[    0.002627] CPU features: detected: E0PD
+[    0.002628] CPU features: detected: Enhanced Counter Virtualization
+[    0.002629] CPU features: detected: Enhanced Privileged Access Never
+[    0.002629] CPU features: detected: Enhanced Virtualization Traps
+[    0.002630] CPU features: detected: Fine Grained Traps
+[    0.002631] CPU features: detected: Generic authentication (IMP DEF algorithm)
+[    0.002632] CPU features: detected: RCpc load-acquire (LDAPR)
+[    0.002632] CPU features: detected: LSE atomic instructions
+[    0.002633] CPU features: detected: Privileged Access Never
+[    0.002634] CPU features: detected: RAS Extension Support
+[    0.002634] CPU features: detected: Speculation barrier (SB)
+[    0.002635] CPU features: detected: Stage-2 Force Write-Back
+[    0.002636] CPU features: detected: TLB range maintenance instructions
+[    0.002636] CPU features: detected: XNX
+[    0.002637] CPU features: detected: Scalable Matrix Extension
+[    0.002638] CPU features: detected: SME2
+[    0.002672] alternatives: applying system-wide alternatives
+[    0.004224] CPU features: detected: ACTLR virtualization (architectural?)
+[    0.004228] SME: minimum available vector length 64 bytes per vector
+[    0.004228] SME: maximum available vector length 64 bytes per vector
+[    0.004229] SME: default vector length 64 bytes per vector
+[    0.004379] Memory: 15459952K/16165616K available (21952K kernel code, 5394K rwdata, 15408K rodata, 3264K init, 834K bss, 665440K reserved, 32768K cma-reserved)
+[    0.004544] devtmpfs: initialized
+[    0.006310] posixtimers hash table entries: 8192 (order: 3, 131072 bytes, linear)
+[    0.006326] futex hash table entries: 4096 (262144 bytes on 1 NUMA nodes, total 256 KiB, linear).
+[    0.006347] 5240 pages in range for non-PLT usage
+[    0.006348] 128120 pages in range for PLT usage
+[    0.006718] DMI: SMBIOS 3.7.0 present.
+[    0.006721] DMI: Apple Inc. Mac16,12/J713, BIOS 2026.07-g29cbf07060b9-dirty 07/01/2026
+[    0.006727] DMI: Memory slots populated: 1/1
+[    0.007045] NET: Registered PF_NETLINK/PF_ROUTE protocol family
+[    0.007365] DMA: preallocated 2048 KiB GFP_KERNEL|GFP_DMA pool for atomic allocations
+[    0.007370] audit: initializing netlink subsys (disabled)
+[    0.007396] audit: type=2000 audit(0.004:1): state=initialized audit_enabled=0 res=1
+[    0.007722] thermal_sys: Registered thermal governor 'step_wise'
+[    0.007724] thermal_sys: Registered thermal governor 'power_allocator'
+[    0.007732] cpuidle: using governor menu
+[    0.007772] hw-breakpoint: found 6 breakpoint and 4 watchpoint registers.
+[    0.007843] ASID allocator initialised with 65536 entries
+[    0.008197] Serial: AMBA PL011 UART driver
+[    0.009036] /soc/spmi@388908000/usb-pd@a/connector: Fixed dependency cycle(s) with /soc/phy@40aa90000
+[    0.009040] /soc/spmi@388908000/usb-pd@a/connector: Fixed dependency cycle(s) with /soc/usb@40a280000
+[    0.009044] /soc/spmi@388908000/usb-pd@c/connector: Fixed dependency cycle(s) with /soc/phy@402a90000
+[    0.009046] /soc/spmi@388908000/usb-pd@c/connector: Fixed dependency cycle(s) with /soc/usb@402280000
+[    0.009052] /soc/phy@402a90000: Fixed dependency cycle(s) with /soc/spmi@388908000/usb-pd@c/connector
+[    0.009056] /soc/usb@402280000: Fixed dependency cycle(s) with /soc/spmi@388908000/usb-pd@c/connector
+[    0.009058] /soc/usb@402280000: Fixed dependency cycle(s) with /soc/phy@402a90000
+[    0.009060] /soc/phy@40aa90000: Fixed dependency cycle(s) with /soc/spmi@388908000/usb-pd@a/connector
+[    0.009063] /soc/usb@40a280000: Fixed dependency cycle(s) with /soc/spmi@388908000/usb-pd@a/connector
+[    0.009065] /soc/usb@40a280000: Fixed dependency cycle(s) with /soc/phy@40aa90000
+[    0.009067] /soc/pcie@1cb0000000: Fixed dependency cycle(s) with /soc/pcie@1cb0000000
+[    0.009069] /soc/pcie@1cb0000000/pci@0,0: Fixed dependency cycle(s) with /soc/pcie@1cb0000000/pci@0,0
+[    0.015462] /soc/spmi@388908000/usb-pd@a/connector: Fixed dependency cycle(s) with /soc/phy@40aa90000
+[    0.015465] /soc/spmi@388908000/usb-pd@a/connector: Fixed dependency cycle(s) with /soc/usb@40a280000
+[    0.015467] /soc/spmi@388908000/usb-pd@c/connector: Fixed dependency cycle(s) with /soc/phy@402a90000
+[    0.015470] /soc/spmi@388908000/usb-pd@c/connector: Fixed dependency cycle(s) with /soc/usb@402280000
+[    0.015864] /soc/spmi@388908000/usb-pd@c/connector: Fixed dependency cycle(s) with /soc/phy@402a90000
+[    0.015871] /soc/phy@402a90000: Fixed dependency cycle(s) with /soc/spmi@388908000/usb-pd@c/connector
+[    0.015986] /soc/spmi@388908000/usb-pd@c/connector: Fixed dependency cycle(s) with /soc/usb@402280000
+[    0.015993] /soc/usb@402280000: Fixed dependency cycle(s) with /soc/spmi@388908000/usb-pd@c/connector
+[    0.015996] /soc/usb@402280000: Fixed dependency cycle(s) with /soc/phy@402a90000
+[    0.016037] /soc/spmi@388908000/usb-pd@a/connector: Fixed dependency cycle(s) with /soc/phy@40aa90000
+[    0.016044] /soc/phy@40aa90000: Fixed dependency cycle(s) with /soc/spmi@388908000/usb-pd@a/connector
+[    0.016155] /soc/spmi@388908000/usb-pd@a/connector: Fixed dependency cycle(s) with /soc/usb@40a280000
+[    0.016163] /soc/usb@40a280000: Fixed dependency cycle(s) with /soc/spmi@388908000/usb-pd@a/connector
+[    0.016165] /soc/usb@40a280000: Fixed dependency cycle(s) with /soc/phy@40aa90000
+[    0.016252] /soc/pcie@1cb0000000: Fixed dependency cycle(s) with /soc/pcie@1cb0000000
+[    0.016254] /soc/pcie@1cb0000000/pci@0,0: Fixed dependency cycle(s) with /soc/pcie@1cb0000000/pci@0,0
+[    0.016501] HugeTLB: registered 1.00 GiB page size, pre-allocated 0 pages
+[    0.016502] HugeTLB: 0 KiB vmemmap can be freed for a 1.00 GiB page
+[    0.016503] HugeTLB: registered 32.0 MiB page size, pre-allocated 0 pages
+[    0.016504] HugeTLB: 0 KiB vmemmap can be freed for a 32.0 MiB page
+[    0.016505] HugeTLB: registered 2.00 MiB page size, pre-allocated 0 pages
+[    0.016505] HugeTLB: 0 KiB vmemmap can be freed for a 2.00 MiB page
+[    0.084263] raid6: neonx8   gen() 17128 MB/s
+[    0.152290] raid6: neonx4   gen()  6792 MB/s
+[    0.220306] raid6: neonx2   gen()  6565 MB/s
+[    0.288331] raid6: neonx1   gen()  5629 MB/s
+[    0.356361] raid6: int64x8  gen()  2583 MB/s
+[    0.424385] raid6: int64x4  gen()  2497 MB/s
+[    0.492436] raid6: int64x2  gen()  2043 MB/s
+[    0.560472] raid6: int64x1  gen()  1637 MB/s
+[    0.560474] raid6: using algorithm neonx8 gen() 17128 MB/s
+[    0.628445] raid6: .... xor() 5158 MB/s, rmw enabled
+[    0.628448] raid6: using neon recovery algorithm
+[    0.628851] ACPI: Interpreter disabled.
+[    0.631834] iommu: Default domain type: Passthrough (set via kernel command line)
+[    0.632155] SCSI subsystem initialized
+[    0.632195] libata version 3.00 loaded.
+[    0.632266] usbcore: registered new interface driver usbfs
+[    0.632278] usbcore: registered new interface driver hub
+[    0.632288] usbcore: registered new device driver usb
+[    0.633295] pps_core: LinuxPPS API ver. 1 registered
+[    0.633297] pps_core: Software ver. 5.3.6 - Copyright 2005-2007 Rodolfo Giometti <giometti@linux.it>
+[    0.633302] PTP clock support registered
+[    0.633393] EDAC MC: Ver: 3.0.0
+[    0.633537] scmi_core: SCMI protocol bus registered
+[    0.634335] FPGA manager framework
+[    0.634783] vgaarb: loaded
+[    0.634961] clocksource: Switched to clocksource arch_sys_counter
+[    0.635085] VFS: Disk quotas dquot_6.6.0
+[    0.635095] VFS: Dquot-cache hash table entries: 2048 (order 0, 16384 bytes)
+[    0.635212] pnp: PnP ACPI: disabled
+[    0.637053] NET: Registered PF_INET protocol family
+[    0.637135] IP idents hash table entries: 262144 (order: 7, 2097152 bytes, linear)
+[    0.643092] tcp_listen_portaddr_hash hash table entries: 8192 (order: 3, 131072 bytes, linear)
+[    0.643122] Table-perturb hash table entries: 65536 (order: 4, 262144 bytes, linear)
+[    0.643128] TCP established hash table entries: 131072 (order: 6, 1048576 bytes, linear)
+[    0.643443] TCP bind hash table entries: 65536 (order: 7, 2097152 bytes, linear)
+[    0.643832] TCP: Hash tables configured (established 131072 bind 65536)
+[    0.643862] UDP hash table entries: 8192 (order: 5, 524288 bytes, linear)
+[    0.644045] NET: Registered PF_UNIX/PF_LOCAL protocol family
+[    0.644179] RPC: Registered named UNIX socket transport module.
+[    0.644182] RPC: Registered udp transport module.
+[    0.644183] RPC: Registered tcp transport module.
+[    0.644184] RPC: Registered tcp-with-tls transport module.
+[    0.644186] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[    0.644432] PCI: CLS 0 bytes, default 64
+[    0.644483] Unpacking initramfs...
+[    0.652443] kvm [1]: nv: 570 coarse grained trap handlers
+[    0.652666] kvm [1]: nv: 710 fine grained trap handlers
+[    0.652815] kvm [1]: IPA Size Limit: 42 bits
+[    0.652825] kvm [1]: Non-architectural vgic, tainting kernel
+[    0.652827] kvm [1]: GICv3: no GICV resource entry
+[    0.652829] kvm [1]: disabling GICv2 emulation
+[    0.652831] kvm [1]: GICv3 sysreg trapping enabled ([C], reduced performance)
+[    0.652867] kvm [1]: GIC system register CPU interface enabled
+[    0.652874] kvm [1]: vgic interrupt IRQ33
+[    0.652900] kvm [1]: VHE mode initialized successfully
+[    0.653553] Initialise system trusted keyrings
+[    0.653599] workingset: timestamp_bits=42 (anon: 38) max_order=20 bucket_order=0 (anon: 0)
+[    0.653754] squashfs: version 4.0 (2009/01/31) Phillip Lougher
+[    0.653843] NFS: Registering the id_resolver key type
+[    0.653849] Key type id_resolver registered
+[    0.653851] Key type id_legacy registered
+[    0.653858] nfs4filelayout_init: NFSv4 File Layout Driver Registering...
+[    0.653861] nfs4flexfilelayout_init: NFSv4 Flexfile Layout Driver Registering...
+[    0.653907] 9p: Installing v9fs 9p2000 file system support
+[    0.653990] NET: Registered PF_ALG protocol family
+[    0.653993] Key type asymmetric registered
+[    0.653995] Asymmetric key parser 'x509' registered
+[    0.654012] Block layer SCSI generic (bsg) driver version 0.4 loaded (major 244)
+[    0.654014] io scheduler mq-deadline registered
+[    0.654016] io scheduler kyber registered
+[    0.654032] io scheduler bfq registered
+[    0.654048] xor: measuring software checksum speed
+[    0.654474]    eor3            :  7720 MB/sec
+[    0.654897]    32regs          :  7797 MB/sec
+[    0.655361]    8regs           :  7113 MB/sec
+[    0.655363] xor: using function: 32regs (7797 MB/sec)
+[    0.672743] ledtrig-cpu: registered to indicate activity on CPUs
+[    0.674441] pcie-apple 1cb0000000.pcie: host bridge /soc/pcie@1cb0000000 ranges:
+[    0.674458] pcie-apple 1cb0000000.pcie:      MEM 0x0bc0000000..0x0bdfffffff -> 0x0bc0000000
+[    0.674466] pcie-apple 1cb0000000.pcie:      MEM 0x0b80000000..0x0bbfffffff -> 0x0080000000
+[    0.674526] pcie-apple 1cb0000000.pcie: Using 0 auxiliary PERST#
+[    0.777838] pcie-apple 1cb0000000.pcie: Link up on /soc/pcie@1cb0000000/pci@0,0
+[    0.777850] pcie-apple 1cb0000000.pcie: /soc/pcie@1cb0000000/pci@0,0 link up after 0ms
+[    0.777859] pcie-apple 1cb0000000.pcie: ECAM at [mem 0x1cb0000000-0x1cbfffffff] for [bus 00-01]
+[    0.777981] pcie-apple 1cb0000000.pcie: PCI host bridge to bus 0000:00
+[    0.777986] pci_bus 0000:00: root bus resource [bus 00-01]
+[    0.777992] pci_bus 0000:00: root bus resource [mem 0xbc0000000-0xbdfffffff pref]
+[    0.777996] pci_bus 0000:00: root bus resource [mem 0xb80000000-0xbbfffffff] (bus address [0x80000000-0xbfffffff])
+[    0.778039] pci 0000:00:00.0: [106b:100c] type 01 class 0x060400 PCIe Root Port
+[    0.778051] pci 0000:00:00.0: PCI bridge to [bus 00]
+[    0.778056] pci 0000:00:00.0:   bridge window [io  0x0000-0x0fff]
+[    0.778060] pci 0000:00:00.0:   bridge window [mem 0x00000000-0x000fffff]
+[    0.778066] pci 0000:00:00.0:   bridge window [mem 0x00000000-0x000fffff 64bit pref]
+[    0.778107] pci 0000:00:00.0: PME# supported from D0 D3hot D3cold
+[    0.778224] OF: /soc/pcie@1cb0000000: no iommu-map translation for id 0x0 on (null)
+[    0.778242] /soc/pcie@1cb0000000/pci@0,0: Fixed dependency cycle(s) with /soc/pcie@1cb0000000/pci@0,0
+[    0.779368] pci 0000:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+[    0.779450] pci 0000:01:00.0: [14e4:4434] type 00 class 0x028000 PCIe Endpoint
+[    0.779498] pci 0000:01:00.0: BAR 0 [mem 0x00000000-0x0000ffff 64bit]
+[    0.779504] pci 0000:01:00.0: BAR 2 [mem 0x00000000-0x00ffffff 64bit]
+[    0.779625] pci 0000:01:00.0: supports D1 D2
+[    0.779627] pci 0000:01:00.0: PME# supported from D0 D1 D2 D3hot D3cold
+[    0.779849] pci 0000:01:00.1: [14e4:5f72] type 00 class 0x028000 PCIe Endpoint
+[    0.779897] pci 0000:01:00.1: BAR 0 [mem 0x00000000-0x00007fff 64bit]
+[    0.779902] pci 0000:01:00.1: BAR 2 [mem 0x00000000-0x00ffffff 64bit]
+[    0.780009] pci 0000:01:00.1: supports D1 D2
+[    0.780011] pci 0000:01:00.1: PME# supported from D0 D1 D2 D3hot D3cold
+[    0.786982] pci 0000:01:00.0: ASPM: default states L1
+[    0.787034] pci_bus 0000:01: busn_res: [bus 01] end is updated to 01
+[    0.787047] pci 0000:00:00.0: bridge window [mem 0xb80000000-0xb820fffff]: assigned
+[    0.787053] pci 0000:01:00.0: BAR 2 [mem 0xb80000000-0xb80ffffff 64bit]: assigned
+[    0.787080] pci 0000:01:00.1: BAR 2 [mem 0xb81000000-0xb81ffffff 64bit]: assigned
+[    0.787091] pci 0000:01:00.0: BAR 0 [mem 0xb82000000-0xb8200ffff 64bit]: assigned
+[    0.787102] pci 0000:01:00.1: BAR 0 [mem 0xb82010000-0xb82017fff 64bit]: assigned
+[    0.787114] pci 0000:00:00.0: PCI bridge to [bus 01]
+[    0.787117] pci 0000:00:00.0:   bridge window [mem 0xb80000000-0xb820fffff]
+[    0.787123] pci_bus 0000:00: resource 4 [mem 0xbc0000000-0xbdfffffff pref]
+[    0.787126] pci_bus 0000:00: resource 5 [mem 0xb80000000-0xbbfffffff]
+[    0.787128] pci_bus 0000:01: resource 1 [mem 0xb80000000-0xb820fffff]
+[    0.787173] OF: /soc/pcie@1cb0000000: no iommu-map translation for id 0x0 on (null)
+[    0.787221] pcieport 0000:00:00.0: enabling device (0000 -> 0002)
+[    0.787297] pcieport 0000:00:00.0: PME: Signaling with IRQ 63
+[    0.787371] pcieport 0000:00:00.0: AER: enabled with IRQ 63
+[    0.819737] Serial: 8250/16550 driver, 4 ports, IRQ sharing enabled
+[    0.822137] msm_serial: driver initialized
+[    0.822735] 3ad200000.serial: ttySAC0 at MMIO 0x3ad200000 (irq = 71, base_baud = 0) is a APPLE S5L
+[    0.822758] printk: legacy console [ttySAC0] enabled
+[    0.822953] SuperH (H)SCI(F) driver initialized
+[    0.823276] STM32 USART driver initialized
+[    0.826797] platform 394600000.mtp: Adding to iommu group 0
+[    0.826902] platform 394b28000.input: Adding to iommu group 0
+[    0.826932] apple-dart 394800000.iommu: DART [pagesize 4000, 16 streams, bypass support: 1, bypass forced: 0, locked: 0, AS 42 -> 42] initialized
+[    0.827416] platform 390c00000.aop: Adding to iommu group 1
+[    0.827491] apple-dart 390f00000.iommu: DART [pagesize 4000, 16 streams, bypass support: 1, bypass forced: 0, locked: 0, AS 42 -> 42] initialized
+[    0.827891] platform 380500000.pmp: Adding to iommu group 2
+[    0.827917] apple-dart 380300000.iommu: Limited to ias=36 due to lock
+[    0.827960] apple-dart 380300000.iommu: DART [pagesize 4000, 16 streams, bypass support: 1, bypass forced: 0, locked: 1, AS 42 -> 42] initialized
+[    0.828368] apple-dart 402f00000.iommu: DART [pagesize 4000, 16 streams, bypass support: 1, bypass forced: 0, locked: 0, AS 42 -> 42] initialized
+[    0.828789] platform 402280000.usb: Adding to iommu group 3
+[    0.828810] apple-dart 402f80000.iommu: DART [pagesize 4000, 16 streams, bypass support: 1, bypass forced: 0, locked: 0, AS 42 -> 42] initialized
+[    0.829208] apple-dart 40af00000.iommu: DART [pagesize 4000, 16 streams, bypass support: 1, bypass forced: 0, locked: 0, AS 42 -> 42] initialized
+[    0.829640] platform 40a280000.usb: Adding to iommu group 4
+[    0.829655] apple-dart 40af80000.iommu: DART [pagesize 4000, 16 streams, bypass support: 1, bypass forced: 0, locked: 0, AS 42 -> 42] initialized
+[    0.829682] apple-dart 490000000.iommu: Limiting DMA range to 0x0000010000010000..0x000001003fe0ffff
+[    0.830063] pci 0000:01:00.0: Adding to iommu group 5
+[    0.830099] pci 0000:01:00.1: Adding to iommu group 5
+[    0.830105] apple-dart 490000000.iommu: DART [pagesize 4000, 19 streams, bypass support: 1, bypass forced: 0, locked: 0, AS 42 -> 42] initialized
+[    0.830389] [drm] Initialized softpipe 1.0.0 for 103e1c8c000.framebuffer on minor 0
+[    0.853192] Console: switching to colour frame buffer device 320x100
+[    0.880089] simple-framebuffer 103e1c8c000.framebuffer: [drm] fb0: softpipedrmfb frame buffer device
+[    0.880115] Freeing initrd memory: 18864K
+[    0.887873] loop: module loaded
+[    0.888805] macsmc 38c600000.smc: RTKit: Initializing (protocol version 12)
+[    0.890742] macsmc 38c600000.smc: RTKit: Unknown oslog message: 31f1042e443e0b5
+[    0.890746] macsmc 38c600000.smc: RTKit: Unknown oslog message: 4000020fe3d025b
+[    0.890755] macsmc 38c600000.smc: RTKit: Unknown oslog message: 400004000625480
+[    0.890762] macsmc 38c600000.smc: RTKit: Unknown oslog message: 40000608d548533
+[    0.892112] macsmc-gpio macsmc-gpio: First GPIO key: gP01 (0x67503031)
+[    0.898918] macsmc-low-gpio: Failed to locate of_node [id: -1]
+[    0.899506] megasas: 07.734.00.00-rc1
+[    0.901190] /soc/spmi@388908000/usb-pd@a/connector: Fixed dependency cycle(s) with /soc/usb@40a280000
+[    0.901216] /soc/spmi@388908000/usb-pd@c/connector: Fixed dependency cycle(s) with /soc/usb@402280000
+[    0.901809] tun: Universal TUN/TAP device driver, 1.6
+[    0.902210] thunder_xcv, ver 1.0
+[    0.902216] thunder_bgx, ver 1.0
+[    0.902221] nicpf, ver 1.0
+[    0.902653] e1000: Intel(R) PRO/1000 Network Driver
+[    0.902654] e1000: Copyright (c) 1999-2006 Intel Corporation.
+[    0.902659] e1000e: Intel(R) PRO/1000 Network Driver
+[    0.902660] e1000e: Copyright(c) 1999 - 2015 Intel Corporation.
+[    0.902665] igb: Intel(R) Gigabit Ethernet Network Driver
+[    0.902666] igb: Copyright (c) 2007-2014 Intel Corporation.
+[    0.902672] igbvf: Intel(R) Gigabit Virtual Function Network Driver
+[    0.902673] igbvf: Copyright (c) 2009 - 2012 Intel Corporation.
+[    0.902783] sky2: driver version 1.30
+[    0.903283] brcmfmac 0000:01:00.0: using 42-bit DMA addresses
+[    0.903289] brcmfmac 0000:01:00.0: enabling device (0000 -> 0002)
+[    0.920216] brcmfmac: brcmf_fw_alloc_request: using brcm/brcmfmac4388c2-pcie for chip BCM4388/6
+[    0.920928] VFIO - User Level meta-driver version: 0.3
+[    0.922492] usbcore: registered new interface driver usb-storage
+[    1.563605] i2c_dev: i2c /dev entries driver
+[    1.574007] usbcore: registered new interface driver usbhid
+[    1.574009] usbhid: USB HID core driver
+[    1.579743] NET: Registered PF_INET6 protocol family
+[    1.579942] Segment Routing with IPv6
+[    1.579950] In-situ OAM (IOAM) with IPv6
+[    1.579972] NET: Registered PF_PACKET protocol family
+[    1.579999] 9pnet: Installing 9P2000 support
+[    1.580012] Key type dns_resolver registered
+[    1.582923] registered taskstats version 1
+[    1.582990] Loading compiled-in X.509 certificates
+[    1.583828] Demotion targets for Node 0: null
+[    1.583948] Btrfs loaded, zoned=no, fsverity=no
+[    1.584135] leds_pwm led-controller: failed to read period for kbd_backlight, default to off
+[    1.584376] rtkit-helper 394600000.mtp: Adopting inherited running RTKit firmware
+[    1.587272] nvme-apple 4c5cc0000.nvme: RTKit: Initializing (protocol version 12)
+[    1.594990] macsmc-rtc macsmc-rtc: registered as rtc0
+[    1.602974] macsmc-rtc macsmc-rtc: setting system clock to 2026-09-07T19:12:53 UTC (1788808373)
+[    1.604916] macsmc 38c600000.smc: RTKit: syslog message: ans.cpp:3044: ASMI: self throttling feature ENABLED
+[    1.604924] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: asi.c:180: asi0: asi CMD size chosen is: 0
+[    1.604927] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: asi.c:180: asi1: asi CMD size chosen is: 0
+[    1.604929] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: raid_hw_common.c:602: raid_power_resume flow 1, band 1632, dip 3, normalBand 1632, page 165
+[    1.607999] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: cmd.c:8304: boot: mode normal
+[    1.608374] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: power_budget.c:886: PowerBudget: set on boot setByHost=1, is_warm_boot=0
+[    1.608827] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: power_budget.c:231: PowerBudget: num dies horizontal change 1 -> 1
+[    1.608990] nvme nvme0: passthrough uses implicit buffer lengths
+[    1.610149]  nvme0n1: p1 p2 p3 p4 p5 p6 p7
+[    1.626972] macsmc-reboot macsmc-reboot: Native SMC reboot and poweroff lifecycle is ready (J713/T8132 strict mode)
+[    1.627202] dockchannel-hid 394b28000.input: Initialized, awaiting packets
+[    1.627351] dockchannel-hid 394b28000.input: Product name for stm: Apple Internal Keyboard / Trackpad
+[    1.627480] dockchannel-hid 394b28000.input: New interface stm
+[    1.627788] dockchannel-hid 394b28000.input: Product name for multi-touch: Apple Internal Keyboard / Trackpad
+[    1.627895] dockchannel-hid 394b28000.input: Product name for keyboard: Apple Internal Keyboard / Trackpad
+[    1.627915] dockchannel-hid 394b28000.input: No OF node for subdevice tp-accel, ignoring.
+[    1.627941] dockchannel-hid 394b28000.input: No OF node for subdevice actuator, ignoring.
+[    1.627966] dockchannel-hid 394b28000.input: No OF node for subdevice mtp, ignoring.
+[    1.627968] dockchannel-hid 394b28000.input: Interface stm is now ready
+[    1.628036] hid-generic 0019:0000:0000.0001: device has no listeners, quitting
+[    1.628219] apple_pmp 380500000.pmp: RTKit: Initializing (protocol version 12)
+[    1.628861] apple_pmp 380500000.pmp: PMP firmware and endpoint ready
+[    1.629777] apple_pmp 380500000.pmp: unknown property "apple,tunable-pmc-max-bwr-latency-us"
+[    1.639681] cfg80211: Loading compiled-in X.509 certificates for regulatory database
+[    1.642863] Loaded X.509 cert 'sforshee: 00b28ddf47aef9cea7'
+[    1.643028] Loaded X.509 cert 'wens: 61c038651aabdcf94bd0ac7ff06c7248db18c600'
+[    1.643574] clk: Not disabling unused clocks
+[    1.643576] PM: genpd: Not disabling unused power domains
+[    1.647185] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    1.647641] Freeing unused kernel memory: 3264K
+[    1.647657] Run /init as init process
+[    1.647658]   with arguments:
+[    1.647658]     /init
+[    1.647659]   with environment:
+[    1.647660]     HOME=/
+[    1.647660]     TERM=linux
+[    1.653043] dockchannel-hid 394b28000.input: New interface multi-touch
+[    1.653075] dockchannel-hid 394b28000.input: New interface keyboard
+[    1.653215] dockchannel-hid 394b28000.input: Interface keyboard is now ready
+[    1.653373] input: Apple MTP keyboard as /devices/platform/soc/394b14000.fifo/394b28000.input/0019:05AC:035B.0003/input/input1
+[    1.653417] input: Apple MTP multi-touch as /devices/platform/soc/394b14000.fifo/394b28000.input/0019:05AC:035B.0002/input/input0
+[    1.739046] magicmouse 0019:05AC:035B.0002: input: HOST HID v5.20 Mouse [Apple MTP multi-touch] on 394b28000.input.1 (multi-touch)
+[    1.739071] apple 0019:05AC:035B.0003: input: HOST HID v5.20 Keyboard [Apple MTP keyboard] on 394b28000.input.2 (keyboard)
+[    1.996720] systemd[1]: Successfully made /usr/ read-only.
+[    2.267993] apple_pmp 380500000.pmp: unknown property "apple,tunable-lts-acsk-tddb-config"
+[    2.386487] apple_pmp 380500000.pmp: RTKit: syslog message: io.cpp:54: PMP started
+[    2.536750] brcmfmac: brcmf_c_process_txcap_blob: TxCap blob found, loading
+[    2.539024] brcmfmac: brcmf_c_process_cal_blob: Calibration blob provided by platform, loading
+[    2.554563] brcmfmac: brcmf_c_preinit_dcmds: Firmware: BCM4388/6 wl0: Jul 10 2026 02:04:56 version 23.50.20.2.41.51.209 FWID 01-fa2c3dc1
+[    2.558493] ieee80211 phy0: brcmf_c_set_joinpref_default: Set join_pref error (-52)
+[    2.674988] systemd[1]: systemd 261.2-1-arch running in system mode (+PAM +AUDIT -SELINUX +APPARMOR -IMA +IPE +SMACK +SECCOMP +GCRYPT +GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 +KMOD +LIBCRYPTSETUP +LIBCRYPTSETUP_PLUGINS +LIBFDISK +PCRE2 +PWQUALITY +P11KIT +QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD +BPF_FRAMEWORK -BTF +XKBCOMMON +UTMP +LIBARCHIVE)
+[    2.675010] systemd[1]: Detected architecture arm64.
+[    2.675014] systemd[1]: Running in initrd.
+[    2.691102] systemd[1]: Initializing machine ID from random generator.
+[    2.691191] systemd[1]: No hostname configured, using default hostname.
+[    2.691233] systemd[1]: Hostname set to <archlinux>.
+[    2.749189] systemd[1]: Queued start job for default target Initrd Default Target.
+[    2.749687] systemd[1]: Expecting device /dev/disk/by-uuid/4f4d5801-524f-4f54-8713-000000000001...
+[    2.767016] systemd[1]: Reached target Path Units.
+[    2.783005] systemd[1]: Reached target Slice Units.
+[    2.792751] ieee80211 phy0: brcmf_c_set_joinpref_default: Set join_pref error (-52)
+[    2.798985] systemd[1]: Reached target Swaps.
+[    2.814994] systemd[1]: Reached target Timer Units.
+[    2.831107] systemd[1]: Listening on Journal Socket (/dev/log).
+[    2.843076] systemd[1]: Listening on Journal Sockets.
+[    2.859060] systemd[1]: Listening on udev Control Socket.
+[    2.875042] systemd[1]: Listening on udev Kernel Socket.
+[    2.890992] systemd[1]: Reached target Socket Units.
+[    2.908355] systemd[1]: Starting Create List of Static Device Nodes...
+[    2.935509] systemd[1]: Starting Early Battery Level Check...
+[    2.953830] systemd[1]: Starting Journal Service...
+[    2.967871] systemd[1]: Starting Load Kernel Modules...
+[    2.969460] systemd-journald[154]: Collecting audit messages is disabled.
+[    2.975377] apple-pmp-thermal: J713 70 C passive trip, 10 C hysteresis, 25 ms polling; target ~80 C
+[    2.983104] systemd[1]: TPM PCR Barrier (initrd) skipped, unmet condition check ConditionSecurity=measured-os
+[    2.984113] systemd[1]: Starting Create Static Device Nodes in /dev...
+[    2.999998] systemd[1]: Starting Coldplug All udev Devices...
+[    3.016217] systemd[1]: Started Journal Service.
+[    3.283356] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.283495] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.283524] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.283646] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.283651] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.283747] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.283778] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.283819] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.284339] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.285288] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.286290] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.287428] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.288361] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.289276] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.290278] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.291279] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.292289] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.293316] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.294286] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    3.295298] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    4.055278] BTRFS: device fsid 4f4d5801-524f-4f54-8713-000000000001 devid 1 transid 2089 /dev/nvme0n1p6 (259:6) scanned by mount (221)
+[    4.055831] BTRFS info (device nvme0n1p6): first mount of filesystem 4f4d5801-524f-4f54-8713-000000000001
+[    4.055835] BTRFS info (device nvme0n1p6): using crc32c checksum algorithm
+[    4.058028] BTRFS info (device nvme0n1p6): enabling ssd optimizations
+[    4.058030] BTRFS info (device nvme0n1p6): turning on async discard
+[    4.058031] BTRFS info (device nvme0n1p6): enabling free space tree
+[    4.708004] systemd-journald[154]: Received SIGTERM from PID 1 (systemd).
+[    5.758997] systemd[1]: systemd 261.2-1-arch running in system mode (+PAM +AUDIT -SELINUX +APPARMOR -IMA +IPE +SMACK +SECCOMP +GCRYPT +GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 +KMOD +LIBCRYPTSETUP +LIBCRYPTSETUP_PLUGINS +LIBFDISK +PCRE2 +PWQUALITY +P11KIT +QRENCODE +TPM2 +BZIP2 +LZ4 +XZ +ZLIB +ZSTD +BPF_FRAMEWORK -BTF +XKBCOMMON +UTMP +LIBARCHIVE)
+[    5.759018] systemd[1]: Detected architecture arm64.
+[    5.787472] systemd[1]: Hostname set to <omarchy>.
+[    5.868682] systemd[1]: bpf-restrict-fs: BPF LSM hook not enabled in the kernel, BPF LSM not supported.
+[    5.888644] zram_generator::config[283]: No configuration found.
+[    6.079572] systemd[1]: initrd-switch-root.service: Deactivated successfully.
+[    6.079751] systemd[1]: Stopped Switch Root.
+[    6.095985] systemd[1]: systemd-journald.service: Scheduled restart job, restart counter is at 1.
+[    6.096733] systemd[1]: Created slice CUPS Slice.
+[    6.107505] systemd[1]: Created slice Slice /system/dirmngr.
+[    6.119592] systemd[1]: Created slice Slice /system/getty.
+[    6.131650] systemd[1]: Created slice Slice /system/gpg-agent.
+[    6.147666] systemd[1]: Created slice Slice /system/gpg-agent-browser.
+[    6.163666] systemd[1]: Created slice Slice /system/gpg-agent-extra.
+[    6.179662] systemd[1]: Created slice Slice /system/gpg-agent-ssh.
+[    6.195660] systemd[1]: Created slice Slice /system/keyboxd.
+[    6.211671] systemd[1]: Created slice Slice /system/modprobe.
+[    6.223810] systemd[1]: Created slice Slice /system/serial-getty.
+[    6.239657] systemd[1]: Created slice Slice /system/systemd-fsck.
+[    6.255426] systemd[1]: Created slice User and Session Slice.
+[    6.271091] systemd[1]: Started Forward Password Requests to Wall Directory Watch.
+[    6.287046] systemd[1]: Arbitrary Executable File Formats File System Automount Point skipped, unmet condition check ConditionPathExists=/proc/sys/fs/binfmt_misc
+[    6.287074] systemd[1]: Expecting device /dev/disk/by-uuid/4F4D-5801...
+[    6.302985] systemd[1]: Expecting device /dev/disk/by-uuid/4f4d5801-424f-4f54-8000-000000000001...
+[    6.318985] systemd[1]: Expecting device /dev/disk/by-uuid/4f4d5801-524f-4f54-8713-000000000001...
+[    6.334989] systemd[1]: Expecting device /dev/ttySAC0...
+[    6.351016] systemd[1]: Reached target Image Downloads.
+[    6.367028] systemd[1]: Stopped target Switch Root.
+[    6.383004] systemd[1]: Stopped target Initrd File Systems.
+[    6.398996] systemd[1]: Stopped target Initrd Root File System.
+[    6.415000] systemd[1]: Reached target Local Integrity Protected Volumes.
+[    6.431024] systemd[1]: Reached target Preparation for Network.
+[    6.447023] systemd[1]: Reached target Remote File Systems.
+[    6.462995] systemd[1]: Reached target Slice Units.
+[    6.479017] systemd[1]: Reached target Swaps.
+[    6.495020] systemd[1]: Reached target Local Verity Protected Volumes.
+[    6.511145] systemd[1]: Listening on Device-mapper event daemon FIFOs.
+[    6.529477] systemd[1]: Listening on Query the User Interactively for a Password.
+[    6.549505] systemd[1]: Listening on Process Core Dump Socket.
+[    6.568294] systemd[1]: Listening on Credential Encryption/Decryption.
+[    6.589044] systemd[1]: Listening on Factory Reset Management.
+[    6.603055] systemd[1]: Listening on Hostname Service Socket.
+[    6.621141] systemd[1]: Listening on Console Output Muting Service Socket.
+[    6.639098] systemd[1]: TPM PCR Measurements skipped, unmet condition check ConditionSecurity=measured-os
+[    6.639135] systemd[1]: Make TPM PCR Policy skipped, unmet condition check ConditionSecurity=measured-uki
+[    6.640503] systemd[1]: Listening on Disk Repartitioning Service Socket.
+[    6.659072] systemd[1]: Listening on Resolve Monitor Varlink Socket.
+[    6.675062] systemd[1]: Listening on Resolve Service Varlink Socket.
+[    6.693030] systemd[1]: Listening on Simple Block Device Backed Storage Provider.
+[    6.713015] systemd[1]: Listening on Simple File System Backed Storage Provider.
+[    6.731084] systemd[1]: Listening on udev Control Socket.
+[    6.747080] systemd[1]: Listening on udev Varlink Socket.
+[    6.763085] systemd[1]: Listening on User Database Manager Socket.
+[    6.781232] systemd[1]: Mounting Huge Pages File System...
+[    6.819609] systemd[1]: Mounting POSIX Message Queue File System...
+[    6.831884] systemd[1]: Mounting Kernel Debug File System...
+[    6.847158] systemd[1]: Kernel Trace File System skipped, unmet condition check ConditionPathExists=/sys/kernel/tracing
+[    6.847349] systemd[1]: tmp.mount: x-systemd.graceful-option=usrquota specified, but option is not available, suppressing.
+[    6.848596] systemd[1]: Mounting Temporary Directory /tmp...
+[    6.865200] systemd[1]: Starting Create List of Static Device Nodes...
+[    6.879103] systemd[1]: Load Kernel Module configfs skipped, unmet condition check ConditionKernelModuleLoaded=!configfs
+[    6.880072] systemd[1]: Mounting Kernel Configuration File System...
+[    6.895080] systemd[1]: Load Kernel Module drm skipped, unmet condition check ConditionKernelModuleLoaded=!drm
+[    6.896765] systemd[1]: Starting Load Kernel Module fuse...
+[    6.907943] fuse: init (API version 7.45)
+[    6.911168] systemd[1]: systemd-fsck-root.service: Deactivated successfully.
+[    6.911242] systemd[1]: Stopped File System Check on Root Device.
+[    6.927218] systemd[1]: Clear Stale Hibernate Storage Info skipped, unmet condition check ConditionPathExists=/sys/firmware/efi/efivars/HibernateLocation-8cf2644b-4b0b-428f-9387-6d876050dc67
+[    6.930658] systemd[1]: Starting Journal Service...
+[    6.940440] systemd[1]: Starting Load Kernel Modules...
+[    6.949260] systemd-journald[297]: Collecting audit messages is disabled.
+[    6.951046] systemd[1]: TPM PCR Machine ID Measurement skipped, unmet condition check ConditionSecurity=measured-os
+[    6.951092] systemd[1]: TPM PCR OS Separator skipped, unmet condition check ConditionSecurity=measured-os
+[    6.951352] Asymmetric key parser 'pkcs8' registered
+[    6.952116] systemd[1]: Starting Remount Root and Kernel File Systems...
+[    6.963007] BTRFS info (device nvme0n1p6 state M): use zstd compression, level 3
+[    6.963110] systemd[1]: Early TPM SRK Setup skipped, unmet condition check ConditionSecurity=measured-os
+[    6.963160] systemd[1]: TPM PCR NvPCR Initialization Separator skipped, unmet condition check ConditionPathExists=/etc/initrd-release
+[    6.963181] systemd[1]: TPM NvPCR Product ID Measurement skipped, unmet condition check ConditionSecurity=measured-os
+[    6.964246] systemd[1]: Starting Load udev Rules from Credentials...
+[    6.976307] systemd[1]: Starting Coldplug All udev Devices...
+[    6.988171] systemd[1]: Starting Virtual Console Setup...
+[    7.001950] systemd[1]: Started Journal Service.
+[    7.645251] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.645427] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.645479] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.645560] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.645921] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.645946] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.646894] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.646949] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.646972] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.646994] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.647914] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.647936] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.647969] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.648008] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.648904] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.648930] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.649893] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.650913] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.651928] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.652892] nvme-apple 4c5cc0000.nvme: RTKit: syslog message: util.c:4198: attempting to read element=PANICLOG not yet written, returning ERR_ABORT
+[    7.657614] dockchannel-hid 394b28000.input: Starting interface multi-touch
+[    7.658293] dockchannel-hid 394b28000.input: Requesting GPIO multi-touch#0: afe-reset
+[    7.714974] dockchannel-hid 394b28000.input: Sending firmware for multi-touch
+[    7.715530] dockchannel-hid 394b28000.input: Resetting multi-touch with power method 2
+[    7.778151] apple_aop 390c00000.aop: RTKit: Initializing (protocol version 12)
+[    7.779952] apple_aop 390c00000.aop: RTKit: Unknown oslog message: 31f104ebc3b413f
+[    7.779954] apple_aop 390c00000.aop: RTKit: Unknown oslog message: 4000020e0379da0
+[    7.779954] apple_aop 390c00000.aop: RTKit: Unknown oslog message: 4000040b203d8a4
+[    7.779955] apple_aop 390c00000.aop: RTKit: Unknown oslog message: 40000600f3dfaec
+[    7.779955] apple_aop 390c00000.aop: RTKit: Unknown oslog message: 503000000504f41
+[    7.855052] apple_aop 390c00000.aop: ignoring AOP service [119, 97, 107, 101, 104, 105, 110, 116]
+[    7.855083] apple_aop 390c00000.aop: AOP service [97, 99, 99, 101, 108]: endpoint 0x24, channel 0x10000004
+[    7.855119] apple_aop 390c00000.aop: AOP service [103, 121, 114, 111]: endpoint 0x25, channel 0x10000005
+[    7.855139] apple_aop 390c00000.aop: AOP service [108, 97, 115]: endpoint 0x26, channel 0x601
+[    7.855167] apple_aop 390c00000.aop: ignoring AOP service [97, 108, 115, 45, 116, 101, 109, 112]
+[    7.855193] apple_aop 390c00000.aop: AOP service [97, 108, 115]: endpoint 0x27, channel 0x1000000e
+[    7.855230] apple_aop 390c00000.aop: ignoring AOP service [99, 109, 97]
+[    7.855264] apple_aop 390c00000.aop: ignoring AOP service [100, 101, 118, 109, 111, 116, 105, 111, 110, 54]
+[    7.855289] apple_aop 390c00000.aop: ignoring AOP service [83, 80, 85, 65, 112, 112]
+[    7.855317] apple_aop 390c00000.aop: AOP service [97, 111, 112, 45, 97, 117, 100, 105, 111]: endpoint 0x22, channel 0x1000000a
+[    7.855344] apple_aop 390c00000.aop: ignoring AOP service [97, 111, 112, 45, 97, 117, 100, 112, 114, 111, 118]
+[    7.855365] apple_aop 390c00000.aop: ignoring AOP service [97, 111, 112, 45, 118, 111, 105, 99, 101, 116, 114, 105, 103, 103, 101, 114]
+[    7.858606] iio_aop_motion accel.0.auto: uploaded AOP calibration tag 75 (44 byte packet)
+[    7.858692] iio_aop_als als.2.auto: ALS sensor Ok("Redbird\0")
+[    7.858830] iio_aop_motion accel.0.auto: uploaded AOP calibration tag 76 (40 byte packet)
+[    7.859073] iio_aop_motion accel.0.auto: uploaded AOP calibration tag 77 (40 byte packet)
+[    7.860544] iio_aop_als als.2.auto: ALS calibration accepted; reporting interval 200000 us
+[    7.860997] iio_aop_motion accel.0.auto: enabled 50 Hz calibrated AOP motion reports
+[    7.861308] iio_aop_motion gyro.3.auto: uploaded AOP calibration tag 75 (44 byte packet)
+[    7.861432] iio_aop_motion gyro.3.auto: uploaded AOP calibration tag 76 (40 byte packet)
+[    7.861555] iio_aop_motion gyro.3.auto: uploaded AOP calibration tag 77 (40 byte packet)
+[    7.861950] iio_aop_motion gyro.3.auto: enabled 50 Hz calibrated AOP motion reports
+[    7.871783] iio_aop_motion accel.0.auto: first AOP accelerometer report: timestamp=0x1789724 raw=(0, 128, -66112)
+[    7.911760] iio_aop_motion gyro.3.auto: first AOP gyroscope report: timestamp=0x1793353 raw=(8000, 8000, 4000)
+[    7.964697] dockchannel-hid 394b28000.input: Interface multi-touch is now ready
+[    8.195254] EXT4-fs (nvme0n1p5): Supports (experimental) DIO atomic writes awu_min: 4096, awu_max: 4096
+[    8.201059] EXT4-fs (nvme0n1p5): mounted filesystem 4f4d5801-424f-4f54-8000-000000000001 r/w with ordered data mode. Quota mode: none.
+[    8.205962] systemd-journald[297]: Received client request to flush runtime journal.
+[    8.475625] ieee80211 phy0: brcmf_dongle_roam: WLC_SET_ROAM_DELTA error (-52)
+[    9.364266] ieee80211 phy0: brcmf_c_set_joinpref_default: Set join_pref error (-52)
+[    9.484900] ieee80211 phy0: brcmf_p2p_send_action_frame: Unknown Frame: category 0x5, action 0x4
+[   14.184647] [UFW BLOCK] IN=wlan0 OUT= MAC=01:00:5e:00:00:fb:94:8c:d7:c1:1a:c2:08:00 SRC=192.168.1.172 DST=224.0.0.251 LEN=32 TOS=0x00 PREC=0xC0 TTL=1 ID=0 DF PROTO=2 
+[   17.903968] platform 380700000.power-management:power-controller@248: deferred probe pending: platform: supplier 380700000.power-management:power-controller@240 not ready
+[   17.903978] platform 380700000.power-management:power-controller@2f0: deferred probe pending: platform: supplier 380700000.power-management:power-controller@2d0 not ready
+[   17.903981] platform 380700000.power-management:power-controller@370: deferred probe pending: platform: supplier 380700000.power-management:power-controller@2d0 not ready
+[   17.903983] platform 380700000.power-management:power-controller@380: deferred probe pending: platform: supplier 380700000.power-management:power-controller@2d0 not ready
+[   17.903984] platform 380700000.power-management:power-controller@388: deferred probe pending: platform: supplier 380700000.power-management:power-controller@2d0 not ready
+[   17.903986] platform 380700000.power-management:power-controller@390: deferred probe pending: platform: supplier 380700000.power-management:power-controller@2d0 not ready
+[   17.903987] platform 380700000.power-management:power-controller@3a0: deferred probe pending: platform: supplier 380700000.power-management:power-controller@378 not ready
+[   17.903989] platform 380700000.power-management:power-controller@3a8: deferred probe pending: platform: supplier 380700000.power-management:power-controller@378 not ready
+[   17.903990] platform 380700000.power-management:power-controller@3b0: deferred probe pending: platform: supplier 380700000.power-management:power-controller@3a8 not ready
+[   17.903992] platform 380700000.power-management:power-controller@3b8: deferred probe pending: platform: supplier 380700000.power-management:power-controller@2d0 not ready
+[   17.903993] platform 380700000.power-management:power-controller@3c0: deferred probe pending: platform: supplier 380700000.power-management:power-controller@2d0 not ready
+[   17.903995] platform 380700000.power-management:power-controller@410: deferred probe pending: platform: supplier 380700000.power-management:power-controller@2e0 not ready
+[   17.903996] platform 380700000.power-management:power-controller@418: deferred probe pending: platform: supplier 380700000.power-management:power-controller@2e0 not ready
+[   17.903998] platform 380700000.power-management:power-controller@420: deferred probe pending: platform: supplier 380700000.power-management:power-controller@3a8 not ready
+[   17.903999] platform 380700000.power-management:power-controller@430: deferred probe pending: platform: supplier 380700000.power-management:power-controller@428 not ready
+[   17.904001] platform 380700000.power-management:power-controller@438: deferred probe pending: platform: supplier 380700000.power-management:power-controller@428 not ready
+[   17.904002] platform 380700000.power-management:power-controller@440: deferred probe pending: platform: supplier 380700000.power-management:power-controller@438 not ready
+[   17.904004] platform 380700000.power-management:power-controller@448: deferred probe pending: platform: supplier 380700000.power-management:power-controller@438 not ready
+[   17.904005] platform 380700000.power-management:power-controller@458: deferred probe pending: platform: supplier 380700000.power-management:power-controller@450 not ready
+[   17.904007] platform 380700000.power-management:power-controller@460: deferred probe pending: platform: supplier 380700000.power-management:power-controller@450 not ready
+[   17.904008] platform 380700000.power-management:power-controller@468: deferred probe pending: platform: supplier 380700000.power-management:power-controller@460 not ready
+[   17.904010] platform 380700000.power-management:power-controller@470: deferred probe pending: platform: supplier 380700000.power-management:power-controller@2e0 not ready
+[   17.904012] platform 380700000.power-management:power-controller@478: deferred probe pending: platform: supplier 380700000.power-management:power-controller@460 not ready
+[   17.904013] platform 380700000.power-management:power-controller@498: deferred probe pending: platform: supplier 380700000.power-management:power-controller@480 not ready
+[   17.904014] platform 380700000.power-management:power-controller@4a0: deferred probe pending: platform: supplier 380700000.power-management:power-controller@480 not ready
+[   17.904016] platform 380700000.power-management:power-controller@4a8: deferred probe pending: platform: supplier 380700000.power-management:power-controller@2e0 not ready
+[   17.904017] platform 380700000.power-management:power-controller@4b0: deferred probe pending: platform: supplier 380700000.power-management:power-controller@4a0 not ready
+[   17.904019] platform 380700000.power-management:power-controller@4b8: deferred probe pending: platform: supplier 380700000.power-management:power-controller@4a0 not ready
+[   17.904020] platform 380700000.power-management:power-controller@4c0: deferred probe pending: platform: supplier 380700000.power-management:power-controller@2e0 not ready
+[   17.904022] platform 380700000.power-management:power-controller@4d8: deferred probe pending: platform: supplier 380700000.power-management:power-controller@4d0 not ready
+[   17.904023] platform 380700000.power-management:power-controller@4e8: deferred probe pending: platform: supplier 380700000.power-management:power-controller@4e0 not ready
+[   17.904025] platform 380700000.power-management:power-controller@4f0: deferred probe pending: platform: supplier 380700000.power-management:power-controller@4e8 not ready
+[   17.904026] platform 380700000.power-management:power-controller@550: deferred probe pending: platform: supplier 380700000.power-management:power-controller@4d8 not ready
+[   17.904028] platform 380700000.power-management:power-controller@568: deferred probe pending: platform: supplier 380700000.power-management:power-controller@560 not ready
+[   17.904029] platform 380700000.power-management:power-controller@8000: deferred probe pending: platform: supplier 380700000.power-management:power-controller@308 not ready
+[   17.904031] platform 380700000.power-management:power-controller@8008: deferred probe pending: platform: supplier 380700000.power-management:power-controller@8000 not ready
+[   17.904033] platform 380700000.power-management:power-controller@8010: deferred probe pending: platform: supplier 380700000.power-management:power-controller@8000 not ready
+[   17.904034] platform 380700000.power-management:power-controller@8018: deferred probe pending: platform: supplier 380700000.power-management:power-controller@8000 not ready
+[   17.904036] platform 380700000.power-management:power-controller@8020: deferred probe pending: platform: supplier 380700000.power-management:power-controller@8018 not ready
+[   17.904038] platform 380700000.power-management:power-controller@c000: deferred probe pending: platform: supplier 380700000.power-management:power-controller@570 not ready
+[   17.904039] platform 380700000.power-management:power-controller@c008: deferred probe pending: platform: supplier 380700000.power-management:power-controller@570 not ready
+[   17.904041] platform 380700000.power-management:power-controller@c010: deferred probe pending: platform: supplier 380700000.power-management:power-controller@570 not ready
+[   17.904042] platform 380700000.power-management:power-controller@c018: deferred probe pending: platform: supplier 380700000.power-management:power-controller@c010 not ready
+[   17.904044] platform 380700000.power-management:power-controller@10000: deferred probe pending: platform: supplier 380700000.power-management:power-controller@248 not ready
+[   17.904046] platform 388280000.power-management:power-controller@c0: deferred probe pending: platform: supplier 388280000.power-management:power-controller@b0 not ready
+[   17.904047] platform 388280000.power-management:power-controller@c8: deferred probe pending: platform: supplier 388280000.power-management:power-controller@b8 not ready
+[   17.904049] platform 388280000.power-management:power-controller@e0: deferred probe pending: platform: supplier 388280000.power-management:power-controller@d0 not ready
+[   17.904051] platform 388280000.power-management:power-controller@e8: deferred probe pending: platform: supplier 388280000.power-management:power-controller@d8 not ready
+[   17.904052] platform 3881f0000.pinctrl: deferred probe pending: platform: supplier 388280000.power-management:power-controller@90 not ready
+[   17.904054] platform 380700000.power-management:power-controller@1e0: deferred probe pending: platform: supplier 380700000.power-management:power-controller@1d8 not ready
+[   17.904056] platform 380700000.power-management:power-controller@1e8: deferred probe pending: platform: supplier 380700000.power-management:power-controller@1e0 not ready
+[   17.904058] platform 380700000.power-management:power-controller@230: deferred probe pending: platform: supplier 380700000.power-management:power-controller@228 not ready
+[   17.904062] apple-pmgr-pwrstate 380700000.power-management:power-controller@2d8: sync_state() pending due to 380700000.power-management:power-controller@3d0
+[   17.904065] apple-pmgr-pwrstate 380700000.power-management:power-controller@2d8: sync_state() pending due to 380700000.power-management:power-controller@3e0
+[   17.904067] apple-pmgr-pwrstate 380700000.power-management:power-controller@2d8: sync_state() pending due to 380700000.power-management:power-controller@3e8
+[   17.904069] apple-pmgr-pwrstate 380700000.power-management:power-controller@2d8: sync_state() pending due to 380700000.power-management:power-controller@3f0
+[   17.904071] apple-pmgr-pwrstate 380700000.power-management:power-controller@2d8: sync_state() pending due to 380700000.power-management:power-controller@3f8
+[   17.904073] apple-pmgr-pwrstate 380700000.power-management:power-controller@2d8: sync_state() pending due to 380700000.power-management:power-controller@400
+[   17.904074] apple-pmgr-pwrstate 380700000.power-management:power-controller@2d8: sync_state() pending due to 380700000.power-management:power-controller@408
+[   17.904078] apple-pmgr-pwrstate 380700000.power-management:power-controller@548: sync_state() pending due to 380700000.power-management:power-controller@550
+[  133.686687] [UFW BLOCK] IN=wlan0 OUT= MAC=01:00:5e:00:00:01:8c:90:2d:44:90:f0:08:00 SRC=192.168.1.1 DST=224.0.0.1 LEN=32 TOS=0x00 PREC=0x00 TTL=1 ID=63318 DF PROTO=2 
+[  136.656316] [UFW BLOCK] IN=wlan0 OUT= MAC=01:00:5e:00:00:fb:94:8c:d7:c1:1a:c2:08:00 SRC=192.168.1.172 DST=224.0.0.251 LEN=32 TOS=0x00 PREC=0xC0 TTL=1 ID=0 DF PROTO=2 
+[  258.718534] [UFW BLOCK] IN=wlan0 OUT= MAC=01:00:5e:00:00:01:8c:90:2d:44:90:f0:08:00 SRC=192.168.1.1 DST=224.0.0.1 LEN=32 TOS=0x00 PREC=0x00 TTL=1 ID=2537 DF PROTO=2 
+[  262.507354] [UFW BLOCK] IN=wlan0 OUT= MAC=01:00:5e:00:00:fb:94:8c:d7:c1:1a:c2:08:00 SRC=192.168.1.172 DST=224.0.0.251 LEN=32 TOS=0x00 PREC=0xC0 TTL=1 ID=0 DF PROTO=2 
+[  320.562335] g16_lab: loading out-of-tree module taints kernel.
+[  320.565104] g16_lab: render-prepare: software-verified unpublished UAT trees: user=10 tables/503 leaves firmware=3 tables/32 leaves
+[  320.565205] g16_lab: render-prepare: 34 capture buffers (3522560 bytes), 128 pool pages, TA/fragment packet envelopes prepared; UAT unpublished, no GPU submission
+[  320.565230] g16_lab: identity model='Apple MacBook Air (13-inch, M4, 2024)' j713=1 t8132=1
+[  320.565472] g16_lab: identity live FDT has no GPU/AGX node
+[  320.565473] g16_lab: stage=identity complete; no hardware touched
+[  320.567559] g16_lab: allocated 2176 distinct zero pages for the captured USC private-memory pool
+[  320.567585] g16_lab: initialized exact USC pool-global object id=17 low VA=0x0000001000000000 payload-head=0x00000080 final-record=0x0000fe40
+[  320.567618] g16_lab: saved J713 UAT PPL handoff before host initialization magic-ap=0x0000000000000000 magic-fw=0x0000000000000000 lock=0/0 turn=0 current-context=0x00000000 attention=0 unknown-640=0x0000000000000000 nonempty-records=0 first-record=65/0x00000000/0x0000000000000000/0x0000000000000000
+[  320.567621] g16_lab: initialized exact J713 UAT PPL handoff magic-ap=0x4b1d000000000002 preserved-magic-fw=0x0000000000000000 current-context=0x0000ffff attention=1 records=65
+[  320.567623] g16_lab: installed empty InitData root[2] shared-L2 link
+[  320.567624] g16_lab: installed exact protected IOMAP slot-36 root[1]/L2[224] chain
+[  320.567628] g16_lab: installed exact context-5 iadd UAT subgraphs command=0x0000007000244000 pool-state=256 pages/used=0x11000 page-list=4 pages/used=0x440 private-leaves=2176 context-store-base=0x0000007000420000
+[  320.567630] g16_lab: aliased exact iadd gUPM hardware-table dedicated object at low VA=0x0000007000280000 index=160 table=0x0000007000280000 canonical=0xfffffc200065c000
+[  320.567632] g16_lab: mirrored exact iadd RunCompute register-list page into bootstrap context 0 VA=0x0000007000244000 index=145 without replacing the context-0 hardware-table leaf
+[  320.567968] g16_lab: context-0 TTBR1 command/data leaves use canonical firmware/GPU RW tuple 0x00e000000000040b; distinct TTBR0 direct-dispatch leaves use user GPU RW/NX tuple 0x00e0000000000c0b and ESL/shader RO/execute tuple 0x00a0000000000c0b
+[  320.567971] g16_lab: bound offscreen compute to context-0 lower-TTBR0=0x0000010033938001 canonical-TTBR1=0x00000103fff78001 command-alias=0x0000002000138000 command-ESL-RO/exec-leaf=0x00a00100847d4c0b shader-alias=0x000000200013c040 shader-RO/exec-leaf=0x00a00100847d0c0b output-data-alias=0x000000200014c000 output-data-RW/NX-leaf=0x00e00100847c0c0b hw-metrics-alias=0x0000002000164000 hw-metrics-RW/NX-leaf=0x00e00100847a8c0b preemption-alias=0x0000002000168000 preemption-RW/NX-leaf=0x00e00100847a4c0b command-canonical=0xfffffc2000138000 command-page-ESL=0xfffffc2000138f40 output=0xfffffc200014cb00
+[  320.567978] g16_lab: verified context-5 populated USC graph: low 0x0000007000280000 is pool leaf 160, not context-0's global hardware table; private leaves=2176 context-store-pages=8
+[  320.567981] g16_lab: installed distinct captured user TTBR0 root=0x0000010033928000 with exact valid L1 indices [1,7,16,47], split L1[1]=auxiliary/0x000001003396c000 L1[7]=command-context/0x0000010033964000 L1[16]=resource-graph/0x0000010033978000, L1[2]=0x0000000000000000
+[  320.567983] g16_lab: installed captured user dummy-GART zero page VA=0x000002ffffff8000 L1[47]=0x0000010033920003 L2[2047]=0x000001003397c003 L3[2046]=0x00c0010033924c8b
+[  320.567997] g16_lab: pre-publication HwDataB verifier cores=10/10 max-pstate=9/9 topology=1 mcache=0x0000000607002004/0x0000000607002004
+[  320.568002] g16_lab: InitData root            VA=0xfffffc2000000000 size=0xc8 pages=1
+[  320.568003] g16_lab: InitData fw-brn-table    VA=0xfffffc2000004000 size=0x4000 pages=1
+[  320.568004] g16_lab: InitData runtime         VA=0xfffffc2000008000 size=0x4b8 pages=1
+[  320.568005] g16_lab: InitData globals         VA=0xfffffc200000c000 size=0xe48 pages=1
+[  320.568006] g16_lab: InitData control         VA=0xfffffc2000010000 size=0x20 pages=1
+[  320.568007] g16_lab: InitData fw-data         VA=0xfffffc2000014000 size=0xeaf0 pages=4
+[  320.568008] g16_lab: InitData power           VA=0xfffffc2000024000 size=0x670 pages=1
+[  320.568008] g16_lab: InitData dynamic-test    VA=0xfffffc2000028000 size=0x4000 pages=1
+[  320.568009] g16_lab: InitData main            VA=0xfffffc200002c000 size=0x2658 pages=1
+[  320.568010] g16_lab: InitData channel-scratch VA=0xfffffc2000030000 size=0x4000 pages=1
+[  320.568010] g16_lab: InitData power-performance VA=0xfffffc2000034000 size=0x6578 pages=2
+[  320.568011] g16_lab: InitData timer-state     VA=0xfffffc200003c000 size=0x88 pages=1
+[  320.568012] g16_lab: InitData runtime-state-254 VA=0xfffffc2000040000 size=0xc18 pages=1
+[  320.568012] g16_lab: InitData runtime-state-25c VA=0xfffffc2000044000 size=0x1248 pages=1
+[  320.568013] g16_lab: InitData runtime-state-264 VA=0xfffffc2000048000 size=0xe10 pages=1
+[  320.568014] g16_lab: InitData runtime-state-26c VA=0xfffffc200004c000 size=0x60 pages=1
+[  320.568014] g16_lab: InitData log-state       VA=0xfffffc2000050000 size=0x1b0 pages=1
+[  320.568015] g16_lab: InitData log-entry       VA=0xfffffc2000054000 size=0x28800 pages=11
+[  320.568016] g16_lab: InitData log-data        VA=0xfffffc2000080000 size=0x79800 pages=31
+[  320.568017] g16_lab: InitData firmware-control-channel VA=0xfffffc20000fc000 size=0x4000 pages=1
+[  320.568017] g16_lab: InitData device-control-state VA=0xfffffc2000108000 size=0x4000 pages=1
+[  320.568018] g16_lab: InitData device-control-ring VA=0xfffffc200010c000 size=0x4000 pages=1
+[  320.568019] g16_lab: InitData statistics-state VA=0xfffffc2000110000 size=0x30 pages=1
+[  320.568019] g16_lab: InitData statistics-data VA=0xfffffc2000114000 size=0x4800 pages=2
+[  320.568020] g16_lab: InitData temperature-generation VA=0xfffffc200011c000 size=0x8 pages=1
+[  320.568020] g16_lab: InitData TA-pipe-state   VA=0xfffffc2000120000 size=0x30 pages=1
+[  320.568021] g16_lab: InitData TA-pipe-ring    VA=0xfffffc2000124000 size=0x1800 pages=1
+[  320.568022] g16_lab: InitData queue-info      VA=0xfffffc2000128000 size=0x24c0 pages=1
+[  320.568023] g16_lab: InitData queue-ring-state VA=0xfffffc200012c000 size=0x60 pages=1
+[  320.568023] g16_lab: InitData queue-command-ring VA=0xfffffc2000130000 size=0x80 pages=1
+[  320.568024] g16_lab: InitData notifier-list   VA=0xfffffc2000134000 size=0x18 pages=1
+[  320.568025] g16_lab: InitData barrier-command VA=0xfffffc2000138000 size=0x40 pages=1
+[  320.568026] g16_lab: InitData compute-shader-rx VA=0xfffffc200013c000 size=0x10000 pages=4
+[  320.568026] g16_lab: InitData compute-pass-state-output-rw VA=0xfffffc200014c000 size=0x4000 pages=1
+[  320.568027] g16_lab: InitData queue-context   VA=0xfffffc2000150000 size=0x38 pages=1
+[  320.568028] g16_lab: InitData barrier-wait-stamp VA=0xfffffc2000154000 size=0x8 pages=1
+[  320.568028] g16_lab: InitData firmware-event-state VA=0xfffffc2000158000 size=0x30 pages=1
+[  320.568029] g16_lab: InitData firmware-event-data VA=0xfffffc200015c000 size=0x4800 pages=2
+[  320.568029] g16_lab: InitData usc-private-memory-hw-metrics VA=0xfffffc2000164000 size=0x4000 pages=1
+[  320.568030] g16_lab: InitData compute-pass-preemption-resource VA=0xfffffc2000168000 size=0xc000 pages=3
+[  320.568031] g16_lab: InitData compute-channel-context-store VA=0xfffffc2000174000 size=0x3dc00 pages=16
+[  320.568031] g16_lab: InitData usc-private-memory-pool-state VA=0xfffffc2000208000 size=0x400000 pages=256
+[  320.568032] g16_lab: InitData usc-private-memory-page-list VA=0xfffffc2000608000 size=0x10000 pages=4
+[  320.568033] g16_lab: InitData usc-private-memory-counter VA=0xfffffc2000618000 size=0x8 pages=1
+[  320.568034] g16_lab: InitData macos-compute-replay-input-output-esl-binding VA=0xfffffc200061c000 size=0x34000 pages=13
+[  320.568034] g16_lab: InitData compute-sku-slot-state-and-binding-auxiliary VA=0xfffffc2000650000 size=0x8000 pages=2
+[  320.568035] g16_lab: InitData fender-retention VA=0xfffffc2000658000 size=0x4000 pages=1
+[  320.568036] g16_lab: InitData usc-private-memory-hardware-table VA=0xfffffc200065c000 size=0x2000 pages=1
+[  320.568036] g16_lab: InitData macos-iadd-usc-pool-global-state VA=0xfffffc2000660000 size=0x10000 pages=4
+[  320.568037] g16_lab: InitData graph mapped 389 pages; root=0xfffffc2000000000 runtime=0xfffffc2000008000 main=0xfffffc200002c000 scratch=0xfffffc2000030000
+[  320.568038] g16_lab: InitData UAT config q6=0x240e0e08030e4000 q18=0x0000000000000000 phys-mask=0x000003ffffffc000
+[  320.568039] g16_lab: InitData SGX MMIO VA=0xfffffc2181400000 -> PA=0x0000000300000000 size=0x4000000 tables=3
+[  320.568040] g16_lab: InitData exact active IOMAP array records=42 active=19 leaves=52 slot3-banks=2x6 slot36-protected=1 source=executing 25G83 firmware-UAT oracle
+[  320.568041] g16_lab: InitData J713 topology feature=0x0 gin-dslots=0x4 mode=0x6 dimensions=0x3/0x7 limit=0x7 active=0x0000000000000000 count=8 valid=1 source=exact G16G constructor/oracle
+[  320.568042] g16_lab: InitData GCPM-present main+0xea0=1 source=exact J713 kext/ADT
+[  320.568043] g16_lab: InitData Fender power management main+0xee0=1 source=exact G16G kext
+[  320.568044] g16_lab: InitData PushTelemetry write slot=9 VA=0xfffffc2000200000 -> PA=0x00000003803d0000 size=0x1000 RW
+[  320.568045] g16_lab: InitData PushTelemetry read slot=10 VA=0xfffffc2000204000 -> PA=0x00000003803c0000 size=0x2000 RO
+[  320.568046] g16_lab: InitData GFXClkGen slot=41 VA=0xfffffc218221f800 -> PA=0x0000000300e1f800 size=0x4000 RW
+[  320.568046] g16_lab: InitData Fender MMIO VA=0xfffffc2001000000 -> PA=0x0000000300d00000 size=0x180000
+[  320.568048] g16_lab: InitData Fender scratch VA=0xfffffc2000100000 -> PA=0x0000000300d60000 size=0x8000 shared
+[  320.568048] g16_lab: InitData firmware-control state=0xfffffc20000fc000 ring=0xfffffc20000fc040 entries=256 size=0x18
+[  320.568049] g16_lab: InitData device-control layout=g16-four-pointer state=0xfffffc2000108000 read=+0x0 cfi=+0x10 write=+0x20 ring=0xfffffc200010c000 entries=256 size=0x40
+[  320.568051] g16_lab: InitData prequeued exact G16 preboot no-op opcode=0x1a state=0/0/1
+[  320.568052] g16_lab: InitData statistics ring state=0xfffffc2000110000 consumer=+0x0 producer=+0x20 data=0xfffffc2000114000 entries=256 size=0x48
+[  320.568053] g16_lab: InitData firmware-event ring state=0xfffffc2000158000 consumer=+0x0 producer=+0x20 data=0xfffffc200015c000 entries=256 size=0x48 accepted-types=1/4
+[  320.568054] g16_lab: InitData temperature generation VA=0xfffffc200011c000 size=0x8 -> power-performance+0x3b50
+[  320.568055] g16_lab: InitData maximum performance state main+0xfc4=9 source=exact G16G compacted-table oracle
+[  320.568055] g16_lab: InitData default MCache writes main+0xf24=0x0000000607002004 source=exact G16G kext/oracle
+[  320.568056] g16_lab: InitData UAT soft-fault control globals+0xe28=0x3 expected SGX-main +d8f0/+d900/+d910=0xffffffffffffffff/0x0000000000018040/0x0000000000010000 source=exact G16G kext/oracle
+[  320.568058] g16_lab: InitData scheduler engine-pair initialization main+0xeb8=1 expected SGX +100e8/+10408/+10798 and +100f0/+10410/+107a0 source=exact G16G kext/oracle
+[  320.568058] g16_lab: InitData physical GPU core positions main+0xfc0=10 context-store-stride=0x1800 total-per-core-span=0xf000
+[  320.568059] g16_lab: InitData power sample period power-performance+0x4/+0x8=200000/200000 AIC clocks source=exact J713 ADT/kext
+[  320.568060] g16_lab: InitData scheduler callback initialization firmware-data+0x4fd4=1 source=exact G16G kext/root[0x16]
+[  320.568061] g16_lab: InitData runtime activity state +0x254/+0x25c/+0x264/+0x26c=0xfffffc2000040000/0xfffffc2000044000/0xfffffc2000048000/0xfffffc200004c000 sizes=0xc18/0x1248/0xe10/0x60 sentinels=0xffffffff/0xffffffff source=exact G16G kext
+[  320.568062] g16_lab: InitData exact compute pipe descriptor=0xfffffc2000120000/0xfffffc2000120010/0xfffffc2000120020/0xfffffc2000124000 queue-info=0xfffffc2000128000 ring-state=0xfffffc200012c000 command-ring=0xfffffc2000130000 notifier-list=0xfffffc2000134000 command-page=0xfffffc2000138000 context=0xfffffc2000150000 wait-stamp=0xfffffc2000154000 UMA-table=0xfffffc200065c000
+[  320.568069] g16_lab: prepared zero loader power-aperture/AFRClkGen VA fields for post-RTKit seed
+[  320.568069] g16_lab: prepared zero loader PIO type 0x1a VA field for exact seed
+[  320.568070] g16_lab: prepared zero loader PIO type 0x1d VA field for exact seed
+[  320.568130] g16_lab: render: attached independent TA/fragment pipes and root-3 graph before firmware boot
+[  320.568135] g16_lab: identity model='Apple MacBook Air (13-inch, M4, 2024)' j713=1 t8132=1
+[  320.568159] g16_lab: identity live FDT has no GPU/AGX node
+[  320.568159] g16_lab: stage=identity complete; no hardware touched
+[  320.568164] g16_lab: verified PMP logical-id=5 -> SOC-DEV-PS record/bit=12 name='AGX'
+[  320.568170] g16_lab: GFX TVM enabled phys=0x380760800 original=0x00000000 state=0x00000001 changed=1
+[  320.568173] g16_lab: GFX PMGR state=0x0f002300 target=0x0 actual=0x0 auto=0 parent-off=0 reset=0
+[  320.568174] g16_lab: GFX inactive (parent-off=0); using guarded direct PMGR activation
+[  320.568177] g16_lab: armed Apple GFX power-gate transition phys=0x38072504c value=0x80000000
+[  320.568187] g16_lab: GFX powered for guarded identity read; state=0x0f0023ff
+[  320.568189] g16_lab: applied Apple GFX retention mask phys=0x38072504c value=0x00402001
+[  320.568191] g16_lab: exact ApplePMGR GFX auto-enable active; state=0x1f0023ff
+[  320.568372] g16_lab: RTKit PMP AGX vote before command status=0x0000000000000001 target=0x0000000000000000 actual=0x0000000000800c00
+[  320.568382] apple_pmp 380500000.pmp: PMP lab device=5 enabled=1 raw=0x0020f50100000000
+[  320.568465] apple_pmp 380500000.pmp: PMP device-state reply raw=0x0021000000000000
+[  320.593551] g16_lab: PMP SOC-DEV-PKT[288] PTD=336 before=0x0009c050e29f0000/0x0000078a7c557402 after=0x000674f0e2a82aab/0x0000078aa1006400
+[  320.593557] g16_lab: PMP SOC-DEV-PKT[289] PTD=337 before=0x0000035647b69ff3/0x0000078a7c557402 after=0x000003569379a2f2/0x0000078aa1006400
+[  320.593560] g16_lab: PMP SOC-DEV-PKT[290] PTD=338 before=0x000000c55b5345dd/0x0000078a7c558002 after=0x000000c56b472c5d/0x0000078aa1006400
+[  320.593563] g16_lab: PMP SOC-DEV-PKT[291] PTD=339 before=0x000000008c808d23/0x0000078a7c558002 after=0x000000008c708cf3/0x0000078aa1006400
+[  320.593565] g16_lab: PMP SOC-DEV-PKT[292] PTD=340 before=0x003a81e00009c050/0x0000078a7c558002 after=0x0026bda0000674f0/0x0000078aa1006400
+[  320.593568] g16_lab: PMP SOC-DEV-PKT[293] PTD=341 before=0x0000000000774a41/0x0000078a7c558002 after=0x00000000005a6520/0x0000078aa1007000
+[  320.593570] g16_lab: PMP SOC-DEV-PKT[294] PTD=342 before=0x0000817700000000/0x0000078a7c558002 after=0x0000000000000000/0x0000078aa1007000
+[  320.593573] g16_lab: PMP SOC-DEV-PKT[296] PTD=344 before=0x00032adce29f0000/0x0000078a7c55a402 after=0x00032a90e2a82aab/0x0000078aa1007000
+[  320.593576] g16_lab: PMP SOC-DEV-PKT[297] PTD=345 before=0x00000cd9f87c8b41/0x0000078a7c55a402 after=0x00000cda387883f3/0x0000078aa1007c00
+[  320.593578] g16_lab: PMP SOC-DEV-PKT[298] PTD=346 before=0x000001cc42b3e423/0x0000078a7c55a402 after=0x000001cc4bc2a550/0x0000078aa1007c00
+[  320.593581] g16_lab: PMP SOC-DEV-PKT[299] PTD=347 before=0x00008bd08cd18c08/0x0000078a7c55a402 after=0x00008bc88cd18c08/0x0000078aa1007c00
+[  320.593583] g16_lab: PMP SOC-DEV-PKT[300] PTD=348 before=0x000cab7000032adc/0x0000078a7c55a402 after=0x000caa4000032a90/0x0000078aa1007c00
+[  320.593586] g16_lab: PMP SOC-DEV-PKT[301] PTD=349 before=0x00000000001d8ffc/0x0000078a7c55b002 after=0x00000000001d8d40/0x0000078aa1007c00
+[  320.593589] g16_lab: PMP SOC-DEV-PKT[304] PTD=352 before=0xe807000000002404/0x0000078a7c00a800 after=0xfc06000000002004/0x0000078aa000a400
+[  320.593593] g16_lab: PMP SOC-DEV-PKT[306] PTD=354 before=0x0000000020050100/0x0000078a7c00a800 after=0x00000000200500fc/0x0000078aa000a400
+[  320.593611] g16_lab: PMP SOC-DEV-PKT changed entries=15
+[  320.593616] g16_lab: RTKit PMP AGX command queued; dashboard target=0x0000000000000000 actual=0x0000000000800c00 (informational)
+[  320.593625] g16_lab: GFX identity phys=0x300d00010 value=0x00000000
+[  320.593626] g16_lab: GFX identity phys=0x300d04000 value=0x0a021100
+[  320.593627] g16_lab: GFX identity phys=0x300d04008 value=0x000a0300
+[  320.593628] g16_lab: GFX identity phys=0x300d04010 value=0x0011010a
+[  320.593629] g16_lab: GFX identity phys=0x300d04014 value=0x00040404
+[  320.593630] g16_lab: GFX identity phys=0x300d04018 value=0x01320311
+[  320.593632] g16_lab: GFX identity phys=0x300d0401c value=0x10030302
+[  320.593634] g16_lab: GFX identity phys=0x300e01500 value=0x000003bd
+[  320.593634] g16_lab: stage=rtkit-initdata-exact-offscreen-store identity read complete
+[  320.593645] g16_lab: applied bounded active-state GFX retention repair phys=0x38072504c value=0x00402001 state=0x1f0023ff
+[  320.595473] g16_lab: GFX RTKit pre-HELLO message ep=0x0 type=0x1 raw=0x00100000000c000c
+[  320.595475] g16_lab: GFX RTKit HELLO versions min=12 max=12
+[  320.595493] g16_lab: GFX RTKit EPMAP base=0 bitmap=0x00000003 done=0
+[  320.595500] g16_lab: GFX RTKit EPMAP base=1 bitmap=0x00000003 done=1
+[  320.595502] g16_lab: GFX RTKit endpoint map complete; ep20=1 ep21=1
+[  320.595516] g16_lab: GFX RTKit post-START ep=0x1 type=0x1 raw=0x0010810001e80000
+[  320.595517] g16_lab: GFX crashlog request pages=8 iova=0x10001e80000
+[  320.595538] g16_lab: GFX RTKit post-START ep=0x0 type=0x7 raw=0x0070000000000020
+[  320.595538] g16_lab: GFX RTKit IOP reached POWER_ON
+[  320.595549] g16_lab: GFX RTKit power response ep=0x0 type=0xb state=0x20 raw=0x00b0000000000020
+[  320.595550] g16_lab: GFX RTKit AP reached POWER_ON
+[  320.595552] g16_lab: GFX RTKit started application endpoints 0x20 and 0x21
+[  320.595557] g16_lab: seeded complete exact loader IOMAP array records=42 active=19 from executing 25G83 oracle
+[  320.595560] g16_lab: GPU-core power assertion counter=0 reason=initialize fresh host/firmware generation pair
+[  320.595565] g16_lab: GPU-core power assertion counter=1 reason=prequeued device-control no-op
+[  320.595566] g16_lab: prequeued opcode=0x1a published with GPU-core power generation=1
+[  320.595570] g16_lab: G16 GPC performance state phys=0x300e01000 raw=0x00000000 state=0
+[  320.595571] g16_lab: GPU power assertion state at before InitData publication host=1 consumed=0 scheduler-init=1 gpu-power-state=0 gpc-performance-state=0
+[  320.595573] g16_lab: GFX sending InitData ep=0x20 root=0xfffffc2000000000 raw=0x00810c2000000000
+[  320.595575] g16_lab: GFX sent initial exact G16 device-control doorbell ep=0x21 raw=0x0083000000000011
+[  320.596145] g16_lab: GFX post-InitData message ep=0x20 raw=0x0042000000000000
+[  320.596157] g16_lab: GFX post-InitData message ep=0x20 raw=0x0042000000000000
+[  320.596166] g16_lab: GFX post-InitData message ep=0x20 raw=0x0042000000000000
+[  320.596173] g16_lab: GFX post-InitData message ep=0x20 raw=0x0042000000000000
+[  320.596182] g16_lab: GFX post-InitData message ep=0x20 raw=0x0042000000000000
+[  320.716811] g16_lab: GFX firmware control words=0x00000000 0x00000001 0x00000000 0x00000000 0x00000000 0x00000001 0x00000000 0x00000000
+[  320.716814] g16_lab: GFX bounded ready probe control-ready=1
+[  320.716814] g16_lab: GFX settling for two seconds after early ready
+[  320.716817] g16_lab: drained statistics records=1 consumer=1 producer=1 first-type=0x1a last-type=0x1a
+[  322.715828] g16_lab: G16 GPC performance state phys=0x300e01000 raw=0x00000000 state=0
+[  322.715831] g16_lab: GPU power assertion state at after initial no-op consumption host=1 consumed=0 scheduler-init=1 gpu-power-state=0 gpc-performance-state=0
+[  322.715833] g16_lab: GFX firmware control words=0x00000000 0x00000001 0x00000000 0x00000000 0x00000000 0x00000001 0x00000000 0x00000000
+[  322.715838] g16_lab: live timer-state nonzero=1 head=00000001 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.715846] g16_lab: live runtime-state-254 nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.715853] g16_lab: live runtime-state-25c nonzero=2 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.715861] g16_lab: live runtime-state-264 nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.715867] g16_lab: live runtime-state-26c nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.715872] g16_lab: live statistics-state nonzero=2 head=00000001 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.715874] g16_lab: live statistics-data first-record=0000001a e2a95ca8 00000001 00000000
+[  322.715879] g16_lab: live firmware-event-state nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.715881] g16_lab: live firmware-event-data first-record=00000000 00000000 00000000 00000000
+[  322.715886] g16_lab: live G16 device-control descriptor read=0xfffffc2000108000 cfi=0xfffffc2000108010 write=0xfffffc2000108020 ring=0xfffffc200010c000
+[  322.715891] g16_lab: GPU-core power assertion counter=2 reason=set-RIARTT-disabled(false)
+[  322.715892] g16_lab: device-control opcode=0x34 requires GPU-core power generation=2
+[  322.715893] g16_lab: submitting exact G16G set-RIARTT-disabled(false) opcode=0x34 payload-word=0x0 index=1 next=2 entry-size=0x40
+[  322.715895] g16_lab: device-control notify ep=0x21 raw=0x0084000000000011 exact=1
+[  322.716868] g16_lab: GFX post-device-control message ep=0x20 raw=0x0042000000000000
+[  322.716871] g16_lab: drained statistics records=4 consumer=5 producer=5 first-type=0x1a last-type=0x1c
+[  322.716882] g16_lab: GFX post-device-control message ep=0x20 raw=0x0042000000000000
+[  322.728950] g16_lab: drained statistics records=4 consumer=9 producer=9 first-type=0x1b last-type=0x1c
+[  322.728953] g16_lab: device-control consumed read=2 cfi=2 write=2; observing firmware for 50 ms
+[  322.741001] g16_lab: drained statistics records=7 consumer=16 producer=16 first-type=0x11 last-type=0x1c
+[  322.753030] g16_lab: drained statistics records=14 consumer=30 producer=30 first-type=0x11 last-type=0x1c
+[  322.765078] g16_lab: drained statistics records=7 consumer=37 producer=37 first-type=0x11 last-type=0x1c
+[  322.777107] g16_lab: drained statistics records=14 consumer=51 producer=51 first-type=0x11 last-type=0x1c
+[  322.789153] g16_lab: drained statistics records=7 consumer=58 producer=58 first-type=0x11 last-type=0x1c
+[  322.789158] g16_lab: GFX firmware control words=0x00000000 0x00000001 0x00000000 0x00000000 0x00000001 0x00000001 0x00000000 0x00000001
+[  322.789163] g16_lab: live timer-state nonzero=21 head=00000001 00000000 00000000 e2a94acb 00000001 e2a94acb 00000001 00000001
+[  322.789172] g16_lab: live runtime-state-254 nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.789179] g16_lab: live runtime-state-25c nonzero=2 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.789186] g16_lab: live runtime-state-264 nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.789193] g16_lab: live runtime-state-26c nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.789198] g16_lab: live statistics-state nonzero=2 head=0000003a 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.789200] g16_lab: live statistics-data first-record=0000001a e2a95ca8 00000001 00000000
+[  322.789205] g16_lab: live firmware-event-state nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.789207] g16_lab: live firmware-event-data first-record=00000000 00000000 00000000 00000000
+[  322.789210] g16_lab: G16 GPC performance state phys=0x300e01000 raw=0x00000000 state=0
+[  322.789212] g16_lab: GPU power assertion state at set-RIARTT-disabled(false) host=2 consumed=1 scheduler-init=0 gpu-power-state=0 gpc-performance-state=0
+[  322.789213] g16_lab: exact device-control notify passed: ring stable and firmware ready after 50 ms
+[  322.789215] g16_lab: rearmed exact G16 scheduler initialization after firmware ready
+[  322.789218] g16_lab: live G16 device-control descriptor read=0xfffffc2000108000 cfi=0xfffffc2000108010 write=0xfffffc2000108020 ring=0xfffffc200010c000
+[  322.789223] g16_lab: GPU-core power assertion counter=3 reason=set-GPU-idle-power-off(false)
+[  322.789224] g16_lab: device-control opcode=0xa requires GPU-core power generation=3
+[  322.789224] g16_lab: submitting exact G16G set-GPU-idle-power-off(false) opcode=0xa payload-word=0x0 index=2 next=3 entry-size=0x40
+[  322.789226] g16_lab: device-control notify ep=0x21 raw=0x0084000000000011 exact=1
+[  322.801286] g16_lab: drained statistics records=11 consumer=69 producer=69 first-type=0x11 last-type=0x1b
+[  322.801289] g16_lab: device-control consumed read=3 cfi=3 write=3; observing firmware for 50 ms
+[  322.813329] g16_lab: drained statistics records=10 consumer=79 producer=79 first-type=0x12 last-type=0x1c
+[  322.825361] g16_lab: drained statistics records=7 consumer=86 producer=86 first-type=0x11 last-type=0x1c
+[  322.837405] g16_lab: drained statistics records=14 consumer=100 producer=100 first-type=0x11 last-type=0x1c
+[  322.849450] g16_lab: drained statistics records=7 consumer=107 producer=107 first-type=0x11 last-type=0x1c
+[  322.849454] g16_lab: GFX firmware control words=0x00000000 0x00000001 0x00000000 0x00000000 0x00000001 0x00000001 0x00000000 0x00000001
+[  322.849461] g16_lab: live timer-state nonzero=21 head=00000001 00000000 00000000 e2a94acb 00000001 e2a94acb 00000001 00000001
+[  322.849468] g16_lab: live runtime-state-254 nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.849476] g16_lab: live runtime-state-25c nonzero=2 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.849482] g16_lab: live runtime-state-264 nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.849489] g16_lab: live runtime-state-26c nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.849494] g16_lab: live statistics-state nonzero=2 head=0000006b 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.849496] g16_lab: live statistics-data first-record=0000001a e2a95ca8 00000001 00000000
+[  322.849501] g16_lab: live firmware-event-state nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[  322.849503] g16_lab: live firmware-event-data first-record=00000000 00000000 00000000 00000000
+[  322.849512] g16_lab: G16 GPC performance state phys=0x300e01000 raw=0x00000000 state=0
+[  322.849513] g16_lab: GPU power assertion state at set-GPU-idle-power-off(false) host=3 consumed=2 scheduler-init=0 gpu-power-state=0 gpc-performance-state=0
+[  322.849514] g16_lab: exact device-control notify passed: ring stable and firmware ready after 50 ms
+[  322.849515] g16_lab: sent exact G16 empty-ring firmware wakeup after ready ep=0x21 raw=0x0083000000000010
+[  322.861582] g16_lab: drained statistics records=14 consumer=121 producer=121 first-type=0x11 last-type=0x1c
+[  322.873620] g16_lab: drained statistics records=7 consumer=128 producer=128 first-type=0x11 last-type=0x1c
+[  322.885659] g16_lab: drained statistics records=14 consumer=142 producer=142 first-type=0x11 last-type=0x1c
+[  322.897710] g16_lab: drained statistics records=7 consumer=149 producer=149 first-type=0x11 last-type=0x1c
+[  322.909745] g16_lab: drained statistics records=11 consumer=160 producer=160 first-type=0x11 last-type=0x1b
+[  322.921777] g16_lab: drained statistics records=10 consumer=170 producer=170 first-type=0x12 last-type=0x1c
+[  322.933852] g16_lab: drained statistics records=7 consumer=177 producer=177 first-type=0x11 last-type=0x1c
+[  322.945878] g16_lab: drained statistics records=14 consumer=191 producer=191 first-type=0x11 last-type=0x1c
+[  322.957934] g16_lab: drained statistics records=7 consumer=198 producer=198 first-type=0x11 last-type=0x1c
+[  322.957946] g16_lab: live context-0 UAT gUPM-UMA-hardware-table-context0-alias ttbr0=0x0000010033938001 ttbr1=0x00000103fff78001 VA=0x0000007000280000 L1[7]=0x0000010033978003 L2[0]=0x0000010033974003 L3[160]=0x00c0010060ef4c8b
+[  322.957948] g16_lab: verified gUPM UMA hardware-table low alias page=0x0000007000280000 table=0x0000007000280000 canonical=0xfffffc200065c000 for bootstrap context 0
+[  322.957952] g16_lab: live context-0 UAT iadd-register-list-context0-bootstrap ttbr0=0x0000010033938001 ttbr1=0x00000103fff78001 VA=0x0000007000244000 L1[7]=0x0000010033978003 L2[0]=0x0000010033974003 L3[145]=0x00c00100847d4c8b
+[  322.957956] g16_lab: verified context-0 bootstrap register-list leaf while preserving distinct context-0 hardware table/context-5 pool leaves
+[  322.958001] g16_lab: G16 GPC performance state phys=0x300e01000 raw=0x00000000 state=0
+[  322.958010] g16_lab: pre-compute firmware-data=0xfffffc2000014000 scheduler-init=0 power-performance=0xfffffc2000034000 gpu-power-state=0 gpc-performance-state=0 scheduler-events=0x0000000000000008
+[  322.958012] g16_lab: GPU is idle/off before submission; firmware power assertion will transition it on demand
+[  322.958013] g16_lab: verified all 15 scheduler callbacks in host-visible memory; compute=0x73c2ec00000230f0
+[  322.958034] g16_lab: RTOS pre-submit blocked head=0xfffffc000018a118 tail=0xfffffc0000187828 current=0xfffffc0000187828 ready-mask=0x0000000000000000 ready-count=0x0000000000000000 priority-17-list=0x0000000000000000/0xfffffc0000199568
+[  322.958042] g16_lab: firmware thread background pre-submit pointer=0xfffffc000018a868 links=0xfffffc0000187828/0xfffffc00001863b0 slot=0x0000000000000002 wait=0xfffffc0000192898 name=0xfffffc000005c2ce priority=0x0f/0x0f state=0x0102 flags=0x00000000 stack=0xfffffc000006ce30/0x0000000000004000 context=0xfffffc000018a518
+[  322.958049] g16_lab: firmware thread interrupt pre-submit pointer=0xfffffc0000188ca0 links=0xfffffc00001863b0/0xfffffc000018c138 slot=0x0000000000000004 wait=0xfffffc0000192908 name=0xfffffc000005c2ea priority=0x11/0x11 state=0x0102 flags=0x00000002 stack=0xfffffc0000187940/0x0000000000001000 context=0xfffffc0000188950
+[  322.958055] g16_lab: firmware thread power pre-submit pointer=0xfffffc00001863b0 links=0xfffffc000018a868/0xfffffc0000188ca0 slot=0x0000000000000006 wait=0xfffffc0000192998 name=0xfffffc000005c304 priority=0x10/0x10 state=0x0102 flags=0x00000002 stack=0xfffffc0000184050/0x0000000000002000 context=0xfffffc0000186060
+[  322.958061] g16_lab: firmware thread recovery pre-submit pointer=0xfffffc000018a118 links=0xfffffc000018c138/0xfffffc000006c2a0 slot=0x0000000000000003 wait=0xfffffc00001929c0 name=0xfffffc000005c2dd priority=0x13/0x13 state=0x0102 flags=0x00000002 stack=0xfffffc0000188db0/0x0000000000001000 context=0xfffffc0000189dc8
+[  322.958067] g16_lab: firmware thread sampler pre-submit pointer=0xfffffc0000187828 links=0x0000000000000000/0xfffffc000018a868 slot=0x0000000000000005 wait=0xfffffc0000192a30 name=0xfffffc000005c2f8 priority=0x02/0x02 state=0x0102 flags=0x00000002 stack=0xfffffc00001864c0/0x0000000000001000 context=0xfffffc00001874d8
+[  322.958080] g16_lab: live firmware MMU protected-export state top-level-shift=36 handoff-export-va=0xfffffc0001fb8000 exported-magic-ap=0x4b1d000000000002
+[  322.958081] g16_lab: live J713 UAT PPL handoff pre-submit magic-ap=0x4b1d000000000002 magic-fw=0x0000000000000000 lock=0/0 turn=0 current-context=0x0000ffff attention=1 unknown-640=0x0000000000000000
+[  322.958083] g16_lab: J713 UAT PPL firmware magic remains lazy during pre-submit; same-build host contract permits initial submission
+[  322.958087] g16_lab: published captured user TTBAT context=5 under exact Dekker handoff at live pre-submit edge ttbr0=0x0005010033928001 ttbr1=0x000501003392c001
+[  322.958090] g16_lab: live context-5 UAT command-stream ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000007000244000 L1[7]=0x0000010033964003 L2[0]=0x0000010033960003 L3[145]=0x00c00100847d4c8b
+[  322.958094] g16_lab: live context-5 UAT macos-iadd-esl ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x00000100000a8000 L1[16]=0x0000010033978003 L2[0]=0x0000010033974003 L3[42]=0x00c0010060ec4c8b
+[  322.958098] g16_lab: live context-5 UAT macos-capture-cdm-control-stream ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x00000100000c8000 L1[16]=0x0000010033978003 L2[0]=0x0000010033974003 L3[50]=0x0080010060ec0c8b
+[  322.958101] g16_lab: live context-5 UAT compute-shader-executable ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000010000000000 L1[16]=0x0000010033978003 L2[0]=0x0000010033974003 L3[0]=0x00800100847d0c8b
+[  322.958105] g16_lab: live context-5 UAT macos-iadd-shader-executable-tail ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000010000004000 L1[16]=0x0000010033978003 L2[0]=0x0000010033974003 L3[1]=0x00800100847ccc8b
+[  322.958108] g16_lab: live context-5 UAT compute-output-data ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000010000090000 L1[16]=0x0000010033978003 L2[0]=0x0000010033974003 L3[36]=0x00c0010060ebcc8b
+[  322.958112] g16_lab: live context-5 UAT macos-iadd-input-a ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000010000080000 L1[16]=0x0000010033978003 L2[0]=0x0000010033974003 L3[32]=0x00c0010060eb4c8b
+[  322.958115] g16_lab: live context-5 UAT macos-iadd-input-b ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000010000088000 L1[16]=0x0000010033978003 L2[0]=0x0000010033974003 L3[34]=0x00c0010060eb8c8b
+[  322.958118] g16_lab: live context-5 UAT macos-capture-compute-pass-resource ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x00000100000f8000 L1[16]=0x0000010033978003 L2[0]=0x0000010033974003 L3[62]=0x00c00100847a4c8b
+[  322.958122] g16_lab: live context-5 UAT macos-iadd-binding-base ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000010000030000 L1[16]=0x0000010033978003 L2[0]=0x0000010033974003 L3[12]=0x00c0010060ec8c8b
+[  322.958126] g16_lab: live context-5 UAT macos-iadd-shader-gate ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000010000034500 L1[16]=0x0000010033978003 L2[0]=0x0000010033974003 L3[13]=0x00c0010060eccc8b
+[  322.958129] g16_lab: live context-5 UAT compute-preemption-buffer ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x00000100000f8000 L1[16]=0x0000010033978003 L2[0]=0x0000010033974003 L3[62]=0x00c00100847a4c8b
+[  322.958134] g16_lab: live context-5 UAT compute-binding-auxiliary ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000001000018000 L1[1]=0x000001003396c003 L2[0]=0x0000010033968003 L3[6]=0x00c0010060eecc8b
+[  322.958137] g16_lab: live context-5 UAT compute-context-store-address-0 ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000007000420000 L1[7]=0x0000010033964003 L2[0]=0x0000010033960003 L3[264]=0x00c0010084798c8b
+[  322.958142] g16_lab: live context-5 UAT compute-context-store-address-1 ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x000000700042f400 L1[7]=0x0000010033964003 L2[0]=0x0000010033960003 L3[267]=0x00c001008478cc8b
+[  322.958146] g16_lab: live context-5 UAT captured-usc-pool-state-base ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000007000000000 L1[7]=0x0000010033964003 L2[0]=0x0000010033960003 L3[0]=0x00c0010084758c8b
+[  322.958149] g16_lab: live context-5 UAT captured-usc-pool-state-tail ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x00000070003fc000 L1[7]=0x0000010033964003 L2[0]=0x0000010033960003 L3[255]=0x00c0010060e9cc8b
+[  322.958152] g16_lab: live context-5 UAT captured-usc-page-list-base ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000007000408000 L1[7]=0x0000010033964003 L2[0]=0x0000010033960003 L3[258]=0x00c0010060ea0c8b
+[  322.958156] g16_lab: live context-5 UAT captured-usc-page-list-tail ttbr0=0x0005010033928001 ttbr1=0x000501003392c001 VA=0x0000007000414000 L1[7]=0x0000010033964003 L2[0]=0x0000010033960003 L3[261]=0x00c0010060eacc8b
+[  322.958191] g16_lab: installed offline-assembled G16 Mandelbrot main body offset=0x3c0 size=0xa38 threads=4096 max-register=r8
+[  322.958192] g16_lab: installed exact macOS 25G83 compute graph body=offline-g16-mandelbrot-64x64 shader=0x0000010000000380 ESL=0x00000100000a8000 input=0x0000010000080000/0x0000010000088000 output=0x0000010000090000 compute-pass=0x00000100000f8000+0x14a0
+[  322.958200] g16_lab: populated captured USC private memory blocks=17 pages=8704 first=0x0000007000448000 last=0x00000070024c8000 page-list-bytes=0x440
+[  322.958202] g16_lab: initialized exact iadd SKU binding auxiliary state VA=0x0000001000018000 bytes=b2/0d/00/00/60
+[  322.958203] g16_lab: SKU slot-state-array=0xfffffc2000650000 binding-UMA=0xfffffc2000138e00 auxiliary=0x0000001000018000 semantic-gate=0
+[  322.958204] g16_lab: exact populated USC private-memory descriptor global=17 slot=2 grow=0 priority=2 pool-state=0x0000007000000000/qwords=524288 page-list=0x0000007000408000/136 counter=0xfffffc2000618000 empty=0 pages=8704 mode=4 max-kicks=2
+[  322.958268] g16_lab: firmware fault-generation pre-submit selected-context=5 selected-submitted/retained=0/0 kernel0=0/0 user1=0/0 macos-direct3=0/0 capture5=0/0 retained-fault-mask=0x0000000000000000
+[  322.958289] g16_lab: captured exact pre-submit compute command page size=0x4000 at debugfs g16_lab_data
+[  322.958290] g16_lab: submitting exact G16 compute offline-g16-mandelbrot-64x64 frames=1 timestamp=0x0000004f1bad93c7 qinfo=0xfffffc2000128000 work=0xfffffc2000138000 sku=0xfffffc2000138900 size=0x300 registers=24 uat-context=5 context-generation=3 cdm-gpu=0x00000100000c8000 cdm-canonical=0x00000100000c8000 context-switch-state-gpu=0x00000100000f8000 state-cells-gpu=0x00000100000f9480/0x00000100000f9488/0x00000100000f9490/0x00000100000f9498 shared-stamp=0xfffffc2000138ee4 firmware-stamp=0xfffffc2000138ee0 scs-intersection-program=0x0000000000000000 gen6-esl-gpu=0x00000100000a8000 esl-canonical=0x00000100000a8000 shader=0x0000010000000000 hw-metrics-engine-command=0xfffffc2000164000 output-gpu=0x0000010000090000
+[  322.960226] g16_lab: drained statistics records=4 consumer=202 producer=202 first-type=0x11 last-type=0x1b
+[  322.960229] g16_lab: received exact G16 firmware flag event firing=0x00008000/0x00000000/0x00000000/0x00000000 unknown_14=0x0001
+[  322.960230] g16_lab: drained firmware-event records=1 consumer=1 producer=1 first-type=0x1 last-type=0x1
+[  322.960233] g16_lab: compute offline-g16-mandelbrot-64x64 consumed; observing firmware for 50 ms
+[  322.972349] g16_lab: drained statistics records=10 consumer=212 producer=212 first-type=0x12 last-type=0x1c
+[  322.984398] g16_lab: drained statistics records=10 consumer=222 producer=222 first-type=0x11 last-type=0x1c
+[  322.996461] g16_lab: drained statistics records=11 consumer=233 producer=233 first-type=0x1b last-type=0x1c
+[  323.008499] g16_lab: drained statistics records=7 consumer=240 producer=240 first-type=0x11 last-type=0x1c
+[  323.020543] g16_lab: drained statistics records=14 consumer=254 producer=254 first-type=0x11 last-type=0x1c
+[  323.020552] g16_lab: firmware fault-generation post-completion selected-context=5 selected-submitted/retained=3/3 kernel0=0/0 user1=0/0 macos-direct3=0/0 capture5=3/3 retained-fault-mask=0x0000000000000000
+[  323.020556] g16_lab: GFX firmware control words=0x00000000 0x00000001 0x00000000 0x00000000 0x00000001 0x00000001 0x00000000 0x00000001
+[  323.020561] g16_lab: scheduler snapshot has invalid selector=0xffffffff
+[  323.020562] g16_lab: post-retirement scheduler snapshot unavailable ret=-71; continuing with completion/output validation
+[  323.020563] g16_lab: issued-state work-counter=0x0000000000000000 threshold=0x0000000000000000 event=0x00000000/0x00000000/0x00000000/0x00000000/0x00000000/0x00000001 sku=0x0000000b/0x00000001/0x0000000c context-store-ts=0x0000000000000000 completion=0 uma-state=0x00000000; awaiting GPU completion for up to 5 s
+[  323.020581] g16_lab: captured GPU Mandelbrot output size=16384 at debugfs g16_lab_mandelbrot_rgba8
+[  323.020582] g16_lab: verified GPU-only Mandelbrot output 64x64 inside=680 outside=3416
+[  323.020585] g16_lab: completed terminate RunCompute state pass=0x0000000000000000/0x0000000000000000/0x0000000000000000/0x0000000000000000 timestamp=0x00000001e60aecbc/0x00000001e60aee2c/0x0000000000000000 context-store=0x0000000000000000 auxiliary=0x00000001e60aee2c stamps=0x00000400/0x00000400 completion=0x00000000 uma=0x00000000 output=0xffffffff engine-command=0x0000000000000000/0x0000000000000000/0x0000000000000000/0x0000000000000000 UMA-hardware-descriptor=0x0000000000000000/0x0000000000000000/0x0000000000000000/0x0000000000000000
+[  323.020588] g16_lab: exact compute offline-g16-mandelbrot-64x64 passed frames=1 pipe=1/1/1 queue=1/1/1 ring=1/1 busy=0 context=0/0/4 firmware-ready=1
+[  323.020593] g16_lab: render: published context-6 under UAT handoff ttbr=0x6010041acc001/0x6010086a08001
+[  323.020599] g16_lab: render: submitted TA queue barrier selector=112
+[  323.032671] g16_lab: drained statistics records=7 consumer=5 producer=5 first-type=0x11 last-type=0x1c
+[  323.044700] g16_lab: drained statistics records=14 consumer=19 producer=19 first-type=0x11 last-type=0x1c
+[  323.056749] g16_lab: drained statistics records=7 consumer=26 producer=26 first-type=0x11 last-type=0x1c
+[  323.068780] g16_lab: drained statistics records=14 consumer=40 producer=40 first-type=0x11 last-type=0x1c
+[  323.080845] g16_lab: drained statistics records=7 consumer=47 producer=47 first-type=0x11 last-type=0x1c
+[  323.092880] g16_lab: drained statistics records=11 consumer=58 producer=58 first-type=0x11 last-type=0x1b
+[  323.092883] g16_lab: render: TA barrier retired, queue idle for 50ms; no shader submitted
+[  323.092889] g16_lab: render: submitted fragment queue barrier selector=113
+[  323.104956] g16_lab: drained statistics records=10 consumer=68 producer=68 first-type=0x12 last-type=0x1c
+[  323.117015] g16_lab: drained statistics records=7 consumer=75 producer=75 first-type=0x11 last-type=0x1c
+[  323.129074] g16_lab: drained statistics records=14 consumer=89 producer=89 first-type=0x11 last-type=0x1c
+[  323.141138] g16_lab: drained statistics records=7 consumer=96 producer=96 first-type=0x11 last-type=0x1c
+[  323.153201] g16_lab: drained statistics records=14 consumer=110 producer=110 first-type=0x11 last-type=0x1c
+[  323.165254] g16_lab: drained statistics records=7 consumer=117 producer=117 first-type=0x11 last-type=0x1c
+[  323.165258] g16_lab: render: fragment barrier retired, queue idle for 50ms; no shader submitted
+[  323.165265] g16_lab: render: built experimental 4x4 TA registers=65 VDM=0x18000 PB=128 pages TPC=2048 bytes
+[  323.165270] g16_lab: render: kicking TA, direct MMIO observer=0
+[  323.165271] g16_lab: render: submitted InitPB + captured vertex/TA job; awaiting GPU-written tiling data
+[  323.168570] g16_lab: drained statistics records=4 consumer=121 producer=121 first-type=0x11 last-type=0x1b
+[  323.168573] g16_lab: received exact G16 firmware flag event firing=0x00000000/0x00000000/0x00000000/0x00010000 unknown_14=0x0000
+[  323.168574] g16_lab: drained firmware-event records=1 consumer=2 producer=2 first-type=0x1 last-type=0x1
+[  323.168576] g16_lab: render: TA completion stamp=0x100 ring=3 busy=0; snapshotting issued state
+[  323.168587] g16_lab: GPU engine issue registers dependency-slot-mask=0x0000000000000000 register-list=0x0047003000000040 base=0x0000003000000040 count=71 control=0x0000000008000001 selected-slot-mask=0x0000000000000000
+[  323.168589] g16_lab: render: vertex execution marker=0xcdcdcdcd expected=0x56535441
+[  323.168722] g16_lab: render: TA retired without expected pool/tilemap writes
+[  323.168723] g16_lab: render: independent queue gate result=-61
+[  323.168757] g16_lab: GFX firmware log thread=1 write=5 entry=0 type=2 payload=0 payload-type=3 sequence=0 text='GFX ASC Chinook Single-ASC FW cold booted! (Jul 31 2026 23:59:06)'
+[  323.168758] g16_lab: GFX firmware log thread=1 write=5 entry=1 type=2 payload=1 payload-type=3 sequence=1 text='G16 Firmware initializing'
+[  323.168758] g16_lab: GFX firmware log thread=1 write=5 entry=2 type=2 payload=2 payload-type=3 sequence=2 text='  FW Build variant: g16g'
+[  323.168759] g16_lab: GFX firmware log thread=1 write=5 entry=3 type=2 payload=3 payload-type=3 sequence=3 text='  FW Build version: b0'
+[  323.168759] g16_lab: GFX firmware log thread=1 write=5 entry=4 type=2 payload=4 payload-type=3 sequence=4 text='  FW Build doesn't support SKSM'
+[  323.168761] g16_lab: GFX firmware log thread=3 write=2 entry=0 type=2 payload=0 payload-type=3 sequence=0 text='AGFACREInit: CRE disabled by boot arg'
+[  323.168761] g16_lab: GFX firmware log thread=3 write=2 entry=1 type=2 payload=1 payload-type=3 sequence=1 text='AGFACREEnterCriticalSection: Entering CRE critical section as CRE disabled'
+[  323.168762] g16_lab: GFX ASC stopped after bounded rtkit-initdata-exact-offscreen-store probe
+[  323.169018] g16_lab: render: removed context-6 and root-3 mappings after firmware stop
+[  323.169020] apple_pmp 380500000.pmp: PMP lab device=5 enabled=0 raw=0x0020f50000000000
+[  323.169024] g16_lab: restored RTKit PMP AGX vote enabled=0 target=0x0000000000000000 actual=0x0000000000800c00
+[  323.169029] g16_lab: armed Apple GFX power-gate transition before restore
+[  323.169031] g16_lab: restored GFX power state=0x0f002b00
+[  323.169033] g16_lab: stage=rtkit-initdata-exact-offscreen-store captured and stopped
+[  323.169037] g16_lab: restored exact J713 UAT PPL handoff after stopped firmware
+[  323.169040] g16_lab: restored loader IOMAP VA fields power-aperture=0x0000000000000000 AFRClkGen=0x0000000000000000
+[  323.169040] g16_lab: restored complete loader IOMAP array
+[  323.169044] apple_pmp 380500000.pmp: PMP device-state reply raw=0x0021000000000000
+[  323.169049] g16_lab: stage=uat-initdata-map-test complete; complete graph and reserved entries restored

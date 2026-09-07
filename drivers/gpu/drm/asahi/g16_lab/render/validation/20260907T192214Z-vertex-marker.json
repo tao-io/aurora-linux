@@ -1,0 +1,41 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "boot_id": "0e4b9ce0-4566-455e-b086-87a38055f674",
+  "module_sha256": "075cfce4099eeef344745aa32cfdb77bde19b52c1a131b6b76a62b208965c2b4",
+  "parameters": [
+    "stage=rtkit-initdata-exact-offscreen-store",
+    "compute_macos_iadd=1",
+    "compute_mandelbrot=1",
+    "compute_macos_iadd_capture_context=1",
+    "compute_macos_iadd_ap2_leaves=1",
+    "compute_exact_loader_iomap_all=1",
+    "compute_macos_iadd_aligned_uma_hardware_table=1",
+    "compute_macos_iadd_populated_usc_private_memory=1",
+    "render_queue_probe=1",
+    "render_ta_probe=1",
+    "render_loader_marker=1"
+  ],
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": false,
+    "disarmed_after_evidence_collection": true
+  },
+  "insmod_rc": 0,
+  "stage_result": -61,
+  "output_bytes": 16384,
+  "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+  "colors": {
+    "ffffffff": 3416,
+    "ff000000": 680
+  },
+  "symmetric_rows": true,
+  "render_queues_passed": true,
+  "render_shaders_submitted": true,
+  "ta_retired_with_writes": false,
+  "vertex_fragment_pixels_verified": false,
+  "passed": false
+}

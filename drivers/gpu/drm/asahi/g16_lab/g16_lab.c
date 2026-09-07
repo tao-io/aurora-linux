@@ -2636,6 +2636,10 @@ static bool render_ta_probe;
 module_param(render_ta_probe, bool, 0444);
 MODULE_PARM_DESC(render_ta_probe, "Experimental captured vertex/tiling submission after render queue validation");
 
+static bool render_loader_marker;
+module_param(render_loader_marker, bool, 0444);
+MODULE_PARM_DESC(render_loader_marker, "Instrument the captured vertex state loader before its first instruction");
+
 static bool render_fault_observe;
 module_param(render_fault_observe, bool, 0444);
 MODULE_PARM_DESC(render_fault_observe, "Opt-in direct SGX MMIO fault observer; may hang the machine");

@@ -7,6 +7,7 @@
 #include "g16_render_fragment.h"
 #include "g16_render_geometry.h"
 #include "g16_render_uat.h"
+#include "g16_vertex_marker.h"
 
 #define G16_RENDER_RESOURCE_COUNT 34
 #define G16_RENDER_GRAPH_BYTES 0x80000
@@ -208,6 +209,68 @@ static int g16_render_prepare(void)
 	 * The UAT mapping above uses the normal (+0x1000000000) address. */
 	for (i = 0; i < ARRAY_SIZE(pages); i++)
 		pages[i] = G16_RENDER_POOL_VA - G16_RENDER_COMPACT_BASE + (u64)i * 0x8000;
+	if (render_ta_probe) {
+		bool patched = false;
+
+		/* Prefix the 40-byte store sequence, preserving all 86 captured bytes.
+		 * The straight-line VS overwrites r0-r3 before using their values;
+		 * its uniform argument pointer and special-register inputs are untouched. */
+		BUILD_BUG_ON(sizeof(g16_vertex_marker_code) > 0x5c0 - 0x594);
+		for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+			struct g16_render_resource *r = &g16_render_resources[i];
+			u8 *code = r->data;
+
+			if (r->va != 0x10000000000ULL)
+				continue;
+			if (r->size < 0x5c0 || code[0x594] != 0x0e || code[0x595] ||
+			    memchr_inv(code + 0x596, 0, 0x5c0 - 0x596)) {
+				ret = -EINVAL;
+				goto out;
+			}
+			memmove(code + 0x540 + sizeof(g16_vertex_marker_code) - 2,
+				code + 0x540, 0x56);
+			memcpy(code + 0x540, g16_vertex_marker_code, sizeof(g16_vertex_marker_code) - 2);
+			patched = true;
+		}
+		if (!patched) {
+			ret = -ENOENT;
+			goto out;
+		}
+	}
+	if (render_loader_marker) {
+		bool loader = false, stream = false;
+
+		/* Relocate the straight-line first ESL into unused space, retaining
+		 * all other captured helpers and its absolute shader/binding pointers. */
+		for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+			struct g16_render_resource *r = &g16_render_resources[i];
+			u8 *code = r->data;
+
+			if (r->va == 0x10000148000ULL) {
+				if (r->size < 0x8000 || code[0xa2] != 0x0e ||
+				    memchr_inv(code + 0x7000, 0, 0x1000)) {
+					ret = -EINVAL;
+					goto out;
+				}
+				memcpy(code + 0x7000, g16_vertex_loader_marker_code,
+				       sizeof(g16_vertex_loader_marker_code));
+				memcpy(code + 0x7000 + sizeof(g16_vertex_loader_marker_code),
+				       code, 0xa4);
+				loader = true;
+			} else if (r->va == 0x1000018000ULL) {
+				if (g16_render_get(code + 0xc, 4) != 0x5200) {
+					ret = -EINVAL;
+					goto out;
+				}
+				g16_render_put(code + 0xc, 0x53c0, 4);
+				stream = true;
+			}
+		}
+		if (!loader || !stream) {
+			ret = -ENOENT;
+			goto out;
+		}
+	}
 	ret = g16_render_pack_page_list(g16_render_graph + 0xa000, 0x1000,
 					pages, ARRAY_SIZE(pages));
 	if (ret)
