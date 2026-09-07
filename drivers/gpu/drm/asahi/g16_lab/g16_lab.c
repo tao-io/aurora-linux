@@ -2635,6 +2635,10 @@ MODULE_PARM_DESC(compute_macos_iadd_ap2_leaves,
 static bool render_ta_probe;
 module_param(render_ta_probe, bool, 0444);
 MODULE_PARM_DESC(render_ta_probe, "Experimental captured vertex/tiling submission after render queue validation");
+
+static bool render_fault_observe;
+module_param(render_fault_observe, bool, 0444);
+MODULE_PARM_DESC(render_fault_observe, "Opt-in direct SGX MMIO fault observer; may hang the machine");
 static u64 g16_render_pb_table_va(bool gpu);
 static bool render_queue_probe;
 module_param(render_queue_probe, bool, 0444);

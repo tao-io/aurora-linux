@@ -170,7 +170,7 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 	unsigned long deadline;
 	u64 timestamp, message;
 	u32 endpoint;
-	void __iomem *sgx;
+	void __iomem *sgx = NULL;
 	int ret;
 
 	ret = g16_render_build_ta();
@@ -194,16 +194,22 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 	g16_lab_dcache_clean(pipe_state, J713_INITDATA_PIPE_STATE_SIZE);
 	dma_wmb();
 	g16_firmware_recovery_observed = false;
-	sgx = ioremap(J713_SGX_MAIN_BASE, SZ_128K);
-	if (!sgx)
-		return -ENOMEM;
+	if (render_fault_observe) {
+		sgx = ioremap(J713_SGX_MAIN_BASE, SZ_128K);
+		if (!sgx)
+			return -ENOMEM;
+	}
+	pr_info("g16_lab: render: kicking TA, direct MMIO observer=%u\n", render_fault_observe);
 	ret = g16_asc_send(asc, J713_PIPE_KICK_TA_GROUP0, 0x21);
 	if (ret) {
-		iounmap(sgx);
+		if (sgx)
+			iounmap(sgx);
 		return ret;
 	}
-	g16_render_observe_launch(sgx);
-	iounmap(sgx);
+	if (sgx) {
+		g16_render_observe_launch(sgx);
+		iounmap(sgx);
+	}
 	pr_info("g16_lab: render: submitted InitPB + captured vertex/TA job; awaiting GPU-written tiling data\n");
 	deadline = jiffies + msecs_to_jiffies(1500);
 	do {
