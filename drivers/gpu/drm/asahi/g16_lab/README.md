@@ -22,10 +22,46 @@ The default `stage=smoke` does not execute a GPU workload. Nothing autoloads
 this module. Start each firmware experiment after a fresh boot: stopping the
 ASC after an incomplete handshake is not a firmware reset.
 
-Initial alpha validation: identity and powered register reads pass; the full
-RTKit handshake and exact InitData reach firmware ready. The fenced no-op passes with stage_result=0, retired cursors and firmware
-ready after fixing the donor observation-loop timeout. Compute validation is
-pending.
+Hardware validation on Omarchy J713, 2026-09-07, kernel
+`7.1.9-dirtyroom-gpu1+`: the full RTKit handshake and InitData reach ready;
+the fenced no-op passes after its observation-loop correction. The offline
+Mandelbrot shader executes 4096 threads and produces exactly 16384 bytes:
+680 black pixels, 3416 white pixels, all rows mirror-symmetric. Output SHA-256:
+`792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1`.
+Two runs after separate boots produced the same exact output; their manifests
+and GPU logs are in `validation/`. Context 5 submitted/retained generation
+is 3/3, retained fault mask is zero,
+all queue cursors retire, stage_result=0 and rmmod succeeds.
+
+To reproduce on this qualified machine after a fresh boot:
+
+```sh
+sudo python3 tools/run-mandelbrot.py --module /root/g16_lab.ko
+```
+
+The runner checks the kernel/module match and exact shared-memory/firmware
+segment layout before dispatch, records logs and manifests in
+`/root/g16-results/`, validates GPU output, wraps it in PNG without calculating
+the fractal on the CPU, and unloads the module on success. It refuses another
+firmware experiment in the same boot. Failed runs keep diagnostic state for
+inspection. The minimal `rtkit-initdata-ready` stage intentionally lacks fields
+needed by this firmware and crashes; use the complete compute recipe above.
+
+The newly assembled shader body uses the donor's captured macOS dispatch
+resource envelope. Regenerate its instructions with the included BSD encoder:
+
+```sh
+python3 tools/g16mandelbrot.py --output /tmp/mandelbrot.bin
+cmp /tmp/mandelbrot.bin g16_mandelbrot_shader.bin
+```
+
+Shader SHA-256:
+`d497442bd94c9c2862ba6f4f85b080639865a8a2d9110d892ae1d797555b6a54`.
+The generator/vendor sources were copied from the local
+`ESP32KeySim_m4/g16-isa` collection; the vendor README records its upstream
+commit and the original BSD license is included. No macOS compiler is used by
+this regeneration step. Other imported ocean/direct diagnostics remain donor
+reference code and are not claimed validated on this alpha kernel.
 
 Alpha adaptations retain the donor compute path but explicitly disable its
 unused PMP tool-snapshot diagnostic. PMP power requests use the active kernel

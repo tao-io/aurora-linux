@@ -1,0 +1,331 @@
+[    1.577177] apple_pmp 380500000.pmp: PMP firmware and endpoint ready
+[    2.336464] apple_pmp 380500000.pmp: RTKit: syslog message: io.cpp:54: PMP started
+[   68.471338] g16_lab: loading out-of-tree module taints kernel.
+[   68.472312] g16_lab: identity model='Apple MacBook Air (13-inch, M4, 2024)' j713=1 t8132=1
+[   68.472533] g16_lab: identity live FDT has no GPU/AGX node
+[   68.472534] g16_lab: stage=identity complete; no hardware touched
+[   68.474584] g16_lab: allocated 2176 distinct zero pages for the captured USC private-memory pool
+[   68.474608] g16_lab: initialized exact USC pool-global object id=17 low VA=0x0000001000000000 payload-head=0x00000080 final-record=0x0000fe40
+[   68.474639] g16_lab: saved J713 UAT PPL handoff before host initialization magic-ap=0x0000000000000000 magic-fw=0x0000000000000000 lock=0/0 turn=0 current-context=0x00000000 attention=0 unknown-640=0x0000000000000000 nonempty-records=0 first-record=65/0x00000000/0x0000000000000000/0x0000000000000000
+[   68.474643] g16_lab: initialized exact J713 UAT PPL handoff magic-ap=0x4b1d000000000002 preserved-magic-fw=0x0000000000000000 current-context=0x0000ffff attention=1 records=65
+[   68.474645] g16_lab: installed empty InitData root[2] shared-L2 link
+[   68.474645] g16_lab: installed exact protected IOMAP slot-36 root[1]/L2[224] chain
+[   68.474653] g16_lab: installed exact context-5 iadd UAT subgraphs command=0x0000007000244000 pool-state=256 pages/used=0x11000 page-list=4 pages/used=0x440 private-leaves=2176 context-store-base=0x0000007000420000
+[   68.474655] g16_lab: aliased exact iadd gUPM hardware-table dedicated object at low VA=0x0000007000280000 index=160 table=0x0000007000280000 canonical=0xfffffc200065c000
+[   68.474657] g16_lab: mirrored exact iadd RunCompute register-list page into bootstrap context 0 VA=0x0000007000244000 index=145 without replacing the context-0 hardware-table leaf
+[   68.475038] g16_lab: context-0 TTBR1 command/data leaves use canonical firmware/GPU RW tuple 0x00e000000000040b; distinct TTBR0 direct-dispatch leaves use user GPU RW/NX tuple 0x00e0000000000c0b and ESL/shader RO/execute tuple 0x00a0000000000c0b
+[   68.475040] g16_lab: bound offscreen compute to context-0 lower-TTBR0=0x0000010031c24001 canonical-TTBR1=0x00000103fff78001 command-alias=0x0000002000138000 command-ESL-RO/exec-leaf=0x00a00100672d0c0b shader-alias=0x000000200013c040 shader-RO/exec-leaf=0x00a00100672ccc0b output-data-alias=0x000000200014c000 output-data-RW/NX-leaf=0x00e00100672bcc0b hw-metrics-alias=0x0000002000164000 hw-metrics-RW/NX-leaf=0x00e00100672a4c0b preemption-alias=0x0000002000168000 preemption-RW/NX-leaf=0x00e00100672a0c0b command-canonical=0xfffffc2000138000 command-page-ESL=0xfffffc2000138f40 output=0xfffffc200014cb00
+[   68.475048] g16_lab: verified context-5 populated USC graph: low 0x0000007000280000 is pool leaf 160, not context-0's global hardware table; private leaves=2176 context-store-pages=8
+[   68.475052] g16_lab: installed distinct captured user TTBR0 root=0x0000010066ed4000 with exact valid L1 indices [1,7,16,47], split L1[1]=auxiliary/0x000001005bae8000 L1[7]=command-context/0x000001005bae0000 L1[16]=resource-graph/0x000001005baf4000, L1[2]=0x0000000000000000
+[   68.475054] g16_lab: installed captured user dummy-GART zero page VA=0x000002ffffff8000 L1[47]=0x000001005bafc003 L2[2047]=0x000001005baf8003 L3[2046]=0x00c0010066ed0c8b
+[   68.475069] g16_lab: pre-publication HwDataB verifier cores=10/10 max-pstate=9/9 topology=1 mcache=0x0000000607002004/0x0000000607002004
+[   68.475074] g16_lab: InitData root            VA=0xfffffc2000000000 size=0xc8 pages=1
+[   68.475076] g16_lab: InitData fw-brn-table    VA=0xfffffc2000004000 size=0x4000 pages=1
+[   68.475077] g16_lab: InitData runtime         VA=0xfffffc2000008000 size=0x4b8 pages=1
+[   68.475078] g16_lab: InitData globals         VA=0xfffffc200000c000 size=0xe48 pages=1
+[   68.475079] g16_lab: InitData control         VA=0xfffffc2000010000 size=0x20 pages=1
+[   68.475080] g16_lab: InitData fw-data         VA=0xfffffc2000014000 size=0xeaf0 pages=4
+[   68.475082] g16_lab: InitData power           VA=0xfffffc2000024000 size=0x670 pages=1
+[   68.475082] g16_lab: InitData dynamic-test    VA=0xfffffc2000028000 size=0x4000 pages=1
+[   68.475083] g16_lab: InitData main            VA=0xfffffc200002c000 size=0x2658 pages=1
+[   68.475084] g16_lab: InitData channel-scratch VA=0xfffffc2000030000 size=0x4000 pages=1
+[   68.475085] g16_lab: InitData power-performance VA=0xfffffc2000034000 size=0x6578 pages=2
+[   68.475086] g16_lab: InitData timer-state     VA=0xfffffc200003c000 size=0x88 pages=1
+[   68.475087] g16_lab: InitData runtime-state-254 VA=0xfffffc2000040000 size=0xc18 pages=1
+[   68.475088] g16_lab: InitData runtime-state-25c VA=0xfffffc2000044000 size=0x1248 pages=1
+[   68.475089] g16_lab: InitData runtime-state-264 VA=0xfffffc2000048000 size=0xe10 pages=1
+[   68.475089] g16_lab: InitData runtime-state-26c VA=0xfffffc200004c000 size=0x60 pages=1
+[   68.475090] g16_lab: InitData log-state       VA=0xfffffc2000050000 size=0x1b0 pages=1
+[   68.475091] g16_lab: InitData log-entry       VA=0xfffffc2000054000 size=0x28800 pages=11
+[   68.475092] g16_lab: InitData log-data        VA=0xfffffc2000080000 size=0x79800 pages=31
+[   68.475093] g16_lab: InitData firmware-control-channel VA=0xfffffc20000fc000 size=0x4000 pages=1
+[   68.475094] g16_lab: InitData device-control-state VA=0xfffffc2000108000 size=0x4000 pages=1
+[   68.475095] g16_lab: InitData device-control-ring VA=0xfffffc200010c000 size=0x4000 pages=1
+[   68.475096] g16_lab: InitData statistics-state VA=0xfffffc2000110000 size=0x30 pages=1
+[   68.475096] g16_lab: InitData statistics-data VA=0xfffffc2000114000 size=0x4800 pages=2
+[   68.475097] g16_lab: InitData temperature-generation VA=0xfffffc200011c000 size=0x8 pages=1
+[   68.475098] g16_lab: InitData TA-pipe-state   VA=0xfffffc2000120000 size=0x30 pages=1
+[   68.475099] g16_lab: InitData TA-pipe-ring    VA=0xfffffc2000124000 size=0x1800 pages=1
+[   68.475100] g16_lab: InitData queue-info      VA=0xfffffc2000128000 size=0x24c0 pages=1
+[   68.475101] g16_lab: InitData queue-ring-state VA=0xfffffc200012c000 size=0x60 pages=1
+[   68.475102] g16_lab: InitData queue-command-ring VA=0xfffffc2000130000 size=0x80 pages=1
+[   68.475102] g16_lab: InitData notifier-list   VA=0xfffffc2000134000 size=0x18 pages=1
+[   68.475103] g16_lab: InitData barrier-command VA=0xfffffc2000138000 size=0x40 pages=1
+[   68.475104] g16_lab: InitData compute-shader-rx VA=0xfffffc200013c000 size=0x10000 pages=4
+[   68.475105] g16_lab: InitData compute-pass-state-output-rw VA=0xfffffc200014c000 size=0x4000 pages=1
+[   68.475106] g16_lab: InitData queue-context   VA=0xfffffc2000150000 size=0x38 pages=1
+[   68.475106] g16_lab: InitData barrier-wait-stamp VA=0xfffffc2000154000 size=0x8 pages=1
+[   68.475107] g16_lab: InitData firmware-event-state VA=0xfffffc2000158000 size=0x30 pages=1
+[   68.475108] g16_lab: InitData firmware-event-data VA=0xfffffc200015c000 size=0x4800 pages=2
+[   68.475109] g16_lab: InitData usc-private-memory-hw-metrics VA=0xfffffc2000164000 size=0x4000 pages=1
+[   68.475110] g16_lab: InitData compute-pass-preemption-resource VA=0xfffffc2000168000 size=0xc000 pages=3
+[   68.475111] g16_lab: InitData compute-channel-context-store VA=0xfffffc2000174000 size=0x3dc00 pages=16
+[   68.475111] g16_lab: InitData usc-private-memory-pool-state VA=0xfffffc2000208000 size=0x400000 pages=256
+[   68.475112] g16_lab: InitData usc-private-memory-page-list VA=0xfffffc2000608000 size=0x10000 pages=4
+[   68.475113] g16_lab: InitData usc-private-memory-counter VA=0xfffffc2000618000 size=0x8 pages=1
+[   68.475114] g16_lab: InitData macos-compute-replay-input-output-esl-binding VA=0xfffffc200061c000 size=0x34000 pages=13
+[   68.475115] g16_lab: InitData compute-sku-slot-state-and-binding-auxiliary VA=0xfffffc2000650000 size=0x8000 pages=2
+[   68.475116] g16_lab: InitData fender-retention VA=0xfffffc2000658000 size=0x4000 pages=1
+[   68.475117] g16_lab: InitData usc-private-memory-hardware-table VA=0xfffffc200065c000 size=0x2000 pages=1
+[   68.475118] g16_lab: InitData macos-iadd-usc-pool-global-state VA=0xfffffc2000660000 size=0x10000 pages=4
+[   68.475119] g16_lab: InitData graph mapped 389 pages; root=0xfffffc2000000000 runtime=0xfffffc2000008000 main=0xfffffc200002c000 scratch=0xfffffc2000030000
+[   68.475120] g16_lab: InitData UAT config q6=0x240e0e08030e4000 q18=0x0000000000000000 phys-mask=0x000003ffffffc000
+[   68.475121] g16_lab: InitData SGX MMIO VA=0xfffffc2181400000 -> PA=0x0000000300000000 size=0x4000000 tables=3
+[   68.475122] g16_lab: InitData exact active IOMAP array records=42 active=19 leaves=52 slot3-banks=2x6 slot36-protected=1 source=executing 25G83 firmware-UAT oracle
+[   68.475123] g16_lab: InitData J713 topology feature=0x0 gin-dslots=0x4 mode=0x6 dimensions=0x3/0x7 limit=0x7 active=0x0000000000000000 count=8 valid=1 source=exact G16G constructor/oracle
+[   68.475125] g16_lab: InitData GCPM-present main+0xea0=1 source=exact J713 kext/ADT
+[   68.475126] g16_lab: InitData Fender power management main+0xee0=1 source=exact G16G kext
+[   68.475127] g16_lab: InitData PushTelemetry write slot=9 VA=0xfffffc2000200000 -> PA=0x00000003803d0000 size=0x1000 RW
+[   68.475128] g16_lab: InitData PushTelemetry read slot=10 VA=0xfffffc2000204000 -> PA=0x00000003803c0000 size=0x2000 RO
+[   68.475129] g16_lab: InitData GFXClkGen slot=41 VA=0xfffffc218221f800 -> PA=0x0000000300e1f800 size=0x4000 RW
+[   68.475130] g16_lab: InitData Fender MMIO VA=0xfffffc2001000000 -> PA=0x0000000300d00000 size=0x180000
+[   68.475131] g16_lab: InitData Fender scratch VA=0xfffffc2000100000 -> PA=0x0000000300d60000 size=0x8000 shared
+[   68.475132] g16_lab: InitData firmware-control state=0xfffffc20000fc000 ring=0xfffffc20000fc040 entries=256 size=0x18
+[   68.475133] g16_lab: InitData device-control layout=g16-four-pointer state=0xfffffc2000108000 read=+0x0 cfi=+0x10 write=+0x20 ring=0xfffffc200010c000 entries=256 size=0x40
+[   68.475135] g16_lab: InitData prequeued exact G16 preboot no-op opcode=0x1a state=0/0/1
+[   68.475136] g16_lab: InitData statistics ring state=0xfffffc2000110000 consumer=+0x0 producer=+0x20 data=0xfffffc2000114000 entries=256 size=0x48
+[   68.475137] g16_lab: InitData firmware-event ring state=0xfffffc2000158000 consumer=+0x0 producer=+0x20 data=0xfffffc200015c000 entries=256 size=0x48 accepted-types=1/4
+[   68.475139] g16_lab: InitData temperature generation VA=0xfffffc200011c000 size=0x8 -> power-performance+0x3b50
+[   68.475140] g16_lab: InitData maximum performance state main+0xfc4=9 source=exact G16G compacted-table oracle
+[   68.475141] g16_lab: InitData default MCache writes main+0xf24=0x0000000607002004 source=exact G16G kext/oracle
+[   68.475142] g16_lab: InitData UAT soft-fault control globals+0xe28=0x3 expected SGX-main +d8f0/+d900/+d910=0xffffffffffffffff/0x0000000000018040/0x0000000000010000 source=exact G16G kext/oracle
+[   68.475143] g16_lab: InitData scheduler engine-pair initialization main+0xeb8=1 expected SGX +100e8/+10408/+10798 and +100f0/+10410/+107a0 source=exact G16G kext/oracle
+[   68.475144] g16_lab: InitData physical GPU core positions main+0xfc0=10 context-store-stride=0x1800 total-per-core-span=0xf000
+[   68.475145] g16_lab: InitData power sample period power-performance+0x4/+0x8=200000/200000 AIC clocks source=exact J713 ADT/kext
+[   68.475146] g16_lab: InitData scheduler callback initialization firmware-data+0x4fd4=1 source=exact G16G kext/root[0x16]
+[   68.475147] g16_lab: InitData runtime activity state +0x254/+0x25c/+0x264/+0x26c=0xfffffc2000040000/0xfffffc2000044000/0xfffffc2000048000/0xfffffc200004c000 sizes=0xc18/0x1248/0xe10/0x60 sentinels=0xffffffff/0xffffffff source=exact G16G kext
+[   68.475149] g16_lab: InitData exact compute pipe descriptor=0xfffffc2000120000/0xfffffc2000120010/0xfffffc2000120020/0xfffffc2000124000 queue-info=0xfffffc2000128000 ring-state=0xfffffc200012c000 command-ring=0xfffffc2000130000 notifier-list=0xfffffc2000134000 command-page=0xfffffc2000138000 context=0xfffffc2000150000 wait-stamp=0xfffffc2000154000 UMA-table=0xfffffc200065c000
+[   68.475157] g16_lab: prepared zero loader power-aperture/AFRClkGen VA fields for post-RTKit seed
+[   68.475157] g16_lab: prepared zero loader PIO type 0x1a VA field for exact seed
+[   68.475158] g16_lab: prepared zero loader PIO type 0x1d VA field for exact seed
+[   68.475161] g16_lab: identity model='Apple MacBook Air (13-inch, M4, 2024)' j713=1 t8132=1
+[   68.475189] g16_lab: identity live FDT has no GPU/AGX node
+[   68.475190] g16_lab: stage=identity complete; no hardware touched
+[   68.475195] g16_lab: verified PMP logical-id=5 -> SOC-DEV-PS record/bit=12 name='AGX'
+[   68.475200] g16_lab: GFX TVM enabled phys=0x380760800 original=0x00000000 state=0x00000001 changed=1
+[   68.475204] g16_lab: GFX PMGR state=0x0f002300 target=0x0 actual=0x0 auto=0 parent-off=0 reset=0
+[   68.475206] g16_lab: GFX inactive (parent-off=0); using guarded direct PMGR activation
+[   68.475209] g16_lab: armed Apple GFX power-gate transition phys=0x38072504c value=0x80000000
+[   68.475219] g16_lab: GFX powered for guarded identity read; state=0x0f0023ff
+[   68.475221] g16_lab: applied Apple GFX retention mask phys=0x38072504c value=0x00402001
+[   68.475224] g16_lab: exact ApplePMGR GFX auto-enable active; state=0x1f0023ff
+[   68.475412] g16_lab: RTKit PMP AGX vote before command status=0x0000000000000001 target=0x0000000000000000 actual=0x0000000000800c00
+[   68.475419] apple_pmp 380500000.pmp: PMP lab device=5 enabled=1 raw=0x0020f50100000000
+[   68.475461] apple_pmp 380500000.pmp: PMP device-state reply raw=0x0021000000000000
+[   68.502008] g16_lab: PMP SOC-DEV-PKT[288] PTD=336 before=0x00078a8c7a44aaab/0x000001e913001c00 after=0x000627687a4e6aab/0x000001e93a002000
+[   68.502012] g16_lab: PMP SOC-DEV-PKT[289] PTD=337 before=0x000000e192189131/0x000001e913001c00 after=0x000000e1c2386113/0x000001e93a002000
+[   68.502015] g16_lab: PMP SOC-DEV-PKT[290] PTD=338 before=0x000000337d8d2dce/0x000001e913002800 after=0x0000003388386ab7/0x000001e93a002000
+[   68.502017] g16_lab: PMP SOC-DEV-PKT[291] PTD=339 before=0x000000008c408cd3/0x000001e913002800 after=0x000000008c308c83/0x000001e93a002000
+[   68.502020] g16_lab: PMP SOC-DEV-PKT[292] PTD=340 before=0x002d3f4800078a8c/0x000001e913002800 after=0x0024ec7000062768/0x000001e93a002c00
+[   68.502023] g16_lab: PMP SOC-DEV-PKT[293] PTD=341 before=0x0000000000601ef9/0x000001e913002800 after=0x00000000004c1213/0x000001e93a002c00
+[   68.502025] g16_lab: PMP SOC-DEV-PKT[294] PTD=342 before=0x00004ab000000000/0x000001e913002800 after=0x000064cb00000000/0x000001e93a002c00
+[   68.502029] g16_lab: PMP SOC-DEV-PKT[296] PTD=344 before=0x00032abc7a44aaab/0x000001e913004c00 after=0x00032adc7a4e6aab/0x000001e93a004400
+[   68.502031] g16_lab: PMP SOC-DEV-PKT[297] PTD=345 before=0x00000310915949a0/0x000001e913004c00 after=0x00000310d526a7ab/0x000001e93a005000
+[   68.502034] g16_lab: PMP SOC-DEV-PKT[298] PTD=346 before=0x000000692a37cd88/0x000001e913004c00 after=0x0000006933d41105/0x000001e93a005000
+[   68.502036] g16_lab: PMP SOC-DEV-PKT[299] PTD=347 before=0x00008b908ca18bd8/0x000001e913004c00 after=0x00008ba88ca18bd8/0x000001e93a005000
+[   68.502039] g16_lab: PMP SOC-DEV-PKT[300] PTD=348 before=0x000caaf000032abc/0x000001e913004c00 after=0x000cab5000032adc/0x000001e93a005000
+[   68.502040] g16_lab: PMP SOC-DEV-PKT[301] PTD=349 before=0x00000000001d8ed6/0x000001e913005800 after=0x00000000001d57e6/0x000001e93a005000
+[   68.502044] g16_lab: PMP SOC-DEV-PKT[304] PTD=352 before=0xf007000000002404/0x000001e91200a800 after=0x0406000000002804/0x000001e93a007400
+[   68.502046] g16_lab: PMP SOC-DEV-PKT[305] PTD=353 before=0x0600000000280500/0x000001e91200a800 after=0x0600000000200401/0x000001e93a007400
+[   68.502049] g16_lab: PMP SOC-DEV-PKT[306] PTD=354 before=0x0000000020040100/0x000001e91200a800 after=0x00000000240400e8/0x000001e93a008000
+[   68.502052] g16_lab: PMP SOC-DEV-PKT[307] PTD=355 before=0x000000240400e406/0x000001e91200a800 after=0x000000240400e806/0x000001e93a008000
+[   68.502054] g16_lab: PMP SOC-DEV-PKT[308] PTD=356 before=0x0000000000e40600/0x000001e91200a800 after=0x0000000000ec0600/0x000001e93a008000
+[   68.502070] g16_lab: PMP SOC-DEV-PKT changed entries=18
+[   68.502073] g16_lab: RTKit PMP AGX command queued; dashboard target=0x0000000000000000 actual=0x0000000000800c00 (informational)
+[   68.502079] g16_lab: GFX identity phys=0x300d00010 value=0x00000000
+[   68.502080] g16_lab: GFX identity phys=0x300d04000 value=0x0a021100
+[   68.502081] g16_lab: GFX identity phys=0x300d04008 value=0x000a0300
+[   68.502082] g16_lab: GFX identity phys=0x300d04010 value=0x0011010a
+[   68.502083] g16_lab: GFX identity phys=0x300d04014 value=0x00040404
+[   68.502084] g16_lab: GFX identity phys=0x300d04018 value=0x01320311
+[   68.502085] g16_lab: GFX identity phys=0x300d0401c value=0x10030302
+[   68.502086] g16_lab: GFX identity phys=0x300e01500 value=0x000003bd
+[   68.502086] g16_lab: stage=rtkit-initdata-exact-offscreen-store identity read complete
+[   68.502091] g16_lab: applied bounded active-state GFX retention repair phys=0x38072504c value=0x00402001 state=0x1f0023ff
+[   68.503872] g16_lab: GFX RTKit pre-HELLO message ep=0x0 type=0x1 raw=0x00100000000c000c
+[   68.503874] g16_lab: GFX RTKit HELLO versions min=12 max=12
+[   68.503885] g16_lab: GFX RTKit EPMAP base=0 bitmap=0x00000003 done=0
+[   68.503892] g16_lab: GFX RTKit EPMAP base=1 bitmap=0x00000003 done=1
+[   68.503894] g16_lab: GFX RTKit endpoint map complete; ep20=1 ep21=1
+[   68.503904] g16_lab: GFX RTKit post-START ep=0x1 type=0x1 raw=0x0010810001e80000
+[   68.503905] g16_lab: GFX crashlog request pages=8 iova=0x10001e80000
+[   68.503921] g16_lab: GFX RTKit post-START ep=0x0 type=0x7 raw=0x0070000000000020
+[   68.503922] g16_lab: GFX RTKit IOP reached POWER_ON
+[   68.503930] g16_lab: GFX RTKit power response ep=0x0 type=0xb state=0x20 raw=0x00b0000000000020
+[   68.503931] g16_lab: GFX RTKit AP reached POWER_ON
+[   68.503934] g16_lab: GFX RTKit started application endpoints 0x20 and 0x21
+[   68.503937] g16_lab: seeded complete exact loader IOMAP array records=42 active=19 from executing 25G83 oracle
+[   68.503939] g16_lab: GPU-core power assertion counter=0 reason=initialize fresh host/firmware generation pair
+[   68.503943] g16_lab: GPU-core power assertion counter=1 reason=prequeued device-control no-op
+[   68.503944] g16_lab: prequeued opcode=0x1a published with GPU-core power generation=1
+[   68.503948] g16_lab: G16 GPC performance state phys=0x300e01000 raw=0x00000000 state=0
+[   68.503949] g16_lab: GPU power assertion state at before InitData publication host=1 consumed=0 scheduler-init=1 gpu-power-state=0 gpc-performance-state=0
+[   68.503950] g16_lab: GFX sending InitData ep=0x20 root=0xfffffc2000000000 raw=0x00810c2000000000
+[   68.503953] g16_lab: GFX sent initial exact G16 device-control doorbell ep=0x21 raw=0x0083000000000011
+[   68.504515] g16_lab: GFX post-InitData message ep=0x20 raw=0x0042000000000000
+[   68.504526] g16_lab: GFX post-InitData message ep=0x20 raw=0x0042000000000000
+[   68.504534] g16_lab: GFX post-InitData message ep=0x20 raw=0x0042000000000000
+[   68.504542] g16_lab: GFX post-InitData message ep=0x20 raw=0x0042000000000000
+[   68.504551] g16_lab: GFX post-InitData message ep=0x20 raw=0x0042000000000000
+[   68.625108] g16_lab: GFX firmware control words=0x00000000 0x00000001 0x00000000 0x00000000 0x00000000 0x00000001 0x00000000 0x00000000
+[   68.625109] g16_lab: GFX bounded ready probe control-ready=1
+[   68.625110] g16_lab: GFX settling for two seconds after early ready
+[   68.625112] g16_lab: drained statistics records=1 consumer=1 producer=1 first-type=0x1a last-type=0x1a
+[   70.623540] g16_lab: G16 GPC performance state phys=0x300e01000 raw=0x00000000 state=0
+[   70.623544] g16_lab: GPU power assertion state at after initial no-op consumption host=1 consumed=0 scheduler-init=1 gpu-power-state=0 gpc-performance-state=0
+[   70.623547] g16_lab: GFX firmware control words=0x00000000 0x00000001 0x00000000 0x00000000 0x00000000 0x00000001 0x00000000 0x00000000
+[   70.623552] g16_lab: live timer-state nonzero=1 head=00000001 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.623559] g16_lab: live runtime-state-254 nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.623566] g16_lab: live runtime-state-25c nonzero=2 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.623572] g16_lab: live runtime-state-264 nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.623579] g16_lab: live runtime-state-26c nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.623584] g16_lab: live statistics-state nonzero=2 head=00000001 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.623586] g16_lab: live statistics-data first-record=0000001a 7a4f8801 00000000 00000000
+[   70.623591] g16_lab: live firmware-event-state nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.623593] g16_lab: live firmware-event-data first-record=00000000 00000000 00000000 00000000
+[   70.623598] g16_lab: live G16 device-control descriptor read=0xfffffc2000108000 cfi=0xfffffc2000108010 write=0xfffffc2000108020 ring=0xfffffc200010c000
+[   70.623604] g16_lab: GPU-core power assertion counter=2 reason=set-RIARTT-disabled(false)
+[   70.623605] g16_lab: device-control opcode=0x34 requires GPU-core power generation=2
+[   70.623606] g16_lab: submitting exact G16G set-RIARTT-disabled(false) opcode=0x34 payload-word=0x0 index=1 next=2 entry-size=0x40
+[   70.623608] g16_lab: device-control notify ep=0x21 raw=0x0084000000000011 exact=1
+[   70.624553] g16_lab: GFX post-device-control message ep=0x20 raw=0x0042000000000000
+[   70.624557] g16_lab: drained statistics records=4 consumer=5 producer=5 first-type=0x1a last-type=0x1c
+[   70.624566] g16_lab: GFX post-device-control message ep=0x20 raw=0x0042000000000000
+[   70.636574] g16_lab: drained statistics records=4 consumer=9 producer=9 first-type=0x1b last-type=0x1c
+[   70.636576] g16_lab: device-control consumed read=2 cfi=2 write=2; observing firmware for 50 ms
+[   70.648582] g16_lab: drained statistics records=7 consumer=16 producer=16 first-type=0x11 last-type=0x1c
+[   70.660573] g16_lab: drained statistics records=14 consumer=30 producer=30 first-type=0x11 last-type=0x1c
+[   70.672586] g16_lab: drained statistics records=7 consumer=37 producer=37 first-type=0x11 last-type=0x1c
+[   70.684583] g16_lab: drained statistics records=13 consumer=50 producer=50 first-type=0x11 last-type=0x19
+[   70.696626] g16_lab: drained statistics records=8 consumer=58 producer=58 first-type=0x1c last-type=0x1c
+[   70.696631] g16_lab: GFX firmware control words=0x00000000 0x00000001 0x00000000 0x00000000 0x00000001 0x00000001 0x00000000 0x00000001
+[   70.696634] g16_lab: live timer-state nonzero=13 head=00000001 00000000 00000000 7a4f765e 00000000 7a4f765e 00000000 00000001
+[   70.696638] g16_lab: live runtime-state-254 nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.696645] g16_lab: live runtime-state-25c nonzero=2 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.696651] g16_lab: live runtime-state-264 nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.696658] g16_lab: live runtime-state-26c nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.696661] g16_lab: live statistics-state nonzero=2 head=0000003a 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.696662] g16_lab: live statistics-data first-record=0000001a 7a4f8801 00000000 00000000
+[   70.696666] g16_lab: live firmware-event-state nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.696667] g16_lab: live firmware-event-data first-record=00000000 00000000 00000000 00000000
+[   70.696673] g16_lab: G16 GPC performance state phys=0x300e01000 raw=0x00000000 state=0
+[   70.696674] g16_lab: GPU power assertion state at set-RIARTT-disabled(false) host=2 consumed=1 scheduler-init=0 gpu-power-state=0 gpc-performance-state=0
+[   70.696675] g16_lab: exact device-control notify passed: ring stable and firmware ready after 50 ms
+[   70.696675] g16_lab: rearmed exact G16 scheduler initialization after firmware ready
+[   70.696678] g16_lab: live G16 device-control descriptor read=0xfffffc2000108000 cfi=0xfffffc2000108010 write=0xfffffc2000108020 ring=0xfffffc200010c000
+[   70.696683] g16_lab: GPU-core power assertion counter=3 reason=set-GPU-idle-power-off(false)
+[   70.696683] g16_lab: device-control opcode=0xa requires GPU-core power generation=3
+[   70.696684] g16_lab: submitting exact G16G set-GPU-idle-power-off(false) opcode=0xa payload-word=0x0 index=2 next=3 entry-size=0x40
+[   70.696686] g16_lab: device-control notify ep=0x21 raw=0x0084000000000011 exact=1
+[   70.708633] g16_lab: drained statistics records=10 consumer=68 producer=68 first-type=0x11 last-type=0x1c
+[   70.708635] g16_lab: device-control consumed read=3 cfi=3 write=3; observing firmware for 50 ms
+[   70.720632] g16_lab: drained statistics records=11 consumer=79 producer=79 first-type=0x1b last-type=0x1c
+[   70.732657] g16_lab: drained statistics records=7 consumer=86 producer=86 first-type=0x11 last-type=0x1c
+[   70.744674] g16_lab: drained statistics records=14 consumer=100 producer=100 first-type=0x11 last-type=0x1c
+[   70.756683] g16_lab: drained statistics records=7 consumer=107 producer=107 first-type=0x11 last-type=0x1c
+[   70.768676] g16_lab: drained statistics records=14 consumer=121 producer=121 first-type=0x11 last-type=0x1c
+[   70.768679] g16_lab: GFX firmware control words=0x00000000 0x00000001 0x00000000 0x00000000 0x00000001 0x00000001 0x00000000 0x00000001
+[   70.768684] g16_lab: live timer-state nonzero=13 head=00000001 00000000 00000000 7a4f765e 00000000 7a4f765e 00000000 00000001
+[   70.768691] g16_lab: live runtime-state-254 nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.768698] g16_lab: live runtime-state-25c nonzero=2 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.768705] g16_lab: live runtime-state-264 nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.768712] g16_lab: live runtime-state-26c nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.768716] g16_lab: live statistics-state nonzero=2 head=00000079 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.768719] g16_lab: live statistics-data first-record=0000001a 7a4f8801 00000000 00000000
+[   70.768723] g16_lab: live firmware-event-state nonzero=0 head=00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000
+[   70.768725] g16_lab: live firmware-event-data first-record=00000000 00000000 00000000 00000000
+[   70.768731] g16_lab: G16 GPC performance state phys=0x300e01000 raw=0x00000000 state=0
+[   70.768732] g16_lab: GPU power assertion state at set-GPU-idle-power-off(false) host=3 consumed=2 scheduler-init=0 gpu-power-state=0 gpc-performance-state=0
+[   70.768733] g16_lab: exact device-control notify passed: ring stable and firmware ready after 50 ms
+[   70.768735] g16_lab: sent exact G16 empty-ring firmware wakeup after ready ep=0x21 raw=0x0083000000000010
+[   70.780738] g16_lab: drained statistics records=7 consumer=128 producer=128 first-type=0x11 last-type=0x1c
+[   70.792731] g16_lab: drained statistics records=11 consumer=139 producer=139 first-type=0x11 last-type=0x1b
+[   70.804737] g16_lab: drained statistics records=10 consumer=149 producer=149 first-type=0x12 last-type=0x1c
+[   70.816778] g16_lab: drained statistics records=7 consumer=156 producer=156 first-type=0x11 last-type=0x1c
+[   70.828770] g16_lab: drained statistics records=14 consumer=170 producer=170 first-type=0x11 last-type=0x1c
+[   70.840765] g16_lab: drained statistics records=7 consumer=177 producer=177 first-type=0x11 last-type=0x1c
+[   70.852754] g16_lab: drained statistics records=14 consumer=191 producer=191 first-type=0x11 last-type=0x1c
+[   70.864758] g16_lab: drained statistics records=7 consumer=198 producer=198 first-type=0x11 last-type=0x1c
+[   70.876751] g16_lab: drained statistics records=14 consumer=212 producer=212 first-type=0x11 last-type=0x1c
+[   70.876759] g16_lab: live context-0 UAT gUPM-UMA-hardware-table-context0-alias ttbr0=0x0000010031c24001 ttbr1=0x00000103fff78001 VA=0x0000007000280000 L1[7]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[160]=0x00c0010066b64c8b
+[   70.876761] g16_lab: verified gUPM UMA hardware-table low alias page=0x0000007000280000 table=0x0000007000280000 canonical=0xfffffc200065c000 for bootstrap context 0
+[   70.876764] g16_lab: live context-0 UAT iadd-register-list-context0-bootstrap ttbr0=0x0000010031c24001 ttbr1=0x00000103fff78001 VA=0x0000007000244000 L1[7]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[145]=0x00c00100672d0c8b
+[   70.876765] g16_lab: verified context-0 bootstrap register-list leaf while preserving distinct context-0 hardware table/context-5 pool leaves
+[   70.876787] g16_lab: G16 GPC performance state phys=0x300e01000 raw=0x00000000 state=0
+[   70.876794] g16_lab: pre-compute firmware-data=0xfffffc2000014000 scheduler-init=0 power-performance=0xfffffc2000034000 gpu-power-state=0 gpc-performance-state=0 scheduler-events=0x0000000000000008
+[   70.876795] g16_lab: GPU is idle/off before submission; firmware power assertion will transition it on demand
+[   70.876795] g16_lab: verified all 15 scheduler callbacks in host-visible memory; compute=0x63944000000230f0
+[   70.876805] g16_lab: RTOS pre-submit blocked head=0xfffffc000018a118 tail=0xfffffc0000187828 current=0xfffffc0000187828 ready-mask=0x0000000000000000 ready-count=0x0000000000000000 priority-17-list=0x0000000000000000/0xfffffc0000199568
+[   70.876810] g16_lab: firmware thread background pre-submit pointer=0xfffffc000018a868 links=0xfffffc0000187828/0xfffffc00001863b0 slot=0x0000000000000002 wait=0xfffffc0000192898 name=0xfffffc000005c2ce priority=0x0f/0x0f state=0x0102 flags=0x00000000 stack=0xfffffc000006ce30/0x0000000000004000 context=0xfffffc000018a518
+[   70.876816] g16_lab: firmware thread interrupt pre-submit pointer=0xfffffc0000188ca0 links=0xfffffc00001863b0/0xfffffc000018c138 slot=0x0000000000000004 wait=0xfffffc0000192908 name=0xfffffc000005c2ea priority=0x11/0x11 state=0x0102 flags=0x00000002 stack=0xfffffc0000187940/0x0000000000001000 context=0xfffffc0000188950
+[   70.876820] g16_lab: firmware thread power pre-submit pointer=0xfffffc00001863b0 links=0xfffffc000018a868/0xfffffc0000188ca0 slot=0x0000000000000006 wait=0xfffffc0000192998 name=0xfffffc000005c304 priority=0x10/0x10 state=0x0102 flags=0x00000002 stack=0xfffffc0000184050/0x0000000000002000 context=0xfffffc0000186060
+[   70.876824] g16_lab: firmware thread recovery pre-submit pointer=0xfffffc000018a118 links=0xfffffc000018c138/0xfffffc000006c2a0 slot=0x0000000000000003 wait=0xfffffc00001929c0 name=0xfffffc000005c2dd priority=0x13/0x13 state=0x0102 flags=0x00000002 stack=0xfffffc0000188db0/0x0000000000001000 context=0xfffffc0000189dc8
+[   70.876827] g16_lab: firmware thread sampler pre-submit pointer=0xfffffc0000187828 links=0x0000000000000000/0xfffffc000018a868 slot=0x0000000000000005 wait=0xfffffc0000192a30 name=0xfffffc000005c2f8 priority=0x02/0x02 state=0x0102 flags=0x00000002 stack=0xfffffc00001864c0/0x0000000000001000 context=0xfffffc00001874d8
+[   70.876838] g16_lab: live firmware MMU protected-export state top-level-shift=36 handoff-export-va=0xfffffc0001fb8000 exported-magic-ap=0x4b1d000000000002
+[   70.876839] g16_lab: live J713 UAT PPL handoff pre-submit magic-ap=0x4b1d000000000002 magic-fw=0x0000000000000000 lock=0/0 turn=0 current-context=0x0000ffff attention=1 unknown-640=0x0000000000000000
+[   70.876840] g16_lab: J713 UAT PPL firmware magic remains lazy during pre-submit; same-build host contract permits initial submission
+[   70.876843] g16_lab: published captured user TTBAT context=5 under exact Dekker handoff at live pre-submit edge ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001
+[   70.876846] g16_lab: live context-5 UAT command-stream ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000007000244000 L1[7]=0x000001005bae0003 L2[0]=0x000001005badc003 L3[145]=0x00c00100672d0c8b
+[   70.876849] g16_lab: live context-5 UAT macos-iadd-esl ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x00000100000a8000 L1[16]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[42]=0x00c0010066b34c8b
+[   70.876852] g16_lab: live context-5 UAT macos-capture-cdm-control-stream ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x00000100000c8000 L1[16]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[50]=0x0080010066b30c8b
+[   70.876854] g16_lab: live context-5 UAT compute-shader-executable ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000010000000000 L1[16]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[0]=0x00800100672ccc8b
+[   70.876857] g16_lab: live context-5 UAT macos-iadd-shader-executable-tail ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000010000004000 L1[16]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[1]=0x00800100672c8c8b
+[   70.876860] g16_lab: live context-5 UAT compute-output-data ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000010000090000 L1[16]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[36]=0x00c0010066b2cc8b
+[   70.876863] g16_lab: live context-5 UAT macos-iadd-input-a ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000010000080000 L1[16]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[32]=0x00c0010066b24c8b
+[   70.876865] g16_lab: live context-5 UAT macos-iadd-input-b ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000010000088000 L1[16]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[34]=0x00c0010066b28c8b
+[   70.876868] g16_lab: live context-5 UAT macos-capture-compute-pass-resource ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x00000100000f8000 L1[16]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[62]=0x00c00100672a0c8b
+[   70.876870] g16_lab: live context-5 UAT macos-iadd-binding-base ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000010000030000 L1[16]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[12]=0x00c0010066b38c8b
+[   70.876873] g16_lab: live context-5 UAT macos-iadd-shader-gate ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000010000034500 L1[16]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[13]=0x00c0010066b3cc8b
+[   70.876875] g16_lab: live context-5 UAT compute-preemption-buffer ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x00000100000f8000 L1[16]=0x000001005baf4003 L2[0]=0x000001005baf0003 L3[62]=0x00c00100672a0c8b
+[   70.876878] g16_lab: live context-5 UAT compute-binding-auxiliary ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000001000018000 L1[1]=0x000001005bae8003 L2[0]=0x000001005bae4003 L3[6]=0x00c0010066b5cc8b
+[   70.876881] g16_lab: live context-5 UAT compute-context-store-address-0 ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000007000420000 L1[7]=0x000001005bae0003 L2[0]=0x000001005badc003 L3[264]=0x00c0010067294c8b
+[   70.876883] g16_lab: live context-5 UAT compute-context-store-address-1 ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x000000700042f400 L1[7]=0x000001005bae0003 L2[0]=0x000001005badc003 L3[267]=0x00c0010067288c8b
+[   70.876886] g16_lab: live context-5 UAT captured-usc-pool-state-base ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000007000000000 L1[7]=0x000001005bae0003 L2[0]=0x000001005badc003 L3[0]=0x00c0010067254c8b
+[   70.876889] g16_lab: live context-5 UAT captured-usc-pool-state-tail ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x00000070003fc000 L1[7]=0x000001005bae0003 L2[0]=0x000001005badc003 L3[255]=0x00c0010066b0cc8b
+[   70.876892] g16_lab: live context-5 UAT captured-usc-page-list-base ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000007000408000 L1[7]=0x000001005bae0003 L2[0]=0x000001005badc003 L3[258]=0x00c0010066b10c8b
+[   70.876895] g16_lab: live context-5 UAT captured-usc-page-list-tail ttbr0=0x0005010066ed4001 ttbr1=0x0005010066ed8001 VA=0x0000007000414000 L1[7]=0x000001005bae0003 L2[0]=0x000001005badc003 L3[261]=0x00c0010066b1cc8b
+[   70.876920] g16_lab: installed offline-assembled G16 Mandelbrot main body offset=0x3c0 size=0xa38 threads=4096 max-register=r8
+[   70.876921] g16_lab: installed exact macOS 25G83 compute graph body=offline-g16-mandelbrot-64x64 shader=0x0000010000000380 ESL=0x00000100000a8000 input=0x0000010000080000/0x0000010000088000 output=0x0000010000090000 compute-pass=0x00000100000f8000+0x14a0
+[   70.876926] g16_lab: populated captured USC private memory blocks=17 pages=8704 first=0x0000007000448000 last=0x00000070024c8000 page-list-bytes=0x440
+[   70.876929] g16_lab: initialized exact iadd SKU binding auxiliary state VA=0x0000001000018000 bytes=b2/0d/00/00/60
+[   70.876929] g16_lab: SKU slot-state-array=0xfffffc2000650000 binding-UMA=0xfffffc2000138e00 auxiliary=0x0000001000018000 semantic-gate=0
+[   70.876930] g16_lab: exact populated USC private-memory descriptor global=17 slot=2 grow=0 priority=2 pool-state=0x0000007000000000/qwords=524288 page-list=0x0000007000408000/136 counter=0xfffffc2000618000 empty=0 pages=8704 mode=4 max-kicks=2
+[   70.877062] g16_lab: firmware fault-generation pre-submit selected-context=5 selected-submitted/retained=0/0 kernel0=0/0 user1=0/0 macos-direct3=0/0 capture5=0/0 retained-fault-mask=0x0000000000000000
+[   70.877071] g16_lab: captured exact pre-submit compute command page size=0x4000 at debugfs g16_lab_data
+[   70.877072] g16_lab: submitting exact G16 compute offline-g16-mandelbrot-64x64 frames=1 timestamp=0x0000001475ad84cd qinfo=0xfffffc2000128000 work=0xfffffc2000138000 sku=0xfffffc2000138900 size=0x300 registers=24 uat-context=5 context-generation=3 cdm-gpu=0x00000100000c8000 cdm-canonical=0x00000100000c8000 context-switch-state-gpu=0x00000100000f8000 state-cells-gpu=0x00000100000f9480/0x00000100000f9488/0x00000100000f9490/0x00000100000f9498 shared-stamp=0xfffffc2000138ee4 firmware-stamp=0xfffffc2000138ee0 scs-intersection-program=0x0000000000000000 gen6-esl-gpu=0x00000100000a8000 esl-canonical=0x00000100000a8000 shader=0x0000010000000000 hw-metrics-engine-command=0xfffffc2000164000 output-gpu=0x0000010000090000
+[   70.884596] g16_lab: drained statistics records=4 consumer=216 producer=216 first-type=0x11 last-type=0x1b
+[   70.884599] g16_lab: received exact G16 firmware flag event firing=0x00008000/0x00000000/0x00000000/0x00000000 unknown_14=0x0001
+[   70.884601] g16_lab: drained firmware-event records=1 consumer=1 producer=1 first-type=0x1 last-type=0x1
+[   70.884604] g16_lab: compute offline-g16-mandelbrot-64x64 consumed; observing firmware for 50 ms
+[   70.896621] g16_lab: drained statistics records=10 consumer=226 producer=226 first-type=0x12 last-type=0x1c
+[   70.908648] g16_lab: drained statistics records=10 consumer=236 producer=236 first-type=0x11 last-type=0x1c
+[   70.920666] g16_lab: drained statistics records=11 consumer=247 producer=247 first-type=0x1b last-type=0x1c
+[   70.932696] g16_lab: drained statistics records=7 consumer=254 producer=254 first-type=0x11 last-type=0x1c
+[   70.944711] g16_lab: drained statistics records=14 consumer=12 producer=12 first-type=0x11 last-type=0x1c
+[   70.944733] g16_lab: firmware fault-generation post-completion selected-context=5 selected-submitted/retained=3/3 kernel0=0/0 user1=0/0 macos-direct3=0/0 capture5=3/3 retained-fault-mask=0x0000000000000000
+[   70.944738] g16_lab: GFX firmware control words=0x00000000 0x00000001 0x00000000 0x00000000 0x00000001 0x00000001 0x00000000 0x00000001
+[   70.944744] g16_lab: scheduler snapshot has invalid selector=0xffffffff
+[   70.944745] g16_lab: post-retirement scheduler snapshot unavailable ret=-71; continuing with completion/output validation
+[   70.944747] g16_lab: issued-state work-counter=0x0000000000000000 threshold=0x0000000000000000 event=0x00000000/0x00000000/0x00000000/0x00000000/0x00000000/0x00000001 sku=0x0000000b/0x00000001/0x0000000c context-store-ts=0x0000000000000000 completion=0 uma-state=0x00000000; awaiting GPU completion for up to 5 s
+[   70.944770] g16_lab: captured GPU Mandelbrot output size=16384 at debugfs g16_lab_mandelbrot_rgba8
+[   70.944771] g16_lab: verified GPU-only Mandelbrot output 64x64 inside=680 outside=3416
+[   70.944773] g16_lab: completed terminate RunCompute state pass=0x0000000000000000/0x0000000000000000/0x0000000000000000/0x0000000000000000 timestamp=0x000000007db6f414/0x000000007db6f576/0x0000000000000000 context-store=0x0000000000000000 auxiliary=0x000000007db6f576 stamps=0x00000400/0x00000400 completion=0x00000000 uma=0x00000000 output=0xffffffff engine-command=0x0000000000000000/0x0000000000000000/0x0000000000000000/0x0000000000000000 UMA-hardware-descriptor=0x0000000000000000/0x0000000000000000/0x0000000000000000/0x0000000000000000
+[   70.944777] g16_lab: exact compute offline-g16-mandelbrot-64x64 passed frames=1 pipe=1/1/1 queue=1/1/1 ring=1/1 busy=0 context=0/0/4 firmware-ready=1
+[   70.944807] g16_lab: GFX firmware log thread=1 write=5 entry=0 type=2 payload=0 payload-type=3 sequence=0 text='GFX ASC Chinook Single-ASC FW cold booted! (Jul 31 2026 23:59:06)'
+[   70.944808] g16_lab: GFX firmware log thread=1 write=5 entry=1 type=2 payload=1 payload-type=3 sequence=1 text='G16 Firmware initializing'
+[   70.944810] g16_lab: GFX firmware log thread=1 write=5 entry=2 type=2 payload=2 payload-type=3 sequence=2 text='  FW Build variant: g16g'
+[   70.944811] g16_lab: GFX firmware log thread=1 write=5 entry=3 type=2 payload=3 payload-type=3 sequence=3 text='  FW Build version: b0'
+[   70.944811] g16_lab: GFX firmware log thread=1 write=5 entry=4 type=2 payload=4 payload-type=3 sequence=4 text='  FW Build doesn't support SKSM'
+[   70.944814] g16_lab: GFX firmware log thread=3 write=2 entry=0 type=2 payload=0 payload-type=3 sequence=0 text='AGFACREInit: CRE disabled by boot arg'
+[   70.944815] g16_lab: GFX firmware log thread=3 write=2 entry=1 type=2 payload=1 payload-type=3 sequence=1 text='AGFACREEnterCriticalSection: Entering CRE critical section as CRE disabled'
+[   70.944816] g16_lab: GFX ASC stopped after bounded rtkit-initdata-exact-offscreen-store probe
+[   70.944824] apple_pmp 380500000.pmp: PMP lab device=5 enabled=0 raw=0x0020f50000000000
+[   70.944829] g16_lab: restored RTKit PMP AGX vote enabled=0 target=0x0000000000000000 actual=0x0000000000800c00
+[   70.944832] g16_lab: armed Apple GFX power-gate transition before restore
+[   70.944835] g16_lab: restored GFX power state=0x0f002b00
+[   70.944840] g16_lab: stage=rtkit-initdata-exact-offscreen-store captured and stopped
+[   70.944847] g16_lab: restored exact J713 UAT PPL handoff after stopped firmware
+[   70.944849] g16_lab: restored loader IOMAP VA fields power-aperture=0x0000000000000000 AFRClkGen=0x0000000000000000
+[   70.944850] g16_lab: restored complete loader IOMAP array
+[   70.944853] g16_lab: stage=uat-initdata-map-test complete; complete graph and reserved entries restored
+[   70.944893] apple_pmp 380500000.pmp: PMP device-state reply raw=0x0021000000000000

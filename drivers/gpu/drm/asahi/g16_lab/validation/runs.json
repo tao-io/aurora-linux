@@ -1,0 +1,56 @@
+[
+  {
+    "kernel": "7.1.9-dirtyroom-gpu1+",
+    "boot_id": "f3adb48e-70e6-4e7f-ac26-bbe4de1eae8f",
+    "module_sha256": "7e7c0e2f6de6a6c953e7926ccaec29cd674641dc3349bbc5573d6341a2c55a73",
+    "parameters": [
+      "stage=rtkit-initdata-exact-offscreen-store",
+      "compute_macos_iadd=1",
+      "compute_mandelbrot=1",
+      "compute_macos_iadd_capture_context=1",
+      "compute_macos_iadd_ap2_leaves=1",
+      "compute_exact_loader_iomap_all=1",
+      "compute_macos_iadd_aligned_uma_hardware_table=1",
+      "compute_macos_iadd_populated_usc_private_memory=1"
+    ],
+    "insmod_rc": 0,
+    "stage_result": 0,
+    "output_bytes": 16384,
+    "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+    "colors": {
+      "ffffffff": 3416,
+      "ff000000": 680
+    },
+    "symmetric_rows": true,
+    "rmmod_rc": 0,
+    "passed": true,
+    "run": "20260907T020609Z-mandelbrot"
+  },
+  {
+    "kernel": "7.1.9-dirtyroom-gpu1+",
+    "boot_id": "a9c27092-b201-486f-a691-8cc6dc02c947",
+    "module_sha256": "7e7c0e2f6de6a6c953e7926ccaec29cd674641dc3349bbc5573d6341a2c55a73",
+    "parameters": [
+      "stage=rtkit-initdata-exact-offscreen-store",
+      "compute_macos_iadd=1",
+      "compute_mandelbrot=1",
+      "compute_macos_iadd_capture_context=1",
+      "compute_macos_iadd_ap2_leaves=1",
+      "compute_exact_loader_iomap_all=1",
+      "compute_macos_iadd_aligned_uma_hardware_table=1",
+      "compute_macos_iadd_populated_usc_private_memory=1"
+    ],
+    "insmod_rc": 0,
+    "stage_result": 0,
+    "output_bytes": 16384,
+    "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+    "colors": {
+      "ffffffff": 3416,
+      "ff000000": 680
+    },
+    "symmetric_rows": true,
+    "rmmod_rc": 0,
+    "passed": true,
+    "run": "20260907T020757Z-mandelbrot"
+  }
+]
