@@ -190,6 +190,21 @@ static int __init early_mem(char *p)
 }
 early_param("mem", early_mem);
 
+#define J713_RESIDENT_STAGE2_END	0x10020000000ULL
+
+static bool j713_reserve_stage2;
+
+static int __init early_j713_reserve_stage2(char *p)
+{
+	if (!p) {
+		j713_reserve_stage2 = true;
+		return 0;
+	}
+
+	return kstrtobool(p, &j713_reserve_stage2);
+}
+early_param("apple_j713_reserve_stage2", early_j713_reserve_stage2);
+
 void __init arm64_memblock_init(void)
 {
 	s64 linear_region_size = PAGE_END - _PAGE_OFFSET(vabits_actual);
@@ -295,6 +310,20 @@ void __init arm64_memblock_init(void)
 	}
 
 	early_init_fdt_scan_reserved_mem();
+
+	if (j713_reserve_stage2 &&
+	    of_flat_dt_is_compatible(of_get_flat_dt_root(), "apple,j713")) {
+		phys_addr_t start = memblock_start_of_DRAM();
+		phys_addr_t end = J713_RESIDENT_STAGE2_END;
+
+		if (start < end) {
+			if (memblock_reserve(start, end - start))
+				pr_err("J713: failed to reserve resident stage2 aperture\n");
+			else
+				pr_info("J713: reserved resident stage2 aperture %pa..%pa\n",
+					&start, &end);
+		}
+	}
 }
 
 void __init bootmem_init(void)

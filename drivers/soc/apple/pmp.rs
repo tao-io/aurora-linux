@@ -50,6 +50,8 @@ const BOOTARGS_SIZE: usize = 0x230;
 const CPU_CONTROL: usize = 0x44;
 const CPU_RUN: u32 = 0x1 << 4;
 const PMP_ENDPOINT: u8 = 0x20;
+const PM_COMMAND_MARKER: u64 = 1 << 53;
+const PM_COMMAND_SHIFT: u32 = 44;
 const OPC_GET_IOVA_TABLE: u64 = 0x10;
 const OPC_MALLOC: u64 = 0x12;
 const OPC_FREE: u64 = 0x14;
@@ -348,6 +350,11 @@ impl PmpData {
         Ok(msg)
     }
     fn recv_message(&self, msg: u64) -> Result<()> {
+        let pm_command = (msg >> PM_COMMAND_SHIFT) & 0xff;
+        if msg & PM_COMMAND_MARKER != 0 && (pm_command == 0x0f || pm_command == 0x10) {
+            dev_info!(self.dev, "PMP device-state reply raw={:#018x}", msg);
+            return Ok(());
+        }
         let opc = (msg >> OPC_SHIFT) & 0xFF;
         let reply = match opc {
             OPC_GET_IOVA_TABLE => self.get_iova_table()?,
@@ -373,6 +380,36 @@ impl PmpData {
 
 unsafe impl Send for PmpData {}
 unsafe impl Sync for PmpData {}
+
+/// Send a lab power request while the C bridge holds the driver-lifetime mutex.
+///
+/// # Safety
+/// `data` must point to the live PmpData registered by PmpDriver.
+#[export]
+pub unsafe extern "C" fn apple_pmp_lab_send_command(
+    data: *const core::ffi::c_void,
+    command: u8,
+    device_id: u16,
+    enabled: u32,
+) -> i32 {
+    // SAFETY: The C bridge serializes calls against unregister in Drop.
+    let data = unsafe { &*data.cast::<PmpData>() };
+    let message = PM_COMMAND_MARKER
+        | ((command as u64) << PM_COMMAND_SHIFT)
+        | ((device_id as u64) << 40)
+        | ((enabled as u64) << 32);
+    let mut guard = data.rtkit.lock();
+    let Some(rtk) = guard.as_mut().as_pin_mut() else {
+        return ENODEV.to_errno();
+    };
+    match rtk.send_message(PMP_ENDPOINT, message) {
+        Ok(()) => {
+            dev_info!(data.dev, "PMP lab device={} enabled={} raw={:#018x}", device_id, enabled, message);
+            0
+        }
+        Err(error) => error.to_errno(),
+    }
+}
 
 struct NoBuffer;
 impl rtkit::Buffer for NoBuffer {
@@ -403,6 +440,13 @@ impl rtkit::Operations for PmpData {
 
 #[allow(dead_code)]
 struct PmpDriver(Arc<PmpData>);
+
+impl Drop for PmpDriver {
+    fn drop(&mut self) {
+        // SAFETY: The Arc remains live until unregister has joined any caller.
+        unsafe { bindings::apple_pmp_lab_unregister(Arc::as_ptr(&self.0).cast()) };
+    }
+}
 
 kernel::of_device_table!(
     OF_TABLE,
@@ -443,6 +487,11 @@ impl platform::Driver for PmpDriver {
         data.start_cpu(pdev)?;
         data.start()?;
         dev_info!(dev, "PMP firmware and endpoint ready");
+        // SAFETY: PmpDriver retains this Arc and unregisters it before dropping it.
+        let ret = unsafe { bindings::apple_pmp_lab_register(Arc::as_ptr(&data).cast()) };
+        if ret != 0 {
+            return Err(Error::from_errno(ret));
+        }
         Ok(PmpDriver(data))
     }
 }
