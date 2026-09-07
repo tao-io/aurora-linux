@@ -60,6 +60,14 @@ static void g16_render_release(void)
 	}
 }
 
+static u64 g16_render_resource_flags(const struct g16_render_resource *r)
+{
+	/* dPM writes the compact-range scratch; dVDM requires the captured AP2
+	 * executable tuple for its command stream. These are distinct clients. */
+	return r->va == 0x1000000000ULL ? J713_UAT_USER_GPU_RW_NX_SHARED_FLAGS :
+		J713_UAT_USER_CAPTURE_GPU_EXEC_SHARED_FLAGS;
+}
+
 static int g16_render_prepare_uat(void)
 {
 	const u64 mask = (1ULL << 42) - 1;
@@ -67,24 +75,25 @@ static int g16_render_prepare_uat(void)
 	int ret;
 
 	/*
-	 * Provisional captured-resource permissions use the working G16 compute
-	 * AP2 executable tuple. Render-specific live leaf permissions are not
-	 * captured yet. These trees stay private until submission is qualified.
+	 * The dPM engine faults on writes to AP2 leaves (J713 fault 0x1858d4207
+	 * at resource 6, VA 0x1000000000). Use RW/NX for that scratch and owned
+	 * data. Keep AP2 executable for command resources: removing AP2 caused
+	 * dVDM no-access fault 0x1890d4e19 at VA 0x1000018180.
 	 */
 	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
 		struct g16_render_resource *r = &g16_render_resources[i];
 
 		ret = g16_render_uat_map(&g16_render_user_uat, r->va, r->data,
-					r->size, J713_UAT_USER_CAPTURE_GPU_EXEC_SHARED_FLAGS);
+					r->size, g16_render_resource_flags(r));
 		if (ret)
 			return ret;
 	}
 	ret = g16_render_uat_map(&g16_render_user_uat, G16_RENDER_POOL_VA,
-		g16_render_pool, G16_RENDER_POOL_BYTES, J713_UAT_USER_CAPTURE_GPU_DATA_SHARED_FLAGS);
+		g16_render_pool, G16_RENDER_POOL_BYTES, J713_UAT_USER_GPU_RW_NX_SHARED_FLAGS);
 	if (ret)
 		return ret;
 	ret = g16_render_uat_map(&g16_render_user_uat, G16_RENDER_GRAPH_VA & mask,
-		g16_render_graph, G16_RENDER_GRAPH_BYTES, J713_UAT_USER_CAPTURE_GPU_DATA_SHARED_FLAGS);
+		g16_render_graph, G16_RENDER_GRAPH_BYTES, J713_UAT_USER_GPU_RW_NX_SHARED_FLAGS);
 	if (ret)
 		return ret;
 	ret = g16_render_uat_map(&g16_render_fw_uat, G16_RENDER_GRAPH_VA & mask,
@@ -95,16 +104,16 @@ static int g16_render_prepare_uat(void)
 		struct g16_render_resource *r = &g16_render_resources[i];
 
 		ret = g16_render_uat_verify(&g16_render_user_uat, r->va, r->data,
-					r->size, J713_UAT_USER_CAPTURE_GPU_EXEC_SHARED_FLAGS);
+					r->size, g16_render_resource_flags(r));
 		if (ret)
 			return ret;
 	}
 	ret = g16_render_uat_verify(&g16_render_user_uat, G16_RENDER_POOL_VA,
-		g16_render_pool, G16_RENDER_POOL_BYTES, J713_UAT_USER_CAPTURE_GPU_DATA_SHARED_FLAGS);
+		g16_render_pool, G16_RENDER_POOL_BYTES, J713_UAT_USER_GPU_RW_NX_SHARED_FLAGS);
 	if (ret)
 		return ret;
 	ret = g16_render_uat_verify(&g16_render_user_uat, G16_RENDER_GRAPH_VA & mask,
-		g16_render_graph, G16_RENDER_GRAPH_BYTES, J713_UAT_USER_CAPTURE_GPU_DATA_SHARED_FLAGS);
+		g16_render_graph, G16_RENDER_GRAPH_BYTES, J713_UAT_USER_GPU_RW_NX_SHARED_FLAGS);
 	if (ret)
 		return ret;
 	ret = g16_render_uat_verify(&g16_render_fw_uat, G16_RENDER_GRAPH_VA & mask,

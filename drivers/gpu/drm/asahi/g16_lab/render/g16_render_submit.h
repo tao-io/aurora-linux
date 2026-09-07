@@ -95,7 +95,7 @@ static int g16_render_attach(u64 scratch_va)
 		g16_render_upper_root = NULL;
 		return -EBUSY;
 	}
-	/* The GPU upper alias needs the AP2 data leaves, not firmware AP1. */
+	/* The GPU upper alias needs writable data leaves, not firmware AP1. */
 	upper[3] = user[3];
 	user[7] = g16_initdata_live_user_root[7];
 	for (i = 0; i < 2; i++)
