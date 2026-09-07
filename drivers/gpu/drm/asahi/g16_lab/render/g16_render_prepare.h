@@ -13,6 +13,7 @@
 #define G16_RENDER_POOL_BYTES 0x400000
 #define G16_RENDER_GRAPH_VA 0xfffffc3000000000ULL
 #define G16_RENDER_POOL_VA 0x6000000000ULL
+#define G16_RENDER_COMPACT_BASE 0x1000000000ULL
 #define G16_RENDER_QUEUE(i) (0x10000 + (i) * 0x4000)
 #define G16_RENDER_PIPE_RING(i) (0x18000 + (i) * 0x2000)
 #define G16_RENDER_QUEUE_STATE(i) (0x1c000 + (i) * 0x400)
@@ -202,8 +203,11 @@ static int g16_render_prepare(void)
 		ret = -ENOMEM;
 		goto out;
 	}
+	/* prepareParameterBufferBlock uses getGPUVirtualAddressForHardware
+	 * (vtable +160), the compact range-1 alias, before shifting by 15.
+	 * The UAT mapping above uses the normal (+0x1000000000) address. */
 	for (i = 0; i < ARRAY_SIZE(pages); i++)
-		pages[i] = G16_RENDER_POOL_VA + (u64)i * 0x8000;
+		pages[i] = G16_RENDER_POOL_VA - G16_RENDER_COMPACT_BASE + (u64)i * 0x8000;
 	ret = g16_render_pack_page_list(g16_render_graph + 0xa000, 0x1000,
 					pages, ARRAY_SIZE(pages));
 	if (ret)
