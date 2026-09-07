@@ -1,0 +1,14 @@
+[   27.663460] g16_lab: render: attached independent TA/fragment pipes and root-3 graph before firmware boot
+[   30.133583] g16_lab: render: published context-6 under UAT handoff ttbr=0x6010063208001/0x6010084a60001
+[   30.133591] g16_lab: render: submitted TA queue barrier selector=112
+[   30.205759] g16_lab: render: TA barrier retired, queue idle for 50ms; no shader submitted
+[   30.205764] g16_lab: render: submitted fragment queue barrier selector=113
+[   30.277932] g16_lab: render: fragment barrier retired, queue idle for 50ms; no shader submitted
+[   30.277939] g16_lab: render: built experimental 4x4 TA registers=65 VDM=0x18000 PB=128 pages TPC=2048 bytes
+[   30.277945] g16_lab: render: submitted InitPB + captured vertex/TA job; awaiting GPU-written tiling data
+[   30.281770] g16_lab: firmware GPU IRQ recovery snapshot status=0x0000000800000000 recovery-bit34=0 recovery-bit35=1 engine-detail=0x0000000000000000/0x0000000000000000/0x0000000000000000/0x0000000000000000 global-detail=0x0000000000000000
+[   30.281785] g16_lab: GPU engine issue registers dependency-slot-mask=0x0000000000000000 register-list=0x0047003000000040 base=0x0000003000000040 count=71 control=0x0000000008000001 selected-slot-mask=0x0000000000000000
+[   30.281838] g16_lab: firmware fault-generation render-TA completion failure selected-context=6 selected-submitted/retained=1/0 kernel0=0/0 user1=0/0 macos-direct3=0/0 capture5=3/3 retained-fault-mask=0x0000000000000000
+[   30.281856] g16_lab: render: TA failed ret=-5 stamp=0x0 pipe=2/2 q=3/3/3 ring=3 busy=0
+[   30.281858] g16_lab: render: independent queue gate result=-5
+[   30.281917] g16_lab: render: removed context-6 and root-3 mappings after firmware stop

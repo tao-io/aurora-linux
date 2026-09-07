@@ -1,0 +1,32 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "boot_id": "81d82491-0d7b-4444-94e8-713c3728ca76",
+  "module_sha256": "4f6c941144a7de88689cdfd122724b56d5c5d8a23e921caee49f69a860c006d7",
+  "parameters": [
+    "stage=rtkit-initdata-exact-offscreen-store",
+    "compute_macos_iadd=1",
+    "compute_mandelbrot=1",
+    "compute_macos_iadd_capture_context=1",
+    "compute_macos_iadd_ap2_leaves=1",
+    "compute_exact_loader_iomap_all=1",
+    "compute_macos_iadd_aligned_uma_hardware_table=1",
+    "compute_macos_iadd_populated_usc_private_memory=1",
+    "render_queue_probe=1",
+    "render_ta_probe=1"
+  ],
+  "insmod_rc": 0,
+  "stage_result": -5,
+  "output_bytes": 16384,
+  "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+  "colors": {
+    "ffffffff": 3416,
+    "ff000000": 680
+  },
+  "symmetric_rows": true,
+  "render_queues_passed": true,
+  "render_shaders_submitted": true,
+  "ta_retired_with_writes": false,
+  "vertex_fragment_pixels_verified": false,
+  "passed": false,
+  "hardware_outcome": "GPU register-list issued, MMU recovery, no completed tiling output"
+}
