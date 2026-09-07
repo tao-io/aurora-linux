@@ -57,6 +57,21 @@ It does not establish M4 interpolation scheduling or coefficient setup.
 
 ## Next implementation gates
 
+`tools/g16agx3.py` now builds a host encoder library from the pinned Mesa
+checkout. `tools/g16graphics.py --agx3-library ... --header ...` uses it for
+the four position exports. Regenerating the existing graphics header is
+byte-exact, including all unchanged shader bodies. No kernel rebuild or
+hardware experiment is required to establish that identical-byte check.
+
+From the workspace root:
+
+```sh
+python3 linux/linux-alpha/drivers/gpu/drm/asahi/g16_lab/tools/g16agx3.py \
+  --mesa mesa/aurora --output build/aurora-agx3-offline/libg16agx3.so
+python3 linux/linux-alpha/drivers/gpu/drm/asahi/g16_lab/tools/g16graphics.py \
+  --agx3-library build/aurora-agx3-offline/libg16agx3.so --header /tmp/graphics.h
+```
+
 1. Use the AGX3b encoder and decoder for the lab's vertex exports and fragment
    varying instructions. Keep the eight-frame generated-stream test green.
 2. Implement M4 coefficient/interpolation setup. Start with one linear varying,
