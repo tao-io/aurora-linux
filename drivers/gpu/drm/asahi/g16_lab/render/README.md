@@ -383,3 +383,21 @@ The hardware result qualifies this captured 4x4 workload and its zero
 background/EOT allocation words. Other shaders, tile sizes, attachments,
 resource lifetimes and sustained submissions still need implementation and
 validation. No success claim is transferred from Neo/G17 to this J713 result.
+
+### Generated graphics shader bodies
+
+`--render-generated-shaders` generates red rather than the reference color.
+`tools/g16graphics.py` uses the qualified assembler for the vertex load and
+fragment channel packing, with explicitly fixed M4 position/tile-store ABI
+operations. It reads no capture or Metal compiler input. The emitted vertex
+body matches the known simple vertex ABI; the fragment body is newly colored.
+State loaders, preambles and tile helper programs still come from the binding
+fixture, so this is not yet a capture-independent graphics pipeline.
+
+Run 20260907T204757Z passed with sixteen ff0000ff pixels, clean TA/3D retirement,
+valid firmware trace and successful module removal. The previous attempts
+returned zero pixels; they did not pass. The corrected generator retains the
+vertex load's wait-0 dependency, wait-5 export, and cache/control bits. Changing
+those together was not qualified. RGBA8 publication uses packed UNORM8 channels
+in r0, not four half floats. The first low-half pack's observed bit 11 remains
+explicitly retained; its general semantics are not yet established.

@@ -121,6 +121,7 @@ out:
 static int g16_render_verify_pixels(void)
 {
 	unsigned int i, pixel;
+	u32 expected = render_generated_shaders ? 0xff0000ff : 0xffbf8040;
 
 	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
 		struct g16_render_resource *r = &g16_render_resources[i];
@@ -131,13 +132,14 @@ static int g16_render_verify_pixels(void)
 		for (pixel = 0; pixel < 16; pixel++) {
 			u32 actual = g16_render_get(r->data + 0x100 + pixel * 4, 4);
 
-			if (actual != 0xffbf8040) {
-				pr_err("g16_lab: render: pixel %u=%#x expected=0xffbf8040\n",
-					pixel, actual);
+			if (actual != expected) {
+				pr_err("g16_lab: render: pixel %u=%#x expected=%#x\n",
+					pixel, actual, expected);
 				return -ENODATA;
 			}
 		}
-		pr_info("g16_lab: render: verified 16 GPU-rendered RGBA pixels=4080bfff\n");
+		pr_info("g16_lab: render: verified 16 GPU-rendered pixels=%#x generated=%u\n",
+			expected, render_generated_shaders);
 		return 0;
 	}
 	return -ENOENT;

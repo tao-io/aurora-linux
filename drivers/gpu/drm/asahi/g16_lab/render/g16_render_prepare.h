@@ -8,6 +8,7 @@
 #include "g16_render_geometry.h"
 #include "g16_render_uat.h"
 #include "g16_vertex_marker.h"
+#include "g16_generated_graphics.h"
 
 #define G16_RENDER_RESOURCE_COUNT 34
 #define G16_RENDER_GRAPH_BYTES 0x80000
@@ -215,7 +216,34 @@ static int g16_render_prepare(void)
 	 * The UAT mapping above uses the normal (+0x1000000000) address. */
 	for (i = 0; i < ARRAY_SIZE(pages); i++)
 		pages[i] = G16_RENDER_POOL_VA - G16_RENDER_COMPACT_BASE + (u64)i * 0x8000;
-	if (render_ta_probe) {
+	if (render_generated_shaders) {
+		bool patched = false;
+
+		for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+			struct g16_render_resource *r = &g16_render_resources[i];
+			u8 *code = r->data;
+
+			if (r->va != 0x10000000000ULL)
+				continue;
+			BUILD_BUG_ON(sizeof(g16_generated_vertex) > 0x80);
+			BUILD_BUG_ON(sizeof(g16_generated_fragment) > 0x40);
+			if (r->size < 0x5c0) {
+				ret = -EINVAL;
+				goto out;
+			}
+			memset(code + 0x540, 0, 0x80);
+			memcpy(code + 0x540, g16_generated_vertex, sizeof(g16_generated_vertex));
+			memset(code + 0x480, 0, 0x40);
+			memcpy(code + 0x480, g16_generated_fragment, sizeof(g16_generated_fragment));
+			patched = true;
+		}
+		if (!patched) {
+			ret = -ENOENT;
+			goto out;
+		}
+		pr_info("g16_lab: render: installed generated vertex/fragment bodies; reference bindings retained\n");
+	}
+	if (render_ta_probe && !render_generated_shaders) {
 		bool patched = false;
 
 		/* Prefix the 42-byte store sequence, preserving all 86 captured bytes.

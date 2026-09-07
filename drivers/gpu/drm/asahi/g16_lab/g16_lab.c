@@ -2648,6 +2648,9 @@ MODULE_PARM_DESC(compute_macos_iadd_ap2_leaves,
 static bool render_fragment_probe;
 module_param(render_fragment_probe, bool, 0444);
 MODULE_PARM_DESC(render_fragment_probe, "Submit an experimental fragment job after TA retirement");
+static bool render_generated_shaders;
+module_param(render_generated_shaders, bool, 0444);
+MODULE_PARM_DESC(render_generated_shaders, "Use locally generated vertex and red fragment shader bodies");
 static bool render_ta_probe;
 module_param(render_ta_probe, bool, 0444);
 MODULE_PARM_DESC(render_ta_probe, "Experimental captured vertex/tiling submission after render queue validation");
@@ -19196,6 +19199,8 @@ static int __init g16_lab_init(void)
 	}
 
 	if (render_ta_probe && !render_queue_probe)
+		return -EINVAL;
+	if (render_generated_shaders && (!render_fragment_probe || !render_ta_probe || render_loader_marker))
 		return -EINVAL;
 	if (render_queue_probe) {
 		if (strcmp(stage, "rtkit-initdata-exact-offscreen-store") ||

@@ -42,7 +42,13 @@ def main():
                         help='25G83 firmware trace mask: 1 basic, 2 detail, 3 both')
     parser.add_argument('--render-fragment', action='store_true',
                         help='experimental fragment job after TA (implies --render-ta)')
+    parser.add_argument('--render-generated-shaders', action='store_true',
+                        help='generated vertex/red fragment bodies (implies --render-fragment)')
     args = parser.parse_args()
+    if args.render_generated_shaders:
+        args.render_fragment = True
+        if args.render_loader_marker:
+            parser.error('generated shaders and loader instrumentation are separate tests')
     if args.render_fragment:
         args.render_ta = True
     if args.render_loader_marker:
@@ -54,6 +60,8 @@ def main():
         params += ['render_ta_probe=1']
     if args.render_fragment:
         params += ['render_fragment_probe=1']
+    if args.render_generated_shaders:
+        params += ['render_generated_shaders=1']
     if args.render_loader_marker:
         params += ['render_loader_marker=1']
     if args.firmware_ktrace:
@@ -199,6 +207,7 @@ def main():
         metadata['fragment_job_retired'] = 'render: fragment diagnostic retired stamp=0x100 ring=2' in current_log
         metadata['vertex_fragment_pixels_verified'] = False
         if args.render_fragment:
+            metadata['generated_shader_bodies'] = args.render_generated_shaders
             target = result / 'render-resources' / 'resource-10000058000.bin'
             if target.exists():
                 raw_target = target.read_bytes()
@@ -207,8 +216,9 @@ def main():
                 (result / 'render.rgba').write_bytes(rgba)
                 metadata['render_target_sha256'] = hashlib.sha256(raw_target).hexdigest()
                 metadata['render_rgba_sha256'] = hashlib.sha256(rgba).hexdigest()
+                expected_rgba = bytes.fromhex('ff0000ff' if args.render_generated_shaders else '4080bfff')
                 metadata['vertex_fragment_pixels_verified'] = (
-                    len(raw_target) == 0x20000 and rgba == bytes.fromhex('4080bfff') * 16
+                    len(raw_target) == 0x20000 and rgba == expected_rgba * 16
                     and not any(raw_target[:0x100]) and not any(raw_target[0x140:]))
             # Pixel evidence replaces the earlier nonzero-tilemap heuristic.
             # A firmware crash or incomplete queue still fails the outer gate.
