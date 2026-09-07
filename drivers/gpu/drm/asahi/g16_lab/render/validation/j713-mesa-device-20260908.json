@@ -1,0 +1,50 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "boot_id": "c8d61421-ab8c-4e04-8abe-6cf0c90ccc54",
+  "module_sha256": "e915db079ab08499476cac062d332da0a1c0b4ef093a795eff0ed7b9177f48a0",
+  "drm_submit_test_sha256": "075e009cda0f8708defc4c900b31ac9dcc8eadfd387b6f4531e410d5885892d3",
+  "mesa_probe_sha256": "42e27ac8556b4f619e173fcaa16fabc5e45afec6affd609da0360413970dbd7e",
+  "mesa_environment": {
+    "ASAHI_M4_LAB": "1",
+    "VK_DRIVER_FILES": "/root/m4mesa/share/vulkan/icd.d/asahi_icd.armv8-a.json",
+    "LD_LIBRARY_PATH": "/root/m4mesa/lib"
+  },
+  "mesa_device": {
+    "passed": true,
+    "device_id": 33074,
+    "physical_device_initialized": true,
+    "logical_device_initialized": true,
+    "shader_submitted": false
+  },
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": false,
+    "disarmed_after_evidence_collection": true
+  },
+  "drm_submit": {
+    "passed": true,
+    "client_gem_resources": 34,
+    "frames": 8,
+    "pixels_verified": 524288,
+    "binary_sync_files_verified": 8,
+    "gem_handles_closed_before_submit": true,
+    "timeline_points_verified": 8,
+    "standalone_sync_file_pins_module": true,
+    "invalid_requests_rejected": 6,
+    "vulkan": false
+  },
+  "rmmod_rc": 0,
+  "new_kernel_fault": false,
+  "render_node_removed": true,
+  "passed": true,
+  "platform": "J713/T8132/G16G B1",
+  "firmware": "25G83",
+  "mesa_icd_sha256": "0a92ddba150d0fed34ac6f38a03deff07deda3c50ac4cd9f0a537d2079074028",
+  "evidence_directory": "/home/council/dev/dirtyroom_m4/_provenance/omarchy-m4-render/hardware/mesa-device-20260908/20260907T235422Z-render-ta",
+  "vulkan_rendering_qualified": false,
+  "hyprland_accelerated": false
+}

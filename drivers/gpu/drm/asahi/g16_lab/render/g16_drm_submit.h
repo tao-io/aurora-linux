@@ -2,8 +2,10 @@
 #ifndef G16_DRM_SUBMIT_H
 #define G16_DRM_SUBMIT_H
 
+#include <linux/dma-fence-chain.h>
+
 /* Initial Asahi wire submission backend: one root-owned VM/queue per file,
- * serialized render passes, binary syncobjs, and bounded firmware lifetime.
+ * serialized render passes, binary/timeline syncobjs, and bounded firmware lifetime.
  * Unsupported command fields fail explicitly. No GET_PARAMS admission to
  * Honeykrisp is advertised until its complete initialization contract works.
  */
@@ -234,6 +236,7 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	struct drm_asahi_cmd_header header;
 	struct drm_asahi_sync syncs[16];
 	struct drm_syncobj *outputs[16] = {};
+	struct dma_fence_chain *chains[16] = {};
 	struct g16_target_fence *fence;
 	struct g16_drm_job *job;
 	u32 sequence, i, count;
@@ -282,7 +285,8 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 		struct dma_fence *dependency;
 		long waited;
 
-		if (syncs[i].sync_type != DRM_ASAHI_SYNC_SYNCOBJ || syncs[i].timeline_value) {
+		if (syncs[i].sync_type > DRM_ASAHI_SYNC_TIMELINE_SYNCOBJ ||
+		    (syncs[i].sync_type == DRM_ASAHI_SYNC_SYNCOBJ && syncs[i].timeline_value)) {
 			ret = -EOPNOTSUPP;
 			goto free;
 		}
@@ -292,9 +296,16 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 				ret = -ENOENT;
 				goto free;
 			}
+			if (syncs[i].sync_type == DRM_ASAHI_SYNC_TIMELINE_SYNCOBJ) {
+				chains[i] = dma_fence_chain_alloc();
+				if (!chains[i]) {
+					ret = -ENOMEM;
+					goto free;
+				}
+			}
 			continue;
 		}
-		ret = drm_syncobj_find_fence(file, syncs[i].handle, 0, 0, &dependency);
+		ret = drm_syncobj_find_fence(file, syncs[i].handle, syncs[i].timeline_value, 0, &dependency);
 		if (ret)
 			goto free;
 		waited = dma_fence_wait_timeout(dependency, true, msecs_to_jiffies(100));
@@ -322,6 +333,12 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 		goto service_unlock;
 	}
 	spin_lock_init(&fence->lock);
+	/* An exported sync_file can outlive both its DRM file and every GEM
+	 * buffer. Keep these fence ops alive until the last fence reference.
+	 * Client fences have no permanent driver-owned reservation cycle.
+	 */
+	__module_get(THIS_MODULE);
+	fence->module_reference = true;
 	dma_fence_init(&fence->base, &g16_target_fence_ops, &fence->lock,
 		dma_fence_context_alloc(1), 1);
 	job->fence = &fence->base;
@@ -335,8 +352,14 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 		spin_unlock(&g16_render_service_state_lock);
 		goto service_unlock;
 	}
-	for (i = args->in_sync_count; i < count; i++)
-		drm_syncobj_replace_fence(outputs[i], job->fence);
+	for (i = args->in_sync_count; i < count; i++) {
+		if (chains[i]) {
+			drm_syncobj_add_point(outputs[i], chains[i], job->fence, syncs[i].timeline_value);
+			chains[i] = NULL;
+		} else {
+			drm_syncobj_replace_fence(outputs[i], job->fence);
+		}
+	}
 	g16_drm_active_job = job;
 	smp_store_release(&g16_render_service_pending, sequence);
 	spin_unlock(&g16_render_service_state_lock);
@@ -354,9 +377,12 @@ service_unlock:
 unlock:
 	mutex_unlock(&priv->lock);
 free:
-	for (i = 0; i < ARRAY_SIZE(outputs); i++)
+	for (i = 0; i < ARRAY_SIZE(outputs); i++) {
 		if (outputs[i])
 			drm_syncobj_put(outputs[i]);
+		if (chains[i])
+			dma_fence_chain_free(chains[i]);
+	}
 	dma_fence_put(job->fence);
 	g16_render_uat_free(&job->uat);
 	kfree(job);

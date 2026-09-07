@@ -94,6 +94,30 @@ static void test_vm(const char *path)
    CHECK(close(fd) == 0 && close(other) == 0);
 }
 
+static void test_private_gem(const char *path)
+{
+   int fd = open(path, O_RDWR | O_CLOEXEC);
+   CHECK(fd >= 0);
+   struct g16_drm_vm_create vm = {.kernel_start = 0x3000000000, .kernel_end = 0x3800000000};
+   CHECK(ioctl(fd, DRM_IOCTL_G16_VM_CREATE, &vm) == 0);
+   struct g16_drm_gem_create create = {.size = 16384,
+      .flags = G16_GEM_VM_PRIVATE | G16_GEM_WRITEBACK, .vm_id = vm.vm_id + 1};
+   CHECK(ioctl(fd, DRM_IOCTL_G16_GEM_CREATE, &create) == -1 && errno == ENOENT);
+   create.vm_id = vm.vm_id;
+   CHECK(ioctl(fd, DRM_IOCTL_G16_GEM_CREATE, &create) == 0);
+   struct drm_prime_handle prime = {.handle = create.handle, .flags = DRM_CLOEXEC, .fd = -1};
+   CHECK(ioctl(fd, DRM_IOCTL_PRIME_HANDLE_TO_FD, &prime) == -1 && errno == EINVAL);
+   struct g16_drm_bind_op op = {.flags = G16_BIND_READ, .handle = create.handle,
+      .range = 16384, .addr = 0x10000000000};
+   CHECK(bind_op(fd, vm.vm_id, &op) == 0);
+   struct g16_drm_vm_destroy destroy = {.vm_id = vm.vm_id};
+   CHECK(ioctl(fd, DRM_IOCTL_G16_VM_DESTROY, &destroy) == 0);
+   CHECK(ioctl(fd, DRM_IOCTL_G16_VM_CREATE, &vm) == 0 && vm.vm_id != create.vm_id);
+   CHECK(bind_op(fd, vm.vm_id, &op) == -1 && errno == EINVAL);
+   close_handle(fd, create.handle);
+   CHECK(close(fd) == 0);
+}
+
 int main(int argc, char **argv)
 {
    CHECK(argc == 2);
@@ -103,6 +127,13 @@ int main(int argc, char **argv)
    drmVersionPtr version = drmGetVersion(fd);
    CHECK(version && !strcmp(version->name, "g16-lab"));
    drmFreeVersion(version);
+   drmDevicePtr device = NULL;
+   CHECK(drmGetDevice2(fd, 0, &device) == 0 && device && device->bustype == DRM_BUS_PLATFORM);
+   CHECK(device->available_nodes & (1 << DRM_NODE_RENDER));
+   drmFreeDevice(&device);
+   struct drm_asahi_params_global params;
+   struct drm_asahi_get_params query = {.pointer = (uintptr_t)&params, .size = sizeof(params)};
+   CHECK(ioctl(fd, DRM_IOCTL_ASAHI_GET_PARAMS, &query) == -1 && errno == EAGAIN);
 
    struct g16_drm_gem_create invalid[] = {
       {.size = 0}, {.size = UINT64_MAX}, {.size = 16384, .flags = 2},
@@ -146,8 +177,10 @@ int main(int argc, char **argv)
    CHECK(ioctl(fd, DRM_IOCTL_G16_GEM_CREATE, &exhausted) == -1 && errno == ENOSPC);
    CHECK(close(fd) == 0 && close(other) == 0);
    test_vm(argv[1]);
+   test_private_gem(argv[1]);
    puts("{\"passed\":true,\"mapped_bytes_verified\":131072,\"invalid_creates_rejected\":5,"
         "\"foreign_handles_rejected\":true,\"foreign_mmaps_rejected\":true,"
-        "\"mapping_survives_handle_close\":true,\"per_open_budget_verified\":true,\"private_vm_bindings_verified\":true}");
+        "\"mapping_survives_handle_close\":true,\"per_open_budget_verified\":true,\"private_vm_bindings_verified\":true,"
+        "\"platform_discovery_verified\":true,\"private_gem_exports_rejected\":true,\"private_gem_vm_lifetime_verified\":true}");
    return 0;
 }

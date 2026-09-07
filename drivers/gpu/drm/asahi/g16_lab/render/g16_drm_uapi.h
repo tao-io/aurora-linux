@@ -82,5 +82,6 @@ struct g16_drm_lab_target {
 #define DRM_IOCTL_G16_GEM_CREATE DRM_IOWR(DRM_COMMAND_BASE + DRM_G16_GEM_CREATE, struct g16_drm_gem_create)
 #define DRM_IOCTL_G16_GEM_MMAP_OFFSET DRM_IOWR(DRM_COMMAND_BASE + DRM_G16_GEM_MMAP_OFFSET, struct g16_drm_gem_mmap_offset)
 #define G16_GEM_WRITEBACK 1
+#define G16_GEM_VM_PRIVATE 2
 
 #endif

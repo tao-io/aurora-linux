@@ -142,7 +142,16 @@ int main(int argc, char **argv)
    struct drm_syncobj_create dependency = {.flags = DRM_SYNCOBJ_CREATE_SIGNALED}, finished = {0};
    CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_CREATE, &dependency) == 0);
    CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_CREATE, &finished) == 0);
-   struct drm_asahi_sync syncs[] = {{.handle = dependency.handle}, {.handle = finished.handle}};
+   struct drm_syncobj_create timeline = {0};
+   CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_CREATE, &timeline) == 0);
+   uint64_t point = 1;
+   struct drm_syncobj_timeline_array initial = {.handles = (uintptr_t)&timeline.handle,
+      .points = (uintptr_t)&point, .count_handles = 1};
+   CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_TIMELINE_SIGNAL, &initial) == 0);
+   struct drm_asahi_sync syncs[] = {{.handle = dependency.handle},
+      {.handle = timeline.handle, .sync_type = DRM_ASAHI_SYNC_TIMELINE_SYNCOBJ, .timeline_value = 1},
+      {.handle = finished.handle},
+      {.handle = timeline.handle, .sync_type = DRM_ASAHI_SYNC_TIMELINE_SYNCOBJ, .timeline_value = 2}};
    struct {
       struct drm_asahi_cmd_header header;
       struct drm_asahi_cmd_render render;
@@ -154,7 +163,7 @@ int main(int argc, char **argv)
          .bg.usc = 0x158000, .eot.usc = 0x158480},
    };
    struct drm_asahi_submit submit = {.queue_id = queue.queue_id, .cmdbuf = (uintptr_t)&command,
-      .cmdbuf_size = sizeof(command), .syncs = (uintptr_t)syncs, .in_sync_count = 1, .out_sync_count = 1};
+      .cmdbuf_size = sizeof(command), .syncs = (uintptr_t)syncs, .in_sync_count = 2, .out_sync_count = 2};
    command.render.samples = 4;
    FAILS(ioctl(drm, DRM_IOCTL_ASAHI_SUBMIT, &submit), EOPNOTSUPP);
    command.render.samples = 1;
@@ -171,7 +180,10 @@ int main(int argc, char **argv)
    FAILS(ioctl(other, DRM_IOCTL_ASAHI_SUBMIT, &foreign), ENOENT);
    CHECK(close(other) == 0);
 
+   int retained_fence = -1;
    for (unsigned frame = 0; frame < 8; ++frame) {
+      syncs[1].timeline_value = frame + 1;
+      syncs[3].timeline_value = frame + 2;
       float r = frame / 8.0f, g = (7 - frame) / 8.0f;
       for (unsigned vertex = 0; vertex < 3; ++vertex) {
          memcpy(vertices->cpu + 0x5108 + vertex * 16, &r, 4);
@@ -179,6 +191,8 @@ int main(int argc, char **argv)
       }
       memset(target->cpu, 0, target->size);
       CHECK(ioctl(drm, DRM_IOCTL_ASAHI_SUBMIT, &submit) == 0);
+      point = 0;
+      CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_QUERY, &initial) == 0 && point == frame + 2);
       struct drm_syncobj_handle syncfd = {.handle = finished.handle, .fd = -1,
          .flags = DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_EXPORT_SYNC_FILE};
       CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD, &syncfd) == 0 && syncfd.fd >= 0);
@@ -186,7 +200,10 @@ int main(int argc, char **argv)
       CHECK(poll(&p, 1, 1000) == 1 && p.revents & POLLIN);
       struct sync_file_info info = {0};
       CHECK(ioctl(syncfd.fd, SYNC_IOC_FILE_INFO, &info) == 0 && info.status == 1);
-      CHECK(close(syncfd.fd) == 0);
+      if (frame == 7)
+         retained_fence = syncfd.fd;
+      else
+         CHECK(close(syncfd.fd) == 0);
       struct dma_buf_sync cpu = {.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_READ};
       CHECK(ioctl(prime.fd, DMA_BUF_IOCTL_SYNC, &cpu) == 0);
       verify((uint32_t *)target->cpu, frame, argv[3]);
@@ -201,8 +218,14 @@ int main(int argc, char **argv)
    for (unsigned i = 0; i < count; ++i)
       CHECK(munmap(resources[i].cpu, resources[i].size) == 0);
    CHECK(close(prime.fd) == 0 && close(drm) == 0);
+   FILE *references = fopen("/sys/module/g16_lab/refcnt", "r");
+   unsigned refs = 0;
+   CHECK(references && fscanf(references, "%u", &refs) == 1 && refs >= 1);
+   CHECK(fclose(references) == 0 && retained_fence >= 0 && close(retained_fence) == 0);
    puts("{\"passed\":true,\"client_gem_resources\":34,\"frames\":8,\"pixels_verified\":524288,"
         "\"binary_sync_files_verified\":8,\"gem_handles_closed_before_submit\":true,"
+        "\"timeline_points_verified\":8,"
+        "\"standalone_sync_file_pins_module\":true,"
         "\"invalid_requests_rejected\":6,\"vulkan\":false}");
    return 0;
 }

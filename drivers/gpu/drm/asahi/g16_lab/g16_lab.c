@@ -2680,6 +2680,9 @@ MODULE_PARM_DESC(render_drm_target, "Export the userspace-paced render target as
 static bool render_drm_submit;
 module_param(render_drm_submit, bool, 0444);
 MODULE_PARM_DESC(render_drm_submit, "Accept bounded Asahi render submissions from root-owned GEM VMs");
+
+/* Sampled in the existing, powered identity-probe window, never by an ioctl. */
+static u32 g16_drm_id_version, g16_drm_id_counts, g16_drm_core_mask;
 static bool render_service;
 module_param(render_service, bool, 0444);
 MODULE_PARM_DESC(render_service, "Bounded userspace-paced RGB rendering service");
@@ -19064,6 +19067,12 @@ static int g16_lab_registers(bool allow_power)
 
 	for (i = 0; i < ARRAY_SIZE(identity_offsets); i++) {
 		value = readl_relaxed(sgx + identity_offsets[i]);
+		if (identity_offsets[i] == 0x4000)
+			g16_drm_id_version = value;
+		else if (identity_offsets[i] == 0x4010)
+			g16_drm_id_counts = value;
+		else if (identity_offsets[i] == 0x101500)
+			g16_drm_core_mask = value;
 		pr_info("g16_lab: GFX identity phys=%#llx value=%#010x\n",
 			J713_SGX_SECONDARY_BASE + identity_offsets[i], value);
 	}

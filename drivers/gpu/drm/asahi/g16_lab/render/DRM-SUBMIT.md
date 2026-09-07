@@ -25,8 +25,24 @@ medium-priority queues. VDM addresses use the M4 compact aperture. Nonzero
 unsupported fields, missing program mappings, invalid sync objects and stale
 queue IDs fail instead of being silently ignored. The worker still has its
 eight-draw/20-second limit. General texture/blend/attachment commands,
-multi-command submissions, timeline synchronization and sustained scheduling
+multi-command submissions and sustained scheduling
 remain integration work.
+
+The subsequent Mesa initialization step adds binary and timeline sync objects.
+Input points must already have a submitted fence; their wait is bounded before
+publication. Output points contain the actual GPU completion fence. Standalone
+exported sync files pin the module until their last fence reference disappears.
+VM-private GEM objects reject export and binding to a replacement VM. The lab
+still retains explicit bindings until unbind/VM destruction; matching Mesa's
+full GEM-close/unmap lifecycle remains work for sustained applications.
+
+The platform device exposes the retained SGX device-tree identity to libdrm.
+GET_PARAMS becomes available after the powered bootstrap probe and derives
+revision/core topology from those observed registers. On the tested J713 these
+are G16G B1, ten core positions and mask `0x3bd` (eight active cores). The Asahi
+user timestamp unit is nanoseconds; raw firmware counters remain private and
+timestamp commands are still rejected. `stage=drm-frontend` performs no GPU
+probe and returns EAGAIN for the identity query.
 
 ## Hardware evidence
 
@@ -43,6 +59,14 @@ disarmed only after evidence was saved.
 This qualifies client buffer execution and the initial submission backend.
 The fixtures still supply the initial command programs; it does not qualify
 Honeykrisp-generated render passes or accelerated Hyprland.
+
+`validation/j713-mesa-device-20260908.json` records the later run
+`20260907T235422Z-render-ta`: a private ARM Honeykrisp build created both a
+Vulkan physical device and a logical device/graphics queue on the M4. It then
+closed them without submitting graphics work. The same run subsequently passed
+the eight client-fixture draws, binary/timeline completion checks, standalone
+sync-file lifetime check and complete module teardown. This is device
+initialization evidence, not a Vulkan-rendered image.
 
 Two preceding attempts stopped in the test reader before any render submission:
 debugfs blob sizes are zero in `stat`, and the first reader update did not

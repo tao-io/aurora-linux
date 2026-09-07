@@ -68,6 +68,8 @@ def main():
     parser.add_argument('--render-drm-submit', action='store_true',
                         help='Asahi command submissions using client-created GEM resources')
     parser.add_argument('--drm-submit-test', type=Path, default=Path('/root/g16submittest'))
+    parser.add_argument('--mesa-device-probe', type=Path,
+                        help='optional Vulkan device/queue initialization probe before the client draws')
     parser.add_argument('--drm-target-test', type=Path, default=Path('/root/g16targettest'))
     parser.add_argument('--render-service', action='store_true',
                         help='request eight RGB frames from a retained firmware worker')
@@ -84,6 +86,8 @@ def main():
     args = parser.parse_args()
     if args.render_drm_submit and args.render_drm_target:
         parser.error('client submission and lab target export are separate tests')
+    if args.mesa_device_probe and not args.render_drm_submit:
+        parser.error('--mesa-device-probe requires --render-drm-submit')
     if args.render_drm_target or args.render_drm_submit:
         args.render_service = True
     if args.render_service:
@@ -216,6 +220,10 @@ def main():
     }
     if args.render_drm_submit:
         metadata['drm_submit_test_sha256'] = hashlib.sha256(args.drm_submit_test.read_bytes()).hexdigest()
+    if args.mesa_device_probe:
+        metadata['mesa_probe_sha256'] = hashlib.sha256(args.mesa_device_probe.read_bytes()).hexdigest()
+        metadata['mesa_environment'] = {name: os.environ.get(name) for name in
+                                        ('ASAHI_M4_LAB', 'VK_DRIVER_FILES', 'LD_LIBRARY_PATH')}
     os.sync()
     watchdog = ExperimentWatchdog()
     metadata['watchdog'] = watchdog.arm()
@@ -253,6 +261,13 @@ def main():
             else:
                 raise RuntimeError('service accepted an invalid sequence')
         if args.render_drm_submit:
+            if args.mesa_device_probe:
+                probe = subprocess.run([str(args.mesa_device_probe)], capture_output=True,
+                                       text=True, timeout=5)
+                (result / 'mesa-device.stdout').write_text(probe.stdout)
+                (result / 'mesa-device.stderr').write_text(probe.stderr)
+                probe.check_returncode()
+                metadata['mesa_device'] = json.loads(probe.stdout)
             nodes = list(Path('/dev/dri').glob('renderD*'))
             if len(nodes) != 1:
                 raise RuntimeError('expected one lab render node')

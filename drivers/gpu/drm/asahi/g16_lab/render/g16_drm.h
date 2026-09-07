@@ -3,17 +3,19 @@
 #define G16_DRM_H
 
 #include <linux/device.h>
+#include <linux/platform_device.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_file.h>
 #include <drm/drm_gem_shmem_helper.h>
 #include <drm/drm_ioctl.h>
 #include <drm/drm_syncobj.h>
 #include "g16_drm_uapi.h"
+#include "g16_drm_gem.h"
 #include "g16_drm_vm.h"
 
 /* Memory-side bring-up first. Keep an explicit lab name so Mesa cannot
  * mistake this intermediate frontend for an executable Asahi device. */
-static struct device *g16_drm_parent;
+static struct platform_device *g16_drm_parent;
 
 
 struct g16_drm_file {
@@ -57,11 +59,18 @@ static int g16_drm_gem_create_ioctl(struct drm_device *dev, void *data,
 	u64 size;
 	int ret;
 
-	if (args->pad || args->vm_id || args->flags & ~G16_GEM_WRITEBACK ||
+	if (args->pad || args->flags & ~(G16_GEM_WRITEBACK | G16_GEM_VM_PRIVATE) ||
+	    (!(args->flags & G16_GEM_VM_PRIVATE) && args->vm_id) ||
+	    ((args->flags & G16_GEM_VM_PRIVATE) && !args->vm_id) ||
 	    !args->size || args->size > SZ_64M)
 		return -EINVAL;
 	size = PAGE_ALIGN(args->size);
 	mutex_lock(&priv->lock);
+	if ((args->flags & G16_GEM_VM_PRIVATE) &&
+	    (!priv->vm || args->vm_id != priv->vm->id)) {
+		ret = -ENOENT;
+		goto out;
+	}
 	/* Cumulative per-open budget for this bounded memory probe. */
 	if (priv->objects_created == 64 || priv->bytes_created + size > SZ_256M) {
 		ret = -ENOSPC;
@@ -73,6 +82,7 @@ static int g16_drm_gem_create_ioctl(struct drm_device *dev, void *data,
 		goto out;
 	}
 	shmem->map_wc = !(args->flags & G16_GEM_WRITEBACK);
+	g16_drm_to_gem(&shmem->base)->private_vm_id = args->vm_id;
 	ret = drm_gem_handle_create(file, &shmem->base, &args->handle);
 	drm_gem_object_put(&shmem->base);
 	if (!ret) {
@@ -205,8 +215,10 @@ static int g16_drm_lab_target_ioctl(struct drm_device *dev, void *data, struct d
 }
 
 #include "g16_drm_submit.h"
+#include "g16_drm_params.h"
 
 static const struct drm_ioctl_desc g16_drm_ioctls[] = {
+	DRM_IOCTL_DEF_DRV(ASAHI_GET_PARAMS, g16_drm_get_params_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(ASAHI_QUEUE_CREATE, g16_drm_queue_create_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(ASAHI_QUEUE_DESTROY, g16_drm_queue_destroy_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(ASAHI_SUBMIT, g16_drm_submit_ioctl, DRM_RENDER_ALLOW),
@@ -221,9 +233,10 @@ static const struct drm_ioctl_desc g16_drm_ioctls[] = {
 DEFINE_DRM_GEM_FOPS(g16_drm_fops);
 
 static const struct drm_driver g16_drm_driver = {
-	.driver_features = DRIVER_GEM | DRIVER_RENDER | DRIVER_SYNCOBJ,
+	.driver_features = DRIVER_GEM | DRIVER_RENDER | DRIVER_SYNCOBJ | DRIVER_SYNCOBJ_TIMELINE,
 	.open = g16_drm_open,
 	.postclose = g16_drm_postclose,
+	.gem_create_object = g16_drm_gem_allocate,
 	.ioctls = g16_drm_ioctls,
 	.num_ioctls = ARRAY_SIZE(g16_drm_ioctls),
 	.fops = &g16_drm_fops,
@@ -240,13 +253,20 @@ static int g16_drm_start(void)
 	if (!of_machine_is_compatible("apple,j713") ||
 	    !of_machine_is_compatible("apple,t8132") || PAGE_SIZE != SZ_16K)
 		return -ENODEV;
-	g16_drm_parent = root_device_register("g16-lab-drm");
-	if (IS_ERR(g16_drm_parent)) {
-		ret = PTR_ERR(g16_drm_parent);
+	g16_drm_parent = platform_device_alloc("g16-lab-drm", PLATFORM_DEVID_NONE);
+	if (!g16_drm_parent)
+		return -ENOMEM;
+	g16_drm_parent->dev.of_node = of_find_node_by_path("/chosen/g16-lab-sgx");
+	ret = platform_device_add(g16_drm_parent);
+	if (ret) {
+		platform_device_put(g16_drm_parent);
 		g16_drm_parent = NULL;
 		return ret;
 	}
-	g16_drm_device = drm_dev_alloc(&g16_drm_driver, g16_drm_parent);
+	ret = dma_coerce_mask_and_coherent(&g16_drm_parent->dev, DMA_BIT_MASK(64));
+	if (ret)
+		goto parent;
+	g16_drm_device = drm_dev_alloc(&g16_drm_driver, &g16_drm_parent->dev);
 	if (IS_ERR(g16_drm_device)) {
 		ret = PTR_ERR(g16_drm_device);
 		g16_drm_device = NULL;
@@ -258,7 +278,7 @@ static int g16_drm_start(void)
 	drm_dev_put(g16_drm_device);
 	g16_drm_device = NULL;
 parent:
-	root_device_unregister(g16_drm_parent);
+	platform_device_unregister(g16_drm_parent);
 	g16_drm_parent = NULL;
 	return ret;
 }
@@ -271,7 +291,7 @@ static void g16_drm_stop(void)
 		g16_drm_device = NULL;
 	}
 	if (g16_drm_parent) {
-		root_device_unregister(g16_drm_parent);
+		platform_device_unregister(g16_drm_parent);
 		g16_drm_parent = NULL;
 	}
 }

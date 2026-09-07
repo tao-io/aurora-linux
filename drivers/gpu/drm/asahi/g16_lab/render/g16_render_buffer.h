@@ -20,6 +20,7 @@ static u64 g16_render_fence_sequence;
 struct g16_target_fence {
 	struct dma_fence base;
 	spinlock_t lock;
+	bool module_reference;
 };
 
 static const char *g16_target_fence_driver(struct dma_fence *fence)
@@ -34,7 +35,12 @@ static const char *g16_target_fence_timeline(struct dma_fence *fence)
 
 static void g16_target_fence_free(struct dma_fence *fence)
 {
-	kfree(container_of(fence, struct g16_target_fence, base));
+	struct g16_target_fence *target = container_of(fence, struct g16_target_fence, base);
+	bool module_reference = target->module_reference;
+
+	kfree(target);
+	if (module_reference)
+		module_put(THIS_MODULE);
 }
 
 static const struct dma_fence_ops g16_target_fence_ops = {

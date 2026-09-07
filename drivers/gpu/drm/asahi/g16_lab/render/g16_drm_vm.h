@@ -117,6 +117,11 @@ static int g16_drm_vm_bind_one(struct g16_drm_vm *vm, struct drm_file *file,
 	obj = drm_gem_object_lookup(file, op->handle);
 	if (!obj)
 		return -ENOENT;
+	if (g16_drm_to_gem(obj)->private_vm_id &&
+	    g16_drm_to_gem(obj)->private_vm_id != vm->id) {
+		ret = -EINVAL;
+		goto put;
+	}
 	if (op->offset >= obj->size || op->range > obj->size - op->offset) {
 		ret = -EINVAL;
 		goto put;

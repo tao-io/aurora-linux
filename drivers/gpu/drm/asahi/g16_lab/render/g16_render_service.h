@@ -95,7 +95,7 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 	u32 endpoint, sequence;
 	int ret = 0;
 
-	WRITE_ONCE(g16_render_service_ready, true);
+	smp_store_release(&g16_render_service_ready, true);
 	pr_info("g16_lab: render: userspace-paced service ready, maximum %u frames in 20 seconds\n",
 		render_frames);
 	while (g16_render_service_completed < render_frames) {
