@@ -32,6 +32,8 @@
 
 #include <asm/memory.h>
 
+#include "render/g16_render_prepare.h"
+
 /* Alpha has no retained pmptool snapshot API; reject that diagnostic. */
 static u32 g16_lab_pmptool_size(void)
 {
@@ -19051,6 +19053,12 @@ static int __init g16_lab_init(void)
 {
 	int ret;
 
+	if (!strcmp(stage, "render-prepare")) {
+		ret = g16_render_prepare();
+		WRITE_ONCE(stage_result, ret);
+		return ret;
+	}
+
 	if (compute_ocean_demo) {
 		if (strcmp(stage, "rtkit-initdata-exact-offscreen-store") ||
 		    !compute_macos_iadd || !compute_macos_ocean ||
@@ -19277,6 +19285,7 @@ static void __exit g16_lab_exit(void)
 	g16_lab_remove_adt_export();
 	g16_lab_remove_gfx_data_export();
 	pr_info("g16_lab: stage=%s unloaded\n", stage);
+	g16_render_release();
 }
 
 module_init(g16_lab_init);
@@ -19285,6 +19294,7 @@ module_exit(g16_lab_exit);
 MODULE_AUTHOR("M4 GPU Lab");
 MODULE_DESCRIPTION("Apple G16 staged bring-up laboratory driver");
 MODULE_LICENSE("GPL");
+MODULE_FIRMWARE(G16_RENDER_RESOURCE_FILE);
 MODULE_FIRMWARE(J713_MACOS_OCEAN_HOST_GLOBALS_FIRMWARE);
 MODULE_FIRMWARE(J713_MACOS_OCEAN_ROOT_POWER_FIRMWARE);
 MODULE_FIRMWARE(J713_MACOS_OCEAN_PWRPERF_FIRMWARE);

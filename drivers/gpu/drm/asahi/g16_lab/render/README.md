@@ -1,7 +1,47 @@
 # J713 vertex/fragment bring-up
 
-Status: reference preparation only. No Linux vertex or fragment execution has
-been established. Existing Mandelbrot compute validation remains separate.
+Status: Linux buffer and packet preparation implemented and exercised on J713.
+No Linux vertex or fragment execution has been established. Existing Mandelbrot
+compute validation remains separate.
+
+`stage=render-prepare` imports the 34 encoded capture mappings, allocates a
+4 MiB parameter pool, generates its 128 virtual 32 KiB page IDs, initializes
+the hardware parameter-manager state and builds TA/fragment job envelopes and
+SKU streams. It exports a 64 KiB preparation snapshot as
+`/sys/kernel/debug/g16_lab_render_prepared`. Module removal releases all of
+these allocations. This stage does not publish UAT mappings or submit work.
+The register blocks currently contain only their stage's initial register;
+the remaining render registers, pool/queue bindings and submission are pending.
+
+Prepare the firmware input with:
+
+```sh
+python3 tools/pack-render-resources.py render/reference /tmp/render-reference.bin
+sudo install -D -m 0644 /tmp/render-reference.bin /lib/firmware/g16/render-reference.bin
+sudo insmod ./g16_lab.ko stage=render-prepare
+sudo cp /sys/kernel/debug/g16_lab_render_prepared /tmp/render-prepared.bin
+sudo rmmod g16_lab
+```
+
+The packer verifies the stored resource hashes and includes only encoded-stage
+payloads. It excludes `expected-tile.rgba`. The kernel validates sizes, GPU VA
+ranges, directory offsets and overlap before copying the payloads.
+
+The initial J713 preparation run returned stage_result=0 and unloaded normally.
+The exported snapshot was independently decoded to check both command types,
+context generations, register pointers, SKU start/finish/restart/end records,
+manager counters and all 128 page IDs. Snapshot SHA-256:
+`cd11f7eaa6c01487ca31a1f1950bd61ea9be93a81b9deaee082f4365924aae8a`.
+This is CPU preparation evidence, not a GPU execution result.
+
+Host tests exercise register-capacity boundaries, rejection without partial
+writes, 25-bit page-ID limits, unaligned encoding and SKU restart targets:
+
+```sh
+cc -std=c11 -Wall -Wextra -Werror -fsanitize=address,undefined \
+    render/test_pack.c -o /tmp/g16-render-test
+/tmp/g16-render-test
+```
 
 The source is the checksummed `009-command-render-draw` case in the local
 M4/25G83 corpus. `tools/prepare-render-reference.py` verifies every consumed
@@ -38,6 +78,12 @@ Register/firmware source references (macOS 25G83 AGXG16G):
 - TA SKU encoder: 0xfffffe00089cb624. Start opcode 5 copies 0x1c8 operand
   bytes; opcode 1 is TA-finish WFI; finish opcode 6 has a 0x94-byte record.
 - Fragment SKU encoder: 0xfffffe00089bf3f8.
+- Both TA and fragment WFI records contain the word 1. Fragment's producer
+  is `AGX3DChannelG16::encodePixelEndRenderWFI`, 0xfffffe00089bedd0.
+- Parameter manager reset: 0xfffffe00089e0ee4; page-list construction:
+  0xfffffe00089e0bd8; virtual backing-page ID encoding: 0xfffffe00089e4010.
+  The 0xc0-byte hardware manager and 0x80-byte per-pass PB slot are different
+  allocations. SKU start operations point to the latter.
 
 These addresses refer to the original local disassembly/decompilation under
 `drivers_m4/work/gpu-kext-decompile` and `/tmp/g16g-kext.dis`. They are evidence
