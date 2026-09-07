@@ -30,6 +30,7 @@ struct g16_render_resource {
 	u64 va;
 	u32 size;
 	void *data;
+	struct debugfs_blob_wrapper blob;
 };
 
 static struct g16_render_resource g16_render_resources[G16_RENDER_RESOURCE_COUNT];
@@ -37,6 +38,8 @@ static u8 *g16_render_graph;
 static void *g16_render_pool;
 static struct dentry *g16_render_graph_file;
 static struct debugfs_blob_wrapper g16_render_graph_blob;
+static struct dentry *g16_render_output_dir;
+static struct debugfs_blob_wrapper g16_render_pool_blob;
 static struct g16_render_uat g16_render_user_uat;
 static struct g16_render_uat g16_render_fw_uat;
 
@@ -44,6 +47,8 @@ static void g16_render_release(void)
 {
 	unsigned int i;
 
+	debugfs_remove_recursive(g16_render_output_dir);
+	g16_render_output_dir = NULL;
 	debugfs_remove(g16_render_graph_file);
 	g16_render_graph_file = NULL;
 	g16_render_graph_blob.data = NULL;
@@ -280,6 +285,24 @@ static int g16_render_prepare(void)
 		ret = g16_render_graph_file ? PTR_ERR(g16_render_graph_file) : -ENOMEM;
 		g16_render_graph_file = NULL;
 		goto out;
+	}
+	g16_render_output_dir = debugfs_create_dir("g16_lab_render", NULL);
+	if (IS_ERR(g16_render_output_dir)) {
+		ret = PTR_ERR(g16_render_output_dir);
+		g16_render_output_dir = NULL;
+		goto out;
+	}
+	g16_render_pool_blob.data = g16_render_pool;
+	g16_render_pool_blob.size = G16_RENDER_POOL_BYTES;
+	debugfs_create_blob("pool.bin", 0400, g16_render_output_dir, &g16_render_pool_blob);
+	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+		struct g16_render_resource *r = &g16_render_resources[i];
+		char name[32];
+
+		r->blob.data = r->data;
+		r->blob.size = r->size;
+		snprintf(name, sizeof(name), "resource-%llx.bin", r->va);
+		debugfs_create_blob(name, 0400, g16_render_output_dir, &r->blob);
 	}
 	pr_info("g16_lab: render-prepare: %u capture buffers (%zu bytes), %u pool pages, TA/fragment packet envelopes prepared; UAT unpublished, no GPU submission\n",
 		G16_RENDER_RESOURCE_COUNT, resource_bytes, (unsigned int)ARRAY_SIZE(pages));

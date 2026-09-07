@@ -143,6 +143,7 @@ static int g16_render_attach(u64 scratch_va)
 static void g16_render_detach(void)
 {
 	u8 *runtime;
+	unsigned int i;
 
 	if (!g16_render_attached)
 		return;
@@ -168,6 +169,10 @@ static void g16_render_detach(void)
 	g16_lab_uat_tlbi_context(6);
 	g16_lab_uat_tlbi_context(0);
 	g16_lab_dcache_invalidate(g16_render_graph, G16_RENDER_GRAPH_BYTES);
+	g16_lab_dcache_invalidate(g16_render_pool, G16_RENDER_POOL_BYTES);
+	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++)
+		g16_lab_dcache_invalidate(g16_render_resources[i].data,
+					 g16_render_resources[i].size);
 	__free_page(g16_render_upper_root);
 	g16_render_upper_root = NULL;
 	g16_render_attached = false;

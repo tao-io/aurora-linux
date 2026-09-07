@@ -117,6 +117,11 @@ def main():
         if p.exists():
             (result / dest).write_bytes(p.read_bytes())
     pixels = result / 'mandelbrot.rgba'
+    if args.render_queues and (debug / 'g16_lab_render').is_dir():
+        snapshots = result / 'render-resources'
+        snapshots.mkdir()
+        for source in (debug / 'g16_lab_render').glob('*.bin'):
+            (snapshots / source.name).write_bytes(source.read_bytes())
     valid = False
     if pixels.exists():
         raw = pixels.read_bytes()

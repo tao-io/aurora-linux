@@ -224,6 +224,8 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 		if (g16_render_get(work + 0xc900, 4) == 0x100 &&
 		    g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4) == 3 &&
 		    !g16_render_get(queue + J713_QUEUE_BUSY_OFFSET, 4)) {
+			pr_info("g16_lab: render: TA completion stamp=0x100 ring=3 busy=0; snapshotting issued state\n");
+			g16_lab_dump_gpu_engine_issue_registers();
 			g16_lab_dcache_invalidate(g16_render_pool, G16_RENDER_POOL_BYTES);
 			g16_lab_dcache_invalidate(work + 0x28000, 0x1000);
 			if (!memchr_inv(g16_render_pool, 0, G16_RENDER_POOL_BYTES) ||
