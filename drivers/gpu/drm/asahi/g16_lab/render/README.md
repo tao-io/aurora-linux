@@ -50,3 +50,40 @@ command or a complete kernel-owned parameter-buffer/queue/SKU graph. The next
 integration must reconstruct those structures, populate Linux-owned backing,
 and verify real output plus stage completion; queue counters alone are not
 shader-execution proof.
+
+## Producer/firmware cross-check
+
+The local J713 firmware decompilation's `FUN_00018030` consumes the same
+register-list pointers and completion fields emitted by the native G16 host
+encoders. Offsets in this table include the four-byte SKU opcode:
+
+| Field | TA | Fragment |
+| --- | --- | --- |
+| Start opcode / record bytes | 5 / 0x1cc | 7 / 0x1ec |
+| Start register-block pointer | +0x14 | +0x14 |
+| Start parameter-buffer-state pointer | +0x24 | +0x1c |
+| Start slot-array pointer | +0x2c | +0x24 |
+| Start context ID | +0x44 | +0x5c |
+| Start attachment array / count | +0x88 / +0x188 | +0xa8 / +0x1a8 |
+| Start UMA binding | +0x190 | +0x1b0 |
+| Finish opcode / record bytes | 6 / 0x94 | 8 / 0xbc |
+| Finish firmware stamp pointer / value | +0x48 / +0x50 | +0x0c / +0x14 |
+| Finish signed restart displacement | +0x80 | +0xa0 |
+| Finish context-store pointer (unaligned) | +0x85 | +0xa5 |
+
+Both start operations dereference the register block's +0x700 GPU address,
++0x708 host count and +0x600 attachment aperture storage. Firmware appends
+stage-specific register writes after the host list. Host entries therefore
+must leave room before +0x600, rather than treating everything up to +0x700
+as register capacity. TA appends three context-selector writes at this point;
+fragment appends two. These source observations are not live execution tests.
+
+The start operations dereference parameter-buffer state and per-slot state
+before dispatching hardware. Uploading the captured user resources alone
+does not populate that kernel-owned graph. The finish operations also use
+stage-specific state, including backward restart displacements; substituting
+a compute or Neo finish record is not a valid reconstruction.
+
+The Ocean report explicitly records `stage=compute program=ocean`. Its verified
+image is compute evidence. The separate commandprobe draw is the vertex and
+fragment reference used here.
