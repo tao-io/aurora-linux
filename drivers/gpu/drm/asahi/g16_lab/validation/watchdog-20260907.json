@@ -1,0 +1,46 @@
+{
+  "machine": "J713 / T8132 / omarchy-m4",
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "guard_commit": "df4aabaee50b",
+  "device": "/dev/watchdog0",
+  "identity": "Apple SoC Watchdog",
+  "accepted_timeout_seconds": 60,
+  "initial_timeleft_seconds": 59,
+  "periodic_keepalive": false,
+  "controlled_expiry": {
+    "command": "python3 -u /root/experiment_watchdog.py --expire-test",
+    "start_utc": "2026-09-07T18:24:23Z",
+    "before_boot_id": "0fc087f1-3981-4fd8-92aa-f1fc538bc67c",
+    "ssh_reconnected_utc": "2026-09-07T18:25:53Z",
+    "after_boot_id": "79e0b25e-197e-483b-9e36-7302db8beba9",
+    "manual_intervention": false,
+    "reset_verified": true,
+    "note": "Expiry was inferred from the no-keepalive test, lost SSH and changed boot ID; exact hardware reset instant was not measured."
+  },
+  "normal_completion": {
+    "command": "python3 -u /root/experiment_watchdog.py -- /usr/bin/true",
+    "returncode": 0,
+    "disable_ioctl_succeeded": true
+  },
+  "host_checks": [
+    "Python syntax and runner argument parsing",
+    "Mocked ioctl sequence: open, identity, set/get 60 seconds, timeleft, explicit disable, close",
+    "Rejected 30-second timeout disables before any experiment",
+    "Experiment exception does not call disarm"
+  ],
+  "gpu_hang_recovery": {
+    "run": "20260907T182633Z-render-ta",
+    "before_boot_id": "79e0b25e-197e-483b-9e36-7302db8beba9",
+    "ssh_reconnected_utc": "2026-09-07T18:28:28Z",
+    "after_boot_id": "11b9b5b5-5408-40d4-89ef-7eade91422b8",
+    "reset_observed": true,
+    "software_reboot_command_sent": false,
+    "module_sha256": "5fa21a62a002a092b043edac341025d17497aa5b8103963d65086016781d456d",
+    "manifest_persisted_before_insmod": true,
+    "watchdog_armed_in_manifest": true,
+    "experiment_returned": false,
+    "vertex_fragment_pixels_verified": false,
+    "last_received_log": "fragment queue barrier waiting; Mandelbrot and TA queue barrier already passed",
+    "limitation": "SSH dmesg stream may have buffered the final lines; exact point of the GPU hang is not established."
+  }
+}
