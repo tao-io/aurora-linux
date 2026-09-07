@@ -50,7 +50,11 @@ def main():
                         help='256x256 fragment-coordinate gradient; implies generated shaders')
     parser.add_argument('--render-triangle', action='store_true',
                         help='RGB coordinate-colored triangle; implies --render-xy')
+    parser.add_argument('--render-frames', type=int, choices=range(1, 9), default=1,
+                        help='sequential frames with alternating geometry; requires triangle')
     args = parser.parse_args()
+    if args.render_frames > 1 and not args.render_triangle:
+        parser.error('--render-frames requires --render-triangle')
     if args.render_triangle:
         args.render_xy = True
     if args.render_xy:
@@ -78,7 +82,7 @@ def main():
     if args.render_xy:
         params += ['render_xy=1']
     if args.render_triangle:
-        params += ['render_triangle=1']
+        params += ['render_triangle=1', f'render_frames={args.render_frames}']
     if args.render_loader_marker:
         params += ['render_loader_marker=1']
     if args.firmware_ktrace:
@@ -228,6 +232,7 @@ def main():
             metadata['render_size'] = args.render_size
             metadata['render_xy'] = args.render_xy
             metadata['render_triangle'] = args.render_triangle
+            metadata['render_frames'] = args.render_frames
             target_va = 0x10000058000 if args.render_size == 4 else 0x10001000000
             target_offset = 0x100 if args.render_size == 4 else 0x4000
             pixel_bytes = args.render_size * args.render_size * 4
@@ -250,11 +255,8 @@ def main():
                     expected_image = bytes(v for y in range(256) for x in range(256)
                                            for v in ((x * 255 + 128) // 256, (y * 255 + 128) // 256, 0, 255))
                 if args.render_triangle:
-                    expected_image = bytes(v for y in range(256) for x in range(256)
-                                           for v in ((((y - x) * 255 + 128) // 256,
-                                                      (x * 255 + 128) // 256,
-                                                      ((256 - y) * 255 + 128) // 256, 255)
-                                                     if x < y else (0, 0, 0, 0)))
+                    from g16image import triangle_reference
+                    expected_image = triangle_reference(bool((args.render_frames - 1) & 1))
                 from g16image import write_png
                 write_png(result / 'render.png', rgba, args.render_size)
                 metadata['vertex_fragment_pixels_verified'] = (
@@ -265,6 +267,21 @@ def main():
             # A firmware crash or incomplete queue still fails the outer gate.
             passed = (passed and metadata['fragment_job_retired']
                       and metadata['vertex_fragment_pixels_verified'])
+        if args.render_triangle:
+            from g16image import detile_rgba8, triangle_reference, write_png
+            frames = []
+            for frame in range(args.render_frames):
+                source = result / 'render-resources' / f'frame-{frame:02d}.bin'
+                info = {'frame': frame, 'verified': False}
+                if source.exists() and source.stat().st_size == 256 * 256 * 4:
+                    rgba = detile_rgba8(source.read_bytes(), 256)
+                    info['sha256'] = hashlib.sha256(rgba).hexdigest()
+                    info['verified'] = (rgba == triangle_reference(bool(frame & 1)) and
+                        f'render: verified frame={frame} pixels=65536 stamp={((frame + 1) << 8):#x}' in current_log)
+                    write_png(result / f'frame-{frame:02d}.png', rgba, 256)
+                frames.append(info)
+            metadata['frames'] = frames
+            passed = passed and all(frame['verified'] for frame in frames)
         passed = passed and metadata['render_queues_passed']
     if passed:
         unload = subprocess.run(['rmmod', 'g16_lab'], capture_output=True, text=True)

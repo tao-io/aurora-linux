@@ -31,3 +31,12 @@ def write_png(path, rgba, size):
     image += chunk(b'IDAT', zlib.compress(b''.join(b'\0' + rgba[y * size * 4:(y + 1) * size * 4]
                                                  for y in range(size))))
     path.write_bytes(image + chunk(b'IEND', b''))
+
+
+def triangle_reference(expanded=False):
+    """CPU comparison only; never copied into the GPU target."""
+    return bytes(v for y in range(256) for x in range(256)
+                 for v in (((max(y - x, 0) * 255 + 128) // 256,
+                            (x * 255 + 128) // 256,
+                            ((256 - y) * 255 + 128) // 256, 255)
+                           if x < y or expanded else (0, 0, 0, 0)))

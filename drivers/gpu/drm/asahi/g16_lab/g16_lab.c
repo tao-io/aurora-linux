@@ -2660,6 +2660,10 @@ MODULE_PARM_DESC(render_xy, "Diagnostic 256x256 fragment-coordinate color gradie
 static bool render_triangle;
 module_param(render_triangle, bool, 0444);
 MODULE_PARM_DESC(render_triangle, "RGB coordinate-colored triangle (requires render_xy)");
+static unsigned int render_frames = 1;
+module_param(render_frames, uint, 0444);
+MODULE_PARM_DESC(render_frames, "One to eight sequential triangle frames in one firmware boot");
+static unsigned int g16_render_frame;
 static bool render_ta_probe;
 module_param(render_ta_probe, bool, 0444);
 MODULE_PARM_DESC(render_ta_probe, "Experimental captured vertex/tiling submission after render queue validation");
@@ -19214,6 +19218,8 @@ static int __init g16_lab_init(void)
 	if (render_xy && (!render_generated_shaders || render_size != 256))
 		return -EINVAL;
 	if (render_triangle && !render_xy)
+		return -EINVAL;
+	if (!render_frames || render_frames > 8 || (render_frames > 1 && !render_triangle))
 		return -EINVAL;
 	if ((render_size != 4 && render_size != 32 && render_size != 256) ||
 	    (render_size != 4 && !render_generated_shaders))

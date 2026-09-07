@@ -450,3 +450,50 @@ checks, clean queue retirement, no crashlog, loss-free KTrace, and module
 removal. Its manifest and GPU-produced PNG are in
 `validation/j713-rgb-triangle-20260907.{json,png}`. The earlier failed run
 is retained in local provenance and is not recorded as a passed test.
+
+### Sequential submissions and buffer reuse
+
+`--render-triangle --render-frames N` supports a bounded sequence of one to
+eight frames under a single watchdog-guarded firmware boot. Even-numbered
+frames draw the half-screen RGB triangle; odd-numbered frames expand its
+vertex positions to cover the whole target. Each frame uses increasing
+command counters, TA/fragment stamps and queue/pipe cursors. InitPB runs
+once. Per-pass records and target bytes are reset between completed frames,
+while the live PB manager, queue state and notifier links are preserved.
+
+The first two-frame attempt (`20260907T210421Z`) completed frame zero but
+crashed firmware on the second TA registration: PC `0x2433c`, FAR zero,
+ESR `0x96000004`. The queue notifier-list tail still pointed to notifier
+`+0x98`, but rebuilding the notifier had cleared its firmware-owned links
+at `+0x98/+0xa0` and insertion flag at `+0x94`. The corrected code initializes
+that persistent object only before frame zero. Run `20260907T210542Z` then
+passed both different images, with clean retirement, no crashlog, loss-free
+KTrace, and module removal. Its manifest is
+`validation/j713-two-frames-20260907.json`.
+
+Per-frame raw GPU snapshots are retained as `render-resources/frame-NN.bin`
+and decoded into `frame-NN.png`. Both kernel and host compare every pixel.
+The kernel also checks the target's zero padding before each reuse; the
+runner checks the final allocation independently. Reference images are
+computed only for comparison and are never uploaded to the target.
+
+Run `20260907T210719Z` passed eight alternating frames in one firmware boot,
+including all 524,288 pixel comparisons and per-frame target padding checks.
+KTrace retained 2,209 records with eight StartTA/FinishTA and eight
+Start3D/Finish3D events, no firmware-reported loss and no host drops. There
+was no crashlog, and module removal succeeded. The watchdog reported 60 s
+timeout / 59 s initial time left and was disarmed after saving evidence.
+The manifest is `validation/j713-eight-frames-20260907.json`.
+
+Reproduce after a fresh normal Linux boot with the matching lab module:
+
+```sh
+python3 /root/run-g16-render-queues.py --module /root/g16_lab-render.ko \
+  --results /root/g16-render-results --firmware-ktrace 3 \
+  --render-triangle --render-frames 8
+```
+
+This is bounded sequential rendering, not a continuous application API,
+ring-wrap stress test, desktop driver or hardware-varying interpolation test.
+The next graphics work is true vertex-color varyings and generated binding
+state, followed by depth/uniform/texture workloads and a userspace interface.

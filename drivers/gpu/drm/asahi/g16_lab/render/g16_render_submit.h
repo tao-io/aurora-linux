@@ -306,6 +306,37 @@ static int g16_render_test_queue(void __iomem *asc, unsigned int engine,
 
 #include "g16_render_pixel.h"
 
+/* Called only after both queues retired and the preceding image was verified.
+ * Preserve the live PB manager and queue cursors; reuse per-pass storage.
+ */
+static void g16_render_next_frame(void)
+{
+	unsigned int i;
+
+	g16_lab_dcache_invalidate(g16_render_graph, G16_RENDER_GRAPH_BYTES);
+	memset(g16_render_graph + 0x9200, 0, 0x80);
+	memset(g16_render_graph + 0x9300, 0, 0x180);
+	memset(g16_render_graph + 0x24000, 0, 0x2000);
+	memset(g16_render_graph + 0x28000, 0, 0x2000);
+	memset(g16_render_graph + 0x38000, 0, 0x800);
+	memset(g16_render_graph + 0x60000, 0, 0x200);
+	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+		struct g16_render_resource *r = &g16_render_resources[i];
+
+		if (r->va == g16_render_target_va()) {
+			memset(r->data, 0, r->size);
+			g16_lab_dcache_clean(r->data, r->size);
+		} else if (r->va == 0x10000090000ULL) {
+			u32 extent = (g16_render_frame & 1) ? 0x40400000 : 0x3f800000;
+
+			g16_render_put(r->data + 8, extent, 4);
+			g16_render_put(r->data + 20, extent, 4);
+			g16_lab_dcache_clean(r->data, r->size);
+		}
+	}
+	/* Subsequent TA publication cleans the rebuilt command graph. */
+}
+
 static int g16_render_queue_gate(void __iomem *asc, u64 crashlog_iova,
 				 unsigned int crashlog_pages)
 {
@@ -322,6 +353,12 @@ static int g16_render_queue_gate(void __iomem *asc, u64 crashlog_iova,
 		ret = g16_render_test_ta(asc, crashlog_iova, crashlog_pages);
 	if (render_fragment_probe && render_ta_probe && (ret == 0 || ret == -ENODATA))
 		ret = g16_render_test_fragment(asc, crashlog_iova, crashlog_pages);
+	for (g16_render_frame = 1; !ret && g16_render_frame < render_frames; g16_render_frame++) {
+		g16_render_next_frame();
+		ret = g16_render_test_ta(asc, crashlog_iova, crashlog_pages);
+		if (!ret || ret == -ENODATA)
+			ret = g16_render_test_fragment(asc, crashlog_iova, crashlog_pages);
+	}
 	WRITE_ONCE(stage_result, ret);
 	pr_info("g16_lab: render: independent queue gate result=%d\n", ret);
 	/* Keep diagnostics readable; the outer bootstrap always stops firmware. */

@@ -59,7 +59,7 @@ static int g16_render_build_fragment(void)
 	job.shared_stamp_va = base + 0xc808;
 	job.pb_aux_va = base + 0x9300;
 	job.context_generation = 1;
-	job.command_counter = 2;
+	job.command_counter = g16_render_frame * 2 + 2;
 	job.sku.command_va = base + 0x4000;
 	job.sku.sku_va = base + 0x8400;
 	job.sku.queue_va = base + G16_RENDER_QUEUE(1);
@@ -69,9 +69,9 @@ static int g16_render_build_fragment(void)
 	job.sku.buffer_info_va = base + 0x9000;
 	job.sku.context_id = 6;
 	job.sku.stamp_va = base + 0xc908;
-	job.sku.stamp = 0x100;
+	job.sku.stamp = (g16_render_frame + 1) << 8;
 	job.sku.stamp_slot = 0x71;
-	job.sku.uuid = 0x16000002;
+	job.sku.uuid = 0x16000002 + g16_render_frame * 2;
 	job.sku.fragment_increment = 1;
 	g16_render_put(job.sku.uma, g16_initdata_live_barrier_va + 0xe00, 8);
 	g16_render_put(job.sku.uma + 0x18, GPU(0x60100), 8);
@@ -129,7 +129,13 @@ static int g16_render_verify_pixels(void)
 		if (r->va != g16_render_target_va() ||
 		    r->size < g16_render_target_offset() + render_size * render_size * 4)
 			continue;
-		g16_lab_dcache_invalidate(r->data + g16_render_target_offset(), render_size * render_size * 4);
+		g16_lab_dcache_invalidate(r->data, r->size);
+		if (memchr_inv(r->data, 0, g16_render_target_offset()) ||
+		    memchr_inv(r->data + g16_render_target_offset() + render_size * render_size * 4,
+			       0, r->size - g16_render_target_offset() - render_size * render_size * 4)) {
+			pr_err("g16_lab: render: frame=%u modified target padding\n", g16_render_frame);
+			return -EOVERFLOW;
+		}
 		for (pixel = 0; pixel < render_size * render_size; pixel++) {
 			u32 index = pixel, actual;
 
@@ -147,10 +153,10 @@ static int g16_render_verify_pixels(void)
 						 ((y >> bit) & 1) << (2 * bit + 1);
 				expected = 0xff000000 | green << 8 | red;
 				if (render_triangle) {
-					if (x < y)
+					if (x < y || (g16_render_frame & 1))
 						expected = 0xff000000 |
 							DIV_ROUND_CLOSEST((256 - y) * 255, 256) << 16 |
-							red << 8 | DIV_ROUND_CLOSEST((y - x) * 255, 256);
+							red << 8 | DIV_ROUND_CLOSEST((y > x ? y - x : 0) * 255, 256);
 					else
 						expected = 0; /* fixture preserves the zero background */
 				}
@@ -163,8 +169,12 @@ static int g16_render_verify_pixels(void)
 				return -ENODATA;
 			}
 		}
-		pr_info("g16_lab: render: verified %u GPU-rendered pixels=%#x generated=%u\n",
-			render_size * render_size, expected, render_generated_shaders);
+		if (render_triangle)
+			memcpy(g16_render_frames[g16_render_frame].data,
+			       r->data + g16_render_target_offset(), 256 * 256 * 4);
+		pr_info("g16_lab: render: verified frame=%u pixels=%u stamp=%#x expanded=%u\n",
+			g16_render_frame, render_size * render_size, (g16_render_frame + 1) << 8,
+			g16_render_frame & 1);
 		return 0;
 	}
 	return -ENOENT;
@@ -176,7 +186,8 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 	u8 *work = g16_render_graph;
 	u8 *queue = work + G16_RENDER_QUEUE(1);
 	u8 *state = work + G16_RENDER_QUEUE_STATE(1);
-	u8 *pipe = work + G16_RENDER_PIPE_RING(1) + J713_INITDATA_PIPE_ENTRY_SIZE;
+	u8 *pipe = work + G16_RENDER_PIPE_RING(1) + (g16_render_frame + 1) * J713_INITDATA_PIPE_ENTRY_SIZE;
+	u32 end = g16_render_frame + 2, stamp = (g16_render_frame + 1) << 8;
 	u8 *pipe_state = work + G16_RENDER_PIPE_STATE(1);
 	unsigned long deadline;
 	u64 timestamp, message;
@@ -186,21 +197,21 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 	ret = g16_render_build_fragment();
 	if (ret)
 		return ret;
-	g16_render_put(work + G16_RENDER_QUEUE_RING(1) + 8,
+	g16_render_put(work + G16_RENDER_QUEUE_RING(1) + (end - 1) * 8,
 		G16_RENDER_GRAPH_VA + 0x4000, 8);
 	g16_lab_dcache_clean(work, G16_RENDER_GRAPH_BYTES);
 	dma_wmb();
-	g16_render_put(state + J713_QUEUE_RING_CPU_WPTR_OFFSET, 2, 4);
+	g16_render_put(state + J713_QUEUE_RING_CPU_WPTR_OFFSET, end, 4);
 	g16_lab_dcache_clean(state, J713_INITDATA_QUEUE_RING_STATE_SIZE);
 	asm volatile("mrs %0, cntpct_el0" : "=r"(timestamp));
 	g16_render_put(pipe, timestamp, 8);
 	g16_render_put(pipe + 8, G16_RENDER_GRAPH_VA + G16_RENDER_QUEUE(1), 8);
 	g16_render_put(pipe + 0x10, 1, 4);
-	g16_render_put(pipe + 0x14, 2, 2);
+	g16_render_put(pipe + 0x14, end, 2);
 	pipe[J713_PIPE_ENTRY_SCHEDULER_SLOT_OFFSET] = 0x71;
 	g16_lab_dcache_clean(pipe, J713_INITDATA_PIPE_ENTRY_SIZE);
 	dma_wmb();
-	g16_render_put(pipe_state + J713_PIPE_PRODUCER_OFFSET, 2, 4);
+	g16_render_put(pipe_state + J713_PIPE_PRODUCER_OFFSET, g16_render_frame + 2, 4);
 	g16_lab_dcache_clean(pipe_state, J713_INITDATA_PIPE_STATE_SIZE);
 	dma_wmb();
 	g16_firmware_recovery_observed = false;
@@ -216,10 +227,10 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 		g16_lab_dcache_invalidate(work + 0xc908, 8);
 		g16_lab_dcache_invalidate(queue, J713_INITDATA_QUEUE_INFO_SIZE);
 		g16_lab_dcache_invalidate(state, J713_INITDATA_QUEUE_RING_STATE_SIZE);
-		if (g16_render_get(work + 0xc908, 4) == 0x100 &&
-		    g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4) == 2 &&
+		if (g16_render_get(work + 0xc908, 4) == stamp &&
+		    g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4) == end &&
 		    !g16_render_get(queue + J713_QUEUE_BUSY_OFFSET, 4)) {
-			pr_info("g16_lab: render: fragment diagnostic retired stamp=0x100 ring=2; pixel verification still required\n");
+			pr_info("g16_lab: render: fragment diagnostic retired stamp=%#x ring=%u; pixel verification still required\n", stamp, end);
 			return g16_render_verify_pixels();
 		}
 		ret = g16_asc_recv_timeout(asc, &message, &endpoint, 10000);

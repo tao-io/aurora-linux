@@ -74,7 +74,7 @@ static int g16_render_build_ta(void)
 	job.shared_stamp_va = base + 0xc800;
 	job.pb_aux_va = base + 0x9300;
 	job.context_generation = 1;
-	job.command_counter = 1;
+	job.command_counter = g16_render_frame * 2 + 1;
 	job.sku.command_va = base;
 	job.sku.sku_va = base + 0x8000;
 	job.sku.queue_va = base + G16_RENDER_QUEUE(0);
@@ -83,9 +83,9 @@ static int g16_render_build_ta(void)
 	job.sku.buffer_info_va = base + 0x9000;
 	job.sku.context_id = 6;
 	job.sku.stamp_va = base + 0xc900;
-	job.sku.stamp = 0x100;
+	job.sku.stamp = (g16_render_frame + 1) << 8;
 	job.sku.stamp_slot = 0x70;
-	job.sku.uuid = 0x16000001;
+	job.sku.uuid = 0x16000001 + g16_render_frame * 2;
 	/* Reuse the live, resident shared USC pool after compute has retired. */
 	g16_render_put(job.sku.uma, g16_initdata_live_barrier_va + 0xe00, 8);
 	g16_render_put(job.sku.uma + 0x18, GPU(0x60000), 8);
@@ -111,13 +111,18 @@ static int g16_render_build_ta(void)
 	g16_render_put(work + 0x8fe, g16_initdata_live_barrier_va + 0xe00, 8);
 	g16_render_put(work + 0x90f, base + 0x60000, 8);
 	g16_render_put(work + 0x830, mode, 8);
-	memset(notifier, 0, sizeof(*notifier));
-	/* Field offsets match the same G16 notifier used by the compute gate. */
-	g16_render_put((u8 *)notifier, base + 0xcb00, 8);
-	g16_render_put((u8 *)notifier + 8, 1, 4);
-	g16_render_put((u8 *)notifier + 0x10, 50, 4);
-	g16_render_put((u8 *)notifier + 0x24, 6, 4);
-	g16_render_put((u8 *)notifier + 0xb8, 0x16000001, 4);
+	/* Firmware retains this notifier on its intrusive queue list (+94/+98/+a0).
+	 * Clearing it after frame zero corrupts the list (25G83 PC 2433c).
+	 */
+	if (!g16_render_frame) {
+		memset(notifier, 0, sizeof(*notifier));
+		/* Field offsets match the same G16 notifier used by the compute gate. */
+		g16_render_put((u8 *)notifier, base + 0xcb00, 8);
+		g16_render_put((u8 *)notifier + 8, 1, 4);
+		g16_render_put((u8 *)notifier + 0x10, 50, 4);
+		g16_render_put((u8 *)notifier + 0x24, 6, 4);
+		g16_render_put((u8 *)notifier + 0xb8, 0x16000001, 4);
+	}
 	pr_info("g16_lab: render: built experimental %ux%u TA registers=%d VDM=0x18000 PB=128 pages TPC=%llu bytes\n",
 		render_size, render_size, count, geometry.tpc_bytes);
 #undef GPU
@@ -174,7 +179,8 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 	u8 *work = g16_render_graph;
 	u8 *queue = work + G16_RENDER_QUEUE(0);
 	u8 *state = work + G16_RENDER_QUEUE_STATE(0);
-	u8 *pipe = work + G16_RENDER_PIPE_RING(0) + J713_INITDATA_PIPE_ENTRY_SIZE;
+	u8 *pipe = work + G16_RENDER_PIPE_RING(0) + (g16_render_frame + 1) * J713_INITDATA_PIPE_ENTRY_SIZE;
+	u32 end = g16_render_frame + 3, stamp = (g16_render_frame + 1) << 8;
 	u8 *pipe_state = work + G16_RENDER_PIPE_STATE(0);
 	unsigned long deadline;
 	u64 timestamp, message;
@@ -185,21 +191,22 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 	ret = g16_render_build_ta();
 	if (ret)
 		return ret;
-	g16_render_put(work + G16_RENDER_QUEUE_RING(0) + 8,
-		G16_RENDER_GRAPH_VA + G16_RENDER_INIT_PB, 8);
-	g16_render_put(work + G16_RENDER_QUEUE_RING(0) + 16, G16_RENDER_GRAPH_VA, 8);
+	if (!g16_render_frame)
+		g16_render_put(work + G16_RENDER_QUEUE_RING(0) + 8,
+			G16_RENDER_GRAPH_VA + G16_RENDER_INIT_PB, 8);
+	g16_render_put(work + G16_RENDER_QUEUE_RING(0) + (end - 1) * 8, G16_RENDER_GRAPH_VA, 8);
 	g16_lab_dcache_clean(work, G16_RENDER_GRAPH_BYTES);
 	dma_wmb();
-	g16_render_put(state + J713_QUEUE_RING_CPU_WPTR_OFFSET, 3, 4);
+	g16_render_put(state + J713_QUEUE_RING_CPU_WPTR_OFFSET, end, 4);
 	g16_lab_dcache_clean(state, J713_INITDATA_QUEUE_RING_STATE_SIZE);
 	asm volatile("mrs %0, cntpct_el0" : "=r"(timestamp));
 	g16_render_put(pipe, timestamp, 8);
 	g16_render_put(pipe + 8, G16_RENDER_GRAPH_VA + G16_RENDER_QUEUE(0), 8);
-	g16_render_put(pipe + 0x14, 3, 2);
+	g16_render_put(pipe + 0x14, end, 2);
 	pipe[J713_PIPE_ENTRY_SCHEDULER_SLOT_OFFSET] = 0x70;
 	g16_lab_dcache_clean(pipe, J713_INITDATA_PIPE_ENTRY_SIZE);
 	dma_wmb();
-	g16_render_put(pipe_state + J713_PIPE_PRODUCER_OFFSET, 2, 4);
+	g16_render_put(pipe_state + J713_PIPE_PRODUCER_OFFSET, g16_render_frame + 2, 4);
 	g16_lab_dcache_clean(pipe_state, J713_INITDATA_PIPE_STATE_SIZE);
 	dma_wmb();
 	g16_firmware_recovery_observed = false;
@@ -230,12 +237,12 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 		g16_lab_dcache_invalidate(work + 0xc900, 8);
 		g16_lab_dcache_invalidate(queue, J713_INITDATA_QUEUE_INFO_SIZE);
 		g16_lab_dcache_invalidate(state, J713_INITDATA_QUEUE_RING_STATE_SIZE);
-		if (g16_render_get(work + 0xc900, 4) == 0x100 &&
-		    g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4) == 3 &&
+		if (g16_render_get(work + 0xc900, 4) == stamp &&
+		    g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4) == end &&
 		    !g16_render_get(queue + J713_QUEUE_BUSY_OFFSET, 4)) {
 			unsigned int i;
 
-			pr_info("g16_lab: render: TA completion stamp=0x100 ring=3 busy=0; snapshotting issued state\n");
+			pr_info("g16_lab: render: TA completion stamp=%#x ring=%u busy=0; snapshotting issued state\n", stamp, end);
 			g16_lab_dump_gpu_engine_issue_registers();
 			for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
 				struct g16_render_resource *r = &g16_render_resources[i];

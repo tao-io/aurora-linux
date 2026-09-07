@@ -43,6 +43,7 @@ static struct dentry *g16_render_graph_file;
 static struct debugfs_blob_wrapper g16_render_graph_blob;
 static struct dentry *g16_render_output_dir;
 static struct debugfs_blob_wrapper g16_render_pool_blob;
+static struct debugfs_blob_wrapper g16_render_frames[8];
 static struct g16_render_uat g16_render_user_uat;
 static struct g16_render_uat g16_render_fw_uat;
 
@@ -62,6 +63,10 @@ static void g16_render_release(void)
 
 	debugfs_remove_recursive(g16_render_output_dir);
 	g16_render_output_dir = NULL;
+	for (i = 0; i < ARRAY_SIZE(g16_render_frames); i++) {
+		vfree(g16_render_frames[i].data);
+		memset(&g16_render_frames[i], 0, sizeof(g16_render_frames[i]));
+	}
 	debugfs_remove(g16_render_graph_file);
 	g16_render_graph_file = NULL;
 	g16_render_graph_blob.data = NULL;
@@ -163,6 +168,8 @@ static int g16_render_prepare(void)
 
 	if (PAGE_SIZE != 0x4000 || !of_machine_is_compatible("apple,j713"))
 		return -ENODEV;
+	if (!render_frames || render_frames > ARRAY_SIZE(g16_render_frames))
+		return -EINVAL;
 	ret = request_firmware_direct(&fw, G16_RENDER_RESOURCE_FILE, NULL);
 	if (ret)
 		return ret;
@@ -499,6 +506,20 @@ static int g16_render_prepare(void)
 	g16_render_pool_blob.data = g16_render_pool;
 	g16_render_pool_blob.size = G16_RENDER_POOL_BYTES;
 	debugfs_create_blob("pool.bin", 0400, g16_render_output_dir, &g16_render_pool_blob);
+	if (render_triangle) {
+		for (i = 0; i < render_frames; i++) {
+			char name[32];
+
+			g16_render_frames[i].size = 256 * 256 * 4;
+			g16_render_frames[i].data = vzalloc(g16_render_frames[i].size);
+			if (!g16_render_frames[i].data) {
+				ret = -ENOMEM;
+				goto out;
+			}
+			snprintf(name, sizeof(name), "frame-%02u.bin", i);
+			debugfs_create_blob(name, 0400, g16_render_output_dir, &g16_render_frames[i]);
+		}
+	}
 	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
 		struct g16_render_resource *r = &g16_render_resources[i];
 		char name[32];
