@@ -47,6 +47,16 @@ firmware experiment in the same boot. Failed runs keep diagnostic state for
 inspection. The minimal `rtkit-initdata-ready` stage intentionally lacks fields
 needed by this firmware and crashes; use the complete compute recipe above.
 
+Every hardware experiment must first arm `/dev/watchdog0`. The runner requires
+`tools/experiment_watchdog.py` alongside it, verifies the Apple watchdog and a
+60-second timeout through ioctls, and persists that evidence before `insmod`.
+It sends no periodic keepalives. The watchdog stays armed through submission,
+diagnostics and any module removal, and is disabled explicitly only once these
+return and evidence is saved. An exception leaves recovery armed. For other
+bounded experiments, use `python3 tools/experiment_watchdog.py -- COMMAND ARGS`.
+`--expire-test` deliberately waits for a hardware reset to validate recovery.
+Allow time for firmware, GRUB and Linux to boot before retrying SSH.
+
 The newly assembled shader body uses the donor's captured macOS dispatch
 resource envelope. Regenerate its instructions with the included BSD encoder:
 

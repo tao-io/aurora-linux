@@ -10,6 +10,7 @@ from pathlib import Path
 import struct
 import subprocess
 import zlib
+from experiment_watchdog import ExperimentWatchdog
 
 EXPECTED = '792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1'
 PARAMS = [
@@ -88,14 +89,20 @@ def main():
         subprocess.run(['mount', '-t', 'debugfs', 'debugfs', str(debug)], check=True)
     result = args.results / (datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + ('-render-ta' if args.render_ta else '-render-queues' if args.render_queues else '-mandelbrot'))
     result.mkdir(parents=True, exist_ok=False)
-    marker.write_text(str(result) + '\n')
     metadata = {
         'kernel': release,
         'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
         'module_sha256': hashlib.sha256(args.module.read_bytes()).hexdigest(),
         'parameters': params,
     }
-    (result / 'manifest.json').write_text(json.dumps(metadata, indent=2) + '\n')
+    os.sync()
+    watchdog = ExperimentWatchdog()
+    metadata['watchdog'] = watchdog.arm()
+    marker.write_text(str(result) + '\n')
+    with (result / 'manifest.json').open('w') as manifest:
+        manifest.write(json.dumps(metadata, indent=2) + '\n')
+        manifest.flush()
+        os.fsync(manifest.fileno())
     run = subprocess.run(['insmod', str(args.module), *params], capture_output=True, text=True)
     (result / 'insmod.txt').write_text(run.stdout + run.stderr)
     after = output('dmesg')
@@ -148,6 +155,11 @@ def main():
         (result / 'rmmod.txt').write_text(unload.stdout + unload.stderr)
         passed = unload.returncode == 0
     metadata['passed'] = passed
+    (result / 'manifest.json').write_text(json.dumps(metadata, indent=2) + '\n')
+    os.sync()
+    watchdog.disarm()
+    metadata['watchdog']['armed'] = False
+    metadata['watchdog']['disarmed_after_evidence_collection'] = True
     (result / 'manifest.json').write_text(json.dumps(metadata, indent=2) + '\n')
     print(json.dumps(metadata, indent=2))
     print('Results:', result)

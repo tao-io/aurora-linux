@@ -1,0 +1,88 @@
+#!/usr/bin/env python3
+"""Arm the J713 hardware watchdog before a bounded experiment, without feeding it."""
+import argparse
+import array
+import fcntl
+import json
+import os
+import subprocess
+import time
+
+# Linux arm64 UAPI, include/uapi/linux/watchdog.h.
+GETSUPPORT = 0x80285700
+SETOPTIONS = 0x80045704
+SETTIMEOUT = 0xc0045706
+GETTIMEOUT = 0x80045707
+GETTIMELEFT = 0x8004570a
+
+
+class ExperimentWatchdog:
+    def __init__(self):
+        self.fd = None
+        self.started = None
+
+    def integer(self, request, value=0):
+        data = array.array('i', [value])
+        fcntl.ioctl(self.fd, request, data, True)
+        return data[0]
+
+    def arm(self):
+        # Opening starts the watchdog. CLOEXEC keeps ownership in this process.
+        self.fd = os.open('/dev/watchdog0', os.O_WRONLY | os.O_CLOEXEC)
+        try:
+            info = bytearray(40)
+            fcntl.ioctl(self.fd, GETSUPPORT, info, True)
+            identity = bytes(info[8:]).split(b'\0')[0].decode('ascii')
+            if identity != 'Apple SoC Watchdog':
+                raise RuntimeError(f'unexpected watchdog: {identity}')
+            accepted = self.integer(SETTIMEOUT, 60)
+            self.started = time.monotonic()
+            timeout = self.integer(GETTIMEOUT)
+            left = self.integer(GETTIMELEFT)
+            if accepted != 60 or timeout != 60 or not 50 <= left <= 60:
+                raise RuntimeError(f'watchdog timeout verification failed: {accepted}, {timeout}, {left}')
+        except BaseException:
+            # Setup failed; no experiment has started, so stop explicitly.
+            self.disarm()
+            raise
+        evidence = {'device': '/dev/watchdog0', 'identity': identity,
+                    'timeout_seconds': timeout, 'initial_timeleft_seconds': left,
+                    'periodic_keepalive': False, 'armed': True}
+        print('Watchdog armed: ' + json.dumps(evidence), flush=True)
+        return evidence
+
+    def disarm(self):
+        # Never call from a finally block around an experiment: exceptions or
+        # a stuck child must leave recovery armed. DISABLECARD reports errors,
+        # unlike relying only on magic close. No heartbeat thread is started.
+        self.integer(SETOPTIONS, 1)
+        os.close(self.fd)
+        self.fd = None
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--expire-test', action='store_true',
+                        help='deliberately wait for the 60-second hardware reset')
+    parser.add_argument('command', nargs=argparse.REMAINDER)
+    args = parser.parse_args()
+    command = args.command
+    if command[:1] == ['--']:
+        command = command[1:]
+    if args.expire_test == bool(command):
+        parser.error('choose either --expire-test or a command after --')
+    os.sync()
+    watchdog = ExperimentWatchdog()
+    watchdog.arm()
+    if args.expire_test:
+        print('Expiry test: waiting for hardware reset; no keepalives.', flush=True)
+        time.sleep(90)
+        raise RuntimeError('hardware did not reset within 90 seconds')
+    run = subprocess.run(command)
+    watchdog.disarm()
+    print(f'Watchdog disarmed after command returned {run.returncode}.', flush=True)
+    return run.returncode
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())
