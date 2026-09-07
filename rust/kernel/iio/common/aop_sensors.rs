@@ -51,7 +51,7 @@ impl<T: MessageProcessor> AopSensorData<T> {
 }
 
 impl<T: MessageProcessor> FakehidListener for AopSensorData<T> {
-    fn process_fakehid_report(&self, data: &[u8]) -> Result<()> {
+    fn process_fakehid_report(&self, _timestamp: u64, data: &[u8]) -> Result<()> {
         self.value
             .store(self.msg_proc.process(data), Ordering::Relaxed);
         Ok(())

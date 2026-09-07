@@ -16,7 +16,16 @@ config IIO_AOP_SENSOR_ALS
 	depends on RUST
 	depends on SYSFS
 	select APPLE_AOP
-	select RUST_FW_LOADER_ABSTRACTIONS
 	help
 	  Module to handle the ambient light sensor attached to the AOP
 	  coprocessor on Apple laptops.
+
+config IIO_AOP_SENSOR_MOTION
+	tristate "AOP accelerometer and gyroscope"
+	depends on ARCH_APPLE || COMPILE_TEST
+	depends on RUST
+	depends on SYSFS
+	select APPLE_AOP
+	help
+	  Expose calibrated accelerometer and gyroscope reports produced by the
+	  Apple Always-On Processor through the Industrial I/O subsystem.

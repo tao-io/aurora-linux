@@ -30,6 +30,8 @@
 #include <linux/pci.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/property.h>
+#include <linux/workqueue.h>
 #include <linux/slab.h>
 #include <linux/swab.h>
 #include <linux/types.h>
@@ -232,6 +234,8 @@ struct apple_dart {
 
 	struct iommu_group *sid2group[DART_MAX_STREAMS];
 	struct iommu_device iommu;
+	struct delayed_work fault_poll;
+	bool poll_faults;
 
 	u32 save_tcr[DART_MAX_STREAMS];
 	u32 save_ttbr[DART_MAX_STREAMS][DART_MAX_TTBR];
@@ -1164,6 +1168,10 @@ static int apple_dart_def_domain_type(struct device *dev)
 {
 	struct apple_dart_master_cfg *cfg = dev_iommu_priv_get(dev);
 
+	/* AOP needs translated IOVAs even with system-wide passthrough. */
+	if (device_property_read_bool(dev, "apple,force-dma-domain"))
+		return IOMMU_DOMAIN_DMA;
+
 	if (cfg->stream_maps[0].dart->pgsize > PAGE_SIZE)
 		return IOMMU_DOMAIN_IDENTITY;
 	if (!cfg->supports_bypass)
@@ -1312,6 +1320,25 @@ static irqreturn_t apple_dart_irq(int irq, void *dev)
 	return ret;
 }
 
+static void apple_dart_fault_poll(struct work_struct *work)
+{
+	struct apple_dart *dart =
+		container_of(to_delayed_work(work), struct apple_dart, fault_poll);
+	u32 error;
+
+	if (!READ_ONCE(dart->poll_faults))
+		return;
+	if (pm_runtime_resume_and_get(dart->dev) >= 0) {
+		error = readl(dart->regs + dart->hw->error);
+		if (dart->hw->type == DART_T8110 &&
+		    (error & DART_T8110_ERROR_FLAG))
+			dart->hw->irq_handler(-1, dart);
+		pm_runtime_put(dart->dev);
+	}
+	if (READ_ONCE(dart->poll_faults))
+		schedule_delayed_work(&dart->fault_poll, msecs_to_jiffies(50));
+}
+
 static bool apple_dart_is_locked(struct apple_dart *dart)
 {
 	return !!(readl(dart->regs + dart->hw->lock) & dart->hw->lock_bit);
@@ -1325,6 +1352,7 @@ static int apple_dart_probe(struct platform_device *pdev)
 	struct apple_dart *dart;
 	struct device *dev = &pdev->dev;
 	u64 dma_range[2];
+	bool no_fault_irq;
 
 	dart = devm_kzalloc(dev, sizeof(*dart), GFP_KERNEL);
 	if (!dart)
@@ -1332,6 +1360,8 @@ static int apple_dart_probe(struct platform_device *pdev)
 
 	dart->dev = dev;
 	dart->hw = of_device_get_match_data(dev);
+	no_fault_irq = device_property_read_bool(dev, "apple,no-fault-irq");
+	INIT_DELAYED_WORK(&dart->fault_poll, apple_dart_fault_poll);
 	spin_lock_init(&dart->lock);
 
 	dart->regs = devm_platform_get_and_ioremap_resource(pdev, 0, &res);
@@ -1343,7 +1373,7 @@ static int apple_dart_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	dart->irq = platform_get_irq_optional(pdev, 0);
+	dart->irq = no_fault_irq ? -ENXIO : platform_get_irq_optional(pdev, 0);
 	if (dart->irq == -ENXIO)
 		dart->irq = -1;
 	else if (dart->irq < 0)
@@ -1443,6 +1473,10 @@ static int apple_dart_probe(struct platform_device *pdev)
 		goto err_sysfs_remove;
 
 	pm_runtime_put(dev);
+	if (no_fault_irq) {
+		WRITE_ONCE(dart->poll_faults, true);
+		schedule_delayed_work(&dart->fault_poll, msecs_to_jiffies(50));
+	}
 
 	dev_info(
 		&pdev->dev,
@@ -1466,6 +1500,9 @@ err_clk_disable:
 static void apple_dart_remove(struct platform_device *pdev)
 {
 	struct apple_dart *dart = platform_get_drvdata(pdev);
+
+	WRITE_ONCE(dart->poll_faults, false);
+	cancel_delayed_work_sync(&dart->fault_poll);
 
 	if (!dart->locked)
 		apple_dart_hw_reset(dart);

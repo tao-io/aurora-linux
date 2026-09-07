@@ -17,7 +17,7 @@ pub struct EPICService {
 /// Listener for the "HID" events sent by aop
 pub trait FakehidListener {
     /// Process the event.
-    fn process_fakehid_report(&self, data: &[u8]) -> Result<()>;
+    fn process_fakehid_report(&self, timestamp: u64, data: &[u8]) -> Result<()>;
 }
 
 /// AOP communications manager.

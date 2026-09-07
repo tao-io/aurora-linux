@@ -89,6 +89,8 @@ const EPIC_CATEGORY_REPORT: u8 = 0x00;
 const EPIC_CATEGORY_NOTIFY: u8 = 0x10;
 const EPIC_CATEGORY_REPLY: u8 = 0x20;
 const EPIC_SUBTYPE_STD_SERVICE: u16 = 0xc0;
+const EPIC_SUBTYPE_GYRO_REPORT: u16 = 0xc1;
+const EPIC_SUBTYPE_ACCEL_REPORT: u16 = 0xc2;
 const EPIC_SUBTYPE_FAKEHID_REPORT: u16 = 0xc4;
 const EPIC_SUBTYPE_RETCODE: u16 = 0x84;
 const EPIC_SUBTYPE_RETCODE_PAYLOAD: u16 = 0xa0;
@@ -424,9 +426,24 @@ impl AFKEndpoint {
         ehdr: &EPICHeader,
         data: &[u8],
     ) -> Result<()> {
+        let payload_length = ehdr.length;
+        if data.len() != payload_length as usize {
+            dev_err!(
+                client.dev,
+                "EPIC payload length mismatch on endpoint {}: header {}, queue {}",
+                self.index,
+                payload_length,
+                data.len()
+            );
+            return Err(EIO);
+        }
         let subtype = ehdr.subtype;
         if ehdr.category == EPIC_CATEGORY_REPORT {
             if subtype == EPIC_SUBTYPE_STD_SERVICE {
+                if data.len() < mem::size_of::<EPICServiceAnnounce>() {
+                    dev_err!(client.dev, "Short EPIC service announcement");
+                    return Err(EIO);
+                }
                 let announce = unsafe { &*(data.as_ptr() as *const EPICServiceAnnounce) };
                 let chan = announce.channel;
                 let name_len = announce
@@ -439,8 +456,11 @@ impl AFKEndpoint {
                     chan,
                     &announce.name[..name_len],
                 );
-            } else if subtype == EPIC_SUBTYPE_FAKEHID_REPORT {
-                return client.process_fakehid_report(self, qhdr.channel, data);
+            } else if subtype == EPIC_SUBTYPE_GYRO_REPORT
+                || subtype == EPIC_SUBTYPE_ACCEL_REPORT
+                || subtype == EPIC_SUBTYPE_FAKEHID_REPORT
+            {
+                return client.process_fakehid_report(self, qhdr.channel, ehdr.timestamp, data);
             } else {
                 dev_err!(
                     client.dev,
@@ -764,21 +784,37 @@ impl AopData {
             b"aop-audio" => c_str!("audio"),
             b"las" => c_str!("las"),
             b"als" => c_str!("als"),
+            b"accel" => c_str!("accel"),
+            b"gyro" => c_str!("gyro"),
             _ => {
+                dev_info!(self.dev, "ignoring AOP service {:?}", name);
                 return Ok(());
             }
         };
+        dev_info!(
+            self.dev,
+            "AOP service {:?}: endpoint {:#x}, channel {:#x}",
+            name,
+            ep.index,
+            channel
+        );
         // probe can call back into us, run it with locks dropped.
         let work = AopServiceRegisterWork::new(dev_name, self, svc)?;
         workqueue::system().enqueue(work);
         Ok(())
     }
 
-    fn process_fakehid_report(&self, ep: &AFKEndpoint, ch: u32, data: &[u8]) -> Result<()> {
+    fn process_fakehid_report(
+        &self,
+        ep: &AFKEndpoint,
+        ch: u32,
+        timestamp: u64,
+        data: &[u8],
+    ) -> Result<()> {
         let guard = self.hid_listeners.lock();
         for entry in &*guard {
             if entry.svc.endpoint == ep.index && entry.svc.channel == ch {
-                return entry.listener.process_fakehid_report(data);
+                return entry.listener.process_fakehid_report(timestamp, data);
             }
         }
         Ok(())
@@ -818,17 +854,35 @@ impl AopData {
         aop_mmio.try_memcpy_fromio(&mut arg_bytes, offset)?;
         let mut idx = 0;
         while idx < size {
+            if size - idx < 8 {
+                dev_err!(self.dev, "Truncated AOP boot-argument header");
+                return Err(EIO);
+            }
             let key = u32::from_le_bytes(arg_bytes[idx..idx + 4].try_into().unwrap());
-            let size = u32::from_le_bytes(arg_bytes[idx + 4..idx + 8].try_into().unwrap()) as usize;
+            let value_size =
+                u32::from_le_bytes(arg_bytes[idx + 4..idx + 8].try_into().unwrap()) as usize;
             idx += 8;
+            if value_size > size - idx {
+                dev_err!(self.dev, "Truncated AOP boot-argument value {:#x}", key);
+                return Err(EIO);
+            }
             for (k, v) in patches.iter() {
                 if *k != key {
                     continue;
                 }
-                arg_bytes[idx..idx + size].copy_from_slice(&(*v as u64).to_le_bytes()[..size]);
+                if value_size > mem::size_of::<u64>() {
+                    dev_err!(
+                        self.dev,
+                        "AOP boot-argument {:#x} is too large to patch: {}",
+                        key,
+                        value_size
+                    );
+                    return Err(EIO);
+                }
+                arg_bytes[idx..idx + value_size].copy_from_slice(&v.to_le_bytes()[..value_size]);
                 break;
             }
-            idx += size;
+            idx += value_size;
         }
         aop_mmio.try_memcpy_toio(offset, &arg_bytes)
     }
@@ -944,27 +998,39 @@ struct AopDriver(Arc<dyn AOP>);
 
 struct AopHwConfig {
     ec0p: u64,
+    ncal: u64,
     alig: u64,
     aopt: u64,
 }
 
 const HW_CFG_T8103: AopHwConfig = AopHwConfig {
     ec0p: 0x020000,
+    ncal: 0,
     aopt: 1,
     alig: 128,
 };
 const HW_CFG_T8112: AopHwConfig = AopHwConfig {
     ec0p: 0x020000,
+    ncal: 0,
     aopt: 0,
     alig: 128,
 };
 const HW_CFG_T6000: AopHwConfig = AopHwConfig {
     ec0p: 0x020000,
+    ncal: 0,
     aopt: 0,
     alig: 64,
 };
 const HW_CFG_T6020: AopHwConfig = AopHwConfig {
     ec0p: 0x0100_00000000,
+    ncal: 0,
+    aopt: 0,
+    alig: 64,
+};
+
+const HW_CFG_T8132: AopHwConfig = AopHwConfig {
+    ec0p: 0x0100_00000000,
+    ncal: 1,
     aopt: 0,
     alig: 64,
 };
@@ -978,6 +1044,7 @@ kernel::of_device_table!(
         (of::DeviceId::new(c_str!("apple,t8112-aop")), &HW_CFG_T8112),
         (of::DeviceId::new(c_str!("apple,t6000-aop")), &HW_CFG_T6000),
         (of::DeviceId::new(c_str!("apple,t6020-aop")), &HW_CFG_T6020),
+        (of::DeviceId::new(c_str!("apple,t8132-aop")), &HW_CFG_T8132),
     ]
 );
 
@@ -1002,7 +1069,7 @@ impl platform::Driver for AopDriver {
             aop_mmio,
             &[
                 (from_fourcc(b"EC0p"), cfg.ec0p),
-                (from_fourcc(b"nCal"), 0x0),
+                (from_fourcc(b"nCal"), cfg.ncal),
                 (from_fourcc(b"alig"), cfg.alig),
                 (from_fourcc(b"AOPt"), cfg.aopt),
             ],

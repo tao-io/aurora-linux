@@ -1,0 +1,87 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * Copyright The Asahi Linux Contributors
+ * J713 AOP motion support from the local M4 bring-up tree.
+ */
+
+&soc {
+	aop_mbox: mailbox@390608000 {
+		compatible = "apple,t8132-asc-mailbox", "apple,asc-mailbox-v4";
+		reg = <0x3 0x90608000 0x0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 433 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 434 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 435 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 436 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "send-empty", "send-not-empty",
+				  "recv-empty", "recv-not-empty";
+		#mbox-cells = <0>;
+		status = "okay";
+	};
+
+	aop_dart: iommu@390f00000 {
+		compatible = "apple,t8132-dart", "apple,t8110-dart";
+		reg = <0x3 0x90f00000 0x0 0xc000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 457 IRQ_TYPE_LEVEL_HIGH>;
+		apple,no-fault-irq;
+		#iommu-cells = <1>;
+		status = "okay";
+	};
+
+	aop: aop@390c00000 {
+		compatible = "apple,t8132-aop", "apple,t6020-aop";
+		reg = <0x3 0x90c00000 0x0 0x1e0000>,
+		      <0x3 0x90600000 0x0 0x88000>;
+		mboxes = <&aop_mbox>;
+		mbox-names = "mbox";
+		iommus = <&aop_dart 0>;
+		apple,force-dma-domain;
+		status = "okay";
+
+		accel {
+			compatible = "apple,t8132-aop-accel", "apple,aop-accel";
+			apple,calibration-75 = [
+				02 00 01 01 00 00 00 00 2c 00 00 00 01 00 00 00
+				10 00 00 00 00 7d 00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 7d 00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 00 7d 00 00 00 00 00 00
+			];
+			apple,calibration-76 = [
+				02 00 01 01 00 00 00 00 28 00 00 00 01 00 00 00
+				00 00 00 00 00 00 ff ff 00 00 00 00 00 00 ff ff
+				00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+				00 00 01 00 00 00 00 00
+			];
+			apple,calibration-77 = [
+				02 00 01 01 00 00 00 00 28 00 00 00 01 00 00 00
+				00 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00
+				00 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00
+				00 00 01 00 00 00 00 00
+			];
+		};
+
+		gyro {
+			compatible = "apple,t8132-aop-gyro", "apple,aop-gyro";
+			apple,calibration-75 = [
+				02 00 01 01 00 00 00 00 2c 00 00 00 01 00 00 00
+				d0 07 00 00 a0 0f 00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 a0 0f 00 00 00 00 00 00 00 00 00 00
+				00 00 00 00 a0 0f 00 00 00 00 00 00
+			];
+			apple,calibration-76 = [
+				02 00 01 01 00 00 00 00 28 00 00 00 01 00 00 00
+				00 00 00 00 00 00 01 00 00 00 00 00 00 00 01 00
+				00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00
+				00 00 ff ff 00 00 00 00
+			];
+			apple,calibration-77 = [
+				02 00 01 01 00 00 00 00 28 00 00 00 01 00 00 00
+				00 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00
+				00 00 01 00 00 00 00 00 00 00 00 00 00 00 00 00
+				00 00 01 00 00 00 00 00
+			];
+		};
+
+	};
+};
