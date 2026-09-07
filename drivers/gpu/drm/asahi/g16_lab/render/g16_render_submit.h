@@ -322,15 +322,16 @@ static void g16_render_next_frame(void)
 	memset(g16_render_graph + 0x60000, 0, 0x200);
 	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
 		struct g16_render_resource *r = &g16_render_resources[i];
+		u8 *vertices = g16_render_vertices(r);
 
 		if (r->va == g16_render_target_va()) {
 			memset(r->data, 0, r->size);
 			g16_lab_dcache_clean(r->data, r->size);
-		} else if (r->va == 0x10000090000ULL) {
+		} else if (vertices) {
 			u32 extent = (g16_render_frame & 1) ? 0x40400000 : 0x3f800000;
 
-			g16_render_put(r->data + 8, extent, 4);
-			g16_render_put(r->data + 20, extent, 4);
+			g16_render_put(vertices + 8, extent, 4);
+			g16_render_put(vertices + 20, extent, 4);
 			g16_lab_dcache_clean(r->data, r->size);
 		}
 	}

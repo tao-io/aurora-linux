@@ -52,7 +52,11 @@ def main():
                         help='RGB coordinate-colored triangle; implies --render-xy')
     parser.add_argument('--render-frames', type=int, choices=range(1, 9), default=1,
                         help='sequential frames with alternating geometry; requires triangle')
+    parser.add_argument('--render-bindings', action='store_true',
+                        help='generated relocated loaders and vertex bindings; implies triangle')
     args = parser.parse_args()
+    if args.render_bindings:
+        args.render_triangle = True
     if args.render_frames > 1 and not args.render_triangle:
         parser.error('--render-frames requires --render-triangle')
     if args.render_triangle:
@@ -81,6 +85,8 @@ def main():
         params += ['render_generated_shaders=1', f'render_size={args.render_size}']
     if args.render_xy:
         params += ['render_xy=1']
+    if args.render_bindings:
+        params += ['render_bindings=1']
     if args.render_triangle:
         params += ['render_triangle=1', f'render_frames={args.render_frames}']
     if args.render_loader_marker:
@@ -233,6 +239,7 @@ def main():
             metadata['render_xy'] = args.render_xy
             metadata['render_triangle'] = args.render_triangle
             metadata['render_frames'] = args.render_frames
+            metadata['generated_bindings'] = args.render_bindings
             target_va = 0x10000058000 if args.render_size == 4 else 0x10001000000
             target_offset = 0x100 if args.render_size == 4 else 0x4000
             pixel_bytes = args.render_size * args.render_size * 4
@@ -267,6 +274,18 @@ def main():
             # A firmware crash or incomplete queue still fails the outer gate.
             passed = (passed and metadata['fragment_job_retired']
                       and metadata['vertex_fragment_pixels_verified'])
+        if args.render_bindings:
+            old_ranges = ((0x10000148000, 0, 164), (0x10000158000, 0x640, 84),
+                          (0x10000128000, 0xa0, 8), (0x10000090000, 0, 24))
+            erased = True
+            for va, offset, count in old_ranges:
+                path = result / 'render-resources' / f'resource-{va:x}.bin'
+                erased = erased and path.exists()
+                if path.exists():
+                    data = path.read_bytes()
+                    erased = erased and len(data) >= offset + count and not any(data[offset:offset + count])
+            metadata['old_bindings_erased'] = erased
+            passed = passed and erased and 'generated relocated loaders and vertex bindings; old entries erased' in current_log
         if args.render_triangle:
             from g16image import detile_rgba8, triangle_reference, write_png
             frames = []

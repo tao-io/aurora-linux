@@ -9,6 +9,7 @@
 #include "g16_render_uat.h"
 #include "g16_vertex_marker.h"
 #include "g16_generated_graphics.h"
+#include "g16_generated_bindings.h"
 
 #define G16_RENDER_RESOURCE_COUNT 34
 #define G16_RENDER_GRAPH_BYTES 0x80000
@@ -55,6 +56,16 @@ static u64 g16_render_target_va(void)
 static u32 g16_render_target_offset(void)
 {
 	return render_size == 4 ? 0x100 : 0x4000;
+}
+
+static u8 *g16_render_vertices(struct g16_render_resource *r)
+{
+	u64 address = render_bindings ? 0x1000014d100ULL : 0x10000090000ULL;
+
+	if (address < r->va || address - r->va > r->size ||
+	    r->size - (address - r->va) < 24)
+		return NULL;
+	return (u8 *)r->data + address - r->va;
 }
 
 static void g16_render_release(void)
@@ -352,6 +363,44 @@ static int g16_render_prepare(void)
 				g16_render_put(data + 20, 0x3f800000, 4);
 			}
 		}
+	}
+	if (render_bindings) {
+		for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+			struct g16_render_resource *r = &g16_render_resources[i];
+			u8 *data = r->data;
+
+			if (r->va == 0x10000148000ULL) {
+				BUILD_BUG_ON(sizeof(g16_generated_vertex_loader) > 0x400);
+				BUILD_BUG_ON(sizeof(g16_generated_fragment_loader) > 0x400);
+				if (memchr_inv(data + 0x4000, 0, 0x3000)) {
+					ret = -EINVAL;
+					goto out;
+				}
+				memcpy(data + 0x4000, g16_generated_vertex_loader,
+				       sizeof(g16_generated_vertex_loader));
+				memcpy(data + 0x4400, g16_generated_fragment_loader,
+				       sizeof(g16_generated_fragment_loader));
+				g16_render_put(data + 0x5000, 0x1000014d100ULL, 8);
+				/* Explicit float2 clip-space positions; draw arguments at
+				 * +5200 stay zero. No captured vertex input is copied.
+				 */
+				for (j = 0; j < 6; j++)
+					g16_render_put(data + 0x5100 + j * 4,
+						       j == 2 || j == 5 ? 0x3f800000 : 0xbf800000, 4);
+				memset(data, 0, sizeof(g16_generated_vertex_loader));
+			} else if (r->va == 0x10000158000ULL) {
+				memset(data + 0x640, 0, sizeof(g16_generated_fragment_loader));
+			} else if (r->va == 0x1000018000ULL) {
+				g16_render_put(data + 0xc, 0x14c000 >> 6, 4);
+			} else if (r->va == 0x1000058000ULL) {
+				g16_render_put(data + 0x14, 0x14c400 >> 6, 4);
+			} else if (r->va == 0x10000128000ULL) {
+				memset(data + 0xa0, 0, 8);
+			} else if (r->va == 0x10000090000ULL) {
+				memset(data, 0, 24);
+			}
+		}
+		pr_info("g16_lab: render: generated relocated loaders and vertex bindings; old entries erased\n");
 	}
 	if (render_ta_probe && !render_generated_shaders) {
 		bool patched = false;

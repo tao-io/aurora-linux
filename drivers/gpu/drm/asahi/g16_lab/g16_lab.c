@@ -2664,6 +2664,9 @@ static unsigned int render_frames = 1;
 module_param(render_frames, uint, 0444);
 MODULE_PARM_DESC(render_frames, "One to eight sequential triangle frames in one firmware boot");
 static unsigned int g16_render_frame;
+static bool render_bindings;
+module_param(render_bindings, bool, 0444);
+MODULE_PARM_DESC(render_bindings, "Use generated relocated vertex/fragment loaders and vertex bindings");
 static bool render_ta_probe;
 module_param(render_ta_probe, bool, 0444);
 MODULE_PARM_DESC(render_ta_probe, "Experimental captured vertex/tiling submission after render queue validation");
@@ -19218,6 +19221,8 @@ static int __init g16_lab_init(void)
 	if (render_xy && (!render_generated_shaders || render_size != 256))
 		return -EINVAL;
 	if (render_triangle && !render_xy)
+		return -EINVAL;
+	if (render_bindings && !render_triangle)
 		return -EINVAL;
 	if (!render_frames || render_frames > 8 || (render_frames > 1 && !render_triangle))
 		return -EINVAL;

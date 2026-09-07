@@ -8,3 +8,8 @@ The original BSD-3-Clause license is preserved in `LICENSE`. Our captured G16
 compute corpus is instruction-compatible with this encoder for the subset used
 by `g16mandelbrot.py`. The G16 executable stop is two bytes (`0e 00`), whereas
 the encoder pads it to four bytes; the wrapper removes only that padding.
+
+Local fix: immediate memory indices now initialize their sign-extension bit
+to zero. The original encoder omitted that field and raised `KeyError: Isx`
+for the loaders' zero immediate index. Both generated loader bodies match
+the M4 reference bytes with this fix. Register indices are unchanged.

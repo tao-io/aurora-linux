@@ -2365,6 +2365,7 @@ class MemoryIndexDesc(OperandDesc):
 			bit_8 = self.name + 'd' if self.is_load else self.name + 'z'
 			bit_9 = self.name + 'z' if self.is_load else self.name + 'd'
 			fields[self.name + 't'] = 0
+			fields[self.name + 'sx'] = 0
 			fields[self.name]       = (v >>  0) & 0xff
 			fields[bit_8]           = (v >>  8) & 1
 			fields[bit_9]           = (v >>  9) & 1

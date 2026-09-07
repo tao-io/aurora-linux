@@ -497,3 +497,31 @@ This is bounded sequential rendering, not a continuous application API,
 ring-wrap stress test, desktop driver or hardware-varying interpolation test.
 The next graphics work is true vertex-color varyings and generated binding
 state, followed by depth/uniform/texture workloads and a userspace interface.
+
+### Generated vertex/fragment state loaders and bindings
+
+`--render-bindings` implies the RGB triangle and replaces its two captured
+state loaders with `g16bindings.py` output. Arithmetic, loads and uniform
+publication are assembled from explicit operands. The no-varying LoadShader
+control words, indirect helper call and publication controls remain a fixed,
+qualified ABI, explicitly identified in the generator. No input capture is
+read during generation. Using the original addresses reproduces all 164
+vertex-loader bytes and all 84 fragment-loader bytes exactly.
+
+The executable test relocates VS/FS loaders to `0x1000014c000/0x1000014c400`,
+its vertex binding table to `0x1000014d000`, float2 positions to
+`0x1000014d100`, and zero draw arguments to `0x1000014d200`. VDM and PPP
+references are updated; the old loader entries, binding pointer and vertex
+positions are erased. The runner independently checks those erased ranges.
+Subsequent frames modify the new vertex buffer.
+
+Run `20260907T211807Z` passed eight alternating frames, all 524,288 pixel
+comparisons, untouched target padding, erased old bindings, clean firmware
+retirement and loss-free KTrace. The watchdog was armed at 60 seconds and
+disarmed after evidence collection; module removal succeeded. Manifest:
+`validation/j713-generated-bindings-20260907.json`.
+
+This removes capture dependence for the two main state loaders and their
+vertex input binding. The VDM/PPP state, per-SR1 helper dispatch targets and
+background/end-of-tile programs still need independent generation. It does
+not qualify vertex-varying interpolation.
