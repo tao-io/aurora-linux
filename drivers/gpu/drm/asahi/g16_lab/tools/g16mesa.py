@@ -16,6 +16,7 @@ def main():
     parser.add_argument('--mesa', required=True, type=Path)
     parser.add_argument('--mesa-build', required=True, type=Path)
     parser.add_argument('--output-dir', required=True, type=Path)
+    parser.add_argument('--spirv', nargs=2, type=Path, metavar=('VERTEX', 'FRAGMENT'))
     args = parser.parse_args()
     mesa, build, output = (p.resolve() for p in (args.mesa, args.mesa_build, args.output_dir))
     revision = subprocess.check_output(['git', '-C', str(mesa), 'rev-parse', 'HEAD'], text=True).strip()
@@ -23,7 +24,7 @@ def main():
     if revision != MESA_REVISION or dirty:
         raise ValueError('requires the clean pinned Mesa revision')
     target = 'src/asahi/compiler/agx3_graphics_compile_test'
-    subprocess.run(['ninja', '-C', str(build), '-j12', target], check=True)
+    subprocess.run(['ninja', '-C', str(build), '-j12', target, 'src/compiler/spirv/libvtn.a'], check=True)
     commands = json.loads((build / 'compile_commands.json').read_text())
     entry = next(e for e in commands if e['file'].endswith('/test-agx3-graphics-compile.c'))
     source = (Path(entry['directory']) / entry['file']).resolve()
@@ -41,8 +42,10 @@ def main():
     if any(a in ('&&', ';', '|', '>') for a in link_args):
         raise ValueError('unexpected shell operations in the link command')
     link_args = [str(exe) if a == target else str(obj) if a == entry['output'] else a for a in link_args]
+    link_args.insert(link_args.index('-Wl,--start-group') + 1, 'src/compiler/spirv/libvtn.a')
+    link_args.insert(link_args.index('-Wl,--end-group'), '-lSPIRV-Tools')
     subprocess.run(link_args, cwd=build, check=True)
-    run = subprocess.run([str(exe)], capture_output=True)
+    run = subprocess.run([str(exe)] + [str(p.resolve()) for p in (args.spirv or [])], capture_output=True)
     (output / 'compiler.log').write_bytes(run.stderr)
     if run.returncode:
         print(run.stderr.decode(), end='')
@@ -52,11 +55,13 @@ def main():
     (output / 'manifest.json').write_text(json.dumps({
         'mesa_revision': revision,
         'probe_sha256': hashlib.sha256(probe.read_bytes()).hexdigest(),
+        'spirv_lowering_sha256': hashlib.sha256(probe.with_name('g16spirv.h').read_bytes()).hexdigest(),
         'header_sha256': hashlib.sha256(run.stdout).hexdigest(),
         'compiler_report': run.stderr.decode(),
         'compile_command': compile_args,
         'link_command': link_args,
-        'scope': 'offline post-lowering NIR compiler output; hardware validation separate',
+        'spirv_inputs': [{"path": str(p.resolve()), "sha256": hashlib.sha256(p.read_bytes()).hexdigest()} for p in (args.spirv or [])],
+        'scope': 'offline SPIR-V compiler output with lab ABI lowering' if args.spirv else 'offline post-lowering NIR compiler output; hardware validation separate',
     }, indent=2) + '\n')
     print(run.stderr.decode(), end='')
     print(header)

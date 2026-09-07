@@ -86,8 +86,8 @@ for the future DRM backend; it is not yet Vulkan command submission.
 name deliberately keeps application Mesa probing separate until execution
 is connected. GEM_CREATE and GEM_MMAP_OFFSET are wire-compatible with the
 pinned Aurora Asahi UAPI, checked by compile-time assertions in
-`tools/g16drmtest.c`. BOs use the kernel shmem GEM helpers. VM-private BOs,
-VMs and submission are not yet implemented. The probe bounds each BO at
+`tools/g16drmtest.c`. BOs use the kernel shmem GEM helpers. VM-private BOs and submission are not yet implemented; private, unpublished
+VM bindings were subsequently added (see `AURORA_VULKAN.md`). The probe bounds each BO at
 64 MiB and cumulative creation per open at 64 objects / 256 MiB.
 
 `20260907T224149Z`: both write-combine and writeback mappings pass zero-fill
@@ -96,3 +96,35 @@ VMAs survive handle close correctly, invalid creation requests and the
 per-open budget are checked. Module teardown succeeds. This was a guarded
 kernel memory test; no GPU firmware was started and it is not a new GPU
 execution result.
+
+
+## SPIR-V shader input
+
+`tools/g16mesa.c` now also accepts vertex/fragment SPIR-V files. The checked-in
+`g16_mesa_graphics.h` is generated from `tools/triangle/triangle.vert` and
+`triangle.frag` using glslang, Mesa SPIR-V-to-NIR translation, explicit lowering
+to the lab vertex fetch / UVS / tile-store ABI, then the AGX3b backend.
+Shader arithmetic comes from the input; it is not replaced with canned code.
+This is still an offline compiler probe, not vkCreateGraphicsPipelines.
+
+```sh
+glslangValidator -V tools/triangle/triangle.vert -o /tmp/triangle.vert.spv
+glslangValidator -V tools/triangle/triangle.frag -o /tmp/triangle.frag.spv
+# Paths below are from the workspace root:
+python3 linux/linux-alpha/drivers/gpu/drm/asahi/g16_lab/tools/g16mesa.py \
+  --mesa mesa/aurora --mesa-build build/mesa-aurora-vulkan \
+  --output-dir build/mesa-m4-spirv \
+  --spirv /tmp/triangle.vert.spv /tmp/triangle.frag.spv
+```
+
+The VS is 166 bytes / 16 GPR halves / 14 staging halves; FS is 84 bytes /
+8 GPR halves / zero staging halves. Changing fragment RGB to BGR changes
+machine code; unsupported flat interpolation and malformed input are rejected.
+The no-argument original NIR probe remains byte-exact to its previous output.
+
+On J713/25G83, `20260907T225443Z` runs the SPIR-V-compiled shaders for eight
+userspace-paced frames. All 524,288 pixels match, TA and fragment queues finish,
+KTrace loses no records, and module removal succeeds. The watchdog is armed
+for 60 seconds before module loading and disarmed after evidence collection.
+See `validation/j713-spirv-rgb-20260908.json`. This qualifies these shaders on
+M4 through the lab backend; Vulkan DRM submission and WSI remain unimplemented.

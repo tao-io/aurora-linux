@@ -1,0 +1,288 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "boot_id": "9d41205d-e845-418b-b6fe-295cbfd82844",
+  "module_sha256": "ebce92ca3896d0b7052d45507d93daee35d8a7b43adccd84d12e1bb9a9614c14",
+  "parameters": [
+    "stage=rtkit-initdata-exact-offscreen-store",
+    "compute_macos_iadd=1",
+    "compute_mandelbrot=1",
+    "compute_macos_iadd_capture_context=1",
+    "compute_macos_iadd_ap2_leaves=1",
+    "compute_exact_loader_iomap_all=1",
+    "compute_macos_iadd_aligned_uma_hardware_table=1",
+    "compute_macos_iadd_populated_usc_private_memory=1",
+    "render_queue_probe=1",
+    "render_ta_probe=1",
+    "render_fragment_probe=1",
+    "render_generated_shaders=1",
+    "render_size=256",
+    "render_xy=1",
+    "render_bindings=1",
+    "render_stream=1",
+    "render_varying=1",
+    "render_service=1",
+    "render_mesa_fragment=1",
+    "render_mesa_vertex=1",
+    "render_varying_rgb=1",
+    "render_triangle=1",
+    "render_frames=8",
+    "firmware_ktrace_mask=3"
+  ],
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": false,
+    "disarmed_after_evidence_collection": true
+  },
+  "render_service": {
+    "idle_verified": true,
+    "invalid_requests_rejected": 4,
+    "events": [
+      {
+        "sequence": 1,
+        "seconds": 0.021457607000000323,
+        "status": {
+          "ready": 1,
+          "pending": 0,
+          "completed": 1,
+          "result": 0,
+          "stopped": 0
+        }
+      },
+      {
+        "sequence": 2,
+        "seconds": 0.024927360999999593,
+        "status": {
+          "ready": 1,
+          "pending": 0,
+          "completed": 2,
+          "result": 0,
+          "stopped": 0
+        }
+      },
+      {
+        "sequence": 3,
+        "seconds": 0.02498546200000007,
+        "status": {
+          "ready": 1,
+          "pending": 0,
+          "completed": 3,
+          "result": 0,
+          "stopped": 0
+        }
+      },
+      {
+        "sequence": 4,
+        "seconds": 0.024983396000001434,
+        "status": {
+          "ready": 1,
+          "pending": 0,
+          "completed": 4,
+          "result": 0,
+          "stopped": 0
+        }
+      },
+      {
+        "sequence": 5,
+        "seconds": 0.024857516000000857,
+        "status": {
+          "ready": 1,
+          "pending": 0,
+          "completed": 5,
+          "result": 0,
+          "stopped": 0
+        }
+      },
+      {
+        "sequence": 6,
+        "seconds": 0.025076306999999076,
+        "status": {
+          "ready": 1,
+          "pending": 0,
+          "completed": 6,
+          "result": 0,
+          "stopped": 0
+        }
+      },
+      {
+        "sequence": 7,
+        "seconds": 0.02451594899999776,
+        "status": {
+          "ready": 1,
+          "pending": 0,
+          "completed": 7,
+          "result": 0,
+          "stopped": 0
+        }
+      },
+      {
+        "sequence": 8,
+        "seconds": 0.025110674999996974,
+        "status": {
+          "ready": 0,
+          "pending": 0,
+          "completed": 8,
+          "result": 0,
+          "stopped": 0
+        }
+      }
+    ],
+    "final_status": {
+      "ready": 0,
+      "pending": 0,
+      "completed": 8,
+      "result": 0,
+      "stopped": 1
+    }
+  },
+  "insmod_rc": 0,
+  "stage_result": 0,
+  "firmware_ktrace_valid": true,
+  "firmware_ktrace": {
+    "platform": "J713/T8132/G16G",
+    "firmware_build": "25G83",
+    "record_size": 72,
+    "record_count": 8134,
+    "sha256": "a50ff85e7c978600a0dec53aa12dc75e26e2c2014e2bd5b1a1bfb52dd54c8724",
+    "firmware_reported_lost_records": 0,
+    "event_counts": {
+      "EventNotify": 9,
+      "Finish3D": 8,
+      "FinishCompute": 1,
+      "FinishTA": 8,
+      "StampUpdate3D": 7,
+      "StampUpdateCompute": 1,
+      "StampUpdateTA": 8,
+      "Start3D": 8,
+      "StartCompute": 1,
+      "StartTA": 8,
+      "event_000005": 8,
+      "event_00000f": 2,
+      "event_000017": 8,
+      "event_00002c": 1,
+      "event_00004d": 8,
+      "event_00004f": 8,
+      "event_000054": 17,
+      "event_000056": 35,
+      "event_000100": 1574,
+      "event_000101": 1574,
+      "event_000102": 91,
+      "event_000103": 91,
+      "event_000105": 19,
+      "event_000106": 19,
+      "event_000109": 17,
+      "event_00010a": 17,
+      "event_00010c": 2,
+      "event_000111": 19,
+      "event_000112": 4561,
+      "event_00013c": 2,
+      "event_00013e": 2
+    },
+    "host_dropped_records": 0,
+    "drain_result": 0
+  },
+  "output_bytes": 16384,
+  "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+  "colors": {
+    "ffffffff": 3416,
+    "ff000000": 680
+  },
+  "symmetric_rows": true,
+  "render_queues_passed": true,
+  "render_shaders_submitted": true,
+  "ta_retired_with_writes": false,
+  "fragment_job_submitted": true,
+  "fragment_job_retired": true,
+  "vertex_fragment_pixels_verified": true,
+  "generated_shader_bodies": true,
+  "render_size": 256,
+  "render_xy": true,
+  "render_triangle": true,
+  "render_frames": 8,
+  "generated_bindings": true,
+  "generated_stream": true,
+  "linear_vertex_varying": true,
+  "rgb_vertex_varying": true,
+  "mesa_nir_fragment": true,
+  "mesa_nir_vertex": true,
+  "uniform_vertex_colors": false,
+  "coefficient_source_rhw": false,
+  "render_target_sha256": "fe37bfe59eec5e54e567d5d897521e0720904b8be40015ab5a227160158b90f0",
+  "render_rgba_sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb",
+  "old_bindings_erased": true,
+  "old_stream_erased_and_inputs_verified": true,
+  "vertex_attribute_readback": [
+    3452816845,
+    3452816845,
+    3452816845
+  ],
+  "vertex_attribute_reads_verified": null,
+  "vertex_trace_absent": true,
+  "frames": [
+    {
+      "frame": 0,
+      "verified": true,
+      "sha256": "bdadefa277c87b2950ae3a9bab99240dfce66b262a344010561f3ebee8528302"
+    },
+    {
+      "frame": 1,
+      "verified": true,
+      "sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb"
+    },
+    {
+      "frame": 2,
+      "verified": true,
+      "sha256": "bdadefa277c87b2950ae3a9bab99240dfce66b262a344010561f3ebee8528302"
+    },
+    {
+      "frame": 3,
+      "verified": true,
+      "sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb"
+    },
+    {
+      "frame": 4,
+      "verified": true,
+      "sha256": "bdadefa277c87b2950ae3a9bab99240dfce66b262a344010561f3ebee8528302"
+    },
+    {
+      "frame": 5,
+      "verified": true,
+      "sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb"
+    },
+    {
+      "frame": 6,
+      "verified": true,
+      "sha256": "bdadefa277c87b2950ae3a9bab99240dfce66b262a344010561f3ebee8528302"
+    },
+    {
+      "frame": 7,
+      "verified": true,
+      "sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb"
+    }
+  ],
+  "rmmod_rc": 0,
+  "passed": true,
+  "shader_frontend": "GLSL 450 -> SPIR-V -> Mesa NIR -> AGX3b, bounded lab ABI",
+  "shader_compiler": {
+    "mesa_revision": "e58d46899eb1f351863bccab4b6e8c87ed32b95e",
+    "probe_sha256": "894eba48b8a411f4a408479dd951e8344ca52563a4a48837ab4fff93ed36dc69",
+    "spirv_lowering_sha256": "8d76cf030f3076fbeef3eb655a7169dfa5a7fdb29c5b55bbdba238242548ae00",
+    "header_sha256": "87bbf38677bde927931c0e16c007dbc75200d230ac69914e016e929ef48dbf37",
+    "spirv_inputs": [
+      {
+        "path": "/home/council/dev/dirtyroom_m4/build/triangle.vert.spv",
+        "sha256": "1f1806e7e6d72f0465a48252989fb01716c4d71e32bcddf02918acaed0c57beb"
+      },
+      {
+        "path": "/home/council/dev/dirtyroom_m4/build/triangle.frag.spv",
+        "sha256": "17ef84e9c30ca9982e1fac19b18326475f29c0b13930bf804dfd4ac6d0a841bb"
+      }
+    ],
+    "compiler_report": "vertex compiled=1 bytes=166 gprs=16 staging=14 known=1 offset=0 preamble=0 constants=0 scratch=0 push=0\nfragment compiled=1 bytes=84 gprs=8 staging=0 known=1 offset=0 preamble=0 constants=0 scratch=0 push=0\nvertex: bytes=166 gpr_halfs=16 staging_halfs=14 push=0\nfragment: bytes=84 gpr_halfs=8 staging_halfs=0 push=0\n"
+  },
+  "public_vulkan_submission": false,
+  "window_presentation": false
+}
