@@ -3,7 +3,8 @@
 #define G16_RENDER_PIXEL_H
 
 /* First bounded 3D submission: geometry comes from the preceding TA pass.
- * Optional attachment/end-of-tile state remains disabled in this diagnostic.
+ * Captured M4 background/end-of-tile loaders are bound below. Their resource
+ * allocation words still need qualification; this is a bounded diagnostic.
  * Retirement alone is deliberately not accepted as a rendered image.
  */
 static int g16_render_build_fragment(void)
@@ -33,6 +34,13 @@ static int g16_render_build_fragment(void)
 	/* Same-build loadRenderTargetMemoryData uses normal GPU addresses. */
 	D(0x41c, 32, 4);
 	D(0x420, 32, 4);
+	/* HAL200 emitDriverProgramArguments writes common+a8 (raw+378).
+	 * copy3DCommonPassthroughData maps it to descriptor+588 / reg15370.
+	 * emitEndOfTileArgumentsEarly supplies common+c8 / reg15380.
+	 * Resource 35 contains BGO loaders at +0/+240 and EOT at +480.
+	 */
+	D(0x588, 0x10000158000ULL, 8);
+	D(0x6e0, 0x10000158480ULL, 8);
 	D(0x7d0, GPU(0x28000), 8);
 	D(0x7d8, GPU(0x29000), 8);
 	D(0x7e0, GPU(0x29000), 8);
@@ -94,6 +102,9 @@ static int g16_render_build_fragment(void)
 	g16_render_put(work + 0x64, g.y_blocks, 4);
 	g16_render_put(work + 0x68, g.blocks, 4);
 	g16_render_put(work + 0x78, g.tiles, 4);
+	/* Same native submitBuffer mirrors used by firmware diagnostics. */
+	g16_render_put(work + 0x900, 0x10000158000ULL, 8);
+	g16_render_put(work + 0x9fc, 0x10000158480ULL, 8);
 	g16_render_put(work + 0xc46, g16_initdata_live_barrier_va + 0xe00, 8);
 	g16_render_put(work + 0xc57, base + 0x60100, 8);
 	g16_render_put(work + 0x9d8, mode, 8);

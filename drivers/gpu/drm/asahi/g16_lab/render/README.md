@@ -328,3 +328,28 @@ mapping as compute output. Neither marker was CPU-visible in 194733Z; cache
 policy and wait-group variants also failed to make these writes visible.
 The next diagnostic is firmware KTrace, to inspect completion and attachment
 handling before drawing conclusions about cache visibility.
+
+### First 3D engine submissions and M4 tile programs
+
+The 20260907T202303Z fragment diagnostic reached Start3D (UUID 0x16000002)
+and faulted on a read of VA zero, context 6 (0x81a90c0311). The M4 native
+HAL200 driver supplies two 16-byte program bindings: background at render
+record +370/+378 and end-of-tile at +390/+398. Common data begins at +2d0;
+copy3DCommonPassthroughData maps the pairs to descriptor +580/+588 and
++6d8/+6e0, hence registers 15368/15370 and 15378/15380. These are not the
+unrelated descriptor +428/+430 fields. Native submitBuffer also mirrors the
+pairs at command +8f8/+900 and +9f4/+9fc.
+
+Resource 35 contains background loaders at +0/+240 and the end-of-tile loader
+at +480. Binding +0 and +480, with allocation words still zero, advanced the
+20260907T202938Z run to an image write at target VA 0x10000058100. It faulted
+with reason 3, write access, unit 2, context 6 (0x1948c0407). This establishes
+progress through a tile program, not execution of the user fragment shader.
+Both failures recovered without hanging Linux, with complete firmware KTrace
+and the watchdog disarmed only after saving evidence. Manifests and selected
+kernel logs are in validation/.
+
+The color target now gets RW/NX mappings, like the dPM scratch. Command and
+shader resources retain their independently qualified AP2 executable mappings.
+The resource-allocation words and remaining attachment state are still under
+qualification; retirement alone is not accepted as a correct rendered image.

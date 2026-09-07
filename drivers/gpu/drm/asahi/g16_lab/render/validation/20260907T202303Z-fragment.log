@@ -1,0 +1,22 @@
+[   44.771963] g16_lab: render: attached independent TA/fragment pipes and root-3 graph before firmware boot
+[   47.230116] g16_lab: render: published context-6 under UAT handoff ttbr=0x601005ede0001/0x6010084068001
+[   47.230130] g16_lab: render: submitted TA queue barrier selector=112
+[   47.302673] g16_lab: render: TA barrier retired, queue idle for 50ms; no shader submitted
+[   47.302679] g16_lab: render: submitted fragment queue barrier selector=113
+[   47.362887] g16_lab: render: fragment barrier retired, queue idle for 50ms; no shader submitted
+[   47.362891] g16_lab: render: built experimental 4x4 TA registers=65 VDM=0x18000 PB=128 pages TPC=2048 bytes
+[   47.362903] g16_lab: render: kicking TA, direct MMIO observer=0
+[   47.362905] g16_lab: render: submitted InitPB + captured vertex/TA job; awaiting GPU-written tiling data
+[   47.369941] g16_lab: render: TA completion stamp=0x100 ring=3 busy=0; snapshotting issued state
+[   47.369952] g16_lab: render: vertex execution marker=0xcdcdcdcd expected=0x56535441
+[   47.369952] g16_lab: render: vertex loader marker=0xcdcdcdcd expected=0x45534c31
+[   47.370090] g16_lab: render: TA retired without expected pool/tilemap writes
+[   47.370093] g16_lab: render: built 4x4 fragment diagnostic registers=79 mode=0x280; pixel output not yet verified
+[   47.370105] g16_lab: render: submitted fragment diagnostic after retired TA
+[   47.378799] g16_lab: render: reading selected fault bank during firmware pre-stop
+[   47.378800] g16_lab: render: stopped fault info=0x81a90c0311
+[   47.378801] g16_lab: render: stopped fault valid=1 reason=0 read=1 level=2 unit=0x1 context=6 VA=0x0
+[   47.378881] g16_lab: resumed exact G16 firmware pre-recovery handshake state=1->2
+[   47.378881] g16_lab: render: independent queue gate result=-5
+[   47.378917] g16_lab: KTrace captured=1465 host-dropped=0 drain-result=0 bytes=105480
+[   47.379168] g16_lab: render: removed context-6 and root-3 mappings after firmware stop
