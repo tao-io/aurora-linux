@@ -1,0 +1,67 @@
+{
+  "platform": "J713/T8132/G16G",
+  "firmware_build": "25G83",
+  "record_size": 72,
+  "record_count": 976,
+  "sha256": "c87285f77981ba4417a025f569c66ea5ee8cc7dd733d281a991dd056fe930f5f",
+  "firmware_reported_lost_records": 0,
+  "event_counts": {
+    "EventNotify": 1,
+    "FinishCompute": 1,
+    "StampUpdateCompute": 1,
+    "StartCompute": 1,
+    "event_00002c": 1,
+    "event_000054": 1,
+    "event_000056": 3,
+    "event_000100": 192,
+    "event_000101": 192,
+    "event_000102": 8,
+    "event_000103": 8,
+    "event_000105": 2,
+    "event_000106": 2,
+    "event_000109": 1,
+    "event_00010a": 1,
+    "event_00010c": 1,
+    "event_000111": 1,
+    "event_000112": 557,
+    "event_00013e": 2
+  },
+  "manifest": {
+    "kernel": "7.1.9-dirtyroom-gpu1+",
+    "boot_id": "1ee8e6b0-b59a-4952-b7cd-95833e3963f2",
+    "module_sha256": "8dead1349d79d8be8f61c7cf3937986d73ddf87e4632c7876903353ca002b266",
+    "parameters": [
+      "stage=rtkit-initdata-exact-offscreen-store",
+      "compute_macos_iadd=1",
+      "compute_mandelbrot=1",
+      "compute_macos_iadd_capture_context=1",
+      "compute_macos_iadd_ap2_leaves=1",
+      "compute_exact_loader_iomap_all=1",
+      "compute_macos_iadd_aligned_uma_hardware_table=1",
+      "compute_macos_iadd_populated_usc_private_memory=1",
+      "firmware_ktrace_mask=3"
+    ],
+    "watchdog": {
+      "device": "/dev/watchdog0",
+      "identity": "Apple SoC Watchdog",
+      "timeout_seconds": 60,
+      "initial_timeleft_seconds": 59,
+      "periodic_keepalive": false,
+      "armed": false,
+      "disarmed_after_evidence_collection": true
+    },
+    "insmod_rc": 0,
+    "stage_result": 0,
+    "output_bytes": 16384,
+    "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+    "colors": {
+      "ffffffff": 3416,
+      "ff000000": 680
+    },
+    "symmetric_rows": true,
+    "rmmod_rc": 0,
+    "passed": true
+  },
+  "host_dropped_records": 0,
+  "drain_result": 0
+}

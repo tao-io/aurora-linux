@@ -785,6 +785,12 @@ static u64 g16_lab_pmptool_word(u32 index)
 #define J713_DEVCTRL_READ_OFFSET		0x00
 #define J713_DEVCTRL_CFI_OFFSET		0x10
 #define J713_DEVCTRL_WRITE_OFFSET	0x20
+/* 25G83 FUN_000245bc: runtime +1e0/+1e8, 512 slots of 0x48 bytes. */
+#define J713_KTRACE_STATE_SIZE 0x30
+#define J713_KTRACE_RECORD_SIZE 0x48
+#define J713_KTRACE_COUNT 0x200
+#define J713_KTRACE_DATA_SIZE (J713_KTRACE_RECORD_SIZE * J713_KTRACE_COUNT)
+#define J713_KTRACE_CAPTURE_COUNT 8192
 #define J713_INITDATA_STAT_STATE_SIZE	0x30
 #define J713_INITDATA_STAT_DATA_SIZE	0x4800
 #define J713_INITDATA_STAT_STATE_PTR_OFFSET	0x1f0
@@ -2222,6 +2228,13 @@ static unsigned int g16_initdata_live_log_entry_first;
 static unsigned int g16_initdata_live_log_data_first;
 static unsigned int g16_initdata_live_devctrl_state_first;
 static unsigned int g16_initdata_live_devctrl_ring_first;
+static unsigned int g16_ktrace_state_first;
+static unsigned int g16_ktrace_data_first;
+static void *g16_ktrace_copy;
+static struct debugfs_blob_wrapper g16_ktrace_blob;
+static struct dentry *g16_ktrace_file;
+static u32 g16_ktrace_count;
+static u32 g16_ktrace_host_dropped;
 static unsigned int g16_initdata_live_statistics_state_first;
 static unsigned int g16_initdata_live_statistics_data_first;
 static unsigned int g16_initdata_live_firmware_event_state_first;
@@ -2636,6 +2649,9 @@ static bool render_ta_probe;
 module_param(render_ta_probe, bool, 0444);
 MODULE_PARM_DESC(render_ta_probe, "Experimental captured vertex/tiling submission after render queue validation");
 
+static unsigned int firmware_ktrace_mask;
+module_param(firmware_ktrace_mask, uint, 0444);
+MODULE_PARM_DESC(firmware_ktrace_mask, "25G83 firmware execution trace: bit 0 basic, bit 1 detail (default off)");
 static bool render_loader_marker;
 module_param(render_loader_marker, bool, 0444);
 MODULE_PARM_DESC(render_loader_marker, "Instrument the captured vertex state loader before its first instruction");
@@ -3016,6 +3032,12 @@ static void g16_lab_remove_gfx_data_export(void)
 	g16_crashlog_blob.size = 0;
 	vfree(g16_crashlog_copy);
 	g16_crashlog_copy = NULL;
+	debugfs_remove(g16_ktrace_file);
+	g16_ktrace_file = NULL;
+	vfree(g16_ktrace_copy);
+	g16_ktrace_copy = NULL;
+	g16_ktrace_blob.data = NULL;
+	g16_ktrace_blob.size = 0;
 	debugfs_remove(g16_initdata_snapshot_file);
 	g16_initdata_snapshot_file = NULL;
 	g16_initdata_snapshot_blob.data = NULL;
@@ -5411,6 +5433,8 @@ enum g16_initdata_test_object_id {
 	G16_INITDATA_FWCTL_CHANNEL,
 	G16_INITDATA_DEVCTRL_STATE,
 	G16_INITDATA_DEVCTRL_RING,
+	G16_INITDATA_KTRACE_STATE,
+	G16_INITDATA_KTRACE_DATA,
 	G16_INITDATA_STATISTICS_STATE,
 	G16_INITDATA_STATISTICS_DATA,
 	G16_INITDATA_TEMP_GENERATION,
@@ -6657,6 +6681,8 @@ static int g16_lab_drain_firmware_event_ring(void)
 	return g16_lab_service_firmware_recovery();
 }
 
+#include "g16_ktrace.h"
+
 static int g16_lab_drain_statistics_ring(void)
 {
 	const unsigned int data_first =
@@ -6670,6 +6696,9 @@ static int g16_lab_drain_statistics_ring(void)
 	unsigned int drained = 0;
 	int ret;
 
+	ret = g16_lab_drain_ktrace();
+	if (ret)
+		return ret;
 	BUILD_BUG_ON(sizeof(record) != J713_INITDATA_STAT_ENTRY_SIZE);
 	if (!g16_initdata_live_statistics_state_first ||
 	    !g16_initdata_live_statistics_data_first)
@@ -13448,6 +13477,14 @@ static int g16_lab_uat_initdata_map_test(void)
 			.name = "device-control-ring",
 			.size = J713_INITDATA_DEVCTRL_RING_SIZE,
 		},
+		[G16_INITDATA_KTRACE_STATE] = {
+			.name = "ktrace-state",
+			.size = firmware_ktrace_mask ? J713_KTRACE_STATE_SIZE : 0,
+		},
+		[G16_INITDATA_KTRACE_DATA] = {
+			.name = "ktrace-data",
+			.size = firmware_ktrace_mask ? J713_KTRACE_DATA_SIZE : 0,
+		},
 		[G16_INITDATA_STATISTICS_STATE] = {
 			.name = "statistics-state",
 			.size = exact_statistics_ring ?
@@ -14004,6 +14041,32 @@ static int g16_lab_uat_initdata_map_test(void)
 								   temp_generation_object, 0);
 	}
 	scratch_va = objects[G16_INITDATA_SCRATCH].va;
+	if (firmware_ktrace_mask) {
+		u32 *control = g16_lab_initdata_object_ptr(pages,
+			&objects[G16_INITDATA_CONTROL], 0);
+
+		if (!exact_statistics_ring || (firmware_ktrace_mask & ~3U)) {
+			ret = -EINVAL;
+			goto out;
+		}
+		g16_ktrace_copy = vzalloc(J713_KTRACE_CAPTURE_COUNT *
+					 J713_KTRACE_RECORD_SIZE);
+		if (!g16_ktrace_copy) {
+			ret = -ENOMEM;
+			goto out;
+		}
+		g16_ktrace_count = 0;
+		g16_ktrace_host_dropped = 0;
+		/* InitData root[0x15] -> control[0], imported by FW 0x3430. */
+		*control = firmware_ktrace_mask;
+		put_unaligned_le64(objects[G16_INITDATA_KTRACE_STATE].va,
+			(u8 *)runtime + 0x1e0);
+		put_unaligned_le64(objects[G16_INITDATA_KTRACE_DATA].va,
+			(u8 *)runtime + 0x1e8);
+		pr_info("g16_lab: KTrace enabled mask=%#x slots=%u record-size=%u\n",
+			firmware_ktrace_mask, J713_KTRACE_COUNT,
+			J713_KTRACE_RECORD_SIZE);
+	}
 	init_root[0] = J713_INITDATA_MAGIC;
 	init_root[1] = objects[G16_INITDATA_UNKNOWN].va;
 	init_root[3] = objects[G16_INITDATA_RUNTIME].va;
@@ -16680,6 +16743,10 @@ static int g16_lab_uat_initdata_map_test(void)
 			objects[G16_INITDATA_DEVCTRL_STATE].first_page;
 		g16_initdata_live_devctrl_ring_first =
 			objects[G16_INITDATA_DEVCTRL_RING].first_page;
+		if (firmware_ktrace_mask) {
+			g16_ktrace_state_first = objects[G16_INITDATA_KTRACE_STATE].first_page;
+			g16_ktrace_data_first = objects[G16_INITDATA_KTRACE_DATA].first_page;
+		}
 		if (exact_statistics_ring) {
 			g16_initdata_live_statistics_state_first =
 				objects[G16_INITDATA_STATISTICS_STATE].first_page;
@@ -16883,6 +16950,12 @@ static int g16_lab_uat_initdata_map_test(void)
 		ret = render_queue_probe ? g16_render_attach(scratch_va) : 0;
 		if (!ret)
 			ret = g16_lab_registers(true);
+		if (firmware_ktrace_mask) {
+			int trace_ret = g16_lab_export_ktrace();
+
+			if (!ret)
+				ret = trace_ret;
+		}
 		if (render_queue_probe)
 			g16_render_detach();
 		g16_initdata_live_uat_kernel_context = NULL;
@@ -16951,6 +17024,8 @@ static int g16_lab_uat_initdata_map_test(void)
 		g16_initdata_live_log_data_first = 0;
 		g16_initdata_live_devctrl_state_first = 0;
 		g16_initdata_live_devctrl_ring_first = 0;
+		g16_ktrace_state_first = 0;
+		g16_ktrace_data_first = 0;
 		g16_initdata_live_statistics_state_first = 0;
 		g16_initdata_live_statistics_data_first = 0;
 		g16_initdata_live_firmware_event_state_first = 0;
@@ -18471,6 +18546,9 @@ static int g16_lab_rtkit_hello(void)
 		}
 
 		for (attempt = 0; attempt < 64; attempt++) {
+			ret = g16_lab_drain_ktrace();
+			if (ret)
+				goto out_stop;
 			ret = g16_asc_recv_timeout(asc, &message, &endpoint,
 				wait_ready && log_kicks >= target_kicks ?
 				100000 : 1000000);

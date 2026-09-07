@@ -6,6 +6,7 @@ import datetime
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import struct
 import subprocess
@@ -36,6 +37,9 @@ def main():
                         help='experimental captured vertex/tiling submission after queue checks')
     parser.add_argument('--render-loader-marker', action='store_true',
                         help='instrument the vertex state loader (implies --render-ta)')
+    parser.add_argument('--firmware-ktrace', type=lambda value: int(value, 0),
+                        choices=(0, 1, 2, 3), default=0,
+                        help='25G83 firmware trace mask: 1 basic, 2 detail, 3 both')
     args = parser.parse_args()
     if args.render_loader_marker:
         args.render_ta = True
@@ -46,6 +50,8 @@ def main():
         params += ['render_ta_probe=1']
     if args.render_loader_marker:
         params += ['render_loader_marker=1']
+    if args.firmware_ktrace:
+        params += [f'firmware_ktrace_mask={args.firmware_ktrace}']
     if os.geteuid() != 0:
         parser.error('run as root')
     compatible = Path('/sys/firmware/devicetree/base/compatible').read_bytes().split(b'\0')
@@ -118,10 +124,32 @@ def main():
     status = Path('/sys/module/g16_lab/parameters/stage_result')
     metadata['stage_result'] = int(status.read_text()) if status.exists() else None
     for name, dest in [('g16_lab_mandelbrot_rgba8', 'mandelbrot.rgba'), ('g16_lab_crashlog', 'crashlog.bin'),
-                       ('g16_lab_render_prepared', 'render-graph.bin')]:
+                       ('g16_lab_render_prepared', 'render-graph.bin'),
+                       ('g16_lab_ktrace', 'firmware-ktrace.bin')]:
         p = debug / name
         if p.exists():
             (result / dest).write_bytes(p.read_bytes())
+    if args.firmware_ktrace:
+        from g16ktrace import decode
+        trace = result / 'firmware-ktrace.bin'
+        metadata['firmware_ktrace_valid'] = False
+        if trace.exists():
+            try:
+                decoded = decode(trace.read_bytes())
+                (result / 'firmware-ktrace.json').write_text(json.dumps(decoded, indent=2) + '\n')
+                metadata['firmware_ktrace'] = {key: value for key, value in decoded.items()
+                                               if key != 'records'}
+                summary = re.findall(r'KTrace captured=(\d+) host-dropped=(\d+) drain-result=(-?\d+)', after)
+                if summary:
+                    captured, dropped, drain = map(int, summary[-1])
+                    metadata['firmware_ktrace']['host_dropped_records'] = dropped
+                    metadata['firmware_ktrace']['drain_result'] = drain
+                    metadata['firmware_ktrace_valid'] = (
+                        captured == decoded['record_count'] and captured > 0
+                        and dropped == 0 and drain == 0
+                        and decoded['firmware_reported_lost_records'] == 0)
+            except ValueError as error:
+                metadata['firmware_ktrace_error'] = str(error)
     pixels = result / 'mandelbrot.rgba'
     if args.render_queues and (debug / 'g16_lab_render').is_dir():
         snapshots = result / 'render-resources'
@@ -145,6 +173,8 @@ def main():
             png += chunk(b'IDAT', zlib.compress(b''.join(b'\0' + raw[y*256:(y+1)*256] for y in range(64))))
             (result / 'mandelbrot.png').write_bytes(png + chunk(b'IEND', b''))
     passed = run.returncode == 0 and metadata['stage_result'] == 0 and valid and not (result / 'crashlog.bin').exists()
+    if args.firmware_ktrace:
+        passed = passed and metadata['firmware_ktrace_valid']
     if args.render_queues:
         current_log = after[len(before):] if after.startswith(before) else after
         queue_evidence = all(message in current_log for message in (
