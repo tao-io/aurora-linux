@@ -2632,6 +2632,15 @@ module_param(compute_macos_iadd_ap2_leaves, bool, 0444);
 MODULE_PARM_DESC(compute_macos_iadd_ap2_leaves,
 	"Use hardware-accessible AP2 executable/data leaf tuples for the captured iadd graph");
 
+static bool render_queue_probe;
+module_param(render_queue_probe, bool, 0444);
+MODULE_PARM_DESC(render_queue_probe,
+	"After verified Mandelbrot, test independent M4 TA/fragment queues and context-6 mappings");
+static int g16_render_attach(void);
+static void g16_render_detach(void);
+static int g16_render_queue_gate(void __iomem *asc, u64 crashlog_iova,
+				 unsigned int crashlog_pages);
+
 static int stage_result;
 module_param(stage_result, int, 0444);
 MODULE_PARM_DESC(stage_result, "Zero on pass; negative errno when a retained diagnostic makes the module stay loaded");
@@ -16831,7 +16840,11 @@ static int g16_lab_uat_initdata_map_test(void)
 			g16_initdata_live_user_command_leaf_flags =
 				selected_user_command_leaf_flags;
 		}
-		ret = g16_lab_registers(true);
+		ret = render_queue_probe ? g16_render_attach() : 0;
+		if (!ret)
+			ret = g16_lab_registers(true);
+		if (render_queue_probe)
+			g16_render_detach();
 		g16_initdata_live_uat_kernel_context = NULL;
 		g16_initdata_live_shared_root = NULL;
 		g16_initdata_live_shared_l2 = NULL;
@@ -18152,8 +18165,8 @@ static int g16_lab_rtkit_hello(void)
 			!strcmp(stage, "rtkit-initdata-exact-fenced-noop") ||
 			exact_compute_wfi;
 		int (*run_queue_gate)(void __iomem *, u64, unsigned int) =
-			exact_compute_wfi ? g16_lab_compute_wfi :
-			g16_lab_fenced_noop;
+			exact_compute_wfi ? (render_queue_probe ? g16_render_queue_gate :
+				g16_lab_compute_wfi) : g16_lab_fenced_noop;
 		const bool exact_fender_power_management =
 			!strcmp(stage,
 				"rtkit-initdata-exact-fender-power-management") ||
@@ -19039,6 +19052,7 @@ static int g16_lab_pmp_dvfs_config(void)
 }
 
 #include "render/g16_render_prepare.h"
+#include "render/g16_render_submit.h"
 
 static int g16_lab_ocean_thread_fn(void *unused)
 {
@@ -19057,6 +19071,25 @@ static int __init g16_lab_init(void)
 	if (!strcmp(stage, "render-prepare")) {
 		ret = g16_render_prepare();
 		WRITE_ONCE(stage_result, ret);
+		return ret;
+	}
+
+	if (render_queue_probe) {
+		if (strcmp(stage, "rtkit-initdata-exact-offscreen-store") ||
+		    !compute_mandelbrot || !compute_macos_iadd ||
+		    !compute_macos_iadd_capture_context ||
+		    !compute_macos_iadd_ap2_leaves ||
+		    !compute_macos_iadd_populated_usc_private_memory ||
+		    !compute_macos_iadd_aligned_uma_hardware_table ||
+		    !compute_exact_loader_iomap_all || compute_ocean_demo ||
+		    compute_macos_direct_capture || compute_macos_ocean)
+			return -EINVAL;
+		ret = g16_render_prepare();
+		if (ret)
+			return ret;
+		ret = g16_lab_uat_initdata_map_test();
+		if (ret)
+			g16_render_release();
 		return ret;
 	}
 

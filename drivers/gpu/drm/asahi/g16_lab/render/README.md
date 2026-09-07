@@ -7,17 +7,18 @@ compute validation remains separate.
 `stage=render-prepare` imports the 34 encoded capture mappings, allocates a
 4 MiB parameter pool, generates its 128 virtual 32 KiB page IDs, initializes
 the hardware parameter-manager state and builds TA/fragment job envelopes and
-SKU streams. It exports a 64 KiB preparation snapshot as
+SKU streams. It now exports a 256 KiB preparation snapshot as
 `/sys/kernel/debug/g16_lab_render_prepared`. Module removal releases all of
 these allocations. This stage does not publish UAT mappings or submit work.
 It builds private 42-bit UAT trees and verifies every leaf against its allocated
-Linux page: 475 user leaves in ten table pages, plus four firmware leaves in
-three table pages on the tested J713 run. The firmware tree contains only the
+Linux page. The earlier 64 KiB graph had 475 user leaves in ten table pages
+and four firmware leaves in three table pages on J713. The expanded graph and
+new root-3 address have compiled but have not yet been run on hardware. The firmware tree contains only the
 new command graph; it still needs the shared firmware mappings before use.
 Captured-resource permissions currently use the working compute AP2 executable
 tuple provisionally, rather than claiming captured render PTE evidence.
 The register blocks currently contain only their stage's initial register;
-the remaining render registers, pool/queue bindings and submission are pending.
+the remaining draw register inputs and shader submission are pending.
 
 `g16_render_ta.h` now translates the native TA register producer, including its
 65-write baseline, conditional registers, pointer masks, replicated register
@@ -48,7 +49,8 @@ The exported snapshot was independently decoded to check both command types,
 context generations, register pointers, SKU start/finish/restart/end records,
 manager counters and all 128 page IDs. Snapshot SHA-256:
 `cd11f7eaa6c01487ca31a1f1950bd61ea9be93a81b9deaee082f4365924aae8a`.
-This is CPU preparation evidence, not a GPU execution result.
+This is CPU preparation evidence, not a GPU execution result. That snapshot
+predates the buffer-info pointer correction, expanded graph and root-3 rebase.
 
 Host tests exercise register-capacity boundaries, rejection without partial
 writes, 25-bit page-ID limits, unaligned encoding and SKU restart targets:
@@ -178,3 +180,34 @@ The VDM control stream is descriptor +0xea8 / register 0x1c880. Descriptor
 +0xf48/+0xf50 and registers 0x10110/0x10118 instead bind preemption buffers.
 The synthetic TA register unit test exercises pointer propagation, not the
 semantic identity of those test addresses.
+
+## Independent live queue gate (not yet hardware tested)
+
+`render_queue_probe=1` with the complete validated Mandelbrot module parameters
+prepares the new graph, attaches TA/fragment runtime pipe descriptors before
+firmware boot, and runs the existing Mandelbrot check first. Only after that
+passes does it publish context 6 under the UAT handoff lock and submit an
+already-satisfied barrier on each render queue. A pass requires all queue
+cursors to retire and the queue to remain idle for 50 ms without observed
+firmware recovery. This gate does **not** submit vertex or fragment shaders.
+
+The graph now occupies `fffffc3000000000..fffffc300003ffff`. Its root-3 branch
+is checked empty in the resident firmware and kernel lower address spaces.
+Each queue-info allocation has room for the native 0x24c0-byte object;
+queue-info objects no longer overlap at 0x400-byte intervals. Queue and pipe
+rings, scheduler contexts and notifier lists have separate allocations within
+the graph. The context-6 upper root borrows the existing firmware/UMA mappings
+and adds the graph branch; its lower root borrows only the UMA branch at index
+7. Borrowed table pages remain owned by the original initdata allocation.
+
+The bootstrap stops ASC before detaching these mappings. Detachment clears the
+new TTBAT slot, removes the inserted root entries, restores the runtime pipe
+descriptors and invalidates the relevant contexts before allocation release.
+The graph remains available through debugfs until module removal. A nonzero
+`stage_result` is a failure even when module insertion retains diagnostics and
+returns success.
+
+Validation so far: arm64 module build and existing host packet tests with
+ASan/UBSan. Live validation is pending: on 2026-09-07 the M4 was offline on
+Tailscale and unreachable at its previous LAN address. Use a fresh boot before
+starting the firmware session, as with the successful compute runs.

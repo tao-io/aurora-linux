@@ -9,10 +9,20 @@
 #include "g16_render_uat.h"
 
 #define G16_RENDER_RESOURCE_COUNT 34
-#define G16_RENDER_GRAPH_BYTES 0x10000
+#define G16_RENDER_GRAPH_BYTES 0x40000
 #define G16_RENDER_POOL_BYTES 0x400000
-#define G16_RENDER_GRAPH_VA 0xfffffc0100000000ULL
+#define G16_RENDER_GRAPH_VA 0xfffffc3000000000ULL
 #define G16_RENDER_POOL_VA 0x6000000000ULL
+#define G16_RENDER_QUEUE(i) (0x10000 + (i) * 0x4000)
+#define G16_RENDER_PIPE_RING(i) (0x18000 + (i) * 0x2000)
+#define G16_RENDER_QUEUE_STATE(i) (0x1c000 + (i) * 0x400)
+#define G16_RENDER_QUEUE_RING(i) (G16_RENDER_QUEUE_STATE(i) + 0x80)
+#define G16_RENDER_PIPE_STATE(i) (G16_RENDER_QUEUE_STATE(i) + 0x100)
+#define G16_RENDER_QUEUE_CONTEXT(i) (G16_RENDER_QUEUE_STATE(i) + 0x140)
+#define G16_RENDER_NOTIFIER_LIST(i) (G16_RENDER_QUEUE_STATE(i) + 0x180)
+#define G16_RENDER_BARRIER(i) (G16_RENDER_QUEUE_STATE(i) + 0x200)
+#define G16_RENDER_SLOT_ARRAY(i) (0x1d000 + (i) * 0x1000)
+#define G16_RENDER_PB_HW 0x20000
 #define G16_RENDER_RESOURCE_FILE "g16/render-reference.bin"
 
 struct g16_render_resource {
@@ -221,8 +231,8 @@ static int g16_render_prepare(void)
 
 		job.sku.command_va = G16_RENDER_GRAPH_VA + command_offset;
 		job.sku.sku_va = G16_RENDER_GRAPH_VA + sku_offset;
-		job.sku.queue_va = G16_RENDER_GRAPH_VA + 0xd000 + i * 0x400;
-		job.sku.slot_array_va = G16_RENDER_GRAPH_VA + 0xe000 + i * 0x800 + (i ? 8 : 4);
+		job.sku.queue_va = G16_RENDER_GRAPH_VA + G16_RENDER_QUEUE(i);
+		job.sku.slot_array_va = G16_RENDER_GRAPH_VA + G16_RENDER_SLOT_ARRAY(i) + (i ? 8 : 4);
 		job.sku.stamp_va = G16_RENDER_GRAPH_VA + 0xc900 + i * 8;
 		job.sku.uuid = 0x16000001 + i;
 		job.sku.stamp_slot = i;
