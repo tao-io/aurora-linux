@@ -2636,7 +2636,7 @@ static bool render_queue_probe;
 module_param(render_queue_probe, bool, 0444);
 MODULE_PARM_DESC(render_queue_probe,
 	"After verified Mandelbrot, test independent M4 TA/fragment queues and context-6 mappings");
-static int g16_render_attach(void);
+static int g16_render_attach(u64 scratch_va);
 static void g16_render_detach(void);
 static int g16_render_queue_gate(void __iomem *asc, u64 crashlog_iova,
 				 unsigned int crashlog_pages);
@@ -16840,7 +16840,7 @@ static int g16_lab_uat_initdata_map_test(void)
 			g16_initdata_live_user_command_leaf_flags =
 				selected_user_command_leaf_flags;
 		}
-		ret = render_queue_probe ? g16_render_attach() : 0;
+		ret = render_queue_probe ? g16_render_attach(scratch_va) : 0;
 		if (!ret)
 			ret = g16_lab_registers(true);
 		if (render_queue_probe)

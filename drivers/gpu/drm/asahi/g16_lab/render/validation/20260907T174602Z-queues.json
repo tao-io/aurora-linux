@@ -1,0 +1,29 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "boot_id": "6fb70b2f-989d-40ba-8e4f-c05de1488a1d",
+  "module_sha256": "370209bc500e2fca01ff58382fd3c300afd7a7a05093142a8457291d9404427d",
+  "parameters": [
+    "stage=rtkit-initdata-exact-offscreen-store",
+    "compute_macos_iadd=1",
+    "compute_mandelbrot=1",
+    "compute_macos_iadd_capture_context=1",
+    "compute_macos_iadd_ap2_leaves=1",
+    "compute_exact_loader_iomap_all=1",
+    "compute_macos_iadd_aligned_uma_hardware_table=1",
+    "compute_macos_iadd_populated_usc_private_memory=1",
+    "render_queue_probe=1"
+  ],
+  "insmod_rc": 0,
+  "stage_result": 0,
+  "output_bytes": 16384,
+  "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+  "colors": {
+    "ffffffff": 3416,
+    "ff000000": 680
+  },
+  "symmetric_rows": true,
+  "render_queues_passed": true,
+  "render_shaders_submitted": false,
+  "rmmod_rc": 0,
+  "passed": true
+}

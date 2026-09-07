@@ -181,7 +181,7 @@ The VDM control stream is descriptor +0xea8 / register 0x1c880. Descriptor
 The synthetic TA register unit test exercises pointer propagation, not the
 semantic identity of those test addresses.
 
-## Independent live queue gate (not yet hardware tested)
+## Independent live queue gate (J713 validated)
 
 `render_queue_probe=1` with the complete validated Mandelbrot module parameters
 prepares the new graph, attaches TA/fragment runtime pipe descriptors before
@@ -237,3 +237,13 @@ applying the lower-address 0x7000000000 bias. The manager retains the canonical
 pointer; the hardware encoder consumes its low 43 bits. Tests cover this
 first-use encoding and the unaligned InitPB pointer field. Neither packet is
 published to hardware by the barrier-only queue gate.
+
+Hardware validation on 2026-09-07, boot
+`6fb70b2f-989d-40ba-8e4f-c05de1488a1d`: the independent TA and fragment queues
+both retired their barriers and remained idle for 50 ms, context 6 was
+published and detached, exact Mandelbrot verification passed, and module
+removal returned zero. No shader was submitted on either render queue.
+The first attachment checks stopped before firmware boot because unused
+runtime pipes contain eight copies of the zero-scratch-page VA, not eight
+NULL pointers. Attachment now validates that exact scratch descriptor before
+replacing it and preserves it for restoration.

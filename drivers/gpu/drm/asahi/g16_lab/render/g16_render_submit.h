@@ -43,7 +43,7 @@ static void g16_render_initialize_queue(unsigned int engine)
 }
 
 /* Called only while the existing initdata owner still holds all its backing. */
-static int g16_render_attach(void)
+static int g16_render_attach(u64 scratch_va)
 {
 	u64 *fw, *upper, *user;
 	u8 *runtime;
@@ -60,9 +60,19 @@ static int g16_render_attach(void)
 	user = page_address(g16_render_user_uat.tables[0]);
 	runtime = g16_lab_live_object_ptr(g16_initdata_live_runtime_first, 0);
 	if (g16_initdata_live_shared_root[3] ||
-	    g16_initdata_live_kernel_lower_root[3] || !fw[3] || user[7] ||
-	    memchr_inv(runtime + J713_RUNTIME_TA_PIPE_DESC_OFFSET, 0, 0x40))
+	    g16_initdata_live_kernel_lower_root[3] || !fw[3] || user[7]) {
+		pr_err("g16_lab: render: attachment collision shared=%#llx lower=%#llx own=%#llx user7=%#llx\n",
+			g16_initdata_live_shared_root[3],
+			g16_initdata_live_kernel_lower_root[3], fw[3], user[7]);
 		return -EBUSY;
+	}
+	/* Unused channels point to initdata's zero scratch page, not NULL. */
+	for (i = 0; i < 0x40; i += 8) {
+		if (g16_render_get(runtime + J713_RUNTIME_TA_PIPE_DESC_OFFSET + i, 8) != scratch_va) {
+			pr_err("g16_lab: render: runtime pipe +%#x is not the unused scratch descriptor\n", i);
+			return -EBUSY;
+		}
+	}
 	g16_render_upper_root = alloc_page(GFP_KERNEL | __GFP_ZERO);
 	if (!g16_render_upper_root)
 		return -ENOMEM;
@@ -70,6 +80,7 @@ static int g16_render_attach(void)
 	/* Borrow resident firmware/UMA mappings; only this root page is owned. */
 	memcpy(upper, phys_to_virt(g16_initdata_live_user_ttbr1_root_phys), PAGE_SIZE);
 	if (upper[3]) {
+		pr_err("g16_lab: render: upper root-3 collision=%#llx\n", upper[3]);
 		__free_page(g16_render_upper_root);
 		g16_render_upper_root = NULL;
 		return -EBUSY;
