@@ -81,3 +81,21 @@ and disarmed after evidence collection. See
 
 This is working M4 GPU output in a shareable, fenced DRM buffer. It is not yet
 public Vulkan submission, Zink acceleration or accelerated Hyprland.
+
+## Desktop build and compositing test
+
+The isolated native build profile in `tools/hyprland/build.py` enables
+EGL/GLES/GBM, X11/Wayland, Zink and Honeykrisp. It succeeds on the x86 development
+host at Aurora Mesa `e58d46899eb1` without changing system libraries. The local
+`mesa/m4-hyprland` branch is a separate working checkout; the reference stays
+unchanged. An ARM64 Mesa build and M4 implementation are still required.
+
+`tools/hyprland/composite.c` now supplies a GLES 3.0 readiness test: nearest
+and linear sampling, premultiplied alpha, scissor, texture updates, EGLImage
+DMA-BUF export/import and retained texture lifetime, native fence export,
+import and server waits, and complete readback verification. Private Zink on
+AMD RADV passes all eight frames / 8,192 pixels with at most one channel unit
+of error. This is a checked test workload and a development-GPU result, not
+M4 graphics qualification. Its runner enforces the J713 watchdog and preserves
+results before disarming. See `tools/hyprland/README.md` and
+`validation/hyprland-zink-development-20260908.json`.

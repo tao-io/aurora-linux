@@ -1,0 +1,56 @@
+{
+  "platform": "development host",
+  "command": [
+    "meson",
+    "devenv",
+    "-C",
+    "/home/council/dev/dirtyroom_m4/build/mesa-m4-hyprland",
+    "env",
+    "MESA_LOADER_DRIVER_OVERRIDE=zink",
+    "GALLIUM_DRIVER=zink",
+    "VK_DRIVER_FILES=/usr/share/vulkan/icd.d/radeon_icd.json",
+    "/home/council/dev/dirtyroom_m4/build/mesa-m4-hyprland/hyprland-composite-probe",
+    "--development-gpu"
+  ],
+  "build": {
+    "mesa_revision": "e58d46899eb1f351863bccab4b6e8c87ed32b95e",
+    "source_status": "",
+    "architecture": "x86_64",
+    "options": [
+      "-Dbuildtype=debugoptimized",
+      "-Dvulkan-drivers=asahi",
+      "-Dgallium-drivers=zink",
+      "-Dtools=asahi",
+      "-Dbuild-tests=false",
+      "-Dplatforms=x11,wayland",
+      "-Dglx=disabled",
+      "-Degl=enabled",
+      "-Dgbm=enabled",
+      "-Dgles1=disabled",
+      "-Dgles2=enabled",
+      "-Dllvm=enabled",
+      "-Dvideo-codecs=[]"
+    ],
+    "probe_sha256": "11a94a0785d3c57af2467f68bd06654cd670aa4bb4b406ca10b92f314c6fd4ee",
+    "installed_system_files": false,
+    "scope": "build only; no M4 execution claim"
+  },
+  "binary_sha256": "9ff5268213d95324e53bd38e322608cf13eecd33821a3b321b80e8bfc9435e21",
+  "returncode": 0,
+  "passed": true,
+  "test": {
+    "passed": true,
+    "scope": "development GPU",
+    "renderer": "zink Vulkan 1.4(AMD Radeon 780M Graphics (RADV PHOENIX) (MESA_RADV))",
+    "frames": 8,
+    "pixels_verified": 8192,
+    "max_channel_error": 1,
+    "nearest_and_linear_sampling": true,
+    "premultiplied_alpha": true,
+    "scissor_damage": true,
+    "texture_reuse": true,
+    "native_fences": 8,
+    "egl_dma_buf_roundtrip": true,
+    "native_fence_import_wait": true
+  }
+}

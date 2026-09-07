@@ -1,0 +1,60 @@
+# Hyprland / Zink readiness gate
+
+`build.py` builds Mesa with Honeykrisp, Zink, EGL, GLES, GBM and X11/Wayland
+support in an isolated directory. It does not install system libraries. The
+build is native to the machine running it; the x86 host result cannot be used
+as an ARM64 driver. `meson devenv` selects the private build at runtime.
+
+From the workspace root, with Mesa's build dependencies installed:
+
+```sh
+python3 linux/linux-alpha/drivers/gpu/drm/asahi/g16_lab/tools/hyprland/build.py \
+  --mesa mesa/m4-hyprland --output build/mesa-m4-hyprland --jobs 4
+```
+
+If libclc / SPIR-V LLVM Translator were unpacked into a private prefix, provide
+that prefix's relocated pkg-config directories through `PKG_CONFIG_PATH`.
+The build manifest records the exact Mesa commit, working-tree status, target
+architecture, feature options and test source hash. The initial clean source
+is Aurora `e58d46899eb1`, tracked separately on local branch `m4-hyprland`.
+
+`composite.c` requests a GLES 3.0 context and requires hardware Zink. The default
+requires an M4/T8132 renderer string; `--development-gpu` permits another GPU
+and explicitly labels the result as development validation. CPU Vulkan/GL
+renderers are rejected. The test exercises:
+
+* Repeated RGBA8 texture updates and framebuffer reuse.
+* Nearest and linear sampling, premultiplied source-over blending, and scissor.
+* EGLImage -> DMA-BUF export -> EGLImage import -> sampled GL texture, with
+  the fd and EGLImages closed before using the retained texture storage.
+* Eight native EGL fence exports, fd polling, reimport and server-side waits.
+* Eight complete 32x32 readbacks against an independent CPU bilinear/blending
+  calculation, allowing at most one UNORM8 unit per channel.
+
+It models basic Hyprland window compositing, not the full compositor. It does
+not qualify nested Hyprland, display scanout, HDR, blur, rounded corners,
+cross-process image import or all Zink/Vulkan requirements.
+
+For development-host validation with an explicitly selected installed ICD:
+
+```sh
+python3 linux/linux-alpha/drivers/gpu/drm/asahi/g16_lab/tools/hyprland/run.py \
+  --mesa-build build/mesa-m4-hyprland --results /tmp/hyprland-validation \
+  --development-gpu --icd /usr/share/vulkan/icd.d/radeon_icd.json
+```
+
+On J713, use `run.py` as root with a native ARM64 Mesa build and omit
+`--development-gpu`. It always arms and verifies `/dev/watchdog0` at 60 seconds
+on J713, even if the development flag is present. It uses no heartbeat, saves
+logs and the manifest before disarming on success, and leaves recovery armed
+on a timeout, failed test or kernel fault. M4's Vulkan submission path is not
+implemented yet, so this is not currently a passing M4 test.
+
+## Recorded result
+
+Development host, AMD Radeon 780M / system RADV, private Aurora Zink/EGL/GLES:
+GLES 3.2 context reported; eight frames and 8,192 pixels pass with a maximum
+channel error of one. DMA-BUF image roundtrip and all native fence operations
+pass. See `../../render/validation/hyprland-zink-development-20260908.json`.
+The complete Mesa build (including its Honeykrisp library) succeeds on x86_64.
+This does not establish M4 Vulkan, textures, blending or Hyprland acceleration.
