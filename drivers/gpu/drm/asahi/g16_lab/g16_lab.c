@@ -19218,6 +19218,7 @@ static int g16_lab_pmp_dvfs_config(void)
 #include "render/g16_render_prepare.h"
 #include "render/g16_render_submit.h"
 #include "render/g16_render_service.h"
+#include "render/g16_drm.h"
 
 static int g16_lab_ocean_thread_fn(void *unused)
 {
@@ -19232,6 +19233,9 @@ static int g16_lab_ocean_thread_fn(void *unused)
 static int __init g16_lab_init(void)
 {
 	int ret;
+
+	if (!strcmp(stage, "drm-frontend"))
+		return g16_drm_start();
 
 	if (!strcmp(stage, "render-prepare")) {
 		ret = g16_render_prepare();
@@ -19498,6 +19502,7 @@ static int __init g16_lab_init(void)
 
 static void __exit g16_lab_exit(void)
 {
+	g16_drm_stop();
 	g16_render_service_stop();
 	if (g16_ocean_thread) {
 		int ret = kthread_stop_put(g16_ocean_thread);

@@ -1,0 +1,25 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "module_sha256": "e89563d0898a0e6d7a65014863a475563a1c8216c58477b367b7132d2bf0834b",
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": false,
+    "disarmed_after_evidence_collection": true
+  },
+  "test_returncode": 0,
+  "test": {
+    "passed": true,
+    "mapped_bytes_verified": 131072,
+    "invalid_creates_rejected": 5,
+    "foreign_handles_rejected": true,
+    "foreign_mmaps_rejected": true,
+    "mapping_survives_handle_close": true,
+    "per_open_budget_verified": true
+  },
+  "rmmod_returncode": 0,
+  "passed": true
+}

@@ -79,3 +79,20 @@ budget, independent of the mandatory 60-second hardware watchdog. The
 rejected, eight userspace-paced frames verified (524,288 pixels), clean
 firmware retirement and successful module removal. This is a lifetime gate
 for the future DRM backend; it is not yet Vulkan command submission.
+
+## DRM memory frontend
+
+`stage=drm-frontend` registers a root-only `g16-lab` DRM render node. The lab
+name deliberately keeps application Mesa probing separate until execution
+is connected. GEM_CREATE and GEM_MMAP_OFFSET are wire-compatible with the
+pinned Aurora Asahi UAPI, checked by compile-time assertions in
+`tools/g16drmtest.c`. BOs use the kernel shmem GEM helpers. VM-private BOs,
+VMs and submission are not yet implemented. The probe bounds each BO at
+64 MiB and cumulative creation per open at 64 objects / 256 MiB.
+
+`20260907T224149Z`: both write-combine and writeback mappings pass zero-fill
+and alias readback (131,072 bytes), foreign handles and mmap offsets fail,
+VMAs survive handle close correctly, invalid creation requests and the
+per-open budget are checked. Module teardown succeeds. This was a guarded
+kernel memory test; no GPU firmware was started and it is not a new GPU
+execution result.
