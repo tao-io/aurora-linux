@@ -1,0 +1,78 @@
+{
+  "g16_compiled_ocean_shader.bin": {
+    "sha256": "d38419973b1a506717559cbaa21aae2930f7bf7d31b7859410f1f1bb3b6fab7e",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_compiled_ocean_shader.bin"
+  },
+  "g16_macos_direct_binding.bin": {
+    "sha256": "e704d8b26b1341c7093e5c590571d81f45a43ae374848f28e90055042c4a61f7",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_direct_binding.bin"
+  },
+  "g16_macos_direct_esl.bin": {
+    "sha256": "52649c9a17cf229c8209cdbcfdd4d70455ae865b86621aaf4b3308a2debec67b",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_direct_esl.bin"
+  },
+  "g16_macos_direct_resource29.bin": {
+    "sha256": "a0cf305dc55531213b2c00b86308f76aa825392184bbbb3288ea9dafb04b8b50",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_direct_resource29.bin"
+  },
+  "g16_macos_direct_resource3.bin": {
+    "sha256": "0925eb3b6db7c1d03cebede9a03ed7cee625af7a13ff1059583e10120c6549a4",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_direct_resource3.bin"
+  },
+  "g16_macos_direct_resource6.bin": {
+    "sha256": "19dae2a2f0e70d736b0318ac4c219c32eba1dfeea6effe64da37dd770f607e46",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_direct_resource6.bin"
+  },
+  "g16_macos_direct_shader.bin": {
+    "sha256": "70ab93021050ae57a5d0c7c90d061060c5c6fd2062b406a22fdc20d08999295a",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_direct_shader.bin"
+  },
+  "g16_macos_iadd_binding.bin": {
+    "sha256": "bf37343db254cc2140fe8e3c4e88199c395913d8b2b272b6b328cd49e08c6b11",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_iadd_binding.bin"
+  },
+  "g16_macos_iadd_shader.bin": {
+    "sha256": "88d75da1d00ac24a35724bde88aeddd6c3d6c0a5e8f01340c8e9a84cd4fd7aab",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_iadd_shader.bin"
+  },
+  "g16_macos_ocean_binding.bin": {
+    "sha256": "1b2af067c9843627989bb2a8c6f2225ee1541ee46368b065970a40f75c65109d",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_ocean_binding.bin"
+  },
+  "g16_macos_ocean_cdm.bin": {
+    "sha256": "c447c5c561520f8a1aa6756a4cd2e96c78f1657ac62cc45f72ccfe4c0363ded8",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_ocean_cdm.bin"
+  },
+  "g16_macos_ocean_esl.bin": {
+    "sha256": "d2933044841df802754ac9cbc109bd5356609be8011b3a6324ccf246d901f964",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_ocean_esl.bin"
+  },
+  "g16_macos_ocean_resource22.bin": {
+    "sha256": "b90d537d4ce146b9cf7dfb9b34403f8bc1d88838b9e3289398398167d76ed8b9",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_ocean_resource22.bin"
+  },
+  "g16_macos_ocean_resource25.bin": {
+    "sha256": "57c136ae6b9c62746f92807e4eaccbe55cba33f3e6903a99fb48241083134058",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_ocean_resource25.bin"
+  },
+  "g16_macos_ocean_resource3.bin": {
+    "sha256": "170f68278e9db870d2c55a2ab837870d8a7def831c4d91099c592e9b30799bd8",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_ocean_resource3.bin"
+  },
+  "g16_macos_ocean_shader.bin": {
+    "sha256": "bb0423e979893b7c83e1e9cbab8494df0cb61527bf6d13cf38879abfa2f02a83",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_ocean_shader.bin"
+  },
+  "g16_macos_usc_pool_global_state.bin": {
+    "sha256": "b23aefa12cefd168271ad1e94d89c13e976bcd963807d5f0720605084b7703d5",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_macos_usc_pool_global_state.bin"
+  },
+  "g16_mandelbrot_shader.bin": {
+    "sha256": "d497442bd94c9c2862ba6f4f85b080639865a8a2d9110d892ae1d797555b6a54",
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_mandelbrot_shader.bin"
+  },
+  "g16_progress_marker_text.inc": {
+    "source": "/home/council/dev/dirtyroom_m4/linux/m4_work_finished_kernel/drivers/gpu/drm/asahi/g16_lab/g16_progress_marker_text.inc",
+    "sha256": "cead5b6f2740e36a5057fd5d01f33bd248b9b9a44815c5dce90bc5ddd633855c"
+  }
+}
