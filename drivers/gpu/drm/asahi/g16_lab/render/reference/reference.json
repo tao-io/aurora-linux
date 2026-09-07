@@ -1,0 +1,303 @@
+{
+  "source": "/home/council/dev/ESP32KeySim_m4/boot-attempts/g16-corpus/25G83/suites/command-submissions-20260827-1/009-command-render-draw",
+  "capture_manifest_sha256": "82f172f633b93f983e91bf94e095bc493dbeef3f0880f1f786a776d241aa3d89",
+  "status": "native M4 reference only; no Linux vertex/fragment execution yet",
+  "width": 4,
+  "height": 4,
+  "resources": [
+    {
+      "resource_id": 1,
+      "gpu_va": "0x10000000000",
+      "size": 65536,
+      "sha256": "7e8de57a0608ac5c339ee3032f7266add33ce8dccffc7e1d888a69da754f154f",
+      "file": "resource-00001.bin.gz",
+      "source_file": "encoded/resource-00001-payload.bin"
+    },
+    {
+      "resource_id": 2,
+      "gpu_va": "0x6f00000000",
+      "size": 16384,
+      "sha256": "4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe",
+      "file": "resource-00002.bin.gz",
+      "source_file": "encoded/resource-00002-payload.bin"
+    },
+    {
+      "resource_id": 3,
+      "gpu_va": "0x10000018000",
+      "size": 65536,
+      "sha256": "e086ffa39107446dd6b447cc6b05a33361c1ae0f0ae82fb742fa2a2b3a5307c0",
+      "file": "resource-00003.bin.gz",
+      "source_file": "encoded/resource-00003-payload.bin"
+    },
+    {
+      "resource_id": 4,
+      "gpu_va": "0x10000030000",
+      "size": 131072,
+      "sha256": "92c8f76bb0f7c2bede3089184f76e13912995e032df037620bf66fc264b50130",
+      "file": "resource-00004.bin.gz",
+      "source_file": "encoded/resource-00004-payload.bin"
+    },
+    {
+      "resource_id": 6,
+      "gpu_va": "0x1000000000",
+      "size": 65536,
+      "sha256": "799dca1c36ddfa5f0c7aa577f1129cfa40311e25f339c675058d8ab930133483",
+      "file": "resource-00006.bin.gz",
+      "source_file": "encoded/resource-00006-payload.bin"
+    },
+    {
+      "resource_id": 19,
+      "gpu_va": "0x10000058000",
+      "size": 131072,
+      "sha256": "fa43239bcee7b97ca62f007cc68487560a39e19f74f3dde7486db3f98df8e471",
+      "file": "resource-00019.bin.gz",
+      "source_file": "encoded/resource-00019-payload.bin"
+    },
+    {
+      "resource_id": 21,
+      "gpu_va": "0x10000080000",
+      "size": 16384,
+      "sha256": "65efa64c00d9b6c8360e5c78df114465a22d527cbf86b8483c5bc2750d55d2cd",
+      "file": "resource-00021.bin.gz",
+      "source_file": "encoded/resource-00021-payload.bin"
+    },
+    {
+      "resource_id": 22,
+      "gpu_va": "0x10000088000",
+      "size": 16384,
+      "sha256": "0196a9756465a29c136dd8706e5b612057bc91a38168d0b0e0ac9e5147d6ad79",
+      "file": "resource-00022.bin.gz",
+      "source_file": "encoded/resource-00022-payload.bin"
+    },
+    {
+      "resource_id": 23,
+      "gpu_va": "0x10000090000",
+      "size": 16384,
+      "sha256": "f7bf19bef871c9d4ec300b4e5f13a3ae4f8631093dae942000ff84b66c159f01",
+      "file": "resource-00023.bin.gz",
+      "source_file": "encoded/resource-00023-payload.bin"
+    },
+    {
+      "resource_id": 24,
+      "gpu_va": "0x10000098000",
+      "size": 16384,
+      "sha256": "bc4b827ab0a46a3568b2df71d102ec8d8117fbefcb0b9a6228671928de2e0591",
+      "file": "resource-00024.bin.gz",
+      "source_file": "encoded/resource-00024-payload.bin"
+    },
+    {
+      "resource_id": 25,
+      "gpu_va": "0x100000a0000",
+      "size": 16384,
+      "sha256": "b902754819124d78dc9921f0c3e464c3e80ff4b22a23a3b67362e2b4a5ee3bfe",
+      "file": "resource-00025.bin.gz",
+      "source_file": "encoded/resource-00025-payload.bin"
+    },
+    {
+      "resource_id": 27,
+      "gpu_va": "0x100000a8000",
+      "size": 16384,
+      "sha256": "81ec3e38d65bff948e9c8b5ecc6a2f58c706c46a12205dfabb58b95ceb009544",
+      "file": "resource-00027.bin.gz",
+      "source_file": "encoded/resource-00027-payload.bin"
+    },
+    {
+      "resource_id": 28,
+      "gpu_va": "0x100000b0000",
+      "size": 475136,
+      "sha256": "a58affbfa9ff2f0074a8f5637b7ca011e5a4b53a3ba5ced1d3c213e735430b6b",
+      "file": "resource-00028.bin.gz",
+      "source_file": "encoded/resource-00028-payload.bin"
+    },
+    {
+      "resource_id": 29,
+      "gpu_va": "0x1000018000",
+      "size": 32768,
+      "sha256": "f48191740af2036406c8427c6a8b3c64af2fc8159d94fa355533adc3219328ee",
+      "file": "resource-00029.bin.gz",
+      "source_file": "encoded/resource-00029-payload.bin"
+    },
+    {
+      "resource_id": 30,
+      "gpu_va": "0x1000028000",
+      "size": 32768,
+      "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479",
+      "file": "resource-00030.bin.gz",
+      "source_file": "encoded/resource-00030-payload.bin"
+    },
+    {
+      "resource_id": 31,
+      "gpu_va": "0x1000038000",
+      "size": 32768,
+      "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479",
+      "file": "resource-00031.bin.gz",
+      "source_file": "encoded/resource-00031-payload.bin"
+    },
+    {
+      "resource_id": 32,
+      "gpu_va": "0x10000128000",
+      "size": 32768,
+      "sha256": "8daa9ad61f13511b23ab9c781f737934310d719dc80c501a23bef867332e223c",
+      "file": "resource-00032.bin.gz",
+      "source_file": "encoded/resource-00032-payload.bin"
+    },
+    {
+      "resource_id": 33,
+      "gpu_va": "0x10000138000",
+      "size": 32768,
+      "sha256": "1905309d43108886003716780302039364f141e51735990dc291add658ac08b2",
+      "file": "resource-00033.bin.gz",
+      "source_file": "encoded/resource-00033-payload.bin"
+    },
+    {
+      "resource_id": 34,
+      "gpu_va": "0x10000148000",
+      "size": 32768,
+      "sha256": "bb7df8d789b80904542f8e54257a87fb3c8f20c7836179234b8227dd8ccfa5fb",
+      "file": "resource-00034.bin.gz",
+      "source_file": "encoded/resource-00034-payload.bin"
+    },
+    {
+      "resource_id": 35,
+      "gpu_va": "0x10000158000",
+      "size": 32768,
+      "sha256": "0d6f0ddcc65fdbdb05ba7447dfb21ffe6b3cb1f58d3599a09ce58bcbe90c0f2b",
+      "file": "resource-00035.bin.gz",
+      "source_file": "encoded/resource-00035-payload.bin"
+    },
+    {
+      "resource_id": 36,
+      "gpu_va": "0x10000168000",
+      "size": 1048576,
+      "sha256": "71f72f7aa0db650bb5d72b4d6f77d94c7aae0f50c10532daea58e984bf779152",
+      "file": "resource-00036.bin.gz",
+      "source_file": "encoded/resource-00036-payload.bin"
+    },
+    {
+      "resource_id": 37,
+      "gpu_va": "0x1000048000",
+      "size": 32768,
+      "sha256": "76e983b8f2356ce8cbb86c8ed435cae84f3e6d93d075011e1f6d8e78ef6450e0",
+      "file": "resource-00037.bin.gz",
+      "source_file": "encoded/resource-00037-payload.bin"
+    },
+    {
+      "resource_id": 38,
+      "gpu_va": "0x10000270000",
+      "size": 32768,
+      "sha256": "6e73a999e97199317e58a5b7f716c9f2abc8a4a271e3eab4e3101d1f79901a19",
+      "file": "resource-00038.bin.gz",
+      "source_file": "encoded/resource-00038-payload.bin"
+    },
+    {
+      "resource_id": 39,
+      "gpu_va": "0x10000280000",
+      "size": 32768,
+      "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479",
+      "file": "resource-00039.bin.gz",
+      "source_file": "encoded/resource-00039-payload.bin"
+    },
+    {
+      "resource_id": 40,
+      "gpu_va": "0x10000290000",
+      "size": 32768,
+      "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479",
+      "file": "resource-00040.bin.gz",
+      "source_file": "encoded/resource-00040-payload.bin"
+    },
+    {
+      "resource_id": 41,
+      "gpu_va": "0x100002a0000",
+      "size": 32768,
+      "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479",
+      "file": "resource-00041.bin.gz",
+      "source_file": "encoded/resource-00041-payload.bin"
+    },
+    {
+      "resource_id": 42,
+      "gpu_va": "0x100002b0000",
+      "size": 32768,
+      "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479",
+      "file": "resource-00042.bin.gz",
+      "source_file": "encoded/resource-00042-payload.bin"
+    },
+    {
+      "resource_id": 43,
+      "gpu_va": "0x1000058000",
+      "size": 32768,
+      "sha256": "7f8001ea16a28b83da1e851ffa80ef89dfaa225da877cb061277f3892e8ed99f",
+      "file": "resource-00043.bin.gz",
+      "source_file": "encoded/resource-00043-payload.bin"
+    },
+    {
+      "resource_id": 44,
+      "gpu_va": "0x1000068000",
+      "size": 49152,
+      "sha256": "394082bfad85399e63363e43a071c112d3ae118443c69449fbeb78b2277c4f51",
+      "file": "resource-00044.bin.gz",
+      "source_file": "encoded/resource-00044-payload.bin"
+    },
+    {
+      "resource_id": 45,
+      "gpu_va": "0x100002c0000",
+      "size": 786432,
+      "sha256": "599c1bb5ffd4b87229a81958f33f1060821cd01cd7aa7ccafa0d862f4522f3f6",
+      "file": "resource-00045.bin.gz",
+      "source_file": "encoded/resource-00045-payload.bin"
+    },
+    {
+      "resource_id": 46,
+      "gpu_va": "0x1000078000",
+      "size": 32768,
+      "sha256": "c35020473aed1b4642cd726cad727b63fff2824ad68cedd7ffb73c7cbd890479",
+      "file": "resource-00046.bin.gz",
+      "source_file": "encoded/resource-00046-payload.bin"
+    },
+    {
+      "resource_id": 47,
+      "gpu_va": "0x10000388000",
+      "size": 32768,
+      "sha256": "78f6531695be474356e6846d3f79dc89742cb7204876e451b55a0ff251a57c90",
+      "file": "resource-00047.bin.gz",
+      "source_file": "encoded/resource-00047-payload.bin"
+    },
+    {
+      "resource_id": 48,
+      "gpu_va": "0x10000398000",
+      "size": 49152,
+      "sha256": "2aae7dc846aaf25f1cadf55f1666862046c6db9d65d84bdc07fa039dac405606",
+      "file": "resource-00048.bin.gz",
+      "source_file": "encoded/resource-00048-payload.bin"
+    },
+    {
+      "resource_id": 49,
+      "gpu_va": "0x100003a8000",
+      "size": 16384,
+      "sha256": "4fe7b59af6de3b665b67788cc2f99892ab827efae3a467342b3bb4e3bc8e5bfe",
+      "file": "resource-00049.bin.gz",
+      "source_file": "encoded/resource-00049-payload.bin"
+    }
+  ],
+  "shaders": [
+    {
+      "stage": "fragment",
+      "record_index": 1,
+      "arena_offset": "0x480",
+      "size": 52,
+      "sha256": "0022829a718f2a082abdefbc8ce922b514bb08b2b7244cb92caaaadb35c1332d"
+    },
+    {
+      "stage": "vertex",
+      "record_index": 2,
+      "arena_offset": "0x540",
+      "size": 86,
+      "sha256": "df168726c5e6e291f5a9f814e3e0d37f13052c9030ae76798e6be00cf75faa9c"
+    }
+  ],
+  "render_target": {
+    "gpu_va": "0x10000058000",
+    "tile_offset": "0x100",
+    "pixel_rgba8_le": "0xffbf8040",
+    "pixels": 16
+  }
+}
