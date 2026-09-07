@@ -23,9 +23,9 @@ this module. Start each firmware experiment after a fresh boot: stopping the
 ASC after an incomplete handshake is not a firmware reset.
 
 Initial alpha validation: identity and powered register reads pass; the full
-RTKit handshake and exact InitData reach firmware ready. The fenced no-op is
-consumed, but the donor observation loop incorrectly reports timeout before
-its final success check. Compute validation is pending.
+RTKit handshake and exact InitData reach firmware ready. The fenced no-op passes with stage_result=0, retired cursors and firmware
+ready after fixing the donor observation-loop timeout. Compute validation is
+pending.
 
 Alpha adaptations retain the donor compute path but explicitly disable its
 unused PMP tool-snapshot diagnostic. PMP power requests use the active kernel

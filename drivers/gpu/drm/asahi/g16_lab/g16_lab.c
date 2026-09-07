@@ -7744,8 +7744,8 @@ static int g16_lab_fenced_noop(void __iomem *asc, u64 crashlog_iova,
 		} else if (ret != -ETIMEDOUT) {
 			return ret;
 		}
-	} while ((!completed && time_before(jiffies, deadline)) ||
-		 (completed && time_before(jiffies, stable_deadline)));
+	/* Re-enter after the 50 ms observation window to validate completion. */
+	} while (time_before(jiffies, deadline));
 
 	pr_err("g16_lab: fenced no-op timed out pipe=%u/%u/%u queue=%u/%u/%u ring=%u/%u busy=%u\n",
 	       pipe_consumer, pipe_cfi, pipe_producer, queue_reader, queue_cfi,
