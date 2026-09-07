@@ -46,7 +46,16 @@ def main():
                         help='generated vertex/red fragment bodies (implies --render-fragment)')
     parser.add_argument('--render-size', type=int, choices=(4, 32, 256), default=4,
                         help='square generated framebuffer size')
+    parser.add_argument('--render-xy', action='store_true',
+                        help='256x256 fragment-coordinate gradient; implies generated shaders')
+    parser.add_argument('--render-triangle', action='store_true',
+                        help='RGB coordinate-colored triangle; implies --render-xy')
     args = parser.parse_args()
+    if args.render_triangle:
+        args.render_xy = True
+    if args.render_xy:
+        args.render_generated_shaders = True
+        args.render_size = 256
     if args.render_generated_shaders:
         args.render_fragment = True
         if args.render_loader_marker:
@@ -66,6 +75,10 @@ def main():
         params += ['render_fragment_probe=1']
     if args.render_generated_shaders:
         params += ['render_generated_shaders=1', f'render_size={args.render_size}']
+    if args.render_xy:
+        params += ['render_xy=1']
+    if args.render_triangle:
+        params += ['render_triangle=1']
     if args.render_loader_marker:
         params += ['render_loader_marker=1']
     if args.firmware_ktrace:
@@ -213,6 +226,8 @@ def main():
         if args.render_fragment:
             metadata['generated_shader_bodies'] = args.render_generated_shaders
             metadata['render_size'] = args.render_size
+            metadata['render_xy'] = args.render_xy
+            metadata['render_triangle'] = args.render_triangle
             target_va = 0x10000058000 if args.render_size == 4 else 0x10001000000
             target_offset = 0x100 if args.render_size == 4 else 0x4000
             pixel_bytes = args.render_size * args.render_size * 4
@@ -222,12 +237,28 @@ def main():
                 raw_target = target.read_bytes()
                 # Constant color is independent of the tiled pixel ordering.
                 rgba = raw_target[target_offset:target_offset + pixel_bytes]
+                (result / 'render-tiled.rgba').write_bytes(rgba)
+                if args.render_xy:
+                    from g16image import detile_rgba8
+                    rgba = detile_rgba8(rgba, args.render_size)
                 (result / 'render.rgba').write_bytes(rgba)
                 metadata['render_target_sha256'] = hashlib.sha256(raw_target).hexdigest()
                 metadata['render_rgba_sha256'] = hashlib.sha256(rgba).hexdigest()
                 expected_rgba = bytes.fromhex('ff0000ff' if args.render_generated_shaders else '4080bfff')
+                expected_image = expected_rgba * (pixel_bytes // 4)
+                if args.render_xy:
+                    expected_image = bytes(v for y in range(256) for x in range(256)
+                                           for v in ((x * 255 + 128) // 256, (y * 255 + 128) // 256, 0, 255))
+                if args.render_triangle:
+                    expected_image = bytes(v for y in range(256) for x in range(256)
+                                           for v in ((((y - x) * 255 + 128) // 256,
+                                                      (x * 255 + 128) // 256,
+                                                      ((256 - y) * 255 + 128) // 256, 255)
+                                                     if x < y else (0, 0, 0, 0)))
+                from g16image import write_png
+                write_png(result / 'render.png', rgba, args.render_size)
                 metadata['vertex_fragment_pixels_verified'] = (
-                    len(raw_target) == expected_bytes and rgba == expected_rgba * (pixel_bytes // 4)
+                    len(raw_target) == expected_bytes and rgba == expected_image
                     and not any(raw_target[:target_offset])
                     and not any(raw_target[target_offset + pixel_bytes:]))
             # Pixel evidence replaces the earlier nonzero-tilemap heuristic.

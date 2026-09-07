@@ -316,6 +316,36 @@ static int g16_render_prepare(void)
 		}
 		pr_info("g16_lab: render: installed generated vertex/fragment bodies; reference bindings retained\n");
 	}
+	if (render_xy) {
+		for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+			struct g16_render_resource *r = &g16_render_resources[i];
+			u8 *data = r->data;
+
+			if (r->va == 0x10000148000ULL) {
+				BUILD_BUG_ON(sizeof(g16_generated_fragment_xy) > 0x1000);
+				BUILD_BUG_ON(sizeof(g16_generated_fragment_triangle) > 0x1000);
+				if (render_triangle)
+					memcpy(data + 0x7000, g16_generated_fragment_triangle,
+					       sizeof(g16_generated_fragment_triangle));
+				else
+					memcpy(data + 0x7000, g16_generated_fragment_xy,
+					       sizeof(g16_generated_fragment_xy));
+			} else if (r->va == 0x10000158000ULL) {
+				/* M4 LoadShader main PC occupies bits 23..63 in units
+				 * of 64 bytes. Preserve the low 23 control bits.
+				 */
+				u64 control = g16_render_get(data + 0x648, 8) & ((1ULL << 23) - 1);
+
+				g16_render_put(data + 0x648, (0x1000014f000ULL << 17) | control, 8);
+			} else if (r->va == 0x10000090000ULL && render_triangle) {
+				/* (-1,-1), (1,-1), (-1,1): replace the oversized
+				 * full-screen triangle with three clip-space vertices.
+				 */
+				g16_render_put(data + 8, 0x3f800000, 4);
+				g16_render_put(data + 20, 0x3f800000, 4);
+			}
+		}
+	}
 	if (render_ta_probe && !render_generated_shaders) {
 		bool patched = false;
 

@@ -131,7 +131,31 @@ static int g16_render_verify_pixels(void)
 			continue;
 		g16_lab_dcache_invalidate(r->data + g16_render_target_offset(), render_size * render_size * 4);
 		for (pixel = 0; pixel < render_size * render_size; pixel++) {
-			u32 actual = g16_render_get(r->data + g16_render_target_offset() + pixel * 4, 4);
+			u32 index = pixel, actual;
+
+			if (render_xy) {
+				u32 x = pixel % 256, y = pixel / 256, bit;
+				u32 red = DIV_ROUND_CLOSEST(x * 255, 256);
+				u32 green = DIV_ROUND_CLOSEST(y * 255, 256);
+
+				/* Uncompressed RGBA8: row-major 64x64 pages, Morton
+				 * pixel ordering within each 16 KiB page.
+				 */
+				index = ((y / 64) * 4 + x / 64) * 4096;
+				for (bit = 0; bit < 6; bit++)
+					index |= ((x >> bit) & 1) << (2 * bit) |
+						 ((y >> bit) & 1) << (2 * bit + 1);
+				expected = 0xff000000 | green << 8 | red;
+				if (render_triangle) {
+					if (x < y)
+						expected = 0xff000000 |
+							DIV_ROUND_CLOSEST((256 - y) * 255, 256) << 16 |
+							red << 8 | DIV_ROUND_CLOSEST((y - x) * 255, 256);
+					else
+						expected = 0; /* fixture preserves the zero background */
+				}
+			}
+			actual = g16_render_get(r->data + g16_render_target_offset() + index * 4, 4);
 
 			if (actual != expected) {
 				pr_err("g16_lab: render: pixel %u=%#x expected=%#x\n",

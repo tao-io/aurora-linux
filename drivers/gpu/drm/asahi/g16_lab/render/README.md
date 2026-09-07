@@ -420,3 +420,33 @@ packet offsets `+4/+8` to seven made the full target pass.
 This verifies generated shader bodies across 64 raster tiles. Reference state
 loaders and helper programs remain in use; a solid color alone does not
 qualify varying interpolation or the target's nonconstant pixel ordering.
+
+### Fragment coordinates, shader relocation and RGB triangle
+
+`--render-xy` qualifies a larger locally generated fragment program at
+`0x1000014f000`: the main PC in M4 LoadShader is encoded in bits 23..63 in
+64-byte units. Fixed loader controls are retained. The fragment body reads
+SR32/SR33, converts them to floating point, scales by 1/256 and packs RGBA8.
+Run `20260907T205824Z` matched all 65,536 expected coordinate colors, with
+clean retirement and loss-free KTrace. It also qualifies the uncompressed
+RGBA8 layout: 64x64 Morton-order pages in row-major order. `g16image.py`
+decodes the GPU bytes and packages PNG; it does not generate the image.
+
+`--render-triangle` changes vertex positions to (-1,-1), (1,-1), (-1,1).
+The shader colors covered pixels with R=(y-x)/256, G=x/256, B=1-y/256.
+This tests vertex-buffer input, rasterization, fragment coordinates and ALU,
+not hardware interpolation of vertex color varyings. Reference state loaders,
+preambles, bindings and tile helper programs are still required.
+
+The first triangle run `20260907T210018Z` failed the deliberately strict gate
+because uncovered pixels retained zero alpha. Readback inspection showed
+exactly 32,640 colored pixels at x<y and 32,896 untouched zero pixels, and
+every covered color matched the CPU formula. The diagonal x=y is excluded.
+The verification contract now explicitly expects the zero-initialized
+background to be preserved; it does not claim an opaque GPU clear.
+
+Run `20260907T210144Z` passed the corrected strict triangle gate, all pixel
+checks, clean queue retirement, no crashlog, loss-free KTrace, and module
+removal. Its manifest and GPU-produced PNG are in
+`validation/j713-rgb-triangle-20260907.{json,png}`. The earlier failed run
+is retained in local provenance and is not recorded as a passed test.

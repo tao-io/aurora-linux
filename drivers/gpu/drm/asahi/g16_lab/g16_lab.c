@@ -2654,6 +2654,12 @@ MODULE_PARM_DESC(render_generated_shaders, "Use locally generated vertex and red
 static unsigned int render_size = 4;
 module_param(render_size, uint, 0444);
 MODULE_PARM_DESC(render_size, "Square generated target size: 4, 32 or 256");
+static bool render_xy;
+module_param(render_xy, bool, 0444);
+MODULE_PARM_DESC(render_xy, "Diagnostic 256x256 fragment-coordinate color gradient");
+static bool render_triangle;
+module_param(render_triangle, bool, 0444);
+MODULE_PARM_DESC(render_triangle, "RGB coordinate-colored triangle (requires render_xy)");
 static bool render_ta_probe;
 module_param(render_ta_probe, bool, 0444);
 MODULE_PARM_DESC(render_ta_probe, "Experimental captured vertex/tiling submission after render queue validation");
@@ -19204,6 +19210,10 @@ static int __init g16_lab_init(void)
 	if (render_ta_probe && !render_queue_probe)
 		return -EINVAL;
 	if (render_generated_shaders && (!render_fragment_probe || !render_ta_probe || render_loader_marker))
+		return -EINVAL;
+	if (render_xy && (!render_generated_shaders || render_size != 256))
+		return -EINVAL;
+	if (render_triangle && !render_xy)
 		return -EINVAL;
 	if ((render_size != 4 && render_size != 32 && render_size != 256) ||
 	    (render_size != 4 && !render_generated_shaders))
