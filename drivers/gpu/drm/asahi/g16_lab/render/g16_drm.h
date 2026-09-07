@@ -8,6 +8,7 @@
 #include <drm/drm_gem_shmem_helper.h>
 #include <drm/drm_ioctl.h>
 #include "g16_drm_uapi.h"
+#include "g16_drm_vm.h"
 
 /* Memory-side bring-up first. Keep an explicit lab name so Mesa cannot
  * mistake this intermediate frontend for an executable Asahi device. */
@@ -18,6 +19,8 @@ struct g16_drm_file {
 	struct mutex lock;
 	u64 bytes_created;
 	u32 objects_created;
+	u32 next_vm_id;
+	struct g16_drm_vm *vm;
 };
 
 static int g16_drm_open(struct drm_device *dev, struct drm_file *file)
@@ -36,7 +39,10 @@ static int g16_drm_open(struct drm_device *dev, struct drm_file *file)
 
 static void g16_drm_postclose(struct drm_device *dev, struct drm_file *file)
 {
-	kfree(file->driver_priv);
+	struct g16_drm_file *priv = file->driver_priv;
+
+	g16_drm_vm_free(priv->vm);
+	kfree(priv);
 }
 
 static int g16_drm_gem_create_ioctl(struct drm_device *dev, void *data,
@@ -91,7 +97,87 @@ static int g16_drm_gem_mmap_ioctl(struct drm_device *dev, void *data,
 	return 0;
 }
 
+static int g16_drm_vm_create_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
+{
+	struct g16_drm_vm_create *args = data;
+	struct g16_drm_file *priv = file->driver_priv;
+	struct g16_drm_vm *vm;
+	int ret = 0;
+
+	if (args->pad || (args->kernel_start | args->kernel_end) & (PAGE_SIZE - 1) ||
+	    args->kernel_start < PAGE_SIZE || args->kernel_end > BIT_ULL(42) ||
+	    args->kernel_end <= args->kernel_start || args->kernel_end - args->kernel_start < SZ_32M)
+		return -EINVAL;
+	mutex_lock(&priv->lock);
+	if (priv->vm) {
+		ret = -EBUSY;
+		goto out;
+	}
+	if (priv->next_vm_id == U32_MAX) {
+		ret = -ENOSPC;
+		goto out;
+	}
+	vm = kzalloc(sizeof(*vm), GFP_KERNEL);
+	if (!vm) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	INIT_LIST_HEAD(&vm->mappings);
+	vm->id = ++priv->next_vm_id;
+	vm->kernel_start = args->kernel_start;
+	vm->kernel_end = args->kernel_end;
+	priv->vm = vm;
+	args->vm_id = vm->id;
+out:
+	mutex_unlock(&priv->lock);
+	return ret;
+}
+
+static int g16_drm_vm_destroy_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
+{
+	struct g16_drm_vm_destroy *args = data;
+	struct g16_drm_file *priv = file->driver_priv;
+	int ret = 0;
+
+	if (args->pad)
+		return -EINVAL;
+	mutex_lock(&priv->lock);
+	if (!priv->vm || priv->vm->id != args->vm_id) {
+		ret = -ENOENT;
+		goto out;
+	}
+	g16_drm_vm_free(priv->vm);
+	priv->vm = NULL;
+out:
+	mutex_unlock(&priv->lock);
+	return ret;
+}
+
+static int g16_drm_vm_bind_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
+{
+	struct g16_drm_vm_bind *args = data;
+	struct g16_drm_file *priv = file->driver_priv;
+	struct g16_drm_bind_op op;
+	int ret;
+
+	if (args->pad || args->num_binds != 1 || args->stride < sizeof(op) || args->stride > 256)
+		return -EINVAL;
+	ret = copy_struct_from_user(&op, sizeof(op), u64_to_user_ptr(args->userptr), args->stride);
+	if (ret)
+		return ret;
+	mutex_lock(&priv->lock);
+	if (!priv->vm || priv->vm->id != args->vm_id)
+		ret = -ENOENT;
+	else
+		ret = g16_drm_vm_bind_one(priv->vm, file, &op);
+	mutex_unlock(&priv->lock);
+	return ret;
+}
+
 static const struct drm_ioctl_desc g16_drm_ioctls[] = {
+	DRM_IOCTL_DEF_DRV(G16_VM_CREATE, g16_drm_vm_create_ioctl, DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(G16_VM_DESTROY, g16_drm_vm_destroy_ioctl, DRM_RENDER_ALLOW),
+	DRM_IOCTL_DEF_DRV(G16_VM_BIND, g16_drm_vm_bind_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(G16_GEM_CREATE, g16_drm_gem_create_ioctl, DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(G16_GEM_MMAP_OFFSET, g16_drm_gem_mmap_ioctl, DRM_RENDER_ALLOW),
 };

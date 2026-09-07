@@ -106,3 +106,34 @@ Both compiled stages pass eight alternating frames on J713 (524,288 exact
 pixels). See `MESA_NIR.md` for reproduction and the separate broader-suite
 failures. The host Honeykrisp/Zink build succeeds. This does not yet connect
 SPIR-V/Vulkan submission or presentation to an M4 DRM device.
+
+## DRM memory groundwork, 2026-09-08
+
+The root-only `stage=drm-frontend` creates a temporary `g16-lab` DRM device
+without starting GPU firmware. GEM_CREATE / MMAP_OFFSET and VM_CREATE /
+VM_DESTROY / VM_BIND use the pinned Asahi wire ABI, checked against its header
+by `tools/g16drmtest.c`. The driver deliberately retains its lab identity and
+has no GPU submission ioctl or advertised Asahi capabilities yet.
+
+The VM implementation builds private, unpublished 42-bit / 16 KiB UAT roots
+from pinned SHMEM pages. It verifies every physical leaf, retains a GEM
+reference and vmap pin for each binding, and rebuilds before replacing a root
+so allocation errors preserve existing bindings. This is not a live GPU VM:
+there is no hardware context publication or TLB invalidation in this stage.
+Mapping permissions still require GPU validation before publishing these roots.
+
+The bounded interface currently allows one VM per file, one bind per ioctl,
+exact-range unbind, 128 mappings / 256 MiB of mapped ranges, and cumulative
+64-object / 256 MiB GEM allocation per open. VM_PRIVATE, single-page mappings,
+PRIME, synchronization, queues and submission are not implemented.
+
+On J713/25G83, `tools/run-drm-memory.py` armed the 60-second watchdog before
+loading the module. The test verified zeroed WC/writeback allocations, CPU
+mapping aliases and 131,072 bytes of contents after GEM handle close, foreign
+handle/mmap rejection, allocation bounds, private VM binding and aliasing,
+reserved-range/overlap/size/alignment validation, mapping lifetime after handle
+close, VM destruction and file-close teardown, and stale VM ID rejection.
+The module unloaded, its render node disappeared, and no new kernel fault was
+logged. Evidence was saved before watchdog disarm. See
+`validation/j713-drm-vm-20260908.json`. No GPU firmware started in this test;
+public Vulkan drawing and window presentation remain outstanding.

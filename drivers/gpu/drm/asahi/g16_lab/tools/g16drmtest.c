@@ -12,6 +12,10 @@
 #include "asahi_drm.h"
 #include "g16_drm_uapi.h"
 
+_Static_assert(DRM_IOCTL_G16_VM_CREATE == DRM_IOCTL_ASAHI_VM_CREATE, "VM create ABI");
+_Static_assert(DRM_IOCTL_G16_VM_DESTROY == DRM_IOCTL_ASAHI_VM_DESTROY, "VM destroy ABI");
+_Static_assert(DRM_IOCTL_G16_VM_BIND == DRM_IOCTL_ASAHI_VM_BIND, "VM bind ABI");
+_Static_assert(sizeof(struct g16_drm_bind_op) == sizeof(struct drm_asahi_gem_bind_op), "bind op ABI");
 _Static_assert(DRM_IOCTL_G16_GEM_CREATE == DRM_IOCTL_ASAHI_GEM_CREATE, "create ABI");
 _Static_assert(DRM_IOCTL_G16_GEM_MMAP_OFFSET == DRM_IOCTL_ASAHI_GEM_MMAP_OFFSET, "mmap ABI");
 
@@ -21,6 +25,73 @@ static void close_handle(int fd, uint32_t handle)
 {
    struct drm_gem_close close = {.handle = handle};
    CHECK(ioctl(fd, DRM_IOCTL_GEM_CLOSE, &close) == 0);
+}
+
+static int bind_op(int fd, uint32_t vm_id, struct g16_drm_bind_op *op)
+{
+   struct g16_drm_vm_bind bind = {
+      .vm_id = vm_id, .num_binds = 1, .stride = sizeof(*op), .userptr = (uintptr_t)op,
+   };
+   return ioctl(fd, DRM_IOCTL_G16_VM_BIND, &bind);
+}
+
+static void test_vm(const char *path)
+{
+   int fd = open(path, O_RDWR | O_CLOEXEC);
+   int other = open(path, O_RDWR | O_CLOEXEC);
+   CHECK(fd >= 0 && other >= 0);
+   struct g16_drm_vm_create vm = {
+      .kernel_start = 0x3f800000000ull, .kernel_end = 0x40000000000ull,
+   };
+   CHECK(ioctl(fd, DRM_IOCTL_G16_VM_CREATE, &vm) == 0 && vm.vm_id);
+   uint32_t first_id = vm.vm_id;
+   CHECK(ioctl(fd, DRM_IOCTL_G16_VM_CREATE, &vm) == -1 && errno == EBUSY);
+   struct g16_drm_gem_create create = {.size = 65536};
+   CHECK(ioctl(fd, DRM_IOCTL_G16_GEM_CREATE, &create) == 0);
+   struct g16_drm_bind_op op = {
+      .flags = G16_BIND_READ | G16_BIND_WRITE, .handle = create.handle,
+      .range = 65536, .addr = 0x20000000000ull,
+   };
+   CHECK(bind_op(other, vm.vm_id, &op) == -1 && errno == ENOENT);
+   CHECK(bind_op(fd, vm.vm_id + 1, &op) == -1 && errno == ENOENT);
+   struct g16_drm_bind_op bad = op;
+   bad.addr++;
+   CHECK(bind_op(fd, vm.vm_id, &bad) == -1 && errno == EINVAL);
+   bad = op; bad.range += 16384;
+   CHECK(bind_op(fd, vm.vm_id, &bad) == -1 && errno == EINVAL);
+   bad = op; bad.addr = vm.kernel_start;
+   CHECK(bind_op(fd, vm.vm_id, &bad) == -1 && errno == EINVAL);
+   bad = op; bad.offset = 16384;
+   CHECK(bind_op(fd, vm.vm_id, &bad) == -1 && errno == EINVAL);
+   struct { struct g16_drm_bind_op op; uint64_t extra; } extended = {op, 1};
+   struct g16_drm_vm_bind bind = {
+      .vm_id = vm.vm_id, .num_binds = 1, .stride = sizeof(extended), .userptr = (uintptr_t)&extended,
+   };
+   CHECK(ioctl(fd, DRM_IOCTL_G16_VM_BIND, &bind) == -1 && errno == E2BIG);
+   CHECK(bind_op(fd, vm.vm_id, &op) == 0);
+   CHECK(bind_op(fd, vm.vm_id, &op) == -1 && errno == EEXIST);
+   /* Retain an alias with a nonzero object offset across unbinding the first. */
+   struct g16_drm_bind_op alias = op;
+   alias.addr += 0x400000000ull;
+   alias.offset = 16384; alias.range = 32768; alias.flags = G16_BIND_READ;
+   CHECK(bind_op(fd, vm.vm_id, &alias) == 0);
+   close_handle(fd, create.handle);
+   op.flags = G16_BIND_UNBIND; op.handle = 0;
+   CHECK(bind_op(fd, vm.vm_id, &op) == 0);
+   CHECK(bind_op(fd, vm.vm_id, &op) == -1 && errno == ENOENT);
+   /* Destroy must release the remaining alias and its last GEM reference. */
+   struct g16_drm_vm_destroy destroy = {.vm_id = vm.vm_id};
+   CHECK(ioctl(fd, DRM_IOCTL_G16_VM_DESTROY, &destroy) == 0);
+   CHECK(ioctl(fd, DRM_IOCTL_G16_VM_DESTROY, &destroy) == -1 && errno == ENOENT);
+   CHECK(ioctl(fd, DRM_IOCTL_G16_VM_CREATE, &vm) == 0 && vm.vm_id != first_id);
+   CHECK(bind_op(fd, first_id, &op) == -1 && errno == ENOENT);
+   /* File close also tears down a VM with a mapped, handle-less object. */
+   create.handle = 0;
+   CHECK(ioctl(fd, DRM_IOCTL_G16_GEM_CREATE, &create) == 0);
+   alias.handle = create.handle;
+   CHECK(bind_op(fd, vm.vm_id, &alias) == 0);
+   close_handle(fd, create.handle);
+   CHECK(close(fd) == 0 && close(other) == 0);
 }
 
 int main(int argc, char **argv)
@@ -74,8 +145,9 @@ int main(int argc, char **argv)
    struct g16_drm_gem_create exhausted = {.size = 1};
    CHECK(ioctl(fd, DRM_IOCTL_G16_GEM_CREATE, &exhausted) == -1 && errno == ENOSPC);
    CHECK(close(fd) == 0 && close(other) == 0);
+   test_vm(argv[1]);
    puts("{\"passed\":true,\"mapped_bytes_verified\":131072,\"invalid_creates_rejected\":5,"
         "\"foreign_handles_rejected\":true,\"foreign_mmaps_rejected\":true,"
-        "\"mapping_survives_handle_close\":true,\"per_open_budget_verified\":true}");
+        "\"mapping_survives_handle_close\":true,\"per_open_budget_verified\":true,\"private_vm_bindings_verified\":true}");
    return 0;
 }

@@ -25,6 +25,8 @@ def main():
     result = args.results / datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ-drm-memory')
     result.mkdir(parents=True, exist_ok=False)
     before = set(Path('/dev/dri').glob('renderD*'))
+    dmesg_before = subprocess.check_output(['dmesg'], text=True)
+    (result / 'dmesg-before.log').write_text(dmesg_before)
     metadata = {'kernel': os.uname().release, 'module_sha256': hashlib.sha256(args.module.read_bytes()).hexdigest()}
     watchdog = ExperimentWatchdog()
     metadata['watchdog'] = watchdog.arm()
@@ -37,7 +39,8 @@ def main():
         time.sleep(0.02)
     if len(nodes) != 1:
         raise RuntimeError('expected exactly one new render node')
-    run = subprocess.run([str(args.test), str(nodes.pop())], capture_output=True, text=True)
+    node = nodes.pop()
+    run = subprocess.run([str(args.test), str(node)], capture_output=True, text=True)
     (result / 'test.stdout').write_text(run.stdout)
     (result / 'test.stderr').write_text(run.stderr)
     metadata['test_returncode'] = run.returncode
@@ -46,8 +49,15 @@ def main():
     unload = subprocess.run(['rmmod', 'g16_lab'], capture_output=True, text=True)
     metadata['rmmod_returncode'] = unload.returncode
     (result / 'rmmod.txt').write_text(unload.stdout + unload.stderr)
-    (result / 'dmesg.log').write_text(subprocess.check_output(['dmesg'], text=True))
-    metadata['passed'] = run.returncode == 0 and unload.returncode == 0
+    dmesg_after = subprocess.check_output(['dmesg'], text=True)
+    (result / 'dmesg.log').write_text(dmesg_after)
+    delta = dmesg_after[len(dmesg_before):] if dmesg_after.startswith(dmesg_before) else dmesg_after
+    (result / 'dmesg-new.log').write_text(delta)
+    metadata['render_node_removed'] = not node.exists()
+    metadata['new_kernel_fault'] = any(marker in delta for marker in
+                                        ('WARNING:', 'BUG:', 'Oops:', 'Unable to handle kernel'))
+    metadata['passed'] = (run.returncode == 0 and unload.returncode == 0 and
+                          metadata['render_node_removed'] and not metadata['new_kernel_fault'])
     (result / 'manifest.json').write_text(json.dumps(metadata, indent=2) + '\n')
     os.sync()
     if unload.returncode:
