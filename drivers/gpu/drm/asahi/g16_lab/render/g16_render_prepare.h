@@ -9,6 +9,7 @@
 #include "g16_render_uat.h"
 #include "g16_vertex_marker.h"
 #include "g16_generated_graphics.h"
+#include "g16_mesa_graphics.h"
 #include "g16_generated_bindings.h"
 #include "g16_render_stream.h"
 
@@ -472,6 +473,16 @@ static int g16_render_prepare(void)
 						g16_render_put(data + 0x5108 + j * 16, j == 0 ? 0x3f800000 : 0, 4);
 						g16_render_put(data + 0x510c + j * 16, j == 1 ? 0x3f800000 : 0, 4);
 					}
+				}
+				if (render_mesa_vertex) {
+					BUILD_BUG_ON(sizeof(g16_mesa_vertex) > 0x800);
+					memset(data + 0x5800, 0, 0x800);
+					memcpy(data + 0x5800, g16_mesa_vertex, sizeof(g16_mesa_vertex));
+				}
+				if (render_mesa_fragment) {
+					BUILD_BUG_ON(sizeof(g16_mesa_fragment) > 0x1000);
+					memset(data + 0x7000, 0, 0x1000);
+					memcpy(data + 0x7000, g16_mesa_fragment, sizeof(g16_mesa_fragment));
 				}
 				/* Mesa CF_BINDING: RHW plus one or three user slots,
 				 * one binding with matching linear coefficient count.

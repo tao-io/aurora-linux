@@ -59,6 +59,10 @@ def main():
                         help='generated relocated direct draws; implies generated bindings')
     parser.add_argument('--render-varying', action='store_true',
                         help='experimental linear vertex color; implies generated stream')
+    parser.add_argument('--render-mesa-fragment', action='store_true',
+                        help='Mesa NIR-compiled fragment body; implies RGB')
+    parser.add_argument('--render-mesa-vertex', action='store_true',
+                        help='Mesa NIR-compiled vertex body; implies RGB')
     parser.add_argument('--render-varying-rgb', action='store_true',
                         help='three linear vertex color components')
     parser.add_argument('--render-varying-uniform', action='store_true',
@@ -66,6 +70,8 @@ def main():
     parser.add_argument('--render-varying-rhw', action='store_true',
                         help='interpolate reciprocal W to isolate coefficient setup')
     args = parser.parse_args()
+    if args.render_mesa_fragment or args.render_mesa_vertex:
+        args.render_varying_rgb = True
     if args.render_varying_rgb and (args.render_varying_uniform or args.render_varying_rhw):
         parser.error('RGB and scalar varying diagnostics are separate tests')
     if args.render_varying_rgb or args.render_varying_uniform or args.render_varying_rhw:
@@ -110,6 +116,10 @@ def main():
         params += ['render_stream=1']
     if args.render_varying:
         params += ['render_varying=1']
+    if args.render_mesa_fragment:
+        params += ['render_mesa_fragment=1']
+    if args.render_mesa_vertex:
+        params += ['render_mesa_vertex=1']
     if args.render_varying_rgb:
         params += ['render_varying_rgb=1']
     if args.render_varying_uniform:
@@ -272,6 +282,8 @@ def main():
             metadata['generated_stream'] = args.render_stream
             metadata['linear_vertex_varying'] = args.render_varying
             metadata['rgb_vertex_varying'] = args.render_varying_rgb
+            metadata['mesa_nir_fragment'] = args.render_mesa_fragment
+            metadata['mesa_nir_vertex'] = args.render_mesa_vertex
             metadata['uniform_vertex_colors'] = args.render_varying_uniform
             metadata['coefficient_source_rhw'] = args.render_varying_rhw
             target_va = 0x10000058000 if args.render_size == 4 else 0x10001000000
@@ -364,7 +376,14 @@ def main():
                 wanted = [0, 0, 0x3f800000] if flip else [0x3f800000, 0, 0]
             metadata['vertex_attribute_readback'] = reads
             metadata['vertex_attribute_reads_verified'] = reads == wanted
-            passed = passed and reads == wanted
+            if args.render_mesa_vertex:
+                # Compiler output has no diagnostic store. Require the initial
+                # sentinel so an earlier traced shader cannot satisfy this test.
+                metadata['vertex_attribute_reads_verified'] = None
+                metadata['vertex_trace_absent'] = reads == [0xcdcdcdcd] * 3
+                passed = passed and metadata['vertex_trace_absent']
+            else:
+                passed = passed and reads == wanted
             if not args.render_varying_rgb and trace_path.exists() and trace_path.stat().st_size >= 0x2400:
                 coefficients = list(struct.unpack_from('<256I', trace_path.read_bytes(), 0x2000))
                 metadata['fragment_coefficient_readback'] = coefficients

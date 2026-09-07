@@ -1,0 +1,8 @@
+{
+  "mesa_revision": "e58d46899eb1f351863bccab4b6e8c87ed32b95e",
+  "probe_sha256": "569e7f54c3e51a1d6a43163150c1272b84edc77fb90d36e2cbfcc0032e3a89f7",
+  "header_sha256": "0742b6b52357d1da2eec3a8a5ff70a68fe0b98a49f0864a5d3d67b58aa1afef9",
+  "compiler_report": "vertex: bytes=166 gpr_halfs=14 staging_halfs=14 push=0\nfragment: bytes=84 gpr_halfs=8 staging_halfs=0 push=0\n",
+  "scope": "offline post-lowering NIR compiler output; hardware validation separate",
+  "broader_graphics_test": "Failed on clean pinned source: AGX3b instanced varying rejected; flat-color binary expectation mismatch; discard unexpectedly accepted; AGX3c meta RGBA upload rejected."
+}

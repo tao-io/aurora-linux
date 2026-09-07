@@ -2673,6 +2673,12 @@ MODULE_PARM_DESC(render_stream, "Generate a relocated direct draw stream and alt
 static bool render_varying;
 module_param(render_varying, bool, 0444);
 MODULE_PARM_DESC(render_varying, "Experimental linear vertex color interpolation with fixed geometry");
+static bool render_mesa_fragment;
+module_param(render_mesa_fragment, bool, 0444);
+MODULE_PARM_DESC(render_mesa_fragment, "Use Mesa NIR-compiled RGB fragment shader");
+static bool render_mesa_vertex;
+module_param(render_mesa_vertex, bool, 0444);
+MODULE_PARM_DESC(render_mesa_vertex, "Use Mesa NIR-compiled RGB vertex shader");
 static bool render_varying_rgb;
 module_param(render_varying_rgb, bool, 0444);
 MODULE_PARM_DESC(render_varying_rgb, "Three linear vertex color components with fixed geometry");
@@ -19242,6 +19248,8 @@ static int __init g16_lab_init(void)
 	if (render_stream && !render_bindings)
 		return -EINVAL;
 	if (render_varying && !render_stream)
+		return -EINVAL;
+	if ((render_mesa_fragment || render_mesa_vertex) && !render_varying_rgb)
 		return -EINVAL;
 	if (render_varying_rgb && (!render_varying || render_varying_uniform || render_varying_rhw))
 		return -EINVAL;

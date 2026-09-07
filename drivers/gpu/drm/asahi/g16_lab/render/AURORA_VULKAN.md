@@ -99,3 +99,10 @@ record was essential; VIT and output sizes alone yielded zero user coefficients.
 See `VARYING_BRINGUP.md` and its retained validation manifests. The original
 eight-frame generated-stream regression also passes. Captured helper state
 and firmware setup remain in use; public Vulkan integration is still pending.
+
+The next compiler bridge also passes: `tools/g16mesa.c` sends the bounded RGB
+workload through Mesa NIR optimization, register allocation and AGX3b codegen.
+Both compiled stages pass eight alternating frames on J713 (524,288 exact
+pixels). See `MESA_NIR.md` for reproduction and the separate broader-suite
+failures. The host Honeykrisp/Zink build succeeds. This does not yet connect
+SPIR-V/Vulkan submission or presentation to an M4 DRM device.

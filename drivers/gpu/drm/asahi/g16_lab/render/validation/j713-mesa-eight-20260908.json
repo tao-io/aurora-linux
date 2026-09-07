@@ -1,0 +1,166 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "boot_id": "f26378ae-24da-4504-95ac-14a7dba8d6d4",
+  "module_sha256": "28c990bd389cfd7f68729a927dd0a27246412eb0a42373e909e28bccc9918767",
+  "parameters": [
+    "stage=rtkit-initdata-exact-offscreen-store",
+    "compute_macos_iadd=1",
+    "compute_mandelbrot=1",
+    "compute_macos_iadd_capture_context=1",
+    "compute_macos_iadd_ap2_leaves=1",
+    "compute_exact_loader_iomap_all=1",
+    "compute_macos_iadd_aligned_uma_hardware_table=1",
+    "compute_macos_iadd_populated_usc_private_memory=1",
+    "render_queue_probe=1",
+    "render_ta_probe=1",
+    "render_fragment_probe=1",
+    "render_generated_shaders=1",
+    "render_size=256",
+    "render_xy=1",
+    "render_bindings=1",
+    "render_stream=1",
+    "render_varying=1",
+    "render_mesa_fragment=1",
+    "render_mesa_vertex=1",
+    "render_varying_rgb=1",
+    "render_triangle=1",
+    "render_frames=8",
+    "firmware_ktrace_mask=3"
+  ],
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": false,
+    "disarmed_after_evidence_collection": true
+  },
+  "insmod_rc": 0,
+  "stage_result": 0,
+  "firmware_ktrace_valid": true,
+  "firmware_ktrace": {
+    "platform": "J713/T8132/G16G",
+    "firmware_build": "25G83",
+    "record_size": 72,
+    "record_count": 2259,
+    "sha256": "5cc5af484ea8dbfcddd6ea1c88255a253aed636745c6b36feb2b3e14a2986463",
+    "firmware_reported_lost_records": 0,
+    "event_counts": {
+      "EventNotify": 9,
+      "Finish3D": 8,
+      "FinishCompute": 1,
+      "FinishTA": 8,
+      "StampUpdate3D": 7,
+      "StampUpdateCompute": 1,
+      "StampUpdateTA": 8,
+      "Start3D": 8,
+      "StartCompute": 1,
+      "StartTA": 8,
+      "event_000005": 8,
+      "event_00000f": 2,
+      "event_000017": 8,
+      "event_00002c": 1,
+      "event_00004d": 8,
+      "event_00004f": 8,
+      "event_000054": 17,
+      "event_000056": 35,
+      "event_000100": 399,
+      "event_000101": 399,
+      "event_000102": 91,
+      "event_000103": 91,
+      "event_000105": 19,
+      "event_000106": 19,
+      "event_000109": 17,
+      "event_00010a": 17,
+      "event_00010c": 2,
+      "event_000111": 19,
+      "event_000112": 1036,
+      "event_00013c": 2,
+      "event_00013e": 2
+    },
+    "host_dropped_records": 0,
+    "drain_result": 0
+  },
+  "output_bytes": 16384,
+  "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+  "colors": {
+    "ffffffff": 3416,
+    "ff000000": 680
+  },
+  "symmetric_rows": true,
+  "render_queues_passed": true,
+  "render_shaders_submitted": true,
+  "ta_retired_with_writes": false,
+  "fragment_job_submitted": true,
+  "fragment_job_retired": true,
+  "vertex_fragment_pixels_verified": true,
+  "generated_shader_bodies": true,
+  "render_size": 256,
+  "render_xy": true,
+  "render_triangle": true,
+  "render_frames": 8,
+  "generated_bindings": true,
+  "generated_stream": true,
+  "linear_vertex_varying": true,
+  "rgb_vertex_varying": true,
+  "mesa_nir_fragment": true,
+  "mesa_nir_vertex": true,
+  "uniform_vertex_colors": false,
+  "coefficient_source_rhw": false,
+  "render_target_sha256": "fe37bfe59eec5e54e567d5d897521e0720904b8be40015ab5a227160158b90f0",
+  "render_rgba_sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb",
+  "old_bindings_erased": true,
+  "old_stream_erased_and_inputs_verified": true,
+  "vertex_attribute_readback": [
+    3452816845,
+    3452816845,
+    3452816845
+  ],
+  "vertex_attribute_reads_verified": null,
+  "vertex_trace_absent": true,
+  "frames": [
+    {
+      "frame": 0,
+      "verified": true,
+      "sha256": "bdadefa277c87b2950ae3a9bab99240dfce66b262a344010561f3ebee8528302"
+    },
+    {
+      "frame": 1,
+      "verified": true,
+      "sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb"
+    },
+    {
+      "frame": 2,
+      "verified": true,
+      "sha256": "bdadefa277c87b2950ae3a9bab99240dfce66b262a344010561f3ebee8528302"
+    },
+    {
+      "frame": 3,
+      "verified": true,
+      "sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb"
+    },
+    {
+      "frame": 4,
+      "verified": true,
+      "sha256": "bdadefa277c87b2950ae3a9bab99240dfce66b262a344010561f3ebee8528302"
+    },
+    {
+      "frame": 5,
+      "verified": true,
+      "sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb"
+    },
+    {
+      "frame": 6,
+      "verified": true,
+      "sha256": "bdadefa277c87b2950ae3a9bab99240dfce66b262a344010561f3ebee8528302"
+    },
+    {
+      "frame": 7,
+      "verified": true,
+      "sha256": "49aa29ba283100332c80916160da9593a32d6ab305a74b078a74938ab0eb45cb"
+    }
+  ],
+  "rmmod_rc": 0,
+  "passed": true
+}
