@@ -310,3 +310,21 @@ in `validation/`. Shader execution remains unproven and no fragment job has
 yet been submitted. All live runs must arm the mandatory 60-second watchdog
 before inserting the module; `tools/run-mandelbrot.py` does this and saves the
 verification in its manifest.
+
+### Vertex dispatch isolation
+
+Run 20260907T193750Z replaced the vertex entry marker store with a diagnostic
+data load from unmapped VA 0x10002000000. Firmware recovery recorded exactly
+that VA, context 6, read access and unit 1 (fault info 0x81a80c0291). This
+establishes execution of the injected vertex-body instruction. Earlier tests
+independently established loader fetch and consumption of its shader address.
+It does not establish normal vertex outputs or fragment execution. The
+one-run address/load diagnostics are reverted; their evidence is preserved
+in `validation/20260907-vertex-dispatch-isolation.json`.
+
+The ordinary marker now uses the existing minimal-store shader's immediate
+index encoding and matching wait group 4. Readback uses the same AP2 data
+mapping as compute output. Neither marker was CPU-visible in 194733Z; cache
+policy and wait-group variants also failed to make these writes visible.
+The next diagnostic is firmware KTrace, to inspect completion and attachment
+handling before drawing conclusions about cache visibility.

@@ -1,0 +1,242 @@
+[
+  {
+    "run": "20260907T192740Z",
+    "manifest": {
+      "kernel": "7.1.9-dirtyroom-gpu1+",
+      "boot_id": "deaac01c-9711-4356-b653-704ec3a0f367",
+      "module_sha256": "720112de503a24c24f1616af6213364dbb9182a8ef31b8e92468860bd001c78a",
+      "parameters": [
+        "stage=rtkit-initdata-exact-offscreen-store",
+        "compute_macos_iadd=1",
+        "compute_mandelbrot=1",
+        "compute_macos_iadd_capture_context=1",
+        "compute_macos_iadd_ap2_leaves=1",
+        "compute_exact_loader_iomap_all=1",
+        "compute_macos_iadd_aligned_uma_hardware_table=1",
+        "compute_macos_iadd_populated_usc_private_memory=1",
+        "render_queue_probe=1",
+        "render_ta_probe=1",
+        "render_loader_marker=1"
+      ],
+      "watchdog": {
+        "device": "/dev/watchdog0",
+        "identity": "Apple SoC Watchdog",
+        "timeout_seconds": 60,
+        "initial_timeleft_seconds": 59,
+        "periodic_keepalive": false,
+        "armed": false,
+        "disarmed_after_evidence_collection": true
+      },
+      "insmod_rc": 0,
+      "stage_result": -5,
+      "output_bytes": 16384,
+      "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+      "colors": {
+        "ffffffff": 3416,
+        "ff000000": 680
+      },
+      "symmetric_rows": true,
+      "render_queues_passed": true,
+      "render_shaders_submitted": true,
+      "ta_retired_with_writes": false,
+      "vertex_fragment_pixels_verified": false,
+      "passed": false
+    },
+    "key_evidence": [
+      "[  275.025096] g16_lab: render: stopped fault info=0x81a90c0291",
+      "[  275.025097] g16_lab: render: stopped fault valid=1 reason=0 read=1 level=1 unit=0x1 context=6 VA=0x101fffff180"
+    ]
+  },
+  {
+    "run": "20260907T193040Z",
+    "manifest": {
+      "kernel": "7.1.9-dirtyroom-gpu1+",
+      "boot_id": "fee90a30-af9e-4f38-83a4-3b981da6f1fc",
+      "module_sha256": "8cee660402f61fc1035170db1dac9a730bf26c5af528badcd75ff36ae3c85052",
+      "parameters": [
+        "stage=rtkit-initdata-exact-offscreen-store",
+        "compute_macos_iadd=1",
+        "compute_mandelbrot=1",
+        "compute_macos_iadd_capture_context=1",
+        "compute_macos_iadd_ap2_leaves=1",
+        "compute_exact_loader_iomap_all=1",
+        "compute_macos_iadd_aligned_uma_hardware_table=1",
+        "compute_macos_iadd_populated_usc_private_memory=1",
+        "render_queue_probe=1",
+        "render_ta_probe=1",
+        "render_loader_marker=1"
+      ],
+      "watchdog": {
+        "device": "/dev/watchdog0",
+        "identity": "Apple SoC Watchdog",
+        "timeout_seconds": 60,
+        "initial_timeleft_seconds": 59,
+        "periodic_keepalive": false,
+        "armed": false,
+        "disarmed_after_evidence_collection": true
+      },
+      "insmod_rc": 0,
+      "stage_result": -61,
+      "output_bytes": 16384,
+      "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+      "colors": {
+        "ffffffff": 3416,
+        "ff000000": 680
+      },
+      "symmetric_rows": true,
+      "render_queues_passed": true,
+      "render_shaders_submitted": true,
+      "ta_retired_with_writes": false,
+      "vertex_fragment_pixels_verified": false,
+      "passed": false
+    },
+    "key_evidence": [
+      "[  109.090295] g16_lab: render: vertex execution marker=0xcdcdcdcd expected=0x56535441",
+      "[  109.090296] g16_lab: render: vertex loader marker=0xcdcdcdcd expected=0x45534c31"
+    ]
+  },
+  {
+    "run": "20260907T193212Z",
+    "manifest": {
+      "kernel": "7.1.9-dirtyroom-gpu1+",
+      "boot_id": "f37e475f-f465-4cbd-b22d-fad56929ca25",
+      "module_sha256": "80356d9c0024feb633615354e8dc6c770d99e938f15aefda9889b1b304f193ae",
+      "parameters": [
+        "stage=rtkit-initdata-exact-offscreen-store",
+        "compute_macos_iadd=1",
+        "compute_mandelbrot=1",
+        "compute_macos_iadd_capture_context=1",
+        "compute_macos_iadd_ap2_leaves=1",
+        "compute_exact_loader_iomap_all=1",
+        "compute_macos_iadd_aligned_uma_hardware_table=1",
+        "compute_macos_iadd_populated_usc_private_memory=1",
+        "render_queue_probe=1",
+        "render_ta_probe=1",
+        "render_loader_marker=1"
+      ],
+      "watchdog": {
+        "device": "/dev/watchdog0",
+        "identity": "Apple SoC Watchdog",
+        "timeout_seconds": 60,
+        "initial_timeleft_seconds": 59,
+        "periodic_keepalive": false,
+        "armed": false,
+        "disarmed_after_evidence_collection": true
+      },
+      "insmod_rc": 0,
+      "stage_result": -61,
+      "output_bytes": 16384,
+      "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+      "colors": {
+        "ffffffff": 3416,
+        "ff000000": 680
+      },
+      "symmetric_rows": true,
+      "render_queues_passed": true,
+      "render_shaders_submitted": true,
+      "ta_retired_with_writes": false,
+      "vertex_fragment_pixels_verified": false,
+      "passed": false
+    },
+    "key_evidence": [
+      "[   42.452258] g16_lab: render: vertex execution marker=0xcdcdcdcd expected=0x56535441",
+      "[   42.452259] g16_lab: render: vertex loader marker=0xcdcdcdcd expected=0x45534c31"
+    ]
+  },
+  {
+    "run": "20260907T193434Z",
+    "manifest": {
+      "kernel": "7.1.9-dirtyroom-gpu1+",
+      "boot_id": "94ff0bec-212e-4242-a005-919a73c44346",
+      "module_sha256": "d26508d3ebff6c24c261e155a1ffeff4d27111d161fabc17b1bc580b51d77c23",
+      "parameters": [
+        "stage=rtkit-initdata-exact-offscreen-store",
+        "compute_macos_iadd=1",
+        "compute_mandelbrot=1",
+        "compute_macos_iadd_capture_context=1",
+        "compute_macos_iadd_ap2_leaves=1",
+        "compute_exact_loader_iomap_all=1",
+        "compute_macos_iadd_aligned_uma_hardware_table=1",
+        "compute_macos_iadd_populated_usc_private_memory=1",
+        "render_queue_probe=1",
+        "render_ta_probe=1",
+        "render_loader_marker=1"
+      ],
+      "watchdog": {
+        "device": "/dev/watchdog0",
+        "identity": "Apple SoC Watchdog",
+        "timeout_seconds": 60,
+        "initial_timeleft_seconds": 59,
+        "periodic_keepalive": false,
+        "armed": false,
+        "disarmed_after_evidence_collection": true
+      },
+      "insmod_rc": 0,
+      "stage_result": -5,
+      "output_bytes": 16384,
+      "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+      "colors": {
+        "ffffffff": 3416,
+        "ff000000": 680
+      },
+      "symmetric_rows": true,
+      "render_queues_passed": true,
+      "render_shaders_submitted": true,
+      "ta_retired_with_writes": false,
+      "vertex_fragment_pixels_verified": false,
+      "passed": false
+    },
+    "key_evidence": [
+      "[   50.940781] g16_lab: render: stopped fault info=0x81a90c0211",
+      "[   50.940782] g16_lab: render: stopped fault valid=1 reason=0 read=1 level=0 unit=0x1 context=6 VA=0x10001000080"
+    ]
+  },
+  {
+    "run": "20260907T193750Z",
+    "manifest": {
+      "kernel": "7.1.9-dirtyroom-gpu1+",
+      "boot_id": "c8741985-039a-441b-9ac7-959e89d775b6",
+      "module_sha256": "98936861a786e06e0a0001bc9768e24c1d120056853805de7e01dcf44f76990b",
+      "parameters": [
+        "stage=rtkit-initdata-exact-offscreen-store",
+        "compute_macos_iadd=1",
+        "compute_mandelbrot=1",
+        "compute_macos_iadd_capture_context=1",
+        "compute_macos_iadd_ap2_leaves=1",
+        "compute_exact_loader_iomap_all=1",
+        "compute_macos_iadd_aligned_uma_hardware_table=1",
+        "compute_macos_iadd_populated_usc_private_memory=1",
+        "render_queue_probe=1",
+        "render_ta_probe=1",
+        "render_loader_marker=1"
+      ],
+      "watchdog": {
+        "device": "/dev/watchdog0",
+        "identity": "Apple SoC Watchdog",
+        "timeout_seconds": 60,
+        "initial_timeleft_seconds": 59,
+        "periodic_keepalive": false,
+        "armed": false,
+        "disarmed_after_evidence_collection": true
+      },
+      "insmod_rc": 0,
+      "stage_result": -5,
+      "output_bytes": 16384,
+      "output_sha256": "792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1",
+      "colors": {
+        "ffffffff": 3416,
+        "ff000000": 680
+      },
+      "symmetric_rows": true,
+      "render_queues_passed": true,
+      "render_shaders_submitted": true,
+      "ta_retired_with_writes": false,
+      "vertex_fragment_pixels_verified": false,
+      "passed": false
+    },
+    "key_evidence": [
+      "[   22.427028] g16_lab: render: stopped fault info=0x81a80c0291",
+      "[   22.427029] g16_lab: render: stopped fault valid=1 reason=0 read=1 level=1 unit=0x1 context=6 VA=0x10002000000"
+    ]
+  }
+]

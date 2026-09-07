@@ -71,6 +71,8 @@ static u64 g16_render_resource_flags(const struct g16_render_resource *r)
 {
 	/* dPM writes the compact-range scratch; dVDM requires the captured AP2
 	 * executable tuple for its command stream. These are distinct clients. */
+	if (r->va == 0x100000a8000ULL)
+		return J713_UAT_USER_CAPTURE_GPU_DATA_SHARED_FLAGS;
 	return r->va == 0x1000000000ULL ? J713_UAT_USER_GPU_RW_NX_SHARED_FLAGS :
 		J713_UAT_USER_CAPTURE_GPU_EXEC_SHARED_FLAGS;
 }
