@@ -401,3 +401,22 @@ vertex load's wait-0 dependency, wait-5 export, and cache/control bits. Changing
 those together was not qualified. RGBA8 publication uses packed UNORM8 channels
 in r0, not four half floats. The first low-half pack's observed bit 11 remains
 explicitly retained; its general semantics are not yet established.
+
+### Generated 256x256 target (2026-09-07)
+
+`--render-generated-shaders --render-size 256` passed on J713 with all 65,536
+RGBA8 pixels equal to `ff0000ff`, clean TA/fragment retirement, no crashlog,
+and loss-free firmware KTrace. The 60-second watchdog was armed before dispatch
+and disarmed after evidence collection. The manifest is
+`validation/j713-generated-256-20260907.json`. A separate 32x32 run also passed.
+
+The larger target uses an isolated allocation at GPU VA `0x10001000000`,
+payload offset `0x4000`. Texture/PBE dimensions and addresses, scissor,
+viewport transform, firmware geometry and PPP region clipping are updated.
+The first 256x256 attempt changed only 1,024 pixels: PPP region clip still
+limited both axes to tile zero. Updating its inclusive tile maxima at viewport
+packet offsets `+4/+8` to seven made the full target pass.
+
+This verifies generated shader bodies across 64 raster tiles. Reference state
+loaders and helper programs remain in use; a solid color alone does not
+qualify varying interpolation or the target's nonconstant pixel ordering.

@@ -46,6 +46,16 @@ static struct debugfs_blob_wrapper g16_render_pool_blob;
 static struct g16_render_uat g16_render_user_uat;
 static struct g16_render_uat g16_render_fw_uat;
 
+static u64 g16_render_target_va(void)
+{
+	return render_size == 4 ? 0x10000058000ULL : 0x10001000000ULL;
+}
+
+static u32 g16_render_target_offset(void)
+{
+	return render_size == 4 ? 0x100 : 0x4000;
+}
+
 static void g16_render_release(void)
 {
 	unsigned int i;
@@ -77,7 +87,7 @@ static u64 g16_render_resource_flags(const struct g16_render_resource *r)
 	/* First 3D dispatch reached the EOT image write at target+100 and
 	 * reported write-permission fault 0x1948c0407 on the AP2 leaf.
 	 */
-	return (r->va == 0x1000000000ULL || r->va == 0x10000058000ULL) ?
+	return (r->va == 0x1000000000ULL || r->va == g16_render_target_va()) ?
 		J713_UAT_USER_GPU_RW_NX_SHARED_FLAGS :
 		J713_UAT_USER_CAPTURE_GPU_EXEC_SHARED_FLAGS;
 }
@@ -204,6 +214,69 @@ static int g16_render_prepare(void)
 		memcpy(r->data, fw->data + next, r->size);
 		next += r->size;
 		resource_bytes += r->size;
+	}
+	if (render_size != 4) {
+		/* Allocate an isolated target rather than growing into the captured
+		 * vertex/index mappings. No reference output enters this allocation.
+		 */
+		for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
+			struct g16_render_resource *r = &g16_render_resources[i];
+			u8 *data = r->data;
+			u64 value;
+			unsigned int j;
+
+			if (r->va == 0x10000058000ULL) {
+				u32 size = ALIGN(g16_render_target_offset() + render_size * render_size * 4,
+						 PAGE_SIZE);
+				void *target = vzalloc(size);
+
+				if (!target) {
+					ret = -ENOMEM;
+					goto out;
+				}
+				resource_bytes = resource_bytes - r->size + size;
+				vfree(r->data);
+				r->data = target;
+				r->size = size;
+				r->va = g16_render_target_va();
+			} else if (r->va == 0x10000138000ULL) {
+				/* M4 fixture's texture descriptors and EOT PBE descriptor.
+				 * Width/height positions match the independently decoded
+				 * 4x4 words; preserve format, layout and swizzle bits.
+				 */
+				for (j = 0; j < 3; j++) {
+					u32 offset = 0x20 + j * 0x300;
+					u32 shift = j == 2 ? 24 : 28;
+					u64 mask = ((1ULL << 28) - 1) << shift;
+
+					value = g16_render_get(data + offset, 8);
+					value = (value & ~mask) | (u64)(render_size - 1) << shift |
+						(u64)(render_size - 1) << (shift + 14);
+					g16_render_put(data + offset, value, 8);
+					g16_render_put(data + offset + 8,
+						(g16_render_target_va() + g16_render_target_offset()) >> 4, 8);
+				}
+			} else if (r->va == 0x10000168000ULL) {
+				g16_render_put(data, render_size, 4);
+				g16_render_put(data + 4, render_size, 4);
+			} else if (r->va == 0x1000068000ULL) {
+				/* Power-of-two size/2, emitted as IEEE754 without kernel FP. */
+				u32 half = (ilog2(render_size) - 1 + 127) << 23;
+				u32 max_tile = DIV_ROUND_UP(render_size, 32) - 1;
+
+				/* PPP region clip precedes viewport control/transforms.
+				 * Max X/Y are inclusive 32-pixel tile indices. Leaving
+				 * the fixture's zero bounds clips everything to tile 0.
+				 */
+				g16_render_put(data + 0x904, BIT(31) | max_tile, 4);
+				g16_render_put(data + 0x908, max_tile, 4);
+				for (j = 0; j < 4; j++)
+					g16_render_put(data + 0x910 + j * 4,
+						half | (j == 3 ? BIT(31) : 0), 4);
+			}
+		}
+		pr_info("g16_lab: render: generated %ux%u target=%#llx data-offset=%#x\n",
+			render_size, render_size, g16_render_target_va(), g16_render_target_offset());
 	}
 	g16_render_graph = vzalloc(G16_RENDER_GRAPH_BYTES);
 	g16_render_pool = vzalloc(G16_RENDER_POOL_BYTES);

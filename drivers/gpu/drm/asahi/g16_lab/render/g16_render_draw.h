@@ -2,7 +2,7 @@
 #ifndef G16_RENDER_DRAW_H
 #define G16_RENDER_DRAW_H
 
-/* Experimental reconstructed single-cluster, single-layer 4x4 tiling job. */
+/* Experimental reconstructed single-cluster, single-layer tiling job. */
 static u64 g16_render_gpu_address(u64 va)
 {
 	return va & ((1ULL << 43) - 1);
@@ -28,7 +28,7 @@ static int g16_render_build_ta(void)
 		ret = -ENOMEM;
 		goto out;
 	}
-	ret = g16_render_geometry_single(&geometry, 4, 4, 32, 32, 1);
+	ret = g16_render_geometry_single(&geometry, render_size, render_size, 32, 32, 1);
 	if (ret)
 		goto out;
 #define D(o, v, n) g16_render_put(d + (o), (v), (n))
@@ -118,8 +118,8 @@ static int g16_render_build_ta(void)
 	g16_render_put((u8 *)notifier + 0x10, 50, 4);
 	g16_render_put((u8 *)notifier + 0x24, 6, 4);
 	g16_render_put((u8 *)notifier + 0xb8, 0x16000001, 4);
-	pr_info("g16_lab: render: built experimental 4x4 TA registers=%d VDM=0x18000 PB=128 pages TPC=%llu bytes\n",
-		count, geometry.tpc_bytes);
+	pr_info("g16_lab: render: built experimental %ux%u TA registers=%d VDM=0x18000 PB=128 pages TPC=%llu bytes\n",
+		render_size, render_size, count, geometry.tpc_bytes);
 #undef GPU
 #undef TILER
 #undef D

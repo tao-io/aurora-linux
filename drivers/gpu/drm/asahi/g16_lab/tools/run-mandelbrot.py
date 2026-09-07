@@ -44,11 +44,15 @@ def main():
                         help='experimental fragment job after TA (implies --render-ta)')
     parser.add_argument('--render-generated-shaders', action='store_true',
                         help='generated vertex/red fragment bodies (implies --render-fragment)')
+    parser.add_argument('--render-size', type=int, choices=(4, 32, 256), default=4,
+                        help='square generated framebuffer size')
     args = parser.parse_args()
     if args.render_generated_shaders:
         args.render_fragment = True
         if args.render_loader_marker:
             parser.error('generated shaders and loader instrumentation are separate tests')
+    elif args.render_size != 4:
+        parser.error('larger targets require --render-generated-shaders')
     if args.render_fragment:
         args.render_ta = True
     if args.render_loader_marker:
@@ -61,7 +65,7 @@ def main():
     if args.render_fragment:
         params += ['render_fragment_probe=1']
     if args.render_generated_shaders:
-        params += ['render_generated_shaders=1']
+        params += ['render_generated_shaders=1', f'render_size={args.render_size}']
     if args.render_loader_marker:
         params += ['render_loader_marker=1']
     if args.firmware_ktrace:
@@ -208,18 +212,24 @@ def main():
         metadata['vertex_fragment_pixels_verified'] = False
         if args.render_fragment:
             metadata['generated_shader_bodies'] = args.render_generated_shaders
-            target = result / 'render-resources' / 'resource-10000058000.bin'
+            metadata['render_size'] = args.render_size
+            target_va = 0x10000058000 if args.render_size == 4 else 0x10001000000
+            target_offset = 0x100 if args.render_size == 4 else 0x4000
+            pixel_bytes = args.render_size * args.render_size * 4
+            expected_bytes = 0x20000 if args.render_size == 4 else ((target_offset + pixel_bytes + 0x3fff) & ~0x3fff)
+            target = result / 'render-resources' / f'resource-{target_va:x}.bin'
             if target.exists():
                 raw_target = target.read_bytes()
-                # Native M4 4x4 RGBA8 tile, excluding its zero-backed prefix.
-                rgba = raw_target[0x100:0x140]
+                # Constant color is independent of the tiled pixel ordering.
+                rgba = raw_target[target_offset:target_offset + pixel_bytes]
                 (result / 'render.rgba').write_bytes(rgba)
                 metadata['render_target_sha256'] = hashlib.sha256(raw_target).hexdigest()
                 metadata['render_rgba_sha256'] = hashlib.sha256(rgba).hexdigest()
                 expected_rgba = bytes.fromhex('ff0000ff' if args.render_generated_shaders else '4080bfff')
                 metadata['vertex_fragment_pixels_verified'] = (
-                    len(raw_target) == 0x20000 and rgba == expected_rgba * 16
-                    and not any(raw_target[:0x100]) and not any(raw_target[0x140:]))
+                    len(raw_target) == expected_bytes and rgba == expected_rgba * (pixel_bytes // 4)
+                    and not any(raw_target[:target_offset])
+                    and not any(raw_target[target_offset + pixel_bytes:]))
             # Pixel evidence replaces the earlier nonzero-tilemap heuristic.
             # A firmware crash or incomplete queue still fails the outer gate.
             passed = (passed and metadata['fragment_job_retired']

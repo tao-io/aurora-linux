@@ -26,7 +26,7 @@ static int g16_render_build_fragment(void)
 		ret = -ENOMEM;
 		goto out;
 	}
-	ret = g16_render_geometry_single(&g, 4, 4, 32, 32, 1);
+	ret = g16_render_geometry_single(&g, render_size, render_size, 32, 32, 1);
 	if (ret)
 		goto out;
 #define D(o, v, n) g16_render_put(d + (o), (v), (n))
@@ -108,8 +108,8 @@ static int g16_render_build_fragment(void)
 	g16_render_put(work + 0xc46, g16_initdata_live_barrier_va + 0xe00, 8);
 	g16_render_put(work + 0xc57, base + 0x60100, 8);
 	g16_render_put(work + 0x9d8, mode, 8);
-	pr_info("g16_lab: render: built 4x4 fragment diagnostic registers=%d mode=%#llx; pixel output not yet verified\n",
-		count, mode);
+	pr_info("g16_lab: render: built %ux%u fragment diagnostic registers=%d mode=%#llx; pixel output not yet verified\n",
+		render_size, render_size, count, mode);
 #undef GPU
 #undef D
 out:
@@ -126,11 +126,12 @@ static int g16_render_verify_pixels(void)
 	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
 		struct g16_render_resource *r = &g16_render_resources[i];
 
-		if (r->va != 0x10000058000ULL || r->size < 0x140)
+		if (r->va != g16_render_target_va() ||
+		    r->size < g16_render_target_offset() + render_size * render_size * 4)
 			continue;
-		g16_lab_dcache_invalidate(r->data + 0x100, 64);
-		for (pixel = 0; pixel < 16; pixel++) {
-			u32 actual = g16_render_get(r->data + 0x100 + pixel * 4, 4);
+		g16_lab_dcache_invalidate(r->data + g16_render_target_offset(), render_size * render_size * 4);
+		for (pixel = 0; pixel < render_size * render_size; pixel++) {
+			u32 actual = g16_render_get(r->data + g16_render_target_offset() + pixel * 4, 4);
 
 			if (actual != expected) {
 				pr_err("g16_lab: render: pixel %u=%#x expected=%#x\n",
@@ -138,8 +139,8 @@ static int g16_render_verify_pixels(void)
 				return -ENODATA;
 			}
 		}
-		pr_info("g16_lab: render: verified 16 GPU-rendered pixels=%#x generated=%u\n",
-			expected, render_generated_shaders);
+		pr_info("g16_lab: render: verified %u GPU-rendered pixels=%#x generated=%u\n",
+			render_size * render_size, expected, render_generated_shaders);
 		return 0;
 	}
 	return -ENOENT;

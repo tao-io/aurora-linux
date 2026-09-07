@@ -2651,6 +2651,9 @@ MODULE_PARM_DESC(render_fragment_probe, "Submit an experimental fragment job aft
 static bool render_generated_shaders;
 module_param(render_generated_shaders, bool, 0444);
 MODULE_PARM_DESC(render_generated_shaders, "Use locally generated vertex and red fragment shader bodies");
+static unsigned int render_size = 4;
+module_param(render_size, uint, 0444);
+MODULE_PARM_DESC(render_size, "Square generated target size: 4, 32 or 256");
 static bool render_ta_probe;
 module_param(render_ta_probe, bool, 0444);
 MODULE_PARM_DESC(render_ta_probe, "Experimental captured vertex/tiling submission after render queue validation");
@@ -19201,6 +19204,9 @@ static int __init g16_lab_init(void)
 	if (render_ta_probe && !render_queue_probe)
 		return -EINVAL;
 	if (render_generated_shaders && (!render_fragment_probe || !render_ta_probe || render_loader_marker))
+		return -EINVAL;
+	if ((render_size != 4 && render_size != 32 && render_size != 256) ||
+	    (render_size != 4 && !render_generated_shaders))
 		return -EINVAL;
 	if (render_queue_probe) {
 		if (strcmp(stage, "rtkit-initdata-exact-offscreen-store") ||
