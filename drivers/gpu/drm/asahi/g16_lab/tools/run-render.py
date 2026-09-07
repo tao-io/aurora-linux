@@ -4,6 +4,8 @@
 import argparse
 import collections
 import datetime
+import errno
+import time
 import hashlib
 import json
 import os
@@ -59,6 +61,8 @@ def main():
                         help='generated relocated direct draws; implies generated bindings')
     parser.add_argument('--render-varying', action='store_true',
                         help='experimental linear vertex color; implies generated stream')
+    parser.add_argument('--render-service', action='store_true',
+                        help='request eight RGB frames from a retained firmware worker')
     parser.add_argument('--render-mesa-fragment', action='store_true',
                         help='Mesa NIR-compiled fragment body; implies RGB')
     parser.add_argument('--render-mesa-vertex', action='store_true',
@@ -70,6 +74,9 @@ def main():
     parser.add_argument('--render-varying-rhw', action='store_true',
                         help='interpolate reciprocal W to isolate coefficient setup')
     args = parser.parse_args()
+    if args.render_service:
+        args.render_mesa_fragment = args.render_mesa_vertex = True
+        args.render_frames = 8
     if args.render_mesa_fragment or args.render_mesa_vertex:
         args.render_varying_rgb = True
     if args.render_varying_rgb and (args.render_varying_uniform or args.render_varying_rhw):
@@ -116,6 +123,8 @@ def main():
         params += ['render_stream=1']
     if args.render_varying:
         params += ['render_varying=1']
+    if args.render_service:
+        params += ['render_service=1']
     if args.render_mesa_fragment:
         params += ['render_mesa_fragment=1']
     if args.render_mesa_vertex:
@@ -197,6 +206,50 @@ def main():
         os.fsync(manifest.fileno())
     run = subprocess.run(['insmod', str(args.module), *params], capture_output=True, text=True)
     (result / 'insmod.txt').write_text(run.stdout + run.stderr)
+    if args.render_service and run.returncode == 0:
+        service = debug / 'g16_lab_render_submit'
+        deadline = time.monotonic() + 25
+        events = []
+
+        def status():
+            return {k: int(v) for k, v in (word.split('=') for word in service.read_text().split())}
+
+        while not status()['ready']:
+            if status()['stopped'] or time.monotonic() >= deadline:
+                raise RuntimeError('render service failed before becoming ready')
+            time.sleep(0.02)
+        initial = status()
+        time.sleep(0.5)
+        idle = status()
+        if initial['completed'] or idle['completed'] or idle['pending']:
+            raise RuntimeError('GPU rendered without a userspace request')
+        for payload in (b'0\n', b'2\n', b'bad\n', b'9\n'):
+            try:
+                with service.open('wb', buffering=0) as control:
+                    control.write(payload)
+            except OSError as error:
+                if error.errno != errno.EINVAL:
+                    raise
+            else:
+                raise RuntimeError('service accepted an invalid sequence')
+        for sequence in range(1, 9):
+            start = time.monotonic()
+            with service.open('wb', buffering=0) as control:
+                control.write(f'{sequence}\n'.encode())
+            current = status()
+            if current['completed'] != sequence or current['result'] != 0:
+                raise RuntimeError(f'render service failed: {current}')
+            events.append({'sequence': sequence, 'seconds': time.monotonic() - start,
+                           'status': current})
+            if sequence < 8:
+                time.sleep(0.2)
+        while not status()['stopped']:
+            if time.monotonic() >= deadline:
+                raise RuntimeError('render worker did not stop')
+            time.sleep(0.02)
+        metadata['render_service'] = {'idle_verified': True, 'invalid_requests_rejected': 4,
+                                      'events': events, 'final_status': status()}
+        (result / 'render-service.json').write_text(json.dumps(metadata['render_service'], indent=2) + '\n')
     after = output('dmesg')
     (result / 'dmesg.log').write_text(after)
     print(after[len(before):] if after.startswith(before) else after, end='')

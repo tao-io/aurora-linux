@@ -64,3 +64,18 @@ verified 60-second watchdog and a fresh boot.
   all 524,288 pixels pass. Eight TA and fragment jobs start and finish;
   KTrace has no lost records; module removal succeeds. The watchdog was
   verified at 60 seconds and disarmed only after evidence collection.
+
+## Retained worker gate
+
+`--render-service` runs the eight qualified draws from a worker, with the
+firmware lifetime spanning userspace submissions. The root-only debugfs
+`g16_lab_render_submit` file accepts the next sequence number and waits for
+that draw to finish. It accepts no GPU pointers or unqualified commands.
+The worker services firmware during idle time and has a 20-second total
+budget, independent of the mandatory 60-second hardware watchdog. The
+`stopped` status is published only after firmware stop and mapping restoration.
+
+`20260907T223642Z`: no frame during initial idle, four invalid submissions
+rejected, eight userspace-paced frames verified (524,288 pixels), clean
+firmware retirement and successful module removal. This is a lifetime gate
+for the future DRM backend; it is not yet Vulkan command submission.

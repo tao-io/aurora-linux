@@ -2673,6 +2673,9 @@ MODULE_PARM_DESC(render_stream, "Generate a relocated direct draw stream and alt
 static bool render_varying;
 module_param(render_varying, bool, 0444);
 MODULE_PARM_DESC(render_varying, "Experimental linear vertex color interpolation with fixed geometry");
+static bool render_service;
+module_param(render_service, bool, 0444);
+MODULE_PARM_DESC(render_service, "Bounded userspace-paced RGB rendering service");
 static bool render_mesa_fragment;
 module_param(render_mesa_fragment, bool, 0444);
 MODULE_PARM_DESC(render_mesa_fragment, "Use Mesa NIR-compiled RGB fragment shader");
@@ -19214,6 +19217,7 @@ static int g16_lab_pmp_dvfs_config(void)
 
 #include "render/g16_render_prepare.h"
 #include "render/g16_render_submit.h"
+#include "render/g16_render_service.h"
 
 static int g16_lab_ocean_thread_fn(void *unused)
 {
@@ -19235,6 +19239,8 @@ static int __init g16_lab_init(void)
 		return ret;
 	}
 
+	if (render_service && (!render_mesa_vertex || !render_mesa_fragment || render_frames != 8))
+		return -EINVAL;
 	if (render_ta_probe && !render_queue_probe)
 		return -EINVAL;
 	if (render_generated_shaders && (!render_fragment_probe || !render_ta_probe || render_loader_marker))
@@ -19276,7 +19282,7 @@ static int __init g16_lab_init(void)
 		ret = g16_render_prepare();
 		if (ret)
 			return ret;
-		ret = g16_lab_uat_initdata_map_test();
+		ret = render_service ? g16_render_service_start() : g16_lab_uat_initdata_map_test();
 		if (ret)
 			g16_render_release();
 		return ret;
@@ -19492,6 +19498,7 @@ static int __init g16_lab_init(void)
 
 static void __exit g16_lab_exit(void)
 {
+	g16_render_service_stop();
 	if (g16_ocean_thread) {
 		int ret = kthread_stop_put(g16_ocean_thread);
 

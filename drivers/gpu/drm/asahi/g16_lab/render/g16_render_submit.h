@@ -8,6 +8,8 @@ static bool g16_render_context_published;
 static struct page *g16_render_upper_root;
 static u8 g16_render_saved_pipes[0x40];
 static u8 g16_render_saved_pb_table[16];
+static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
+				  unsigned int crashlog_pages);
 static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 			    unsigned int crashlog_pages);
 
@@ -369,6 +371,10 @@ static int g16_render_queue_gate(void __iomem *asc, u64 crashlog_iova,
 		ret = g16_render_test_queue(asc, 0, crashlog_iova, crashlog_pages);
 	if (!ret)
 		ret = g16_render_test_queue(asc, 1, crashlog_iova, crashlog_pages);
+	if (!ret && render_service) {
+		ret = g16_render_service_run(asc, crashlog_iova, crashlog_pages);
+		goto done;
+	}
 	if (!ret && render_ta_probe)
 		ret = g16_render_test_ta(asc, crashlog_iova, crashlog_pages);
 	if (render_fragment_probe && render_ta_probe && (ret == 0 || ret == -ENODATA))
@@ -379,6 +385,7 @@ static int g16_render_queue_gate(void __iomem *asc, u64 crashlog_iova,
 		if (!ret || ret == -ENODATA)
 			ret = g16_render_test_fragment(asc, crashlog_iova, crashlog_pages);
 	}
+done:
 	WRITE_ONCE(stage_result, ret);
 	pr_info("g16_lab: render: independent queue gate result=%d\n", ret);
 	/* Keep diagnostics readable; the outer bootstrap always stops firmware. */
