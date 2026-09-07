@@ -26,8 +26,8 @@ platform/PB inputs and never dereferences native CPU pointers. Host tests cover
 its alias writes, masks and mode encoding; the header also compiles in the
 kernel build. This generator is not yet called by `render-prepare`: the
 descriptor's render geometry, private buffer addresses and platform defaults
-still need to be supplied from a reconstructed draw. Fragment register-value
-generation remains to be implemented.
+still need to be supplied from a reconstructed draw. The fragment producer in `g16_render_fragment.h` is also translated. Both
+still need draw inputs before submission.
 
 Prepare the firmware input with:
 
@@ -149,3 +149,32 @@ a compute or Neo finish record is not a valid reconstruction.
 The Ocean report explicitly records `stage=compute program=ocean`. Its verified
 image is compute evidence. The separate commandprobe draw is the vertex and
 fragment reference used here.
+
+## Native producer differential validation
+
+`tools/test-render-native.py` compares the portable C code with the original
+M4/25G83 ARM64 producer routines under Unicorn 2.1.4. It requires a separately
+owned native kext with SHA-256
+`5a62d601d5b32301efcd89b144c08874c601d80b40f4b2fd64819537e07a31cf`.
+No native executable is included. The tool adapts pointer-auth instructions
+only in its private emulator memory, supplies explicit platform defaults,
+and disables global debug overrides. It executes the native register encoder
+and geometry arithmetic, including conditional register paths.
+
+The recorded run passes 100 deterministic cases each for TA register lists,
+fragment register lists, single-sample/one-layer geometry, and hardware PB
+packing. Register bytes, counts and stage mode words match exactly. Geometry
+covers both 16/32 utile dimensions and image sizes up to 16384. The PB test
+also verifies preservation of native reserved bits. These are offline
+translation checks, not live vertex/fragment execution.
+
+`g16_render_geometry.h` implements that restricted geometry path and the
+16-byte hardware PB descriptor, which is separate from both the firmware
+manager and per-pass PB slot. The preparation graph's buffer-info pointer now
+correctly selects its actual manager at +0x9000. The older snapshot hash above
+predates this pointer correction.
+
+The VDM control stream is descriptor +0xea8 / register 0x1c880. Descriptor
++0xf48/+0xf50 and registers 0x10110/0x10118 instead bind preemption buffers.
+The synthetic TA register unit test exercises pointer propagation, not the
+semantic identity of those test addresses.

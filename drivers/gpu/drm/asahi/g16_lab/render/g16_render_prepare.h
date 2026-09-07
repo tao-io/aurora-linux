@@ -4,6 +4,8 @@
 
 #include "g16_render_pack.h"
 #include "g16_render_ta.h"
+#include "g16_render_fragment.h"
+#include "g16_render_geometry.h"
 #include "g16_render_uat.h"
 
 #define G16_RENDER_RESOURCE_COUNT 34
@@ -207,7 +209,8 @@ static int g16_render_prepare(void)
 	job.pb_aux_va = G16_RENDER_GRAPH_VA + 0x9300;
 	job.context_generation = 1;
 	job.sku.pb_slot_va = G16_RENDER_GRAPH_VA + 0x9200;
-	job.sku.buffer_info_va = G16_RENDER_GRAPH_VA + 0x9400;
+	/* loadParameterManagementData: this is the actual 0xc0 manager. */
+	job.sku.buffer_info_va = G16_RENDER_GRAPH_VA + 0x9000;
 	job.sku.context_id = 6;
 	job.sku.stamp = 0x100;
 	job.sku.fragment_increment = 1;

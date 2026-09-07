@@ -4,6 +4,33 @@
 #include <stdio.h>
 #include "g16_render_pack.h"
 #include "g16_render_ta.h"
+#include "g16_render_fragment.h"
+#include "g16_render_geometry.h"
+
+static void test_geometry(void)
+{
+	struct g16_render_geometry g, before;
+	u8 hw[16] = {0}, saved[16];
+
+	assert(!g16_render_geometry_single(&g, 4, 4, 32, 32, 1));
+	assert(g.pixels == 0x30003 && !g.screen && g.tiles == 1);
+	assert(g.x_blocks == 0x10100c && g.y_blocks == 0x10100c);
+	assert(g.region_stride == 20 && g.tpc_stride == 32);
+	assert(g.tilemap_bytes == 4096 && g.tpc_bytes == 2048);
+	before = g;
+	assert(g16_render_geometry_single(&g, 0, 4, 32, 32, 1) == -EINVAL);
+	assert(!memcmp(&g, &before, sizeof(g)));
+	assert(g16_render_geometry_single(&g, 4, 16385, 32, 32, 1) == -EINVAL);
+	assert(g16_render_geometry_single(&g, 4, 4, 8, 32, 1) == -EINVAL);
+	assert(!g16_render_pack_pb_hw(hw, sizeof(hw), 0x10000a000, 128, 0, 127, 0, 1));
+	assert(g16_render_get(hw, 4) == 0x10000a01);
+	assert(g16_render_get(hw + 4, 4) == 0x70000080);
+	assert(!g16_render_get(hw + 8, 4));
+	assert(g16_render_get(hw + 12, 4) == 127);
+	memcpy(saved, hw, sizeof(hw));
+	assert(g16_render_pack_pb_hw(hw, sizeof(hw), 0x10000a001, 128, 0, 127, 0, 1) == -EINVAL);
+	assert(!memcmp(saved, hw, sizeof(hw)));
+}
 
 static u64 reg_value(const struct g16_render_register *r, int n, u32 reg)
 {
@@ -147,10 +174,23 @@ static void test_sku(void)
 
 int main(void)
 {
+	u8 descriptor[G16_RENDER_FRAGMENT_DESCRIPTOR_BYTES] = {0};
+	struct g16_render_fragment_platform p = {0};
+	struct g16_render_register regs[128];
+	u64 mode;
+	int n;
+
+	test_geometry();
 	test_register_bounds();
 	test_pages();
 	test_sku();
 	test_ta_registers();
-	puts("PASS: register boundaries, page IDs, SKU control flow, unaligned encoding and TA register translation");
+	n = g16_render_fragment_registers(regs, 128, descriptor, sizeof(descriptor), &p, 0, &mode);
+	assert(n > 80 && n <= 126);
+	assert(reg_value(regs, n, 0x10008) == 0x5000);
+	assert(reg_value(regs, n, 0x10038) == mode && mode == 0x280);
+	assert(g16_render_fragment_registers(regs, n - 1, descriptor, sizeof(descriptor), &p, 0, &mode) == -ENOSPC);
+	assert(g16_render_fragment_registers(regs, 128, descriptor, sizeof(descriptor) - 1, &p, 0, &mode) == -EINVAL);
+	puts("PASS: register bounds, page IDs, SKU control flow, geometry, PB descriptor and both stage producers");
 	return 0;
 }
