@@ -7,7 +7,7 @@ compute validation remains separate.
 `stage=render-prepare` imports the 34 encoded capture mappings, allocates a
 4 MiB parameter pool, generates its 128 virtual 32 KiB page IDs, initializes
 the hardware parameter-manager state and builds TA/fragment job envelopes and
-SKU streams. It now exports a 256 KiB preparation snapshot as
+SKU streams. It now exports a 512 KiB preparation snapshot as
 `/sys/kernel/debug/g16_lab_render_prepared`. Module removal releases all of
 these allocations. This stage does not publish UAT mappings or submit work.
 It builds private 42-bit UAT trees and verifies every leaf against its allocated
@@ -191,7 +191,7 @@ already-satisfied barrier on each render queue. A pass requires all queue
 cursors to retire and the queue to remain idle for 50 ms without observed
 firmware recovery. This gate does **not** submit vertex or fragment shaders.
 
-The graph now occupies `fffffc3000000000..fffffc300003ffff`. Its root-3 branch
+The graph now occupies `fffffc3000000000..fffffc300007ffff`. Its root-3 branch
 is checked empty in the resident firmware and kernel lower address spaces.
 Each queue-info allocation has room for the native 0x24c0-byte object;
 queue-info objects no longer overlap at 0x400-byte intervals. Queue and pipe
@@ -247,3 +247,36 @@ The first attachment checks stopped before firmware boot because unused
 runtime pipes contain eight copies of the zero-scratch-page VA, not eight
 NULL pointers. Attachment now validates that exact scratch descriptor before
 replacing it and preserves it for restoration.
+
+## Experimental tiling submission
+
+`--render-ta` on the evidence runner enables `render_ta_probe=1` in addition to
+the queue gate. It publishes the PB hardware table at the cold bootstrap,
+retains the exact compute check, then sends InitPB followed by a TA job. The
+job uses the captured resource-29 VDM stream, a 4x4 one-layer/one-sample tile
+geometry, the M4 Metal +b8/+c0 primitive constants, and the live shared USC pool.
+The GPU upper alias of the graph uses AP2 data leaves; firmware has a distinct
+AP1 mapping. A tiling pass requires retirement and nonzero GPU writes in both
+the pool and tile map. Even that is not an exact vertex/fragment pixel result.
+
+The reconstructed draw inputs remain experimental: dedicated 64 KiB zero
+preemption buffers, single-cluster topology, compact VDM address 0x18000, and
+zero optional descriptor fields. The fragment job is not submitted yet.
+The graph grew to 512 KiB to hold those buffers and independent metrics state.
+
+The first actual submission (20260907T175554Z, boot
+211d3180-5574-4c0a-8929-81f639dff3af) preserved Linux and produced a firmware
+assertion: non-sequential stamp updates, expected DAG index 0 but job stamp
+0x100 selected index 1. It failed before GPU execution, with context-6 submitted
+and retained generations still zero. The preceding barrier had registered the
+queue at stamp zero. The opt-in TA path now seeds that barrier's +24 stamp to
+0x100, matching InitPB and the following TA job. The ordinary queue-only gate
+keeps its original zero stamp.
+
+The corrected stamp retry (20260907T175835Z) passed scheduling and issued a
+71-entry GPU register list (65 host entries plus firmware additions), then
+triggered reason-3 recovery/IRQ 35. Context 6 advanced to submitted generation
+1; its completion stamp stayed zero. The pool/tilemap acceptance check did not
+pass. A bounded 5 ms observer now preserves banks 0..7 of the same M4 MMU fault
+registers used by the existing compute observer, restoring the bank selector
+after sampling. It does not acknowledge the interrupt or alter firmware.

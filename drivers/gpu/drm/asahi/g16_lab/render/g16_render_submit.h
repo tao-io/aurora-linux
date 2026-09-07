@@ -7,6 +7,16 @@ static bool g16_render_attached;
 static bool g16_render_context_published;
 static struct page *g16_render_upper_root;
 static u8 g16_render_saved_pipes[0x40];
+static u8 g16_render_saved_pb_table[16];
+static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
+			    unsigned int crashlog_pages);
+
+static u64 g16_render_pb_table_va(bool gpu)
+{
+	u64 va = G16_RENDER_GRAPH_VA + G16_RENDER_PB_HW;
+
+	return gpu ? va & ((1ULL << 42) - 1) : va;
+}
 
 static void g16_render_clean_tree(struct g16_render_uat *u)
 {
@@ -85,7 +95,8 @@ static int g16_render_attach(u64 scratch_va)
 		g16_render_upper_root = NULL;
 		return -EBUSY;
 	}
-	upper[3] = fw[3];
+	/* The GPU upper alias needs the AP2 data leaves, not firmware AP1. */
+	upper[3] = user[3];
 	user[7] = g16_initdata_live_user_root[7];
 	for (i = 0; i < 2; i++)
 		g16_render_initialize_queue(i);
@@ -114,6 +125,13 @@ static int g16_render_attach(u64 scratch_va)
 		g16_render_put(pipe + 0x18,
 			       G16_RENDER_GRAPH_VA + G16_RENDER_PIPE_RING(i), 8);
 	}
+	memcpy(g16_render_saved_pb_table, runtime + J713_RUNTIME_PB_TABLE_GPU_OFFSET, 16);
+	if (render_ta_probe) {
+		g16_render_put(runtime + J713_RUNTIME_PB_TABLE_GPU_OFFSET,
+			g16_render_pb_table_va(true), 8);
+		g16_render_put(runtime + J713_RUNTIME_PB_TABLE_FIRMWARE_OFFSET,
+			g16_render_pb_table_va(false), 8);
+	}
 	g16_lab_dcache_clean(runtime, J713_INITDATA_RUNTIME_SIZE);
 	dma_wmb();
 	g16_render_attached = true;
@@ -138,6 +156,7 @@ static void g16_render_detach(void)
 		g16_render_context_published = false;
 	}
 	runtime = g16_lab_live_object_ptr(g16_initdata_live_runtime_first, 0);
+	memcpy(runtime + J713_RUNTIME_PB_TABLE_GPU_OFFSET, g16_render_saved_pb_table, 16);
 	memcpy(runtime + J713_RUNTIME_TA_PIPE_DESC_OFFSET, g16_render_saved_pipes,
 	       sizeof(g16_render_saved_pipes));
 	g16_lab_dcache_clean(runtime, J713_INITDATA_RUNTIME_SIZE);
@@ -207,6 +226,10 @@ static int g16_render_test_queue(void __iomem *asc, unsigned int engine,
 	g16_render_put(barrier + 4, G16_RENDER_GRAPH_VA + 0xca00, 8);
 	g16_render_put(barrier + 0xc, G16_RENDER_GRAPH_VA + 0xca00, 8);
 	g16_render_put(barrier + 0x20, 0x80, 4);
+	/* An empty-queue barrier seeds DAG cursors from +24. The following
+	 * TA job uses stamp 0x100, so seed index one before registering it. */
+	if (render_ta_probe && !engine)
+		g16_render_put(barrier + 0x24, 0x100, 4);
 	g16_render_put(g16_render_graph + G16_RENDER_QUEUE_RING(engine),
 		G16_RENDER_GRAPH_VA + G16_RENDER_BARRIER(engine), 8);
 	g16_lab_dcache_clean(g16_render_graph, G16_RENDER_GRAPH_BYTES);
@@ -288,9 +311,12 @@ static int g16_render_queue_gate(void __iomem *asc, u64 crashlog_iova,
 		ret = g16_render_test_queue(asc, 0, crashlog_iova, crashlog_pages);
 	if (!ret)
 		ret = g16_render_test_queue(asc, 1, crashlog_iova, crashlog_pages);
+	if (!ret && render_ta_probe)
+		ret = g16_render_test_ta(asc, crashlog_iova, crashlog_pages);
 	WRITE_ONCE(stage_result, ret);
 	pr_info("g16_lab: render: independent queue gate result=%d\n", ret);
 	/* Keep diagnostics readable; the outer bootstrap always stops firmware. */
 	return 0;
 }
+#include "g16_render_draw.h"
 #endif

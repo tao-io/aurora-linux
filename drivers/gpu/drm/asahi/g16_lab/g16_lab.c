@@ -2632,6 +2632,10 @@ module_param(compute_macos_iadd_ap2_leaves, bool, 0444);
 MODULE_PARM_DESC(compute_macos_iadd_ap2_leaves,
 	"Use hardware-accessible AP2 executable/data leaf tuples for the captured iadd graph");
 
+static bool render_ta_probe;
+module_param(render_ta_probe, bool, 0444);
+MODULE_PARM_DESC(render_ta_probe, "Experimental captured vertex/tiling submission after render queue validation");
+static u64 g16_render_pb_table_va(bool gpu);
 static bool render_queue_probe;
 module_param(render_queue_probe, bool, 0444);
 MODULE_PARM_DESC(render_queue_probe,
@@ -10028,11 +10032,13 @@ static int g16_lab_compute_wfi(void __iomem *asc, u64 crashlog_iova,
 		J713_INITDATA_UMA_TABLE_SIZE);
 	if (*(u64 *)((u8 *)runtime + J713_RUNTIME_PB_TABLE_GPU_OFFSET) !=
 		(compute_macos_direct_pb_hardware_base_alias ?
-		 J713_PARAMETER_BUFFER_HW_TABLE_LOW_ALIAS_VA : 0) ||
+		 J713_PARAMETER_BUFFER_HW_TABLE_LOW_ALIAS_VA :
+		 render_ta_probe ? g16_render_pb_table_va(true) : 0) ||
 	    *(u64 *)((u8 *)runtime +
 		      J713_RUNTIME_PB_TABLE_FIRMWARE_OFFSET) !=
 		(compute_macos_direct_pb_hardware_base_alias ?
-		 g16_initdata_live_parameter_buffer_hardware_table_va : 0) ||
+		 g16_initdata_live_parameter_buffer_hardware_table_va :
+		 render_ta_probe ? g16_render_pb_table_va(false) : 0) ||
 	    (compute_macos_direct_pb_hardware_base_alias &&
 	     (!parameter_buffer_hardware_table ||
 	      memcmp(parameter_buffer_hardware_table,
@@ -19074,6 +19080,8 @@ static int __init g16_lab_init(void)
 		return ret;
 	}
 
+	if (render_ta_probe && !render_queue_probe)
+		return -EINVAL;
 	if (render_queue_probe) {
 		if (strcmp(stage, "rtkit-initdata-exact-offscreen-store") ||
 		    !compute_mandelbrot || !compute_macos_iadd ||
@@ -19082,7 +19090,8 @@ static int __init g16_lab_init(void)
 		    !compute_macos_iadd_populated_usc_private_memory ||
 		    !compute_macos_iadd_aligned_uma_hardware_table ||
 		    !compute_exact_loader_iomap_all || compute_ocean_demo ||
-		    compute_macos_direct_capture || compute_macos_ocean)
+		    compute_macos_direct_capture || compute_macos_ocean ||
+		    compute_macos_direct_pb_hardware_base_alias)
 			return -EINVAL;
 		ret = g16_render_prepare();
 		if (ret)

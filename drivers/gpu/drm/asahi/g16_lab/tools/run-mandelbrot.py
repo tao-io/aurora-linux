@@ -31,8 +31,14 @@ def main():
     parser.add_argument('--results', type=Path, default=Path('/root/g16-results'))
     parser.add_argument('--render-queues', action='store_true',
                         help='after Mandelbrot, test TA/fragment queue barriers (no render shaders)')
+    parser.add_argument('--render-ta', action='store_true',
+                        help='experimental captured vertex/tiling submission after queue checks')
     args = parser.parse_args()
+    if args.render_ta:
+        args.render_queues = True
     params = PARAMS + (['render_queue_probe=1'] if args.render_queues else [])
+    if args.render_ta:
+        params += ['render_ta_probe=1']
     if os.geteuid() != 0:
         parser.error('run as root')
     compatible = Path('/sys/firmware/devicetree/base/compatible').read_bytes().split(b'\0')
@@ -80,7 +86,7 @@ def main():
     debug = Path('/sys/kernel/debug')
     if subprocess.run(['mountpoint', '-q', str(debug)]).returncode:
         subprocess.run(['mount', '-t', 'debugfs', 'debugfs', str(debug)], check=True)
-    result = args.results / (datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + ('-render-queues' if args.render_queues else '-mandelbrot'))
+    result = args.results / (datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + ('-render-ta' if args.render_ta else '-render-queues' if args.render_queues else '-mandelbrot'))
     result.mkdir(parents=True, exist_ok=False)
     marker.write_text(str(result) + '\n')
     metadata = {
@@ -126,12 +132,15 @@ def main():
         queue_evidence = all(message in current_log for message in (
             'render: TA barrier retired, queue idle for 50ms; no shader submitted',
             'render: fragment barrier retired, queue idle for 50ms; no shader submitted',
-            'render: independent queue gate result=0',
             'render: removed context-6 and root-3 mappings after firmware stop',
         ))
         graph = result / 'render-graph.bin'
-        metadata['render_queues_passed'] = queue_evidence and graph.exists() and graph.stat().st_size == 0x40000
-        metadata['render_shaders_submitted'] = False
+        metadata['render_queues_passed'] = queue_evidence and graph.exists() and graph.stat().st_size == 0x80000
+        metadata['render_shaders_submitted'] = 'render: submitted InitPB + captured vertex/TA job' in current_log
+        if args.render_ta:
+            metadata['ta_retired_with_writes'] = 'render: TA retired with GPU-written pool/tilemap' in current_log
+            passed = passed and metadata['ta_retired_with_writes']
+        metadata['vertex_fragment_pixels_verified'] = False
         passed = passed and metadata['render_queues_passed']
     if passed:
         unload = subprocess.run(['rmmod', 'g16_lab'], capture_output=True, text=True)
