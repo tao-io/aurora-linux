@@ -23,6 +23,7 @@
 #define G16_RENDER_BARRIER(i) (G16_RENDER_QUEUE_STATE(i) + 0x200)
 #define G16_RENDER_SLOT_ARRAY(i) (0x1d000 + (i) * 0x1000)
 #define G16_RENDER_PB_HW 0x20000
+#define G16_RENDER_INIT_PB 0x8800
 #define G16_RENDER_RESOURCE_FILE "g16/render-reference.bin"
 
 struct g16_render_resource {
@@ -195,7 +196,8 @@ static int g16_render_prepare(void)
 		goto out;
 
 	manager.page_list_fw_va = G16_RENDER_GRAPH_VA + 0xa000;
-	manager.page_list_gpu_va = manager.page_list_fw_va & ((1ULL << 42) - 1);
+	/* Native halLoadPBDesc preserves bit 42 to select the upper root. */
+	manager.page_list_gpu_va = manager.page_list_fw_va;
 	manager.page_list_bytes = 0x1000;
 	manager.page_count = ARRAY_SIZE(pages);
 	manager.block_capacity = 64;
@@ -212,6 +214,17 @@ static int g16_render_prepare(void)
 		g16_render_put(g16_render_graph + 0xb000 + i * 8, pages[i * 4] >> 15, 4);
 	g16_render_put(g16_render_graph + 0xb800, manager.block_wptr, 4);
 	g16_render_put(g16_render_graph + 0xb804, manager.block_wptr, 4);
+	/* buildPageList leaves the host hardware-ring state completely zero. */
+	ret = g16_render_pack_pb_hw(g16_render_graph + G16_RENDER_PB_HW, 16,
+		manager.page_list_gpu_va & ((1ULL << 43) - 1),
+		manager.page_count, 0, 0, 0, 0);
+	if (ret)
+		goto out;
+	ret = g16_render_pack_init_pb(g16_render_graph + G16_RENDER_INIT_PB,
+		0x20, 6, 0, manager.block_rptr, manager.block_wptr,
+		G16_RENDER_GRAPH_VA + 0x9000, 0x100);
+	if (ret)
+		goto out;
 
 	/* Addresses below are planned mappings. They are NOT installed in UAT. */
 	job.notifier_va = G16_RENDER_GRAPH_VA + 0xc000;

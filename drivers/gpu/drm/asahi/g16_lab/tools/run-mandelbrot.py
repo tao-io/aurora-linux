@@ -29,7 +29,10 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--module', type=Path, default=Path('/root/g16_lab.ko'))
     parser.add_argument('--results', type=Path, default=Path('/root/g16-results'))
+    parser.add_argument('--render-queues', action='store_true',
+                        help='after Mandelbrot, test TA/fragment queue barriers (no render shaders)')
     args = parser.parse_args()
+    params = PARAMS + (['render_queue_probe=1'] if args.render_queues else [])
     if os.geteuid() != 0:
         parser.error('run as root')
     compatible = Path('/sys/firmware/devicetree/base/compatible').read_bytes().split(b'\0')
@@ -65,6 +68,11 @@ def main():
     release = os.uname().release
     if output('modinfo', '-F', 'vermagic', str(args.module)).split()[0] != release:
         parser.error('module does not match the running kernel')
+    if args.render_queues:
+        resource = Path('/lib/firmware/g16/render-reference.bin')
+        expected_resource = '43e630484f7b5de294911fb6e5f78dc38b833d3d7d409c03fa3cdc4da98b27bf'
+        if not resource.exists() or hashlib.sha256(resource.read_bytes()).hexdigest() != expected_resource:
+            parser.error('install the checksummed encoded M4 render-reference.bin first')
     before = output('dmesg')
     marker = Path('/run/g16-lab-firmware-used')
     if marker.exists() or 'GFX RTKit' in before or Path('/sys/module/g16_lab').exists():
@@ -72,17 +80,17 @@ def main():
     debug = Path('/sys/kernel/debug')
     if subprocess.run(['mountpoint', '-q', str(debug)]).returncode:
         subprocess.run(['mount', '-t', 'debugfs', 'debugfs', str(debug)], check=True)
-    result = args.results / (datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + '-mandelbrot')
+    result = args.results / (datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + ('-render-queues' if args.render_queues else '-mandelbrot'))
     result.mkdir(parents=True, exist_ok=False)
     marker.write_text(str(result) + '\n')
     metadata = {
         'kernel': release,
         'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
         'module_sha256': hashlib.sha256(args.module.read_bytes()).hexdigest(),
-        'parameters': PARAMS,
+        'parameters': params,
     }
     (result / 'manifest.json').write_text(json.dumps(metadata, indent=2) + '\n')
-    run = subprocess.run(['insmod', str(args.module), *PARAMS], capture_output=True, text=True)
+    run = subprocess.run(['insmod', str(args.module), *params], capture_output=True, text=True)
     (result / 'insmod.txt').write_text(run.stdout + run.stderr)
     after = output('dmesg')
     (result / 'dmesg.log').write_text(after)
@@ -90,7 +98,8 @@ def main():
     metadata['insmod_rc'] = run.returncode
     status = Path('/sys/module/g16_lab/parameters/stage_result')
     metadata['stage_result'] = int(status.read_text()) if status.exists() else None
-    for name, dest in [('g16_lab_mandelbrot_rgba8', 'mandelbrot.rgba'), ('g16_lab_crashlog', 'crashlog.bin')]:
+    for name, dest in [('g16_lab_mandelbrot_rgba8', 'mandelbrot.rgba'), ('g16_lab_crashlog', 'crashlog.bin'),
+                       ('g16_lab_render_prepared', 'render-graph.bin')]:
         p = debug / name
         if p.exists():
             (result / dest).write_bytes(p.read_bytes())
@@ -112,6 +121,18 @@ def main():
             png += chunk(b'IDAT', zlib.compress(b''.join(b'\0' + raw[y*256:(y+1)*256] for y in range(64))))
             (result / 'mandelbrot.png').write_bytes(png + chunk(b'IEND', b''))
     passed = run.returncode == 0 and metadata['stage_result'] == 0 and valid and not (result / 'crashlog.bin').exists()
+    if args.render_queues:
+        current_log = after[len(before):] if after.startswith(before) else after
+        queue_evidence = all(message in current_log for message in (
+            'render: TA barrier retired, queue idle for 50ms; no shader submitted',
+            'render: fragment barrier retired, queue idle for 50ms; no shader submitted',
+            'render: independent queue gate result=0',
+            'render: removed context-6 and root-3 mappings after firmware stop',
+        ))
+        graph = result / 'render-graph.bin'
+        metadata['render_queues_passed'] = queue_evidence and graph.exists() and graph.stat().st_size == 0x40000
+        metadata['render_shaders_submitted'] = False
+        passed = passed and metadata['render_queues_passed']
     if passed:
         unload = subprocess.run(['rmmod', 'g16_lab'], capture_output=True, text=True)
         metadata['rmmod_rc'] = unload.returncode

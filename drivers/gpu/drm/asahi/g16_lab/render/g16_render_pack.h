@@ -325,6 +325,30 @@ static inline int g16_render_pack_sku(u8 *sku, size_t capacity,
 	return total;
 }
 
+/*
+ * AGXTAChannelSKU::submitBuffer (8a02a7c), descriptor states 1 and 3.
+ * Firmware 1cf74 saves this packet on the NEXT TA scheduler node. It has no
+ * independent completion: 21434 consumes it immediately before that TA job.
+ * staged_blocks selects the producer's reinitialize/grow path; it is not a
+ * hardware page cursor. stamp must match the following TA JobMeta value.
+ */
+static inline int g16_render_pack_init_pb(u8 *command, size_t bytes,
+		u32 context, u32 pb_id, u32 block_cursor, u32 staged_blocks,
+		u64 manager_fw_va, u32 stamp)
+{
+	if (!command || bytes < 0x20 || context >= 64 || !manager_fw_va ||
+	    (manager_fw_va & 7) || manager_fw_va > ~(u64)0 - 0xc0)
+		return -EINVAL;
+	g16_render_put(command, 6, 4);
+	g16_render_put(command + 4, context, 4);
+	g16_render_put(command + 8, pb_id, 4);
+	g16_render_put(command + 0xc, block_cursor, 4);
+	g16_render_put(command + 0x10, staged_blocks, 4);
+	g16_render_put(command + 0x14, manager_fw_va, 8);
+	g16_render_put(command + 0x1c, stamp, 4);
+	return 0;
+}
+
 struct g16_render_pb_manager_args {
 	u64 page_list_fw_va;
 	u64 page_list_gpu_va;

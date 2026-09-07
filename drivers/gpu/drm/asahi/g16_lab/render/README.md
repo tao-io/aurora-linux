@@ -211,3 +211,29 @@ Validation so far: arm64 module build and existing host packet tests with
 ASan/UBSan. Live validation is pending: on 2026-09-07 the M4 was offline on
 Tailscale and unreachable at its previous LAN address. Use a fresh boot before
 starting the firmware session, as with the successful compute runs.
+
+The existing evidence runner supports this gate with
+`tools/run-mandelbrot.py --render-queues --module /root/g16_lab.ko` on J713.
+It checks the render bundle checksum, preserves the expanded graph, and requires
+both queue retirement messages plus mapping removal in addition to the exact
+Mandelbrot image. Its manifest explicitly records that no render shaders were
+submitted. It retains the fresh-boot guard and leaves a failed module loaded
+for diagnostic inspection.
+
+## First-use parameter buffer packet
+
+Preparation now emits the native 32-byte type-6 InitPB packet at graph +0x8800
+and a 16-byte hardware PB descriptor at +0x20000. The native producer
+`AGXTAChannelSKU::submitBuffer` (8a02a7c) puts context, hardware PB ID, staged
+block cursors, firmware manager pointer and the following TA completion value
+in that packet. Firmware 1cf74 attaches it to the next scheduler node; 21434
+consumes it before launching that node's TA job. It must precede TA on the
+same queue and cannot serve as a standalone PB completion test.
+
+The initial hardware ring is zero, as in `buildPageList` (89e0bd8), with the
+manager's 128-page backing count. The page-list GPU pointer now retains bit 42
+when packed into the hardware descriptor, selecting the upper root instead of
+applying the lower-address 0x7000000000 bias. The manager retains the canonical
+pointer; the hardware encoder consumes its low 43 bits. Tests cover this
+first-use encoding and the unaligned InitPB pointer field. Neither packet is
+published to hardware by the barrier-only queue gate.
