@@ -122,7 +122,7 @@ the shared notifier target; without it, firmware could defer notification until
 later commands that a synchronous submitter cannot issue.
 
 Run `20260908T143717Z-render-ta`, boot
-`ae94dabb-aa14-429f-b76d-bfbf6dc47085`, passed with 29,758 completed jobs,
+`ae94dabb-aa14-429f-b76d-bfbf6dc47085`, passed with 29,759 completed jobs,
 a 240-second SuperTux session, independent Vulkan pixel checks, clean module
 removal and watchdog disarm. Module SHA-256:
 `5f3ca3884286afb9125cd1a197948986e05642daf1197bf82204b8659128ae42`.
@@ -137,3 +137,38 @@ The earlier optimized runs `20260908T141646Z` and `20260908T142246Z` failed at
 1,513 and 8,020 jobs respectively; they are diagnostic failures, not sustained
 passes. Complete artifacts are in the workspace under
 `_provenance/omarchy-m4-render/hardware/supertux-speed-20260908/`.
+
+The per-job VM table snapshot reduced CPU submission preparation from roughly
+3–7 ms to 0.2–0.7 ms and reached 30–40 FPS windows, but exposed failures. GEM
+close invalidates the cached VM tree; rebuilding it lazily fixed missing command
+leaves. Later health-check draws still faulted at VA `0x40`, with valid command
+mappings, after 207 and 778 jobs (`20260908T150506Z` / `20260908T151212Z`). Full
+outer-shareable TLBI did not fix that fault and remains opt-in.
+
+Run `20260908T152033Z-render-ta` used the original page-by-page builder as a
+control, plus the Mesa instruction-encoding optimization. It passed 22,980 jobs,
+56 independent GPU health checks, a 240-second SuperTux session, clean module
+removal and watchdog disarm. Gameplay was roughly 20–30 FPS. This isolates an
+optimization regression; it is not the requested 60 FPS result. A bounded
+pre-publication delay is available to separate timing from table semantics.
+
+### Mandatory temperature monitoring
+
+The render runner now requires `experiment_thermals.py` alongside
+`experiment_watchdog.py`. Before loading the GPU module it requires one
+`apple_pmp` hwmon provider, the six qualified labels, valid readings below 65 C,
+and enabled `apple-pmp-die` CPU thermal policy. It logs all readings and CPU
+frequency caps to `temperatures.jsonl` every 0.5 seconds, and records per-sensor
+peaks in the manifest (or `thermal-summary.json` on failure).
+
+At 75 C, a failed sensor read, or disabled CPU thermal policy, the monitor
+latches failure, stops SuperTux, requests compositor shutdown and stops the GPU
+submission service. Failure or a monitor older than two seconds prevents further
+GPU-verified watchdog renewals. The existing watchdog remains responsible for a
+wedged GPU. The monitor never feeds it itself and never changes clocks.
+
+These are conservative experiment limits, not qualified hardware safety limits.
+The PMP identifiers do not establish sensor placement or a dedicated GPU sensor.
+CPU thermal throttling remains enabled; GPU thermal throttling is not implemented.
+Do not raise GPU clocks under this limitation. The earlier runs above predate
+this monitor and must not be presented as temperature-qualified stress tests.

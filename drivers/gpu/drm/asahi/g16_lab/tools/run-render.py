@@ -16,10 +16,12 @@ import struct
 import subprocess
 import zlib
 from experiment_watchdog import ExperimentWatchdog
+from experiment_thermals import ExperimentThermals
 
 EXPECTED = '792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1'
 ACTIVE_RESULT = None
 DMESG_READER = None
+THERMALS = None
 PARAMS = [
     'stage=rtkit-initdata-exact-offscreen-store',
     'compute_macos_iadd=1', 'compute_mandelbrot=1',
@@ -57,6 +59,7 @@ def run_interactive_client(client, env, result, watchdog, seconds):
         selector.register(process.stdout, selectors.EVENT_READ)
         try:
             while True:
+                THERMALS.check()
                 now = time.monotonic()
                 if now > deadline or now > progress_deadline:
                     raise RuntimeError('interactive session stopped providing verified GPU progress')
@@ -72,6 +75,7 @@ def run_interactive_client(client, env, result, watchdog, seconds):
                 history.flush()
                 os.fsync(history.fileno())
                 if record.get('event') == 'gpu-progress':
+                    THERMALS.check()
                     watchdog.keepalive_after_gpu_check(record['check'])
                     checks += 1
                     progress_deadline = time.monotonic() + 30
@@ -329,6 +333,9 @@ def main():
         metadata['mesa_probe_sha256'] = hashlib.sha256(args.mesa_device_probe.read_bytes()).hexdigest()
         metadata['mesa_environment'] = {name: os.environ.get(name) for name in
                                         ('ASAHI_M4_LAB', 'VK_DRIVER_FILES', 'LD_LIBRARY_PATH')}
+    global THERMALS
+    THERMALS = ExperimentThermals(result)
+    metadata['thermals'] = THERMALS.start()
     os.sync()
     watchdog = ExperimentWatchdog()
     metadata['watchdog'] = watchdog.arm()
@@ -338,6 +345,7 @@ def main():
         manifest.flush()
         os.fsync(manifest.fileno())
     run = subprocess.run(['insmod', str(args.module), *params], capture_output=True, text=True)
+    THERMALS.check()
     (result / 'insmod.txt').write_text(run.stdout + run.stderr)
     if args.render_service and run.returncode == 0:
         service = debug / 'g16_lab_render_submit'
@@ -669,6 +677,8 @@ def main():
     if args.render_drm_target or args.render_drm_submit:
         metadata['render_node_removed'] = set(Path('/dev/dri').glob('renderD*')) == initial_render_nodes
         passed = passed and metadata['render_node_removed']
+    THERMALS.check()
+    metadata['thermals'] = THERMALS.summary()
     metadata['hardware_regression_passed'] = passed
     passed = passed and metadata.get('mesa_probe_returncode', 0) == 0
     metadata['passed'] = passed
@@ -677,6 +687,7 @@ def main():
     if Path('/sys/module/g16_lab').exists():
         raise RuntimeError('module still loaded after experiment; leaving watchdog armed')
     watchdog.disarm()
+    THERMALS.close()
     metadata['watchdog']['armed'] = False
     metadata['watchdog']['disarmed_after_evidence_collection'] = True
     (result / 'manifest.json').write_text(json.dumps(metadata, indent=2) + '\n')
@@ -691,6 +702,8 @@ if __name__ == '__main__':
         # A failed client must not skip diagnostics before watchdog recovery.
         # Do not unload a possibly active GPU or disarm the watchdog here.
         if ACTIVE_RESULT is not None:
+            if THERMALS is not None:
+                (ACTIVE_RESULT / 'thermal-summary.json').write_text(json.dumps(THERMALS.summary(), indent=2) + '\n')
             (ACTIVE_RESULT / 'exception.txt').write_text(repr(error) + '\n')
             (ACTIVE_RESULT / 'dmesg-failure.log').write_text(captured_dmesg())
             for name in ('g16_lab_crashlog', 'g16_lab_ktrace', 'g16_lab_render_prepared'):
@@ -700,6 +713,8 @@ if __name__ == '__main__':
             os.sync()
         raise
     finally:
+        if THERMALS is not None:
+            THERMALS.close()
         if DMESG_READER is not None and DMESG_READER.poll() is None:
             DMESG_READER.terminate()
             DMESG_READER.wait(timeout=2)
