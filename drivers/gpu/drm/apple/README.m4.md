@@ -436,3 +436,13 @@ User visually confirmed the native color-bar pattern on the J713 panel:
 "It's visible! :D Looks perfect." This adds actual panel-output validation to
 `20260908-scanout`'s matching D590 completion. Native surface scanout works for
 this diagnostic; the desktop still needs the DRM/KMS and GPU-buffer integration.
+
+**Kernel-owned startup and swap:** `20260908-kernel-client`, boot
+`99eed100-3b66-48e2-a263-c8237af116b0`, module source `42288d3ae434`, kernel #11.
+The exclusive kernel RPC client completes A401, A457 and a background A407
+with matching D590. The root test runner only loads the module and supervises
+watchdog/temperatures; it does not service RPCs or allocate firmware buffers.
+Peak exposed temperature is 53.25 C and the guard passes/disarms. The production
+native callback handler also passes offline replay of 257 recorded callbacks,
+514 wrong-size rejections and a malformed service-tag rejection under ASan/UBSan.
+DRM/KMS registration and GPU DMA-BUF imports are still the next integration step.
