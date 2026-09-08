@@ -3,6 +3,7 @@
 #define G16_DRM_SUBMIT_H
 
 #include <linux/dma-fence-chain.h>
+#include <linux/sort.h>
 
 /* Initial Asahi wire submission backend: one root-owned VM/queue per file,
  * serialized render passes, binary/timeline syncobjs, and bounded firmware lifetime.
@@ -76,6 +77,38 @@ static bool g16_drm_zls_valid(struct g16_drm_vm *vm, const struct drm_asahi_zls_
 	return !(z->base & (PAGE_SIZE - 1)) && !z->comp_base && !z->comp_stride &&
 		(z->stride & 0x3fff) == 1 &&
 		g16_drm_vm_range(vm, z->base, ((u64)(z->stride >> 14) + 1) << 14, false);
+}
+
+/* Bindings stay pinned under the file lock through job completion. Build
+ * the union of cached CPU mappings once, so RO/RW GPU aliases do not repeat
+ * cache maintenance. Imported and writeback ranges still get full coverage.
+ */
+static int g16_drm_job_cache_ranges(struct g16_drm_job *job)
+{
+	struct g16_drm_mapping *m;
+	u32 count = 0, i;
+
+	job->cache_ranges = kvcalloc(job->vm->mapping_count,
+				    sizeof(*job->cache_ranges), GFP_KERNEL);
+	if (!job->cache_ranges)
+		return -ENOMEM;
+	list_for_each_entry(m, &job->vm->mappings, link) {
+		unsigned long start = (unsigned long)m->map.vaddr + m->offset;
+
+		/* Native WC objects have Normal-NC CPU mappings. Imported vmap
+		 * attributes belong to the exporter; retain maintenance there. */
+		if (!drm_gem_is_imported(m->obj) && to_drm_gem_shmem_obj(m->obj)->map_wc)
+			continue;
+		job->cache_ranges[count++] = (struct g16_cache_range) {
+			.start = start, .end = start + m->size,
+		};
+	}
+	sort(job->cache_ranges, count, sizeof(*job->cache_ranges),
+	     g16_cache_range_compare, NULL);
+	job->cache_range_count = g16_cache_ranges_merge(job->cache_ranges, count);
+	for (i = 0; i < job->cache_range_count; i++)
+		job->cache_bytes += job->cache_ranges[i].end - job->cache_ranges[i].start;
+	return 0;
 }
 
 static int g16_drm_job_prepare(struct g16_drm_job *job)
@@ -194,7 +227,7 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 	list_for_each_entry(m, &job->vm->mappings, link) {
 		void *cpu = (u8 *)m->map.vaddr + m->offset;
 
-		/* Root 7 is borrowed from the firmware owner. Neither its pages nor
+		/* Root 7 is borrowed from the render pool owner. Neither its pages nor
 		 * the driver's pool/graph may be shadowed by a client mapping.
 		 */
 		if (m->va < BIT_ULL(39) && m->va + m->size > 7 * BIT_ULL(36))
@@ -205,7 +238,7 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 		if (ret)
 			return ret;
 	}
-	return 0;
+	return g16_drm_job_cache_ranges(job);
 }
 
 static int g16_drm_job_switch_root(struct g16_drm_job *job, bool enter)
@@ -238,27 +271,23 @@ static int g16_drm_job_switch_root(struct g16_drm_job *job, bool enter)
 
 static int g16_drm_job_enter(struct g16_drm_job *job)
 {
-	struct g16_drm_mapping *m;
 	u64 *root = page_address(job->uat.tables[0]);
-	u64 cache_bytes = 0;
+	u32 i;
 
 	if (!g16_render_context_published || root[7])
 		return -EINVAL;
 	/* Borrow the render pool without compute-bootstrap command aliases. */
 	root[7] = ((u64 *)page_address(g16_render_user_uat.tables[0]))[7];
-	list_for_each_entry(m, &job->vm->mappings, link) {
-		/* Native WC objects have Normal-NC mappings in both the vmap and
-		 * userspace. There are no CPU cache lines to clean. Imported vmap
-		 * attributes belong to the exporter, so retain maintenance there. */
-		if (drm_gem_is_imported(m->obj) || !to_drm_gem_shmem_obj(m->obj)->map_wc) {
-			g16_lab_dcache_clean((u8 *)m->map.vaddr + m->offset, m->size);
-			cache_bytes += m->size;
-		}
+	for (i = 0; i < job->cache_range_count; i++) {
+		struct g16_cache_range *r = &job->cache_ranges[i];
+
+		g16_lab_dcache_clean((void *)r->start, r->end - r->start);
 	}
 	g16_render_clean_tree(&job->uat);
 	dma_wmb();
-	pr_info("g16_lab: DRM submit: publishing %u client mappings, %llu bytes, %u UAT leaves; CPU cache maintenance %llu bytes\n",
-		job->vm->mapping_count, job->vm->mapping_bytes, job->uat.leaves, cache_bytes);
+	pr_info("g16_lab: DRM submit: publishing %u client mappings, %llu bytes, %u UAT leaves; CPU cache maintenance %llu bytes in %u ranges\n",
+		job->vm->mapping_count, job->vm->mapping_bytes, job->uat.leaves,
+		job->cache_bytes, job->cache_range_count);
 	return g16_drm_job_switch_root(job, true);
 }
 
@@ -272,13 +301,15 @@ static int g16_drm_job_leave(struct g16_drm_job *job)
 static void g16_drm_job_complete(int result)
 {
 	struct g16_drm_job *job = g16_drm_active_job;
-	struct g16_drm_mapping *m;
+	u32 i;
 
 	if (!job)
 		return;
-	list_for_each_entry(m, &job->vm->mappings, link)
-		if (drm_gem_is_imported(m->obj) || !to_drm_gem_shmem_obj(m->obj)->map_wc)
-			g16_lab_dcache_invalidate((u8 *)m->map.vaddr + m->offset, m->size);
+	for (i = 0; i < job->cache_range_count; i++) {
+		struct g16_cache_range *r = &job->cache_ranges[i];
+
+		g16_lab_dcache_invalidate((void *)r->start, r->end - r->start);
+	}
 	dma_rmb();
 	if (result < 0)
 		dma_fence_set_error(job->fence, result);
@@ -512,6 +543,7 @@ free:
 	}
 	dma_fence_put(job->fence);
 	g16_render_uat_free(&job->uat);
+	kvfree(job->cache_ranges);
 	kfree(job);
 	return ret;
 }

@@ -3,6 +3,7 @@
 #define G16_DRM_JOB_H
 
 #include <uapi/drm/asahi_drm.h>
+#include "g16_cache_ranges.h"
 
 struct g16_drm_vm;
 
@@ -17,6 +18,9 @@ struct g16_drm_job {
 	u32 rsrc_hi[4];
 	struct g16_drm_vm *vm;
 	struct g16_render_uat uat;
+	struct g16_cache_range *cache_ranges;
+	u32 cache_range_count;
+	u64 cache_bytes;
 	struct dma_fence *fence;
 	struct completion done;
 	int result;
