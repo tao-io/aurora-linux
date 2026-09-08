@@ -741,7 +741,6 @@ static struct simpledrm_device *simpledrm_device_create(struct drm_driver *drv,
 
 		iosys_map_set_vaddr_iomem(&sysfb->fb_addr, screen_base);
 	}
-	sysfb->fb_wc = true;
 
 	/*
 	 * Modesetting

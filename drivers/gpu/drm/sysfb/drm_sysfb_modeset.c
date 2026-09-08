@@ -2,11 +2,6 @@
 
 #include <linux/export.h>
 #include <linux/slab.h>
-#include <linux/moduleparam.h>
-
-#if defined(CONFIG_ARM64) && defined(CONFIG_KERNEL_MODE_NEON) && !defined(CONFIG_CPU_BIG_ENDIAN)
-#include <asm/simd.h>
-#endif
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
@@ -22,47 +17,6 @@
 #include <drm/drm_probe_helper.h>
 
 #include "drm_sysfb_helper.h"
-
-#if defined(CONFIG_ARM64) && defined(CONFIG_KERNEL_MODE_NEON) && !defined(CONFIG_CPU_BIG_ENDIAN)
-static bool neon_blit = true;
-module_param(neon_blit, bool, 0644);
-MODULE_PARM_DESC(neon_blit, "Use ARM64 SIMD for WC XRGB8888 to XRGB2101010 scanout");
-
-void drm_sysfb_neon_xrgb2101010(void *dst, const void *src, unsigned int pixels);
-#endif
-
-static bool drm_sysfb_blit_wc(struct drm_sysfb_device *sysfb, struct iosys_map *dst,
-			      unsigned int dst_pitch, const struct iosys_map *src,
-			      const struct drm_framebuffer *fb, const struct drm_rect *clip,
-			      u32 dst_format)
-{
-#if defined(CONFIG_ARM64) && defined(CONFIG_KERNEL_MODE_NEON) && !defined(CONFIG_CPU_BIG_ENDIAN)
-	const u8 *s;
-	u8 *d;
-	unsigned int y, width = drm_rect_width(clip), height = drm_rect_height(clip);
-
-	if (!sysfb->fb_wc || !READ_ONCE(neon_blit) || src->is_iomem ||
-	    dst_format != DRM_FORMAT_XRGB2101010 ||
-	    fb->format->format != DRM_FORMAT_XRGB8888 || !may_use_simd())
-		return false;
-	/* ARM64 ioremap_wc is Normal-NC, not Device memory. Other mapping
-	 * types must keep the generic I/O-accessor path. dst is already clipped. */
-	d = dst->is_iomem ? (u8 __force *)dst->vaddr_iomem : dst->vaddr;
-	s = (const u8 *)src->vaddr + clip->y1 * fb->pitches[0] + clip->x1 * 4;
-	for (y = 0; y < height; y++) {
-		/* Bound each SIMD ownership interval to one row. */
-		scoped_ksimd() {
-			drm_sysfb_neon_xrgb2101010(d, s, width);
-		}
-		d += dst_pitch;
-		s += fb->pitches[0];
-	}
-	wmb();
-	return true;
-#else
-	return false;
-#endif
-}
 
 struct drm_display_mode drm_sysfb_mode(unsigned int width,
 				       unsigned int height,
@@ -406,9 +360,6 @@ void drm_sysfb_plane_helper_atomic_update(struct drm_plane *plane, struct drm_at
 			continue;
 
 		iosys_map_incr(&dst, drm_fb_clip_offset(dst_pitch, dst_format, &dst_clip));
-		if (drm_sysfb_blit_wc(sysfb, &dst, dst_pitch, shadow_plane_state->data,
-				     fb, &damage, dst_format->format))
-			continue;
 		blit_to_crtc(&dst, &dst_pitch, shadow_plane_state->data, fb, &damage,
 			     &shadow_plane_state->fmtcnv_state);
 	}

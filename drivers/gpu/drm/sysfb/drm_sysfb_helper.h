@@ -80,9 +80,6 @@ struct drm_sysfb_device {
 
 	/* hardware-framebuffer kernel address */
 	struct iosys_map fb_addr;
-	/* Set only for framebuffer apertures mapped with *_wc(). On ARM64
-	 * these are Normal-NC memory, allowing vector loads/stores. */
-	bool fb_wc;
 };
 
 static inline struct drm_sysfb_device *to_drm_sysfb_device(struct drm_device *dev)

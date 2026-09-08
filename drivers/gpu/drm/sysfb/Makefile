@@ -4,7 +4,6 @@ drm_sysfb_helper-y := \
 	drm_sysfb.o \
 	drm_sysfb_modeset.o
 drm_sysfb_helper-$(CONFIG_SCREEN_INFO) += drm_sysfb_screen_info.o
-drm_sysfb_helper-$(CONFIG_ARM64) += drm_sysfb_neon.o
 obj-$(CONFIG_DRM_SYSFB_HELPER)	+= drm_sysfb_helper.o
 
 obj-$(CONFIG_DRM_COREBOOTDRM)	+= corebootdrm.o
