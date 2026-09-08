@@ -17,7 +17,10 @@ p.add_argument("--start-link", action="store_true")
 p.add_argument("--query-display", action="store_true")
 p.add_argument("--bridge", action="store_true")
 p.add_argument("--kernel-client", action="store_true")
+p.add_argument("--kms", action="store_true")
 a = p.parse_args()
+if a.kms and not a.kernel_client:
+    p.error("--kms requires --kernel-client")
 if a.kernel_client and (a.bridge or a.query_display):
     p.error('--kernel-client requires sole RPC ownership')
 sys.path.insert(0, str(a.guards))
@@ -29,7 +32,7 @@ w = ExperimentWatchdog()
 r = {"watchdog": w.arm(), "start_link": a.start_link,
      "query_display": a.query_display,
      "bridge": a.bridge,
-     "kernel_client": a.kernel_client,
+     "kernel_client": a.kernel_client, "kms": a.kms,
      "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip()}
 t = ExperimentThermals(a.output)
 try:
@@ -42,7 +45,7 @@ try:
     t.check()
     proc = subprocess.run(["insmod", str(a.module), f"start_link={int(a.start_link)}",
                            f"query_display={int(a.query_display)}", f"bridge={int(a.bridge)}",
-                           f"kernel_client={int(a.kernel_client)}"],
+                           f"kernel_client={int(a.kernel_client)}", f"kms={int(a.kms)}"],
                           capture_output=True, text=True, timeout=30)
     r.update(returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
     time.sleep(1)
@@ -62,6 +65,8 @@ try:
     if a.kernel_client and ("M4 DCP kernel startup and first-client-open complete" not in log or
                             "completed, surface=0" not in log):
         raise RuntimeError("kernel-owned startup/swap did not complete")
+    if a.kms and "M4 native KMS ready:" not in log:
+        raise RuntimeError("native KMS did not register")
     if "DCP firmware crashed" in log:
         raise RuntimeError("DCP firmware crash")
     t.check()

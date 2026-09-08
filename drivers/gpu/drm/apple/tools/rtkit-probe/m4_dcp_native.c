@@ -403,7 +403,7 @@ int m4_dcp_native_swap(struct m4_dcp_native *dcp, const void *surface, u64 dva,
 	put_unaligned_le32(id, swap + 0x98);
 	put_unaligned_le32(0x80000007, swap + 0x14c);
 	put_unaligned_le32(0x80000007, swap + 0x150);
-	put_unaligned_le32(0xff402060, swap + 0x154);
+	put_unaligned_le32(surface ? 0xff000000 : 0xff402060, swap + 0x154);
 	memset(swap + 0x1bcb, 1, 10);
 	swap[0x1bd6] = swap[0x1bd7] = 1;
 	if (surface) {
@@ -419,7 +419,7 @@ int m4_dcp_native_swap(struct m4_dcp_native *dcp, const void *surface, u64 dva,
 	ret = call(dcp, A(407), swap, 0x1bd8, result, sizeof(result), id);
 	if (!ret && get_unaligned_le32((u8 *)result + 5))
 		ret = -EIO;
-	if (!ret)
+	if (!ret && !surface)
 		dev_info(dcp->dev, "M4 kernel swap %u completed, surface=%d\n", id, !!surface);
 out:
 	if (ret)
@@ -427,4 +427,17 @@ out:
 	mutex_unlock(&dcp->lock);
 	kfree(swap);
 	return ret;
+}
+
+const void *m4_dcp_native_property(struct m4_dcp_native *dcp, const char *key, u32 *size)
+{
+	u32 i;
+
+	for (i = 0; i < dcp->raw_count; i++) {
+		if (!dcp->raw[i].service && !strcmp(dcp->raw[i].key, key)) {
+			*size = dcp->raw[i].size;
+			return dcp->raw[i].data;
+		}
+	}
+	return NULL;
 }

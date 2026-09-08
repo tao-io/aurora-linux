@@ -66,3 +66,19 @@ and uses the previously qualified clock fallback. Unknown callbacks fail closed.
 `../m4_dcp_native_callbacks_test.py TRACE/rpc.jsonl` replays captured input
 packets through the production callback handler with stubbed RPC/DMA operations
 under ASan/UBSan; it is not a hardware execution test.
+
+### Native KMS prototype
+
+`run-native.py --kernel-client --kms` registers `m4-dcp` after the qualified
+startup/background completion. It uses the firmware-published fixed J713
+2560x1664 mode, a single linear XRGB8888/ARGB8888 primary plane, and GEM DMA
+allocation/import on the preserved DISP0 SID0 domain. There is no CPU scanout
+copy. Each atomic flush waits for matching D590 completion before releasing
+the previous framebuffer or reporting a page flip. Failure latches the device
+and retains both potentially live buffers until reboot. No panel power, clock,
+suspend/resume, cursor plane or arbitrary modesetting is implemented yet.
+The explicit-load module remains pinned; replace it by rebooting.
+
+The native KMS path initially coexists with simpledrm and does not automatically
+start a compositor. Startup/scanout diagnostic success alone does not qualify
+GPU DMA-BUF import or accelerated Hyprland on this KMS node.

@@ -12,6 +12,7 @@
 #include "../../dcp-link.h"
 #include "m4_dcp_bridge.h"
 #include "m4_dcp_native.h"
+#include "m4_dcp_kms.h"
 
 struct m4_dcp_rtkit {
 	struct device *dev;
@@ -34,6 +35,9 @@ MODULE_PARM_DESC(query_display, "Issue the M4 A412 read-only main-display query 
 static bool bridge;
 module_param(bridge, bool, 0400);
 MODULE_PARM_DESC(bridge, "Expose a root-only diagnostic RPC bridge after DCPLink READY");
+static bool kms;
+module_param(kms, bool, 0400);
+MODULE_PARM_DESC(kms, "Register native fixed-mode J713 KMS (requires kernel_client)");
 static bool kernel_client;
 module_param(kernel_client, bool, 0400);
 MODULE_PARM_DESC(kernel_client, "Run qualified startup and a background swap entirely in the kernel");
@@ -55,7 +59,7 @@ static void receive(void *cookie, u8 ep, u64 message)
 	u16 alignment;
 	u32 hash;
 
-	dev_info(dcp->dev, "DCP app rx ep=%#x message=%#llx\n", ep, message);
+	dev_dbg(dcp->dev, "DCP app rx ep=%#x message=%#llx\n", ep, message);
 	if (ep != APPLE_DCP_LINK_ENDPOINT)
 		return;
 	if (dcp->bridge) {
@@ -173,7 +177,7 @@ static int probe(struct platform_device *pdev)
 	u64 message;
 	int ret;
 
-	if (kernel_client && (bridge || query_display))
+	if ((kms && !kernel_client) || (kernel_client && (bridge || query_display)))
 		return -EINVAL;
 	if (!of_machine_is_compatible("apple,j713") ||
 	    of_property_read_string(dev->of_node, "apple,firmware-uuid", &uuid) ||
@@ -266,6 +270,8 @@ static int probe(struct platform_device *pdev)
 					ret = PTR_ERR(dcp->native);
 				else
 					ret = m4_dcp_native_swap(dcp->native, NULL, 0, 0, 0);
+				if (!ret && kms)
+					ret = m4_dcp_kms_register(dcp->native);
 			}
 		}
 	}

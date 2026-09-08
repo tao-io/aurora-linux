@@ -10,4 +10,5 @@ struct device;
 struct m4_dcp_native *m4_dcp_native_start(struct device *dev, struct m4_dcp_bridge *bridge);
 int m4_dcp_native_swap(struct m4_dcp_native *dcp, const void *surface, u64 dva,
 		       u32 width, u32 height);
+const void *m4_dcp_native_property(struct m4_dcp_native *dcp, const char *key, u32 *size);
 #endif
