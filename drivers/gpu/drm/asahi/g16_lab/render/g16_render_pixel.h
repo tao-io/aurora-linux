@@ -286,8 +286,12 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 		g16_lab_dcache_invalidate(work + 0xc908, 8);
 		g16_lab_dcache_invalidate(queue, J713_INITDATA_QUEUE_INFO_SIZE);
 		g16_lab_dcache_invalidate(state, J713_INITDATA_QUEUE_RING_STATE_SIZE);
+		/* The GPU stamp and fetch pointer can advance before firmware has
+		 * finished accessing this command. Reuse its storage and UAT only
+		 * after the firmware completion pointer retires the entire ring. */
 		if (g16_render_get(work + 0xc908, 4) == stamp &&
 		    g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4) == end &&
+		    g16_render_get(state + J713_QUEUE_RING_GPU_DONEPTR_OFFSET, 4) == end &&
 		    !g16_render_get(queue + J713_QUEUE_BUSY_OFFSET, 4)) {
 			pr_info("g16_lab: render: fragment diagnostic retired stamp=%#x ring=%u; pixel verification still required\n", stamp, end);
 			/* Client commands are checked by their application. Never compare
