@@ -204,3 +204,50 @@ the stopped worker, while `client_vm_publications` only counts retained log
 lines. Mesa's routine VDM logs require `HK_G17P_LAUNCH_TRACE=1`. An indexed Ioto
 decoder retains all prefix/ambiguity checks and passed 177,308 host checks;
 the combined hardware performance comparison follows these changes.
+
+
+### Polling, CPU scheduling and scanout profiling
+
+`20260908T155717Z-render-ta` passed 33,788 jobs and 80 pixel checks, with a
+69.75 C peak. Sleeping between active GPU polls then reduced the render
+worker from about 43% to 6% of one CPU in five-second samples. The monitored
+`20260908T160855Z-render-ta` passed 34,405 jobs with a 69.5 C peak. Its normal
+warm windows remained roughly 30–43 FPS. A recorded 20-second CPU performance
+governor control reached 48–51 FPS; CPU thermal caps remained active, and the
+original schedutil governors were restored afterward. GPU clocks stayed at
+pstate 1 (338 MHz). This was not a sustained 60 FPS result.
+
+Telemetry still samples every 0.5 seconds; disk synchronization is batched at
+five seconds and at shutdown. A thermal failure requests workload stop before
+attempting to persist the failure report.
+
+`20260908T161554Z-render-ta` failed during an independent health submission
+with a context-6 level-2 read fault at VA `0xbfff9eaa80` (unit `0x21`). Its
+highest reported temperature was 66.75 C; this was not a thermal cutoff. The
+watchdog reset the machine. Recovery failures now dump the active command and
+verify the job's UAT leaves against pinned GEM pages before teardown, just as
+timeout failures already did. The failure remains unresolved; later bounded
+passes do not establish indefinite stability.
+
+Mesa now binary-searches the generated AGX3 form tables, with every known
+mnemonic and all 256 ep values checked against the generic first-match search.
+All 1,494 captured instructions still encode byte-for-byte. M4 graphics Ioto
+programs also share 128 KiB executable allocations within each command buffer;
+individual aligned program ranges and their allocation lifetime are retained
+through command-buffer reset. `20260908T162433Z-render-ta` passed 33,580 jobs
+and a 240-second SuperTux run, peaking at 69 C. Neither change alone produced a
+clear FPS gain.
+
+Sampling all kernel worker threads identified the final CPU scanout conversion
+as a substantial remaining cost: 2,491 samples in two workers, predominantly
+memcpy and `drm_fb_xrgb8888_to_xrgb2101010_line`. Simpledrm maps its framebuffer
+with WC attributes; on ARM64 this is Normal-NC memory. The new optional
+`drm_sysfb_helper.neon_blit` path converts that memory in one vector pass,
+retaining the generic conversion when disabled or unsupported. SIMD ownership
+is bounded to one row. The exact assembly passes exhaustive 24-bit RGB,
+unaligned/tail and guard-page tests under qemu-aarch64; hardware qualification
+follows. Run the standalone test with:
+
+```sh
+python3 drivers/gpu/drm/asahi/g16_lab/tools/hyprland/test_sysfb_neon.py
+```
