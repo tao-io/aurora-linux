@@ -2423,6 +2423,11 @@ module_param(render_full_tlbi, bool, 0444);
 MODULE_PARM_DESC(render_full_tlbi,
 	"Render diagnostic: invalidate all outer-shareable translations when switching the shared client context");
 
+static bool render_rebuild_job_tables;
+module_param(render_rebuild_job_tables, bool, 0444);
+MODULE_PARM_DESC(render_rebuild_job_tables,
+	"Render diagnostic: rebuild and verify each job's client mappings instead of cloning the VM cache");
+
 static bool render_power_controller;
 module_param(render_power_controller, bool, 0444);
 MODULE_PARM_DESC(render_power_controller,

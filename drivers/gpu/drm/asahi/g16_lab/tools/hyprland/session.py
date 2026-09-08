@@ -182,7 +182,9 @@ def main():
                 while time.monotonic() < deadline and not stop_file.exists() and not Path('/run/m4-hyprland-stop').exists():
                     with (result / 'health-shaders.stderr').open('a') as diagnostics:
                         check = subprocess.run(['/root/g16-submit-test/mesa-submit'],
-                                               env=env, stdout=subprocess.PIPE, stderr=diagnostics,
+                                               env={**env, **({'HK_G17P_LAUNCH_TRACE': '1'}
+                                                    if os.getenv('M4_HYPR_TRACE_HEALTH') == '1' else {})},
+                                               stdout=subprocess.PIPE, stderr=diagnostics,
                                                text=True, timeout=8, check=True)
                     evidence = json.loads(check.stdout.strip().splitlines()[-1])
                     reply = json.loads(subprocess.check_output(['hyprctl', '-j', 'monitors'],

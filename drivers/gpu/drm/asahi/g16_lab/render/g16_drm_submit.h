@@ -233,7 +233,21 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 		if (ret)
 			return ret;
 	}
-	ret = g16_render_uat_clone(&job->uat, &job->vm->uat);
+	if (render_rebuild_job_tables) {
+		/* Keep the original page-by-page builder as a diagnostic control. */
+		ret = 0;
+		list_for_each_entry(m, &job->vm->mappings, link) {
+			void *data = (u8 *)m->map.vaddr + m->offset;
+
+			ret = g16_render_uat_map(&job->uat, m->va, data, m->size, m->pte_flags);
+			if (!ret)
+				ret = g16_render_uat_verify(&job->uat, m->va, data, m->size, m->pte_flags);
+			if (ret)
+				break;
+		}
+	} else {
+		ret = g16_render_uat_clone(&job->uat, &job->vm->uat);
+	}
 	if (!ret)
 		ret = g16_render_uat_map(&job->uat, graph, g16_render_graph,
 			G16_RENDER_GRAPH_BYTES, J713_UAT_USER_GPU_RW_NX_SHARED_FLAGS);
