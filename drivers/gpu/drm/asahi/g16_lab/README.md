@@ -158,3 +158,13 @@ VMAs and closes the DRM file before waiting for its still-pending exported
 fence. Pixel readback uses a separately mapped dma-buf. The ordinary test also
 waits for completion before querying timeline progress, as required by async
 submission semantics. Build and host compilation pass; hardware results follow.
+
+Hardware validation `20260908T225921Z-render-ta`, boot
+`8977f424-c7dc-4b0e-a729-2bd784b424c4`, passed all 24 async jobs and
+524,288 pixel comparisons. The final exported fence was still pending after
+all client handles, VM, queue, DRM VMAs and the DRM file were closed. Binary
+fences and completed timeline points passed, as did module unloading with no
+new kernel fault. Both startup and GPU execution used the 60-second watchdog
+and six-channel thermal guard. The initial test attempt stopped before GPU
+submission because its dma-buf export omitted DRM_RDWR; this test-only bug was
+corrected before the passing run.
