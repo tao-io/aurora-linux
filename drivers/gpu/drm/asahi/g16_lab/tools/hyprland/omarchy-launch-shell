@@ -1,0 +1,4 @@
+#!/bin/sh
+# The panel's Qt Quick GPU path is not yet qualified on M4. Its rasterized
+# Wayland surfaces are still composed by hardware-accelerated Hyprland.
+exec env QT_QUICK_BACKEND=software /usr/bin/omarchy-launch-shell "$@"

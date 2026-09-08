@@ -6,7 +6,7 @@ fi
 case "${1:-start}" in
     start)
         exec systemd-run --unit=m4-accelerated-hyprland --collect \
-            /root/hyprland-validation/start-interactive.sh 3600
+            /root/hyprland-validation/start-omarchy.sh "${SUDO_USER:-e}" 3600
         ;;
     stop)
         touch /run/m4-hyprland-stop

@@ -1,5 +1,48 @@
 # Hyprland / Zink readiness gate
 
+## Current supervised Omarchy session
+
+J713/T8132 now runs the installed user's Omarchy configuration through private
+Zink/Honeykrisp libraries. `start-omarchy.sh e 90` passed the physical 2560x1600
+screen gate and 18 independently checked Vulkan health probes, then returned to
+SDDM, unloaded the module and disarmed the watchdog. The earlier experimental
+gates below describe development history, not the current capability boundary.
+
+The root runner explicitly opts UID 1000 into the trusted lab render node using
+the read-only `render_trusted_uid` module parameter and a temporary device ACL.
+No process capabilities are granted to Hyprland or applications. Default driver
+access remains root-only; this opt-in is not a claim of an isolated production
+GPU service. The live GEM and VM budgets are one GiB per client, including
+cached allocations and executable aliases. Object and mapping count limits
+remain enforced, and quota errors now report usage.
+
+The user compositor starts through `start-hyprland` with its existing config,
+theme and normal Omarchy autostart. The experimental wrapper disables borders
+and animations and sets scale 2 for the retained framebuffer's synthetic EDID.
+Only `omarchy-launch-shell` gets `QT_QUICK_BACKEND=software`: Quickshell's panel
+and wallpaper are rasterized by Qt, then composited by the accelerated Hyprland
+renderer. Its own GPU path currently faults on VA `0x28fdd6e580`; full border
+shaders also encounter an unsupported narrow integer control-flow form.
+These remain open, as does long-term firmware stability.
+
+Private libraries live under `/opt/m4mesa`, accessible to the desktop account;
+the original root-only lab libraries and normal system graphics are retained.
+The home launcher starts a maximum one-hour session. Super+Shift+Escape requests
+a clean exit; a fresh boot is required for another firmware bootstrap. On exit,
+the supervisor stops the experimental user services and restores SDDM so their
+imported graphics environment does not leak into ordinary login. Watchdog
+renewal still requires real GPU pixels and a responsive compositor.
+
+Mesa fixes `5f1d2827948` and `42c81f8b3d6` prevent new half-precision handlers
+from intercepting already-supported full-width reciprocal and mixed-width
+comparison instructions. Four reciprocal and seven focused selection tests
+pass; both regressions were reproduced locally before their fixes. A broader
+pre-existing packer suite aborts in `LocalIndexZeroExtendUsesCopyAndClear`, and
+`HalfMaximumRefusesUngroundedShapes` has a pre-existing expectation failure;
+the complete compiler suite is not claimed to pass.
+
+## Earlier bring-up gates
+
 `build.py` builds Mesa with Honeykrisp, Zink, EGL, GLES, GBM and X11/Wayland
 support in an isolated directory. It does not install system libraries. The
 build is native to the machine running it; the x86 host result cannot be used

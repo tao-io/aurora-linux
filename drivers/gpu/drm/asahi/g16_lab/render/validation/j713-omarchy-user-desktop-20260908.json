@@ -1,0 +1,49 @@
+{
+  "platform": "J713/T8132, Apple M4 G16G B1, firmware 25G83",
+  "result_directory": "20260908T121944Z-render-ta",
+  "boot_id": "7bf7028b-29d3-4b94-bb87-a572c63d4f59",
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "module_sha256": "feace301dd29eafba3ba382658c9cbbc1c953e88a32a594e03fc2bd2629eeb6d",
+  "mesa_commit": "42c81f8b3d6",
+  "aquamarine_commit": "3939123",
+  "desktop": {
+    "passed": true,
+    "hyprland": true,
+    "scope": "2560x1600 Unknown-1 compositor",
+    "physical_display": true,
+    "scanout_red_pixels_verified": 3790843,
+    "red_pixels_verified": 3790823,
+    "screenshot": "hyprland.ppm",
+    "desktop_user": "e",
+    "quickshell_backend": "software",
+    "omarchy_panel_and_background": true,
+    "interactive_seconds": 90,
+    "health_checks": 18,
+    "verified_watchdog_keepalives": 18
+  },
+  "completed_gpu_submissions": 261,
+  "verified_health_pixels": 9437184,
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": false,
+    "progress_verified_keepalives": 18,
+    "disarmed_after_evidence_collection": true
+  },
+  "hardware_regression_passed": true,
+  "new_kernel_fault": false,
+  "module_unload_returncode": 0,
+  "render_node_removed": true,
+  "desktop_framebuffer_sha256": "a5add89e9ee151fcbff6fd4d751f0706811450b5bf86c9f61cba470bacd7857d",
+  "desktop_framebuffer": "Physical retained framebuffer captured after the red test terminal closed; shows the real Omarchy bar and purple wallpaper",
+  "limitations": [
+    "Quickshell uses Qt Quick software rendering; Hyprland composites its surfaces on the GPU",
+    "Window borders and animations disabled",
+    "Experimental trusted user access, not a production GPU isolation guarantee",
+    "90-second run is not long-term stability qualification; an earlier root session failed a TA completion after approximately 20 minutes",
+    "General Vulkan and GLES conformance and general application acceleration remain incomplete"
+  ]
+}

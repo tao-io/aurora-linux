@@ -133,7 +133,9 @@ static int g16_drm_vm_bind_one(struct g16_drm_vm *vm, struct drm_file *file,
 		goto put;
 	}
 	if (vm->mapping_count >= (render_drm_submit ? 2048 : 128) ||
-	    op->range > (render_drm_submit ? SZ_512M : SZ_256M) - vm->mapping_bytes) {
+	    op->range > (render_drm_submit ? SZ_1G : SZ_256M) - vm->mapping_bytes) {
+		pr_info("g16_lab: VM budget exhausted: mappings=%u bytes=%llu requested=%llu\n",
+			vm->mapping_count, vm->mapping_bytes, op->range);
 		ret = -ENOSPC;
 		goto put;
 	}

@@ -78,7 +78,8 @@ def main():
     env.pop('DISPLAY', None)
     env.pop('HYPRLAND_INSTANCE_SIGNATURE', None)
     config = Path('/opt/m4-hyprland/omarchy.lua') if account else Path(__file__).with_name('minimal.lua')
-    command = ['Hyprland', *([] if account else ['--i-am-really-stupid']), '--config', str(config)]
+    command = [*(['start-hyprland', '--'] if account else ['Hyprland', '--i-am-really-stupid']),
+               '--config', str(config)]
     if account:
         command = ['python3', str(Path(__file__).with_name('seat-user.py')), account.pw_name, *command]
     if physical:
@@ -165,8 +166,16 @@ def main():
                 if account:
                     # The red surface has served its validation purpose.
                     # Close it so Omarchy's actual shell and wallpaper show.
-                    subprocess.run(['hyprctl', 'dispatch', 'closewindow', 'class:^(m4-gpu-check)$'],
-                                   env=env, check=True, stdout=log, stderr=log, timeout=2)
+                    os.killpg(terminal.pid, signal.SIGTERM)
+                    terminal.wait(timeout=4)
+                    layers = subprocess.check_output(['hyprctl', '-j', 'layers'],
+                                                     env=env, text=True, timeout=2)
+                    (result / 'omarchy-layers.json').write_text(layers)
+                    if 'omarchy-bar' not in layers or 'omarchy-background' not in layers:
+                        raise RuntimeError('Omarchy panel and background did not appear')
+                    summary.update({'desktop_user': account.pw_name,
+                                    'quickshell_backend': 'software',
+                                    'omarchy_panel_and_background': True})
                 print(json.dumps({'event': 'ready', 'result': summary}), flush=True)
                 deadline = time.monotonic() + live_seconds
                 checks = 0

@@ -85,7 +85,9 @@ static int g16_drm_gem_open(struct drm_gem_object *obj, struct drm_file *file)
 		}
 	}
 	if (priv->objects_live >= (render_drm_submit ? 1024 : 64) ||
-	    obj->size > (render_drm_submit ? SZ_512M : SZ_256M) - priv->bytes_live) {
+	    obj->size > (render_drm_submit ? SZ_1G : SZ_256M) - priv->bytes_live) {
+		pr_info("g16_lab: GEM budget exhausted: objects=%u bytes=%llu requested=%zu\n",
+			priv->objects_live, priv->bytes_live, obj->size);
 		ret = -ENOSPC;
 		goto out;
 	}
