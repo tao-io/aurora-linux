@@ -29,6 +29,7 @@
 #include <linux/uaccess.h>
 #include <linux/unaligned.h>
 #include <linux/vmalloc.h>
+#include <linux/wait.h>
 
 #include <asm/memory.h>
 

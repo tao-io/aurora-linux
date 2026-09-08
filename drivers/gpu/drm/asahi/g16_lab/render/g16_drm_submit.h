@@ -373,6 +373,7 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	struct g16_drm_job *job;
 	unsigned long dependency_deadline;
 	u32 sequence, i, count;
+	u64 prepare_start;
 	void *command;
 	int ret;
 
@@ -479,6 +480,7 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 		goto unlock;
 	}
 	job->vm = priv->vm;
+	prepare_start = ktime_get_ns();
 	ret = g16_drm_job_prepare(job);
 	if (ret)
 		goto service_unlock;
@@ -500,6 +502,9 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	ret = g16_drm_job_reservations(job);
 	if (ret)
 		goto service_unlock;
+	if (!((g16_render_service_completed + 1) & 127))
+		pr_info("g16_lab: DRM submit CPU preparation pid=%d elapsed-us=%llu\n",
+			task_pid_nr(current), (ktime_get_ns() - prepare_start) / 1000);
 	spin_lock(&g16_render_service_state_lock);
 	sequence = g16_render_service_completed + 1;
 	if (!g16_render_service_ready || g16_render_service_pending || sequence > render_frames) {
@@ -518,6 +523,7 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	g16_drm_active_job = job;
 	smp_store_release(&g16_render_service_pending, sequence);
 	spin_unlock(&g16_render_service_state_lock);
+	wake_up(&g16_render_service_work);
 	/* Once published, even a killed client must wait for retirement/teardown.
 	 * The worker bounds each hardware wait and its complete service lifetime.
 	 */

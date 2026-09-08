@@ -11,6 +11,7 @@ static struct dentry *g16_render_service_file;
 static DEFINE_MUTEX(g16_render_service_mutex);
 static DEFINE_SPINLOCK(g16_render_service_state_lock);
 static DECLARE_COMPLETION(g16_render_service_done);
+static DECLARE_WAIT_QUEUE_HEAD(g16_render_service_work);
 static bool g16_render_service_ready;
 static bool g16_render_service_stopped;
 static bool g16_render_service_stop_requested;
@@ -55,6 +56,7 @@ static ssize_t g16_render_service_write(struct file *file, const char __user *bu
 		WRITE_ONCE(g16_render_service_stop_requested, true);
 		spin_unlock(&g16_render_service_state_lock);
 		mutex_unlock(&g16_render_service_mutex);
+		wake_up(&g16_render_service_work);
 		return count;
 	}
 	if (!count || count > 16)
@@ -79,6 +81,7 @@ static ssize_t g16_render_service_write(struct file *file, const char __user *bu
 	}
 	reinit_completion(&g16_render_service_done);
 	smp_store_release(&g16_render_service_pending, sequence);
+	wake_up(&g16_render_service_work);
 	waited = wait_for_completion_killable_timeout(&g16_render_service_done,
 						     msecs_to_jiffies(3000));
 	ret = waited < 0 ? waited : !waited ? -ETIMEDOUT : READ_ONCE(g16_render_service_result);
@@ -182,7 +185,7 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 			ret = ret ? ret : -EIO;
 			break;
 		}
-		ret = g16_asc_recv_timeout(asc, &message, &endpoint, 1000);
+		ret = g16_asc_recv_timeout(asc, &message, &endpoint, 1);
 		if (!ret && endpoint == 1 &&
 		    FIELD_GET(RTKIT_MGMT_TYPE, message) == RTKIT_BUFFER_REQUEST &&
 		    FIELD_GET(RTKIT_BUFFER_IOVA, message) == crashlog_iova) {
@@ -190,8 +193,16 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 			ret = -EIO;
 			break;
 		}
-		if (ret == -ETIMEDOUT)
+		if (ret == -ETIMEDOUT) {
+			/* Client publication wakes immediately. Periodically service
+			 * firmware even without new work, until mailbox IRQs are wired.
+			 */
+			wait_event_timeout(g16_render_service_work,
+				smp_load_acquire(&g16_render_service_pending) ||
+				READ_ONCE(g16_render_service_stop_requested) ||
+				kthread_should_stop(), msecs_to_jiffies(1));
 			ret = 0;
+		}
 		if (ret)
 			break;
 		cond_resched();
