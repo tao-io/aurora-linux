@@ -64,6 +64,10 @@
 		power-domains = <&ps_disp_cpu>;
 		status = "okay";
 
+		/* Address/size tuples for the PIODMA child use 64-bit cells. */
+		#address-cells = <2>;
+		#size-cells = <2>;
+
 		disp0_piodma: piodma {
 			iommus = <&disp0_dart 16>;
 			status = "disabled";

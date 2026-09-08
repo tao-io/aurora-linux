@@ -361,3 +361,17 @@ validates every inherited SID0/SID16 PTE against full firmware segments before
 publishing both devices' reserved IOMMU mappings and enabling SID16's device.
 Unknown or partial mappings retain the disabled path. The DART aperture uses
 the same 1 TiB alias as DCP, allowing shared command-buffer addresses.
+
+The first native PIODMA test (`20260908-piodma-start`, boot
+`28e78cf1-dea2-4c7a-8cca-2bbf0b229ee1`) booted the m1n1 SID0/SID16
+preservation handoff and initialized DISP0 DART. D201 then exposed two host
+bugs: the PIODMA parent lacked 64-bit address/size declarations, and
+`of_iommu_get_resv_regions()` failed to consume tuples belonging to another
+device. A failed translation also left a NULL cursor which the loop
+subsequently dereferenced. The watchdog recovered the machine. Fix the parent
+cells, consume every owner's tuple, stop on failed translation, and release
+node references. The host regression test
+`tools/m4_dcp_reserved_regions_test.py` executes the production iterator with
+stubbed OF translation; shared owners, NULL translation, invalid phandles and
+balanced references pass under address/undefined-behavior sanitizers. This does
+not yet qualify PIODMA execution or a page flip.
