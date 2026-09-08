@@ -30,7 +30,7 @@ class DCP:
         if nested:
             if self.callback_message is None:
                 raise RuntimeError('nested RPC outside a callback')
-            expected_message |= 0x200 | ((self.callback_message ^ 0x100) & 0x100)
+            expected_message |= self.callback_message & 0x100
         wire = int.from_bytes(tag.encode('ascii'), 'big')
         packet = struct.pack('<III', wire, len(data), output_size) + data + bytes(output_size)
         self.check()

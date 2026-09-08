@@ -222,10 +222,25 @@ the parent stream at offset 64. Firmware asserted `link_msg_int_handler
 stream:0 not free`. This disproved the same-stream nesting hypothesis. Evidence:
 `20260908-nested-start`, including the RTKit crash mailbox history.
 
-The nested request now selects the opposite transmit half from the incoming
-callback's remote bit, preserving the parent allocation. M4 0x196398 encodes
-the stream owner in bit 8; 0x196f64 preserves remote and nested bits in replies.
-For the observed remote=0 callback this means AP buffer 0x20000, message bits
-0x302, expected reply 0x342. This routing still requires hardware qualification.
-The bridge now wakes its reader with an error immediately on an RTKit crash.
-Arbitrary deeper command nesting remains unsupported.
+The opposite-half attempt on boot `d3e808be-070a-43f0-b9f0-801607831efa`
+also asserted, with `link_msg_int_handler failed with 0x1000000302`.
+Evidence: `20260908-nested-opposite-start`. Neither initial hypothesis qualified
+nested execution.
+
+`tools/m4_dcp_nested_route.py` reproduces both assertions by executing the
+hash-pinned IRQ handler at 0x197e74 offline with an occupied parent stream.
+Bit 9 selects a new-stream interrupt path: it requires owner != firmware side
+and a free remote stream. It is not a recursive-call marker. With bit 9 clear,
+message 0x1000400002 takes the normal handler. The callback wait loop at
+0x195f78 dispatches non-reply messages through 0x196444 before resuming its wait.
+The diagnostic therefore re-enters the callback's stream, preserves the parent
+packet at offset zero, uses offset 64 for the nested query, and keeps bit 9 clear.
+This route still requires hardware qualification. The bridge immediately wakes
+its reader on an RTKit crash. Arbitrary deeper command nesting is unsupported.
+
+The startup client also implements host property storage with exact M4 wrapper
+sizes: D102/D104 (68/0), D107 (64/0), D401 (80/12), D406 (72/0), D414 (80/4),
+and D415 (76/4). Call sites 0x2722e4, 0x272424, 0x27254c, 0x2397f0,
+0x23a004, 0x23a2e4 and 0x23a388 establish those packet shapes. Missing integer
+properties return false; publications are logged or stored, without clock or
+power changes.

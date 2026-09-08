@@ -104,7 +104,7 @@ void m4_dcp_bridge_receive(struct m4_dcp_bridge *b, u64 message)
 	struct apple_dcp_link_rpc_view view;
 	u8 stream = apple_dcp_link_message_stream(message);
 	bool remote = apple_dcp_link_message_is_remote(message);
-	bool nested = message & APPLE_DCP_LINK_MSG_NESTED;
+	bool nested;
 	int ret;
 
 	mutex_lock(&b->lock);
@@ -116,6 +116,7 @@ void m4_dcp_bridge_receive(struct m4_dcp_bridge *b, u64 message)
 	}
 	dma_rmb();
 	if (message & BIT_ULL(6)) {
+		nested = b->calls[1].active;
 		if (stream || !b->calls[nested].active || b->calls[nested].remote != remote ||
 		    apple_dcp_link_stream_layout(APPLE_DCP_LINK_SIDE_AP, 0, remote, &layout))
 			goto error;
@@ -261,8 +262,8 @@ static ssize_t bridge_write(struct file *file, const char __user *user, size_t c
 			ret = -EOPNOTSUPP;
 			goto out;
 		}
-		/* The callback occupies the parent stream. Use its opposite TX half. */
-		remote = !apple_dcp_link_message_is_remote(callback);
+		/* Re-entry uses the callback's stream without the new-stream IRQ flag. */
+		remote = apple_dcp_link_message_is_remote(callback);
 		if (b->calls[0].active && b->calls[0].remote == remote)
 			offset = ALIGN(b->calls[0].size, 64);
 	}
@@ -288,7 +289,8 @@ static ssize_t bridge_write(struct file *file, const char __user *user, size_t c
 	b->calls[nested].offset = offset;
 	b->calls[nested].remote = remote;
 	b->calls[nested].active = true;
-	apple_dcp_link_rpc_message(offset, size, nested, &message);
+	/* M4 bit 9 requires a free stream; it is not a recursive-call marker. */
+	apple_dcp_link_rpc_message(offset, size, false, &message);
 	apple_dcp_link_stream_message(message, 0, remote, &message);
 	dma_wmb();
 	ret = apple_rtkit_send_message(b->rtkit, APPLE_DCP_LINK_ENDPOINT, message, NULL, false);

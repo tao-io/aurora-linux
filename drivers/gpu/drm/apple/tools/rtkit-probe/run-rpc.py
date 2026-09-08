@@ -59,6 +59,12 @@ def log(event):
     print(json.dumps(event), flush=True)
 
 dcp = None
+properties = {}
+def property_key(data, object_prefix=True):
+    start = 4 if object_prefix else 0
+    name = data[start:start+64].split(b'\0', 1)[0].decode('ascii')
+    return (data[:4].hex() if object_prefix else 'root', name)
+
 def startup_callback(dcp, tag, data, output_size):
     # M4 call sites 0x1dce18 and 0x1dced0; no callback output payload.
     if a.swap_completion is not None and output_size == 0:
@@ -74,11 +80,24 @@ def startup_callback(dcp, tag, data, output_size):
     # create PROV/PROD/PMUS/IOMF services; a four-byte slot with boolean byte 0.
     if tag in ('D108', 'D109', 'D110', 'D111') and not data and output_size == 4:
         return b'\x01\0\0\0'
-    # Observed M4 publication: IOMF / InitialPanelTemperature / fixed-point value.
-    # The host records this property; the firmware requests no reply payload.
-    if (tag == 'D406' and len(data) == 72 and output_size == 0
-            and data[:4] == b'FMOI'
-            and data[4:68].split(b'\0', 1)[0] == b'InitialPanelTemperature'):
+    # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
+    # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.
+    if tag == 'D401' and len(data) == 80 and output_size == 12:
+        key = property_key(data)
+        return struct.pack('<QB3x', properties.get(key, 0), key in properties)
+    if tag in ('D414', 'D415') and len(data) == (80 if tag == 'D414' else 76) and output_size == 4:
+        null_offset = 76 if tag == 'D414' else 72
+        if not data[null_offset] & 1:
+            properties[property_key(data)] = struct.unpack_from('<Q' if tag == 'D414' else '<I', data, 68)[0]
+        return b'\x01\0\0\0'
+    if tag == 'D406' and len(data) == 72 and output_size == 0:
+        log({'event': 'fixed_property', 'key': property_key(data), 'value': struct.unpack_from('<I', data, 68)[0]})
+        return b''
+    if tag in ('D102', 'D104') and len(data) == 68 and output_size == 0:
+        properties[property_key(data, False)] = struct.unpack_from('<I', data, 64)[0] if tag == 'D102' else data[64]
+        return b''
+    if tag == 'D107' and len(data) == 64 and output_size == 0:
+        properties.pop(property_key(data, False), None)
         return b''
     if tag == 'D100' and not data and output_size == 0:
         # 0x272d3c is a no-input, four-byte-output flag query on this firmware.
