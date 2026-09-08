@@ -2725,6 +2725,9 @@ MODULE_PARM_DESC(render_drm_submit, "Accept bounded Asahi render submissions fro
 static bool render_trace_submissions;
 module_param(render_trace_submissions, bool, 0644);
 MODULE_PARM_DESC(render_trace_submissions, "Log every successful DRM render stage instead of only the initial eight frames and timing summaries");
+static bool render_sleep_poll = true;
+module_param(render_sleep_poll, bool, 0644);
+MODULE_PARM_DESC(render_sleep_poll, "Sleep briefly between DRM completion polls instead of spinning while the GPU runs");
 
 static bool g16_render_log_submissions(void)
 {

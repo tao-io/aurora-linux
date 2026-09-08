@@ -322,7 +322,13 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 		/* Completion is a shared stamp; a mailbox message is optional.
 		 * Bound mailbox polling so it cannot hide a newly retired stage.
 		 */
-		ret = g16_asc_recv_timeout(asc, &message, &endpoint, 50);
+		if (render_drm_submit && READ_ONCE(render_sleep_poll)) {
+			ret = g16_asc_recv_timeout(asc, &message, &endpoint, 1);
+			if (ret == -ETIMEDOUT)
+				usleep_range(40, 60);
+		} else {
+			ret = g16_asc_recv_timeout(asc, &message, &endpoint, 50);
+		}
 		if (!ret && endpoint == 1 &&
 		    FIELD_GET(RTKIT_MGMT_TYPE, message) == RTKIT_BUFFER_REQUEST &&
 		    crashlog_iova && FIELD_GET(RTKIT_BUFFER_IOVA, message) == crashlog_iova) {
