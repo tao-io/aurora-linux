@@ -22,7 +22,7 @@ class DCP:
         if os.write(self.fd, record) != len(record):
             raise RuntimeError('short DCP bridge write')
 
-    def call(self, tag, data=b'', output_size=4, nested=False):
+    def call(self, tag, data=b'', output_size=4, nested=False, completion=None):
         if len(tag) != 4 or tag[0] != 'A' or not tag[1:].isdigit():
             raise ValueError('expected an A000..A999 method tag')
         wire = int.from_bytes(tag.encode('ascii'), 'big')
@@ -32,6 +32,8 @@ class DCP:
                   'output_size': output_size, 'nested': nested})
         self.write(1, int(nested), packet)
         deadline = time.monotonic() + 5
+        reply = None
+        completed = completion is None
         while time.monotonic() < deadline:
             self.check()
             readable, _, _ = select.select([self.fd], [], [], 0.2)
@@ -57,11 +59,22 @@ class DCP:
                 expected_message = 0x142 if nested else 0x42
                 if call != wire or message != expected_message or in_size != len(data) or out_size != output_size:
                     raise RuntimeError('unexpected RPC reply header/status')
-                return output
+                reply = output
+                if completion and tag == 'A407' and (len(output) != 12 or struct.unpack_from('<I', output, 5)[0]):
+                    raise RuntimeError(f'A407 submission rejected: {output.hex()}')
+                if completed:
+                    return reply
+                continue
             if self.callback is None:
                 raise RuntimeError(f'unhandled DCP callback {name}, {in_size}/{out_size} bytes')
             response = self.callback(self, name, incoming, out_size)
             if len(response) != out_size:
                 raise RuntimeError(f'{name}: wrong callback output length')
             self.write(2, message, response)
+            if completion and name == completion[0]:
+                if len(incoming) < 4 or struct.unpack_from('<I', incoming)[0] != completion[1]:
+                    raise RuntimeError('completion swap ID mismatch')
+                completed = True
+            if reply is not None and completed:
+                return reply
         raise TimeoutError(f'{tag}: DCP reply timed out')

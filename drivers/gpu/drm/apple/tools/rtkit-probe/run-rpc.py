@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import subprocess
+import struct
 import sys
 import time
 
@@ -16,14 +17,19 @@ p.add_argument('--guards', required=True, type=Path)
 p.add_argument('--output', required=True, type=Path)
 p.add_argument('--call', default='A412')
 p.add_argument('--input-hex', default='')
+p.add_argument('--input-file', type=Path)
 p.add_argument('--output-size', type=int, default=4)
 p.add_argument('--repeat', type=int, default=1)
 p.add_argument('--expect-hex')
 p.add_argument('--startup-callbacks', action='store_true')
+p.add_argument('--swap-completion', type=int)
+p.add_argument('--noop-swap', action='store_true')
 a = p.parse_args()
 if not 1 <= a.repeat <= 100 or not 0 <= a.output_size <= 0x7000:
     p.error('invalid repeat count/output size')
-payload = bytes.fromhex(a.input_hex)
+if a.input_file and a.input_hex:
+    p.error('choose input file or hex')
+payload = a.input_file.read_bytes() if a.input_file else bytes.fromhex(a.input_hex)
 sys.path.insert(0, str(a.guards))
 from experiment_watchdog import ExperimentWatchdog
 from experiment_thermals import ExperimentThermals
@@ -49,6 +55,10 @@ def log(event):
 
 dcp = None
 def startup_callback(dcp, tag, data, output_size):
+    # M4 call sites 0x1dce18 and 0x1dced0; no callback output payload.
+    if a.swap_completion is not None and output_size == 0:
+        if (tag == 'D588' and not data) or (tag == 'D590' and len(data) == 0x730):
+            return b''
     # J713 __TEXT 0x1d7760..0x1d7778: D599, no input or output.
     # This is the first callback observed from A401 on the inherited display.
     if tag == 'D599' and not data and output_size == 0:
@@ -70,12 +80,25 @@ def startup_callback(dcp, tag, data, output_size):
     raise RuntimeError(f'unhandled startup callback {tag}, {len(data)}/{output_size} bytes')
 
 try:
-    dcp = DCP(log, t.check, startup_callback if a.startup_callbacks else None)
+    dcp = DCP(log, t.check, startup_callback if a.startup_callbacks or a.noop_swap else None)
     start = time.monotonic()
     for i in range(a.repeat):
         if time.monotonic() - start > 20:
             raise TimeoutError('RPC test exceeded 20 seconds')
-        result = dcp.call(a.call, payload, a.output_size)
+        if a.noop_swap:
+            reply = dcp.call('A406', bytes(16), 8)
+            swap_id, status = struct.unpack('<II', reply)
+            if status:
+                raise RuntimeError(f'A406 failed: {status:#x}')
+            # M4 0x1d50b4/0x1d50c8 read swap ID at +0x98 from input x1.
+            # A407 wrapper qualification establishes the null-array positions.
+            payload = bytearray(0x1bd8)
+            struct.pack_into('<I', payload, 0x98, swap_id)
+            payload[0x1bcb:0x1bd5] = bytes([1])*10
+            payload[0x1bd6:0x1bd8] = b'\x01\x01'
+            a.call, a.output_size, a.swap_completion = 'A407', 12, swap_id
+        result = dcp.call(a.call, payload, a.output_size,
+                          completion=('D590', a.swap_completion) if a.swap_completion is not None else None)
         if a.expect_hex is not None and result != bytes.fromhex(a.expect_hex):
             raise RuntimeError('RPC result differs from expected value')
     t.check()

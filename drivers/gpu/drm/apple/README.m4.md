@@ -180,3 +180,17 @@ pass for the hash-pinned M4 image: wire size 0x1bd8, four primary surfaces at
 surfaces at 0xe78, and secondary IOVAs at 0x1b80. It never runs the actual display
 implementation and does not establish a successful hardware flip or the internal
 meaning of the swap-header fields.
+
+On boot `eba2d4d3-7e6c-43e1-b8b7-0ddab394365c`, inherited-state A406 returned
+swap ID 4 and status 0 without A401 startup. Evidence:
+`20260908-inherited-swap-start`, peak 53.25 C. A following all-null, no-change
+A407 request using the older +0x50 swap-ID field was rejected with translated
+status 1 and `IOMFB_SWAP_SUBMIT_LOST`, logging transaction ID 0. It did not
+complete a flip; `20260908-noop-swap4` records the failure, peak 53.75 C.
+
+The M4 implementation at 0x1d5074 saves input x1 in x20 (0x1d50b4) and reads
+the swap ID at +0x98 (0x1d50c8). Its failure log at 0x1d6350 also reads +0x98,
+with enabled/completed masks at +0x14c/+0x150. The guarded `--noop-swap` test now
+obtains a fresh ID from A406 and uses these M4 fields. It requires a zero A407
+status at response+5 and a matching D590 completion; an RPC reply alone is
+insufficient. M4 D590 is emitted at 0x1dced0 with 0x730 input bytes and no output.
