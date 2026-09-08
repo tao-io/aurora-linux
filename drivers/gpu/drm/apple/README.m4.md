@@ -483,3 +483,7 @@ previous cursor positions remained. Peak temperature 55.5 C. Simpledrm had
 been removed by exclusive aperture takeover. These are source-buffer pixel
 checks, not a measurement of the panel's optical output: the user's original
 password-screen flicker still needs visual confirmation on this corrected path.
+
+The user subsequently confirmed that the password-screen flicker is fixed on
+this native path (2026-09-09). This supplies the visual confirmation missing
+from the preceding source-buffer checks.

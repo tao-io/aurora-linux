@@ -8,6 +8,7 @@
 #include <linux/iosys-map.h>
 #include <linux/vmalloc.h>
 #include <linux/module.h>
+#include <linux/ktime.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
@@ -49,6 +50,7 @@ struct m4_kms {
 	struct mutex present_lock;
 	bool failed;
 	u64 completed;
+	u64 swap_total_ns, swap_max_ns;
 };
 
 static struct m4_kms *to_m4(struct drm_device *drm)
@@ -177,6 +179,7 @@ static bool m4_present(struct m4_kms *m4, struct drm_framebuffer *fb)
 {
 	u8 surface[0x22c];
 	dma_addr_t dva = 0;
+	u64 start, elapsed;
 	int ret;
 
 	mutex_lock(&m4->present_lock);
@@ -189,8 +192,10 @@ static bool m4_present(struct m4_kms *m4, struct drm_framebuffer *fb)
 		m4_surface(surface, fb);
 		dva = drm_fb_dma_get_gem_obj(fb, 0)->dma_addr;
 	}
+	start = ktime_get_ns();
 	ret = m4_dcp_native_swap(m4->native, fb ? surface : NULL, dva,
 				fb ? fb->width : 0, fb ? fb->height : 0);
+	elapsed = ktime_get_ns() - start;
 	if (ret) {
 		/* Either buffer may still be scanned out. Never unmap them on error. */
 		m4->failed_fb = fb;
@@ -203,6 +208,8 @@ static bool m4_present(struct m4_kms *m4, struct drm_framebuffer *fb)
 		drm_framebuffer_put(m4->active_fb);
 	m4->active_fb = fb;
 	m4->completed++;
+	m4->swap_total_ns += elapsed;
+	m4->swap_max_ns = max(m4->swap_max_ns, elapsed);
 	if (m4->completed <= 3 || !(m4->completed % 600))
 		drm_info(&m4->drm, "native KMS completed=%llu surface=%d imported=%d\n",
 			 m4->completed, !!fb, fb && !!fb->obj[0]->import_attach);
@@ -364,6 +371,8 @@ static int m4_status(struct seq_file *seq, void *unused)
 	seq_printf(seq, "completed %llu\nfailed %u\nactive_fb %u\nimported %u\n",
 		   m4->completed, m4->failed, fb ? fb->base.id : 0,
 		   fb && !!fb->obj[0]->import_attach);
+	seq_printf(seq, "swap_total_us %llu\nswap_max_us %llu\n",
+		   m4->swap_total_ns / 1000, m4->swap_max_ns / 1000);
 	mutex_unlock(&m4->present_lock);
 	return 0;
 }
