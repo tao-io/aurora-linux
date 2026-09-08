@@ -266,8 +266,10 @@ def main():
                                        text=True, timeout=5)
                 (result / 'mesa-device.stdout').write_text(probe.stdout)
                 (result / 'mesa-device.stderr').write_text(probe.stderr)
-                probe.check_returncode()
-                metadata['mesa_device'] = json.loads(probe.stdout)
+                metadata['mesa_probe_returncode'] = probe.returncode
+                if probe.returncode == 0:
+                    # Compiler diagnostics may precede the probe's final JSON.
+                    metadata['mesa_device'] = json.loads(probe.stdout.strip().splitlines()[-1])
             nodes = list(Path('/dev/dri').glob('renderD*'))
             if len(nodes) != 1:
                 raise RuntimeError('expected one lab render node')
@@ -542,6 +544,8 @@ def main():
     if args.render_drm_target or args.render_drm_submit:
         metadata['render_node_removed'] = set(Path('/dev/dri').glob('renderD*')) == initial_render_nodes
         passed = passed and metadata['render_node_removed']
+    metadata['hardware_regression_passed'] = passed
+    passed = passed and metadata.get('mesa_probe_returncode', 0) == 0
     metadata['passed'] = passed
     (result / 'manifest.json').write_text(json.dumps(metadata, indent=2) + '\n')
     os.sync()

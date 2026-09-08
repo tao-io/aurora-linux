@@ -1,8 +1,12 @@
 /* SPDX-License-Identifier: MIT */
-/* Device/queue creation only. No commands or GPU jobs are submitted. */
+/* Device/queue creation, optionally graphics command recording.
+ * Neither mode submits commands or GPU jobs. */
 #include <stdio.h>
 #include <string.h>
 #include <vulkan/vulkan.h>
+#ifdef M4_PIPELINE_PROBE
+#include "pipeline.h"
+#endif
 
 int main(void)
 {
@@ -50,8 +54,20 @@ int main(void)
       vkDestroyInstance(instance, NULL);
       return 1;
    }
+#ifdef M4_PIPELINE_PROBE
+   ret = m4_record_triangle(devices[0], device);
+   if (ret != VK_SUCCESS) {
+      vkDestroyDevice(device, NULL);
+      vkDestroyInstance(instance, NULL);
+      return 1;
+   }
+#endif
    vkDestroyDevice(device, NULL);
    vkDestroyInstance(instance, NULL);
-   puts("{\"passed\":true,\"device_id\":33074,\"physical_device_initialized\":true,\"logical_device_initialized\":true,\"shader_submitted\":false}");
+   puts("{\"passed\":true,\"device_id\":33074,\"physical_device_initialized\":true,\"logical_device_initialized\":true,"
+#ifdef M4_PIPELINE_PROBE
+        "\"graphics_commands_recorded\":true,"
+#endif
+        "\"shader_submitted\":false}");
    return 0;
 }

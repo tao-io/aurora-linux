@@ -58,3 +58,20 @@ channel error of one. DMA-BUF image roundtrip and all native fence operations
 pass. See `../../render/validation/hyprland-zink-development-20260908.json`.
 The complete Mesa build (including its Honeykrisp library) succeeds on x86_64.
 This does not establish M4 Vulkan, textures, blending or Hyprland acceleration.
+
+## Native M4 probes
+
+The private ARM64 Mesa build now initializes a physical and logical M4 Vulkan
+device through the lab DRM interface. `device.c` checks the actual T8132 ID.
+Compile with `-DM4_PIPELINE_PROBE` and the generated `triangle_spirv.h` include
+directory to additionally compile a graphics pipeline and record an offscreen
+256x256 clear/triangle/store pass. Neither variant calls `vkQueueSubmit`.
+
+Run these only through `../run-render.py --render-drm-submit
+--mesa-device-probe PATH`, with the private M4 ICD selected. That runner arms
+the watchdog first and follows the CPU-only probe with eight known GPU draws.
+A failed CPU probe is recorded independently; successful GPU regression and
+teardown permit watchdog disarm while the overall run still reports failure.
+The first recording attempt compiled the vertex/fragment pipeline but crashed
+on a null background shader returned by Mesa. This is diagnostic evidence,
+not successful command recording or Vulkan rendering.
