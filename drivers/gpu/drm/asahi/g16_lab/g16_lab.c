@@ -2818,6 +2818,9 @@ static void g16_lab_trace_dcp(const char *phase)
 		return;
 	pr_info("g16_lab: DCP checkpoint %s control=%#x status=%#x\n",
 		phase, readl(cpu + 0x44), readl(cpu + 0x48));
+	msleep(100);
+	pr_info("g16_lab: DCP checkpoint %s settled control=%#x status=%#x\n",
+		phase, readl(cpu + 0x44), readl(cpu + 0x48));
 	iounmap(cpu);
 }
 
