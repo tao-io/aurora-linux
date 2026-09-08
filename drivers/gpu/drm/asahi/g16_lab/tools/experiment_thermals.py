@@ -41,6 +41,7 @@ class ExperimentThermals:
         self.sysfs = Path(sysfs)
         self.on_trip = on_trip
         self.sensors = []
+        self.cpu_frequency_caps = []
         self.peaks = {}
         self.samples = 0
         self.last_sample = None
@@ -94,7 +95,44 @@ class ExperimentThermals:
                 'interval_seconds': self.interval_seconds, 'samples': self.samples,
                 'sync_interval_seconds': self.sync_interval_seconds,
                 'peak_temperatures_mc': dict(self.peaks), 'failure': self.failure,
-                'dedicated_gpu_sensor_verified': False, 'log': 'temperatures.jsonl'}
+                'dedicated_gpu_sensor_verified': False, 'log': 'temperatures.jsonl',
+                'cpu_frequency_caps': self.cpu_frequency_caps}
+
+    def cap_cpu_frequency(self, requested_khz):
+        """Lower test clocks after the caller arms its watchdog; never raise them.
+
+        Keep the cap until reboot, including after a failed experiment. Restoring
+        high clocks in error cleanup could increase heat with a stuck workload.
+        """
+        if requested_khz <= 0:
+            raise ValueError('CPU test frequency cap must be positive')
+        policies = sorted((self.sysfs / 'devices/system/cpu/cpufreq').glob('policy*'))
+        if not policies:
+            raise RuntimeError('CPU frequency policies unavailable')
+        for policy in policies:
+            maximum = policy / 'scaling_max_freq'
+            minimum = policy / 'scaling_min_freq'
+            old_max, old_min = int(maximum.read_text()), int(minimum.read_text())
+            available = [int(f) for f in (policy / 'scaling_available_frequencies').read_text().split()]
+            candidates = [f for f in available if f <= min(requested_khz, old_max)]
+            if not candidates:
+                raise RuntimeError(f'no supported CPU frequency below requested cap: {policy}')
+            target = max(candidates)
+            if old_min > target:
+                minimum.write_text(str(target))
+            maximum.write_text(str(target))
+            actual = int(maximum.read_text())
+            # cpufreq applies its QoS update on a worker, after sysfs write returns.
+            deadline = time.monotonic() + 1
+            while actual > target and time.monotonic() < deadline:
+                time.sleep(0.01)
+                actual = int(maximum.read_text())
+            self.cpu_frequency_caps.append({'policy': policy.name, 'old_min_khz': old_min,
+                                            'old_max_khz': old_max, 'max_khz': actual})
+            (self.result / 'cpu-frequency-caps.json').write_text(
+                json.dumps(self.cpu_frequency_caps, indent=2) + '\n')
+            if actual > target:
+                raise RuntimeError(f'CPU frequency cap not applied: {policy}')
 
     def trip(self, error):
         # Latch before attempting any teardown so no further keepalive is allowed.
@@ -119,6 +157,8 @@ class ExperimentThermals:
 
     def start(self):
         self.discover()
+        if os.environ.get('M4_TEST_CPU_MAX_KHZ'):
+            self.cap_cpu_frequency(int(os.environ['M4_TEST_CPU_MAX_KHZ']))
         record = self.sample()
         if max(record['temperatures_mc'].values()) >= self.startup_limit_mc:
             raise RuntimeError('let the die cool below 65 C before starting a GPU experiment')
@@ -132,6 +172,11 @@ class ExperimentThermals:
         if not self.thread or not self.thread.is_alive() or self.last_sample is None or \
                 time.monotonic() - self.last_sample > self.stale_seconds:
             raise RuntimeError('thermal monitor stopped or its readings are stale')
+        for cap in self.cpu_frequency_caps:
+            maximum = self.sysfs / 'devices/system/cpu/cpufreq' / cap['policy'] / 'scaling_max_freq'
+            if int(maximum.read_text()) > cap['max_khz']:
+                self.trip(RuntimeError('CPU experiment frequency cap was removed'))
+                raise RuntimeError('CPU experiment frequency cap was removed')
 
     def close(self):
         self.stop_event.set()

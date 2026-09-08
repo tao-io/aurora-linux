@@ -2,6 +2,7 @@
 # Supervised M4 desktop using the installed user's Omarchy configuration.
 set -eu
 exec env \
+    M4_TEST_CPU_MAX_KHZ=2000000 \
     M4_HYPR_NATIVE_KMS=1 M4_HYPR_PHYSICAL=1 M4_HYPR_WIDTH=2560 M4_HYPR_HEIGHT=1664 \
     __EGL_VENDOR_LIBRARY_FILENAMES=/opt/m4mesa/share/glvnd/egl_vendor.d/50_mesa.json \
     LIBGL_DRIVERS_PATH=/opt/m4mesa/lib/dri GBM_BACKENDS_PATH=/opt/m4mesa/lib/gbm \

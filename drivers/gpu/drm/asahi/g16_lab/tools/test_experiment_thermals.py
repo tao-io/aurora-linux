@@ -96,6 +96,26 @@ class ThermalsTest(unittest.TestCase):
         self.assertEqual(self.stops, [True])
         self.assertIsNotNone(self.guard.failure)
 
+    def test_cpu_cap_never_raises_existing_policy_and_detects_override(self):
+        policies = self.root / 'devices/system/cpu/cpufreq'
+        for name, minimum, maximum in [('policy0', 900000, 4000000),
+                                       ('policy1', 900000, 900000)]:
+            policy = policies / name
+            policy.mkdir(parents=True)
+            (policy / 'scaling_available_frequencies').write_text('900000 1800000 4000000')
+            (policy / 'scaling_min_freq').write_text(str(minimum))
+            (policy / 'scaling_max_freq').write_text(str(maximum))
+            (policy / 'scaling_cur_freq').write_text(str(minimum))
+        self.guard.cap_cpu_frequency(2000000)
+        self.assertEqual((policies / 'policy0/scaling_max_freq').read_text(), '1800000')
+        self.assertEqual((policies / 'policy1/scaling_max_freq').read_text(), '900000')
+        self.guard.start()
+        self.guard.check()
+        (policies / 'policy0/scaling_max_freq').write_text('4000000')
+        with self.assertRaisesRegex(RuntimeError, 'cap was removed'):
+            self.guard.check()
+        self.assertEqual(self.stops, [True])
+
 
 if __name__ == '__main__':
     unittest.main()
