@@ -24,9 +24,13 @@ p.add_argument('--expect-hex')
 p.add_argument('--startup-callbacks', action='store_true')
 p.add_argument('--swap-completion', type=int)
 p.add_argument('--noop-swap', action='store_true')
+p.add_argument('--background-swap', type=lambda s: int(s, 0))
 a = p.parse_args()
 if not 1 <= a.repeat <= 100 or not 0 <= a.output_size <= 0x7000:
     p.error('invalid repeat count/output size')
+if a.background_swap is not None and not 0 <= a.background_swap <= 0xffffffff:
+    p.error('background color must fit u32')
+swapping = a.noop_swap or a.background_swap is not None
 if a.input_file and a.input_hex:
     p.error('choose input file or hex')
 payload = a.input_file.read_bytes() if a.input_file else bytes.fromhex(a.input_hex)
@@ -80,12 +84,12 @@ def startup_callback(dcp, tag, data, output_size):
     raise RuntimeError(f'unhandled startup callback {tag}, {len(data)}/{output_size} bytes')
 
 try:
-    dcp = DCP(log, t.check, startup_callback if a.startup_callbacks or a.noop_swap else None)
+    dcp = DCP(log, t.check, startup_callback if a.startup_callbacks or swapping else None)
     start = time.monotonic()
     for i in range(a.repeat):
         if time.monotonic() - start > 20:
             raise TimeoutError('RPC test exceeded 20 seconds')
-        if a.noop_swap:
+        if swapping:
             reply = dcp.call('A406', bytes(16), 8)
             swap_id, status = struct.unpack('<II', reply)
             if status:
@@ -94,6 +98,8 @@ try:
             # A407 wrapper qualification establishes the null-array positions.
             payload = bytearray(0x1bd8)
             struct.pack_into('<I', payload, 0x98, swap_id)
+            if a.background_swap is not None:
+                struct.pack_into('<III', payload, 0x14c, 1 << 31, 1 << 31, a.background_swap)
             payload[0x1bcb:0x1bd5] = bytes([1])*10
             payload[0x1bd6:0x1bd8] = b'\x01\x01'
             a.call, a.output_size, a.swap_completion = 'A407', 12, swap_id

@@ -194,3 +194,12 @@ with enabled/completed masks at +0x14c/+0x150. The guarded `--noop-swap` test no
 obtains a fresh ID from A406 and uses these M4 fields. It requires a zero A407
 status at response+5 and a matching D590 completion; an RPC reply alone is
 insufficient. M4 D590 is emitted at 0x1dced0 with 0x730 input bytes and no output.
+
+The corrected +0x98 no-op request on boot
+`c478036e-3718-4752-813b-a550f1cb7458` received a zero A407 status, with no
+lost-transaction log. No completion arrived within five seconds, so the test
+failed its completion requirement and left the watchdog armed. Evidence:
+`20260908-noop-fixed`, peak 53.75 C. An empty enabled/completed mask may not
+schedule a display update; the next bounded test can update only the background
+using bit 31 in both masks and the color at +0x154. This retains all surface
+slots and distinguishes accepted RPC submission from display completion.

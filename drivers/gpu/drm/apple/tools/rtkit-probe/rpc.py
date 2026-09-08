@@ -77,4 +77,4 @@ class DCP:
                 completed = True
             if reply is not None and completed:
                 return reply
-        raise TimeoutError(f'{tag}: DCP reply timed out')
+        raise TimeoutError(f'{tag}: DCP {"completion" if reply is not None else "reply"} timed out')
