@@ -88,3 +88,13 @@ and rebooted successfully: Linux boot ID `0cb07a76-0729-4850-a556-ab2ac806d9c0`,
 kernel `7.1.9-dirtyroom-gpu1+` build #9, graphical target active, no failed
 systemd units. The kernel and restored bundle hashes matched the pre-experiment
 versions. This confirms recovery, not the corrected native handoff or DCP flips.
+
+The corrected handoff bundle was subsequently installed with the 60-second
+watchdog armed and booted successfully as Linux boot ID
+`3c63cca0-5d61-429b-87f6-b389f168660f`. Its SHA-256 is
+`6a39858ca10c3c11b5773ef4f065fd82ac219929761db5e4f57b9d13be5dd07e`.
+The new stage2 log confirms publication of the firmware mappings. A fresh
+watchdog-guarded ADT/FDT capture verified the firmware UUID and all seven
+no-map regions with the expected DCP phandle, remap address and rounded size.
+Evidence is in `_provenance/omarchy-m4-display/20260908-handoff/` in the workspace.
+This qualifies the passive metadata handoff only; native nodes remain disabled.
