@@ -445,7 +445,8 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	struct g16_target_fence *fence;
 	struct g16_drm_job *job;
 	unsigned long dependency_deadline;
-	u32 sequence, i, count, delay;
+	u32 i, count, delay;
+	u64 sequence;
 	u64 prepare_start;
 	void *command;
 	int ret;
@@ -583,7 +584,7 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 		usleep_range(delay, delay + 50);
 	spin_lock(&g16_render_service_state_lock);
 	sequence = g16_render_service_completed + 1;
-	if (!g16_render_service_ready || g16_render_service_pending || sequence > render_frames) {
+	if (!g16_render_service_ready || g16_render_service_pending) {
 		ret = -ESHUTDOWN;
 		spin_unlock(&g16_render_service_state_lock);
 		goto service_unlock;

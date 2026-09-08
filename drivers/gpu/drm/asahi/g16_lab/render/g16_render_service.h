@@ -15,8 +15,8 @@ static DECLARE_WAIT_QUEUE_HEAD(g16_render_service_work);
 static bool g16_render_service_ready;
 static bool g16_render_service_stopped;
 static bool g16_render_service_stop_requested;
-static u32 g16_render_service_pending;
-static u32 g16_render_service_completed;
+static u64 g16_render_service_pending;
+static u64 g16_render_service_completed;
 static int g16_render_service_result = -EINPROGRESS;
 
 static ssize_t g16_render_service_read(struct file *file, char __user *buf,
@@ -25,7 +25,7 @@ static ssize_t g16_render_service_read(struct file *file, char __user *buf,
 	char status[128];
 	int size;
 
-	size = scnprintf(status, sizeof(status), "ready=%u pending=%u completed=%u result=%d stopped=%u\n",
+	size = scnprintf(status, sizeof(status), "ready=%u pending=%llu completed=%llu result=%d stopped=%u\n",
 		READ_ONCE(g16_render_service_ready), READ_ONCE(g16_render_service_pending),
 		smp_load_acquire(&g16_render_service_completed), READ_ONCE(g16_render_service_result),
 		smp_load_acquire(&g16_render_service_stopped));
@@ -111,20 +111,24 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 {
 	unsigned long deadline = jiffies + msecs_to_jiffies(render_service_seconds * 1000);
 	u64 message, timing_sum[5] = {};
-	u32 endpoint, sequence, timing_count = 0;
+	u32 endpoint, timing_count = 0;
+	u64 sequence;
 	int ret = 0;
 
 	smp_store_release(&g16_render_service_ready, true);
-	pr_info("g16_lab: render: userspace-paced service ready, maximum %u frames in %u seconds\n",
-		render_frames, render_service_seconds);
-	while (g16_render_service_completed < render_frames) {
+	if (render_drm_submit)
+		pr_info("g16_lab: render: userspace-paced service ready, lifetime controlled by client stop\n");
+	else
+		pr_info("g16_lab: render: fixture service ready, maximum %u frames in %u seconds\n",
+			render_frames, render_service_seconds);
+	while (render_drm_submit || g16_render_service_completed < render_frames) {
 		if (READ_ONCE(g16_render_service_stop_requested))
 			break;
 		if (kthread_should_stop()) {
 			ret = -ECANCELED;
 			break;
 		}
-		if (time_after_eq(jiffies, deadline)) {
+		if (!render_drm_submit && time_after_eq(jiffies, deadline)) {
 			ret = -ETIMEDOUT;
 			break;
 		}
@@ -211,7 +215,7 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 			break;
 		cond_resched();
 	}
-	pr_info("g16_lab: render service exit result=%d completed=%u budget=%u stop=%u\n",
+	pr_info("g16_lab: render service exit result=%d completed=%llu budget=%u stop=%u\n",
 		ret, g16_render_service_completed, render_frames,
 		READ_ONCE(g16_render_service_stop_requested));
 	g16_render_service_finish(ret);

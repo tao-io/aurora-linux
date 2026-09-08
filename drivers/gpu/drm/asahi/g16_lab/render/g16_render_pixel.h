@@ -104,7 +104,7 @@ static int g16_render_build_fragment(void)
 	job.sku.buffer_info_va = base + 0x9000;
 	job.sku.context_id = 6;
 	job.sku.stamp_va = base + 0xc908;
-	job.sku.stamp = (g16_render_frame + 1) << 8;
+	job.sku.stamp = g16_render_job_stamp(g16_render_frame);
 	job.sku.stamp_slot = 0x71;
 	job.sku.uuid = 0x16000002 + g16_render_frame * 2;
 	job.sku.fragment_increment = 1;
@@ -172,7 +172,7 @@ static int g16_render_verify_pixels(void)
 		if (memchr_inv(r->data, 0, g16_render_target_offset()) ||
 		    memchr_inv(r->data + g16_render_target_offset() + render_size * render_size * 4,
 			       0, r->size - g16_render_target_offset() - render_size * render_size * 4)) {
-			pr_err("g16_lab: render: frame=%u modified target padding\n", g16_render_frame);
+			pr_err("g16_lab: render: frame=%llu modified target padding\n", g16_render_frame);
 			return -EOVERFLOW;
 		}
 		for (pixel = 0; pixel < render_size * render_size; pixel++) {
@@ -229,8 +229,8 @@ static int g16_render_verify_pixels(void)
 		if (render_triangle)
 			memcpy(g16_render_frames[g16_render_frame].data,
 			       r->data + g16_render_target_offset(), 256 * 256 * 4);
-		pr_info("g16_lab: render: verified frame=%u pixels=%u stamp=%#x expanded=%u\n",
-			g16_render_frame, render_size * render_size, (g16_render_frame + 1) << 8,
+		pr_info("g16_lab: render: verified frame=%llu pixels=%u stamp=%#x expanded=%llu\n",
+			g16_render_frame, render_size * render_size, g16_render_job_stamp(g16_render_frame),
 			g16_render_frame & 1);
 		return 0;
 	}
@@ -244,7 +244,7 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 	u8 *queue = work + G16_RENDER_QUEUE(1);
 	u8 *state = work + G16_RENDER_QUEUE_STATE(1);
 	u8 *pipe = work + G16_RENDER_PIPE_RING(1) + ((g16_render_frame + 1) % J713_INITDATA_PIPE_ENTRY_COUNT) * J713_INITDATA_PIPE_ENTRY_SIZE;
-	u32 end = (g16_render_frame + 2) % J713_INITDATA_QUEUE_RING_COUNT, stamp = (g16_render_frame + 1) << 8;
+	u32 end = (g16_render_frame + 2) % J713_INITDATA_QUEUE_RING_COUNT, stamp = g16_render_job_stamp(g16_render_frame);
 	u8 *pipe_state = work + G16_RENDER_PIPE_STATE(1);
 	unsigned long deadline;
 	u64 timestamp, message;

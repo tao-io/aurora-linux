@@ -121,3 +121,14 @@ thermal guards. Small explicit fixture budgets are preserved. Service exit
 logs now record the completed count, budget, result and stop request so an
 intentional limit is distinguishable from a hardware fault. Validation must
 cross the old 65,535-job boundary before calling the lifetime fix tested.
+
+The user requested removing lifetime cutoffs entirely rather than raising them.
+DRM service now runs until an explicit client stop, thread shutdown, or actual
+hardware error. `render_frames` and `render_service_seconds` only bound fixture
+experiments; the userspace supervisor retains test duration, thermal checks and
+watchdog ownership. Client tests always send an explicit stop when finished.
+Host submission accounting is 64-bit. Hardware completion stamps cycle through
+all nonzero 24-bit indices with the low eight bits clear, so crossing either
+65,535 or the stamp rollover cannot accidentally match a cleared completion
+word. `test_sequence.c` checks both boundaries and a complete stamp cycle under
+UBSan. These are wire-format constraints, not a job-count service cutoff.

@@ -20,7 +20,7 @@ static int g16_render_check_uma(const char *where)
 		return -EINVAL;
 	g16_lab_dcache_invalidate(uma, sizeof(*uma));
 	if (get_unaligned_le32(&uma->hardware_buffer_id) != expected) {
-		pr_err("g16_lab: render UMA descriptor changed at %s frame=%u id=%u expected=%u\n",
+		pr_err("g16_lab: render UMA descriptor changed at %s frame=%llu id=%u expected=%u\n",
 			where, g16_render_frame, get_unaligned_le32(&uma->hardware_buffer_id), expected);
 		print_hex_dump(KERN_ERR, "g16_lab: UMA: ", DUMP_PREFIX_OFFSET,
 			       16, 1, uma, sizeof(*uma), false);
@@ -116,7 +116,7 @@ static int g16_render_build_ta(void)
 	job.sku.buffer_info_va = base + 0x9000;
 	job.sku.context_id = 6;
 	job.sku.stamp_va = base + 0xc900;
-	job.sku.stamp = (g16_render_frame + 1) << 8;
+	job.sku.stamp = g16_render_job_stamp(g16_render_frame);
 	job.sku.stamp_slot = 0x70;
 	job.sku.uuid = 0x16000001 + g16_render_frame * 2;
 	/* Reuse the live, resident shared USC pool after compute has retired. */
@@ -215,7 +215,7 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 	u8 *queue = work + G16_RENDER_QUEUE(0);
 	u8 *state = work + G16_RENDER_QUEUE_STATE(0);
 	u8 *pipe = work + G16_RENDER_PIPE_RING(0) + ((g16_render_frame + 1) % J713_INITDATA_PIPE_ENTRY_COUNT) * J713_INITDATA_PIPE_ENTRY_SIZE;
-	u32 end = (g16_render_frame + 3) % J713_INITDATA_QUEUE_RING_COUNT, stamp = (g16_render_frame + 1) << 8;
+	u32 end = (g16_render_frame + 3) % J713_INITDATA_QUEUE_RING_COUNT, stamp = g16_render_job_stamp(g16_render_frame);
 	u8 *pipe_state = work + G16_RENDER_PIPE_STATE(0);
 	unsigned long deadline;
 	u64 timestamp, message;

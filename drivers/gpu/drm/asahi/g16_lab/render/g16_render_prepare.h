@@ -212,7 +212,7 @@ static int g16_render_prepare(void)
 
 	if (PAGE_SIZE != 0x4000 || !of_machine_is_compatible("apple,j713"))
 		return -ENODEV;
-	if (!render_frames || render_frames > (render_drm_submit ? (render_service_seconds > 20 ? 0xffffff : 128) : ARRAY_SIZE(g16_render_frames)))
+	if (!render_drm_submit && (!render_frames || render_frames > ARRAY_SIZE(g16_render_frames)))
 		return -EINVAL;
 	ret = request_firmware_direct(&fw, G16_RENDER_RESOURCE_FILE, NULL);
 	if (ret)
