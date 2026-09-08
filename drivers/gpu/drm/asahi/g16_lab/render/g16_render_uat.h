@@ -46,6 +46,68 @@ static u64 *g16_render_uat_owned_table(struct g16_render_uat *u, u64 entry)
 	return NULL;
 }
 
+/* Clone a validated, unpublished VM tree. Intermediate pointers must point
+ * to the clone; leaf mappings retain their pinned GEM pages and permissions.
+ * The caller holds the VM lock and publishes only after adding private ranges.
+ */
+static int g16_render_uat_clone_links(struct g16_render_uat *dst,
+				    struct g16_render_uat *src,
+				    unsigned int table_index, unsigned int level)
+{
+	u64 *old = page_address(src->tables[table_index]);
+	u64 *next = page_address(dst->tables[table_index]);
+	unsigned int i, j, entries = level ? PAGE_SIZE / sizeof(u64) : 64;
+	int ret;
+
+	for (i = 0; i < entries; i++) {
+		if (!old[i])
+			continue;
+		if (!g16_render_uat_owned_table(src, old[i]))
+			return -EINVAL;
+		for (j = 0; j < src->count; j++)
+			if (page_to_phys(src->tables[j]) == (old[i] & J713_UAT_PHYS_MASK))
+				break;
+		if (j == src->count || j == table_index)
+			return -EINVAL;
+		next[i] = page_to_phys(dst->tables[j]) | J713_UAT_TABLE_DESC_FLAGS;
+		if (!level) {
+			ret = g16_render_uat_clone_links(dst, src, j, 1);
+			if (ret)
+				return ret;
+		}
+	}
+	return 0;
+}
+
+static int g16_render_uat_clone(struct g16_render_uat *dst,
+				struct g16_render_uat *src)
+{
+	unsigned int i;
+	int ret;
+
+	if (dst->count || src->count > G16_RENDER_UAT_TABLE_LIMIT)
+		return -EINVAL;
+	if (!src->count)
+		return 0;
+	for (i = 0; i < src->count; i++) {
+		u64 *table = g16_render_uat_new_table(dst);
+
+		if (!table) {
+			ret = -ENOMEM;
+			goto fail;
+		}
+		memcpy(table, page_address(src->tables[i]), PAGE_SIZE);
+	}
+	ret = g16_render_uat_clone_links(dst, src, 0, 0);
+	if (ret)
+		goto fail;
+	dst->leaves = src->leaves;
+	return 0;
+fail:
+	g16_render_uat_free(dst);
+	return ret;
+}
+
 static u64 *g16_render_uat_leaf(struct g16_render_uat *u, u64 va, bool create)
 {
 	const unsigned int shifts[] = {36, 25};

@@ -217,27 +217,23 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 		return -EFAULT;
 	if (job->vm->kernel_start > graph || job->vm->kernel_end < graph + G16_RENDER_GRAPH_BYTES)
 		return -EINVAL;
-	ret = g16_render_uat_map(&job->uat, graph, g16_render_graph,
-		G16_RENDER_GRAPH_BYTES, J713_UAT_USER_GPU_RW_NX_SHARED_FLAGS);
+	list_for_each_entry(m, &job->vm->mappings, link) {
+		/* Root 7 belongs to the driver's USC pool. */
+		if (m->va < BIT_ULL(39) && m->va + m->size > 7 * BIT_ULL(36))
+			return -EINVAL;
+	}
+	/* Bind already verified every client leaf and holds its GEM/vmap pin.
+	 * Snapshot those tables instead of walking all mapped data pages twice.
+	 */
+	ret = g16_render_uat_clone(&job->uat, &job->vm->uat);
+	if (!ret)
+		ret = g16_render_uat_map(&job->uat, graph, g16_render_graph,
+			G16_RENDER_GRAPH_BYTES, J713_UAT_USER_GPU_RW_NX_SHARED_FLAGS);
 	if (!ret)
 		ret = g16_render_uat_map(&job->uat, G16_RENDER_POOL_VA, g16_render_pool,
 			G16_RENDER_POOL_BYTES, J713_UAT_USER_GPU_RW_NX_SHARED_FLAGS);
 	if (ret)
 		return ret;
-	list_for_each_entry(m, &job->vm->mappings, link) {
-		void *cpu = (u8 *)m->map.vaddr + m->offset;
-
-		/* Root 7 is borrowed from the render pool owner. Neither its pages nor
-		 * the driver's pool/graph may be shadowed by a client mapping.
-		 */
-		if (m->va < BIT_ULL(39) && m->va + m->size > 7 * BIT_ULL(36))
-			return -EINVAL;
-		ret = g16_render_uat_map(&job->uat, m->va, cpu, m->size, m->pte_flags);
-		if (!ret)
-			ret = g16_render_uat_verify(&job->uat, m->va, cpu, m->size, m->pte_flags);
-		if (ret)
-			return ret;
-	}
 	return g16_drm_job_cache_ranges(job);
 }
 
