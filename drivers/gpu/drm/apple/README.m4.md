@@ -203,3 +203,9 @@ failed its completion requirement and left the watchdog armed. Evidence:
 schedule a display update; the next bounded test can update only the background
 using bit 31 in both masks and the color at +0x154. This retains all surface
 slots and distinguishes accepted RPC submission from display completion.
+
+The background-only request on boot `ce8c2358-e163-4221-bbcb-c75618ef4b5a`
+also returned A407 status 0 without a D590 completion within five seconds.
+Evidence: `20260908-background`, peak 54.25 C. Therefore accepted inherited-state
+swaps alone do not qualify the completion path. Display startup/client state
+must be investigated before assuming that native KMS can retire framebuffers.
