@@ -73,6 +73,8 @@ def main():
     raw = Path('/proc', compositor[0], 'environ').read_bytes().split(b'\0')
     env = {k.decode(): v.decode() for entry in raw if b'=' in entry
            for k, v in [entry.split(b'=', 1)] if k.decode() in keys}
+    if os.getenv('M4_STK_VULKAN_ICD'):
+        env['VK_DRIVER_FILES'] = str(Path(os.environ['M4_STK_VULKAN_ICD']).resolve(strict=True))
     env.update(XDG_RUNTIME_DIR=str(runtime), XDG_CONFIG_HOME=str(game_dir),
                WAYLAND_DISPLAY=next(p.name for p in runtime.glob('wayland-*') if p.is_socket()),
                IRR_DEVICE_TYPE='wayland', SDL_VIDEODRIVER='wayland',
@@ -90,7 +92,7 @@ def main():
                '--property=BindsTo=' + UNIT, '--property=After=' + UNIT]
     for key, value in env.items():
         command += ['-E', key + '=' + value]
-    command += ['/usr/bin/supertuxkart', '--render-driver=gl', '--windowed',
+    command += ['/usr/bin/supertuxkart', '--render-driver=opengl', '--windowed',
                 '--screensize=800x450', '--disable-dynamic-lights', '--shadows=0',
                 '--disable-texture-compression', '--disable-hd-textures',
                 '--disable-glow', '--disable-bloom', '--disable-ssao', '--disable-ibl',
