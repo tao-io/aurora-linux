@@ -25,13 +25,9 @@
 #define MAX_BUFFERS 64
 
 /* Diagnostic ABI: allocations are retained until reboot, including releases. */
-struct buffer_request {
-	__u64 size, physical, dva;
-	__u32 id, flags;
-};
-#define BRIDGE_ALLOC_BUFFER _IOWR('M', 0x40, struct buffer_request)
+#define BRIDGE_ALLOC_BUFFER _IOWR('M', 0x40, struct m4_dcp_buffer)
 #define BRIDGE_RETIRE_BUFFER _IOW('M', 0x41, __u32)
-#define BRIDGE_MAP_PIODMA _IOWR('M', 0x42, struct buffer_request)
+#define BRIDGE_MAP_PIODMA _IOWR('M', 0x42, struct m4_dcp_buffer)
 
 struct scanout_request {
 	__u32 width, height, stride, format;
@@ -67,6 +63,7 @@ struct m4_dcp_bridge {
 	unsigned int event_count, callback_count;
 	bool failed;
 	bool enabled;
+	bool kernel_client;
 	u32 buffer_count;
 	u64 buffer_bytes;
 	struct platform_device *piodma;
@@ -76,7 +73,7 @@ struct m4_dcp_bridge {
 	struct scanout_request scanout_info;
 	struct {
 		void *cpu;
-		struct buffer_request info;
+		struct m4_dcp_buffer info;
 		bool retired;
 		bool piodma_mapped;
 	} buffers[MAX_BUFFERS];
@@ -251,22 +248,15 @@ out:
 	return ret;
 }
 
-static ssize_t bridge_write(struct file *file, const char __user *user, size_t count, loff_t *pos)
+static ssize_t bridge_request(struct m4_dcp_bridge *b, struct record_header *record, size_t count)
 {
-	struct m4_dcp_bridge *b = container_of(file->private_data, struct m4_dcp_bridge, misc);
 	struct apple_dcp_link_stream_layout layout;
 	struct apple_dcp_link_rpc_header *rpc;
-	struct record_header *record;
 	u64 message, control;
 	u32 kind, size, total, offset = 0;
 	bool nested, remote = false;
 	int ret;
 
-	if (count < sizeof(*record) || count > sizeof(*record) + APPLE_DCP_LINK_STREAM_BUFFER_SIZE)
-		return -EMSGSIZE;
-	record = memdup_user(user, count);
-	if (IS_ERR(record))
-		return PTR_ERR(record);
 	kind = le32_to_cpu(record->kind);
 	size = le32_to_cpu(record->size);
 	control = le64_to_cpu(record->message);
@@ -356,6 +346,19 @@ free_record:
 	return ret ? ret : count;
 }
 
+static ssize_t bridge_write(struct file *file, const char __user *user, size_t count, loff_t *pos)
+{
+	struct m4_dcp_bridge *b = container_of(file->private_data, struct m4_dcp_bridge, misc);
+	struct record_header *record;
+
+	if (count < sizeof(*record) || count > sizeof(*record) + APPLE_DCP_LINK_STREAM_BUFFER_SIZE)
+		return -EMSGSIZE;
+	record = memdup_user(user, count);
+	if (IS_ERR(record))
+		return PTR_ERR(record);
+	return bridge_request(b, record, count);
+}
+
 static __poll_t bridge_poll(struct file *file, poll_table *wait)
 {
 	struct m4_dcp_bridge *b = container_of(file->private_data, struct m4_dcp_bridge, misc);
@@ -371,7 +374,7 @@ static __poll_t bridge_poll(struct file *file, poll_table *wait)
 
 static int map_piodma_buffer(struct m4_dcp_bridge *b, u32 id)
 {
-	struct buffer_request *info = &b->buffers[id - 1].info;
+	struct m4_dcp_buffer *info = &b->buffers[id - 1].info;
 	struct device_node *node;
 	u64 offset;
 	int ret;
@@ -417,21 +420,19 @@ static int map_piodma_buffer(struct m4_dcp_bridge *b, u32 id)
 	return 0;
 }
 
-static int allocate_scanout(struct m4_dcp_bridge *b, void __user *user)
+static int allocate_scanout(struct m4_dcp_bridge *b, struct scanout_request *request)
 {
 	static const u32 colors[] = {
 		0xffffffff, 0xffffff00, 0xff00ffff, 0xff00ff00,
 		0xffff00ff, 0xffff0000, 0xff0000ff, 0xff202020,
 	};
-	struct scanout_request info;
+	struct scanout_request info = *request;
 	struct device_node *node;
 	dma_addr_t dva;
 	u32 *pixels;
 	u32 x, y;
 	int ret;
 
-	if (copy_from_user(&info, user, sizeof(info)))
-		return -EFAULT;
 	/* One diagnostic allocation per boot; native J713 panel dimensions. */
 	if (b->scanout_cpu || b->calls[0].active || b->calls[1].active || b->callback_count ||
 	    info.width != 2560 || info.height != 1664 || info.stride || info.format || info.size || info.dva)
@@ -479,14 +480,14 @@ static int allocate_scanout(struct m4_dcp_bridge *b, void __user *user)
 	b->scanout_info = info;
 	dev_info(b->dev, "M4 native scanout allocated %ux%u stride=%u size=%llu dva=%#llx\n",
 		 info.width, info.height, info.stride, info.size, info.dva);
-	return copy_to_user(user, &info, sizeof(info)) ? -EFAULT : 0;
+	*request = info;
+	return 0;
 }
 
-static long bridge_ioctl(struct file *file, unsigned int command, unsigned long argument)
+static int bridge_buffer_request(struct m4_dcp_bridge *b, unsigned int command,
+				 struct m4_dcp_buffer *info)
 {
-	struct m4_dcp_bridge *b = container_of(file->private_data, struct m4_dcp_bridge, misc);
-	void __user *user = (void __user *)argument;
-	struct buffer_request request;
+	struct m4_dcp_buffer request = *info;
 	struct sg_table table;
 	dma_addr_t dva;
 	void *cpu;
@@ -503,13 +504,11 @@ static long bridge_ioctl(struct file *file, unsigned int command, unsigned long 
 		goto out;
 	}
 	if (command == BRIDGE_ALLOC_SCANOUT) {
-		ret = allocate_scanout(b, user);
+		ret = allocate_scanout(b, (struct scanout_request *)info);
 		goto out;
 	}
 	if (command == BRIDGE_RETIRE_BUFFER) {
-		ret = -EFAULT;
-		if (copy_from_user(&id, user, sizeof(id)))
-			goto out;
+		id = request.id;
 		ret = -EINVAL;
 		if (!id || id > b->buffer_count || b->buffers[id - 1].retired)
 			goto out;
@@ -518,9 +517,6 @@ static long bridge_ioctl(struct file *file, unsigned int command, unsigned long 
 		ret = 0;
 		goto out;
 	}
-	ret = -EFAULT;
-	if (copy_from_user(&request, user, sizeof(request)))
-		goto out;
 	ret = -EINVAL;
 	if (command == BRIDGE_MAP_PIODMA) {
 		id = request.id;
@@ -531,7 +527,7 @@ static long bridge_ioctl(struct file *file, unsigned int command, unsigned long 
 			goto out;
 		ret = map_piodma_buffer(b, id);
 		if (!ret)
-			ret = copy_to_user(user, &b->buffers[id - 1].info, sizeof(request)) ? -EFAULT : 0;
+			*info = b->buffers[id - 1].info;
 		goto out;
 	}
 	if (!b->callback_count || request.flags || request.id || request.dva || request.physical ||
@@ -572,12 +568,36 @@ static long bridge_ioctl(struct file *file, unsigned int command, unsigned long 
 	/* One allocation per callback. Retain even on copy_to_user failure. */
 	b->callbacks[b->callback_count - 1].allocation_size = 0;
 	dev_info(b->dev, "M4 DCP buffer id=%u size=%zu dma=%pad\n", request.id, size, &dva);
-	ret = copy_to_user(user, &request, sizeof(request)) ? -EFAULT : 0;
+	*info = request;
+	ret = 0;
 	goto out;
 free_dma:
 	dma_free_attrs(b->dev, size, cpu, dva, DMA_ATTR_FORCE_CONTIGUOUS);
 out:
 	mutex_unlock(&b->lock);
+	return ret;
+}
+
+static long bridge_ioctl(struct file *file, unsigned int command, unsigned long argument)
+{
+	struct m4_dcp_bridge *b = container_of(file->private_data, struct m4_dcp_bridge, misc);
+	void __user *user = (void __user *)argument;
+	struct m4_dcp_buffer request = {};
+	int ret;
+
+	if (command == BRIDGE_RETIRE_BUFFER) {
+		if (copy_from_user(&request.id, user, sizeof(request.id)))
+			return -EFAULT;
+	} else if (command == BRIDGE_ALLOC_BUFFER || command == BRIDGE_MAP_PIODMA ||
+		   command == BRIDGE_ALLOC_SCANOUT) {
+		if (copy_from_user(&request, user, sizeof(request)))
+			return -EFAULT;
+	} else {
+		return -ENOTTY;
+	}
+	ret = bridge_buffer_request(b, command, &request);
+	if (!ret && command != BRIDGE_RETIRE_BUFFER && copy_to_user(user, &request, sizeof(request)))
+		ret = -EFAULT;
 	return ret;
 }
 
@@ -590,7 +610,7 @@ static const struct file_operations bridge_fops = {
 };
 
 struct m4_dcp_bridge *m4_dcp_bridge_create(struct device *dev,
-					struct apple_rtkit *rtkit, void *rpc)
+					struct apple_rtkit *rtkit, void *rpc, bool kernel_client)
 {
 	struct m4_dcp_bridge *b = devm_kzalloc(dev, sizeof(*b), GFP_KERNEL);
 	int ret;
@@ -598,6 +618,7 @@ struct m4_dcp_bridge *m4_dcp_bridge_create(struct device *dev,
 	if (!b)
 		return ERR_PTR(-ENOMEM);
 	b->dev = dev;
+	b->kernel_client = kernel_client;
 	b->rtkit = rtkit;
 	b->rpc = rpc;
 	mutex_init(&b->lock);
@@ -607,7 +628,7 @@ struct m4_dcp_bridge *m4_dcp_bridge_create(struct device *dev,
 		.minor = MISC_DYNAMIC_MINOR, .name = "m4-dcp-rpc", .mode = 0600,
 		.fops = &bridge_fops, .parent = dev,
 	};
-	ret = misc_register(&b->misc);
+	ret = kernel_client ? 0 : misc_register(&b->misc);
 	if (ret)
 		return ERR_PTR(ret);
 	return b;
@@ -618,5 +639,167 @@ void m4_dcp_bridge_activate(struct m4_dcp_bridge *b)
 	mutex_lock(&b->lock);
 	b->enabled = true;
 	mutex_unlock(&b->lock);
-	dev_info(b->dev, "M4 DCP RPC bridge /dev/m4-dcp-rpc ready\n");
+	dev_info(b->dev, "M4 DCP %s ready\n", b->kernel_client ? "kernel RPC client" : "RPC bridge /dev/m4-dcp-rpc");
+}
+
+/* One kernel worker owns this client, including recursive callbacks. */
+static struct bridge_event *kernel_event(struct m4_dcp_bridge *b, unsigned long timeout)
+{
+	struct bridge_event *e;
+	long ret;
+
+	ret = wait_event_interruptible_timeout(b->wait,
+		READ_ONCE(b->event_count) || READ_ONCE(b->failed), timeout);
+	if (ret <= 0)
+		return ERR_PTR(ret ?: -ETIMEDOUT);
+	mutex_lock(&b->lock);
+	if (b->failed || list_empty(&b->events)) {
+		mutex_unlock(&b->lock);
+		return ERR_PTR(-EIO);
+	}
+	e = list_first_entry(&b->events, struct bridge_event, list);
+	list_del(&e->list);
+	b->event_count--;
+	mutex_unlock(&b->lock);
+	return e;
+}
+
+static int kernel_send(struct m4_dcp_bridge *b, u32 kind, u64 message,
+		       const void *data, u32 size)
+{
+	struct record_header *record;
+	ssize_t ret;
+
+	if (size > APPLE_DCP_LINK_STREAM_BUFFER_SIZE)
+		return -EMSGSIZE;
+	record = kmalloc(sizeof(*record) + size, GFP_KERNEL);
+	if (!record)
+		return -ENOMEM;
+	*record = (struct record_header) {
+		.kind = cpu_to_le32(kind), .size = cpu_to_le32(size),
+		.message = cpu_to_le64(message),
+	};
+	if (size)
+		memcpy(record + 1, data, size);
+	ret = bridge_request(b, record, sizeof(*record) + size);
+	return ret < 0 ? ret : 0;
+}
+
+static int kernel_callback(struct m4_dcp_bridge *b, struct bridge_event *e,
+			   m4_dcp_callback_fn callback, void *cookie, u32 *completed)
+{
+	struct apple_dcp_link_rpc_header *h = (void *)e->data;
+	u32 size = le32_to_cpu(e->header.size), in, out, tag;
+	int ret;
+
+	if (le32_to_cpu(e->header.kind) != 2 || size < sizeof(*h))
+		return -EPROTO;
+	in = le32_to_cpu(h->input_size);
+	out = le32_to_cpu(h->output_size);
+	tag = le32_to_cpu(h->call);
+	if (in > size - sizeof(*h) || out != size - sizeof(*h) - in || !callback)
+		return -EPROTO;
+	memset(e->data + sizeof(*h) + in, 0, out);
+	ret = callback(b, cookie, tag, h + 1, in, e->data + sizeof(*h) + in, out);
+	if (ret)
+		return ret;
+	if (tag == 0x44353930 && in == 0x730 && completed)
+		*completed = le32_to_cpup((__le32 *)(h + 1));
+	return kernel_send(b, 2, le64_to_cpu(e->header.message), e->data + sizeof(*h) + in, out);
+}
+
+int m4_dcp_bridge_pump(struct m4_dcp_bridge *b, unsigned long timeout,
+		      m4_dcp_callback_fn callback, void *cookie)
+{
+	struct bridge_event *e;
+	int ret;
+
+	if (!b->kernel_client)
+		return -EBUSY;
+	e = kernel_event(b, timeout);
+	if (IS_ERR(e))
+		return PTR_ERR(e);
+	ret = kernel_callback(b, e, callback, cookie, NULL);
+	kfree(e);
+	return ret;
+}
+
+int m4_dcp_bridge_call(struct m4_dcp_bridge *b, u32 tag,
+		      const void *input, u32 input_size, void *output, u32 output_size,
+		      u32 completion_id, m4_dcp_callback_fn callback, void *cookie)
+{
+	struct apple_dcp_link_rpc_header *packet;
+	unsigned long deadline = jiffies + 5 * HZ;
+	u32 size, completed = 0;
+	u64 expected = 0x42;
+	bool nested, replied = false;
+	int ret;
+
+	if (!b->kernel_client)
+		return -EBUSY;
+	ret = apple_dcp_link_rpc_payload_size(input_size, output_size, &size);
+	if (ret || size > APPLE_DCP_LINK_STREAM_BUFFER_SIZE)
+		return -EMSGSIZE;
+	packet = kzalloc(size, GFP_KERNEL);
+	if (!packet)
+		return -ENOMEM;
+	apple_dcp_link_rpc_header_encode(packet, tag, input_size, output_size);
+	if (input_size)
+		memcpy(packet + 1, input, input_size);
+	mutex_lock(&b->lock);
+	nested = b->callback_count != 0;
+	if (nested)
+		expected |= b->callbacks[b->callback_count - 1].message & BIT_ULL(8);
+	mutex_unlock(&b->lock);
+	ret = kernel_send(b, 1, nested, packet, size);
+	kfree(packet);
+	if (ret)
+		return ret;
+	while (time_before(jiffies, deadline)) {
+		struct bridge_event *e = kernel_event(b, deadline - jiffies);
+		struct apple_dcp_link_rpc_header *h;
+
+		if (IS_ERR(e))
+			return PTR_ERR(e);
+		h = (void *)e->data;
+		if (le32_to_cpu(e->header.kind) == 1) {
+			if (replied || le32_to_cpu(e->header.size) != size ||
+			    le64_to_cpu(e->header.message) != expected ||
+			    le32_to_cpu(h->call) != tag || le32_to_cpu(h->input_size) != input_size ||
+			    le32_to_cpu(h->output_size) != output_size) {
+				ret = -EPROTO;
+			} else {
+				if (output_size)
+					memcpy(output, e->data + sizeof(*h) + input_size, output_size);
+				replied = true;
+			}
+		} else {
+			ret = kernel_callback(b, e, callback, cookie, &completed);
+			if (completion_id && completed && completed != completion_id)
+				ret = -EPROTO;
+		}
+		kfree(e);
+		if (ret)
+			return ret;
+		if (replied && (!completion_id || completed == completion_id))
+			return 0;
+	}
+	return -ETIMEDOUT;
+}
+
+int m4_dcp_bridge_alloc(struct m4_dcp_bridge *b, struct m4_dcp_buffer *info)
+{
+	return bridge_buffer_request(b, BRIDGE_ALLOC_BUFFER, info);
+}
+
+int m4_dcp_bridge_map(struct m4_dcp_bridge *b, struct m4_dcp_buffer *info)
+{
+	return bridge_buffer_request(b, BRIDGE_MAP_PIODMA, info);
+}
+
+int m4_dcp_bridge_retire(struct m4_dcp_bridge *b, u32 id)
+{
+	struct m4_dcp_buffer info = { .id = id };
+
+	return bridge_buffer_request(b, BRIDGE_RETIRE_BUFFER, &info);
 }

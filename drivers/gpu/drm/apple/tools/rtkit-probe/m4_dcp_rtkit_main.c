@@ -246,7 +246,7 @@ static int probe(struct platform_device *pdev)
 		}
 	}
 	if (!ret && bridge) {
-		struct m4_dcp_bridge *rpc_bridge = m4_dcp_bridge_create(dev, dcp->rtkit, dcp->rpc);
+		struct m4_dcp_bridge *rpc_bridge = m4_dcp_bridge_create(dev, dcp->rtkit, dcp->rpc, false);
 
 		if (IS_ERR(rpc_bridge))
 			ret = PTR_ERR(rpc_bridge);
