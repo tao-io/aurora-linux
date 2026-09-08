@@ -158,6 +158,14 @@ def startup_callback(dcp, tag, data, output_size):
     if tag == 'D107' and len(data) == 64 and output_size == 0:
         properties.pop(property_key(data, False), None)
         return b''
+    # M4 callback sites 0x2511f4/0x251250, matching wrappers
+    # 0x2514e0/0x251394 return translated IOMFB status (zero succeeds).
+    if tag in ('D206', 'D207') and not data and output_size == 4:
+        method = 'A131' if tag == 'D206' else 'A132'
+        status = dcp.call(method, output_size=4, nested=True)
+        if status != bytes(4):
+            raise RuntimeError(f'{method}: service match failed: {status.hex()}')
+        return b'\x01\0\0\0'
     if tag == 'D100' and not data and output_size == 0:
         # 0x272d3c is a no-input, four-byte-output flag query on this firmware.
         dcp.call('A390', output_size=4, nested=True)

@@ -276,3 +276,10 @@ logs it. Offline inspection also qualifies the M4 chunked metadata sequence
 D127 (4/4), D128 (0x1008/4), D129 (64/4) at 0x257c78..0x257ddc. The receiver
 bounds total length to 1 MiB, requires contiguous chunks and saves completed
 serialized properties. Evidence: `20260908-hotplug-start`, peak 54.25 C.
+
+Startup reached the PMU service match D206 on boot
+`098348eb-842e-4c02-aefa-80c6dc623ff9`, after D100 successfully re-entered A390.
+The M4 D206/D207 callbacks at 0x2511f4/0x251250 use recursive A131/A132, whose
+wrappers at 0x2514e0/0x251394 return a translated status in four bytes. The host
+requires status zero before returning service-match success. Evidence:
+`20260908-metadata-start`, peak 53.75 C.
