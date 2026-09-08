@@ -291,3 +291,11 @@ at 0x2394f8 returns 48 MHz for index 0 and 24 MHz for index 1. The host handler
 uses exactly these two rates, rejects other services/indices, and does not
 program clock hardware. Neo's 0x154/0x194 clock IDs do not apply here.
 Evidence: `20260908-pmu-start`, peak 53.75 C.
+
+The reference clock reply passed on boot `cb6f72a7-4587-4aad-af75-1888f26828e2`.
+D125 then requested the optional `initial-vbi-advance-lines` EDT override. Its
+M4 wrapper (0x272a34..0x272abc, 100/36) sends a key, element count and up to eight
+u32 defaults, then unconditionally copies the returned values before reading
+the success flag. The host preserves only the declared defaults and returns
+false; zeroing the whole response would incorrectly erase them. Evidence:
+`20260908-clocks-start`, peak 61.25 C.

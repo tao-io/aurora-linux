@@ -131,6 +131,14 @@ def startup_callback(dcp, tag, data, output_size):
         rate = (48000000, 24000000)[index]
         log({'event': 'clock_rate', 'index': index, 'hz': rate})
         return struct.pack('<Q', rate)
+    # M4 0x272a34..0x272abc reads up to eight EDT u32 values, preserving
+    # caller defaults when the host has no override for the requested key.
+    if tag == 'D125' and len(data) == 100 and output_size == 36:
+        count = struct.unpack_from('<I', data, 64)[0]
+        if count > 8:
+            raise RuntimeError('invalid EDT element count')
+        log({'event': 'edt_default', 'key': property_key(data, False), 'count': count})
+        return data[68:68+count*4] + bytes(36-count*4)
     # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
     # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.
     if tag == 'D401' and len(data) == 80 and output_size == 12:
