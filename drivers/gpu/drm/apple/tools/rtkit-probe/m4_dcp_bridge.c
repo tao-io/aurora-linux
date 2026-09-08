@@ -123,6 +123,19 @@ void m4_dcp_bridge_receive(struct m4_dcp_bridge *b, u64 message)
 				      layout.capacity, &view);
 	if (ret)
 		goto error;
+	if ((view.call >> 24) != 'D') {
+		u32 off;
+
+		/* Preserve stream-placement evidence without acknowledging bad data. */
+		for (off = 0; off < APPLE_DCP_LINK_HEAP_OFFSET;
+		     off += APPLE_DCP_LINK_STREAM_BUFFER_SIZE) {
+			const __le32 *h = b->rpc + off;
+
+			dev_err(b->dev, "M4 RPC header offset=%#x words=%#x/%#x/%#x\n",
+				off, le32_to_cpu(h[0]), le32_to_cpu(h[1]), le32_to_cpu(h[2]));
+		}
+		goto error;
+	}
 	b->callbacks[b->callback_count].message = message;
 	b->callbacks[b->callback_count].output = view.output;
 	b->callbacks[b->callback_count].size = view.output_size;

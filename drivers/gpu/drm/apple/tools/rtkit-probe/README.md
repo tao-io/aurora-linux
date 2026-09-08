@@ -24,5 +24,5 @@ its original message and exact output size. Read kinds 1 and 2 contain complete
 command-reply and callback packets; kind 3 reports an unexpected message.
 
 Native RTKit, DCPLink READY (64-byte alignment), and A412 have hardware evidence.
-The newly added bridge still requires qualification. Native page flips and
+The bridge passed 100 sequential A412 queries; callback placement still requires qualification. Native page flips and
 removal of simpledrm framebuffer copies are not established by these tests.

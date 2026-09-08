@@ -101,7 +101,7 @@ This qualifies the passive metadata handoff only; native nodes remain disabled.
 
 ## Native RTKit and DCPLink startup
 
-The explicit-load `tools/rtkit-probe/m4_dcp_rtkit.c` client uses the normal
+The explicit-load `tools/rtkit-probe/m4_dcp_rtkit_main.c` client uses the normal
 Linux IOMMU, coherent DMA, mailbox and RTKit APIs. It does not issue H17P display
 commands. Its allocations remain pinned until reboot; hot teardown is not yet
 qualified. The raw polling diagnostic established protocol 12 and endpoint
@@ -133,3 +133,15 @@ acknowledged that query with message `0x42` and replaced the output sentinel
 with `is_main_display=1`. The guarded run passed with four thermal samples,
 peak 53.25 C. Evidence is in `20260908-native-query`. This establishes native
 RPC transport; it does not yet qualify display startup, buffer flips or KMS.
+
+On boot `3166b89d-721e-4088-964f-470011792c19`, the root-only diagnostic
+bridge completed 100 sequential A412 queries in 1.162 seconds, all returning
+01000000. The independent watchdog/thermal guard recorded a 53.75 C peak.
+Evidence: `20260908-native-bridge` and `20260908-bridge-query100`.
+
+The first A401 startup test received callback message `0xc00000002` (12 bytes)
+but the imported callback buffer selection at 0x40000 contained zeros. The
+client refused to acknowledge it and left the watchdog armed for recovery.
+Evidence: `20260908-bridge-start`. Callback placement must be qualified before
+using the imported callback handlers. The diagnostic now rejects non-D tags
+and records the stream headers on a placement mismatch.
