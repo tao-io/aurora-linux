@@ -119,7 +119,8 @@ static int g16_render_build_ta(void)
 		goto out;
 	g16_render_put(work + 0x760, base + g16_render_tpc_offset(), 8);
 	g16_render_put(work + 0x768, geometry.tpc_bytes, 8);
-	g16_render_put(work + 0x7a8, GPU(0x40000), 8);
+	/* Firmware reloads this mirror when resuming the preempted TA job. */
+	g16_render_put(work + 0x7a8, TILER(0x40000), 8);
 	g16_render_put(work + 0x8fe, g16_initdata_live_barrier_va + 0xe00, 8);
 	g16_render_put(work + 0x90f, base + 0x60000, 8);
 	g16_render_put(work + 0x830, mode, 8);
