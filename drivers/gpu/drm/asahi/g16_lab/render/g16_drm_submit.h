@@ -240,16 +240,24 @@ static int g16_drm_job_enter(struct g16_drm_job *job)
 {
 	struct g16_drm_mapping *m;
 	u64 *root = page_address(job->uat.tables[0]);
+	u64 cache_bytes = 0;
 
 	if (!g16_render_context_published || root[7])
 		return -EINVAL;
 	root[7] = g16_initdata_live_user_root[7];
-	list_for_each_entry(m, &job->vm->mappings, link)
-		g16_lab_dcache_clean((u8 *)m->map.vaddr + m->offset, m->size);
+	list_for_each_entry(m, &job->vm->mappings, link) {
+		/* Native WC objects have Normal-NC mappings in both the vmap and
+		 * userspace. There are no CPU cache lines to clean. Imported vmap
+		 * attributes belong to the exporter, so retain maintenance there. */
+		if (drm_gem_is_imported(m->obj) || !to_drm_gem_shmem_obj(m->obj)->map_wc) {
+			g16_lab_dcache_clean((u8 *)m->map.vaddr + m->offset, m->size);
+			cache_bytes += m->size;
+		}
+	}
 	g16_render_clean_tree(&job->uat);
 	dma_wmb();
-	pr_info("g16_lab: DRM submit: publishing %u client mappings, %llu bytes, %u UAT leaves\n",
-		job->vm->mapping_count, job->vm->mapping_bytes, job->uat.leaves);
+	pr_info("g16_lab: DRM submit: publishing %u client mappings, %llu bytes, %u UAT leaves; CPU cache maintenance %llu bytes\n",
+		job->vm->mapping_count, job->vm->mapping_bytes, job->uat.leaves, cache_bytes);
 	return g16_drm_job_switch_root(job, true);
 }
 
@@ -268,7 +276,9 @@ static void g16_drm_job_complete(int result)
 	if (!job)
 		return;
 	list_for_each_entry(m, &job->vm->mappings, link)
-		g16_lab_dcache_invalidate((u8 *)m->map.vaddr + m->offset, m->size);
+		if (drm_gem_is_imported(m->obj) || !to_drm_gem_shmem_obj(m->obj)->map_wc)
+			g16_lab_dcache_invalidate((u8 *)m->map.vaddr + m->offset, m->size);
+	dma_rmb();
 	if (result < 0)
 		dma_fence_set_error(job->fence, result);
 	dma_fence_signal(job->fence);
