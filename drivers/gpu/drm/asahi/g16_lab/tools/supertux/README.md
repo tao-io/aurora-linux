@@ -289,3 +289,33 @@ These are bounded gameplay measurements, not a sustained 60 FPS result. All
 four worker CPU counters advanced during parallel phases and stopped during
 serial phases. `scanout-four-worker-ab.json` records phase boundaries and worker
 CPU counters; the run also retains temperature telemetry and game screenshots.
+
+### Native KMS gameplay profile (2026-09-09)
+
+After the user confirmed the password-screen flicker fix, boot
+`89c52123-c6c2-489c-91a6-723edd752ae6` ran native DCP with GPU fix
+`d0aaedfbc6ad` and swap timing instrumentation `c79f85ff57e9`.
+`20260908T222849Z-render-ta/supertux-native-profile` records an actual
+Antarctica level, movement/jump input, and a correct gameplay screenshot.
+The 40.216-second sample completed 1,618 native flips (40.23 FPS), with
+9.039 ms mean DCP swap-call latency. SuperTux's wall-clock swap logs were
+roughly 40 FPS. GPU buffers were imported directly; the simpledrm copy path
+was absent. The guarded session's highest exposed temperature through the
+profile and following presentation check was 63.75 C; GPU clocks stayed at
+338 MHz. The desktop and game remained under the existing live supervisor,
+so this is a bounded observation, not a completed one-hour stability pass.
+
+Five-second software CPU-clock samples found about 1,225 samples in the game
+main thread, about 215 in the compositor main thread, and a few hundred in
+the GPU worker. This is not a full all-thread CPU profile. The submission
+ioctl still waits for each job's completion while holding the file and global
+submission locks. The retained VM mappings depend on that exclusion. Proper
+asynchronous submission therefore needs independent job/VM/mapping lifetime,
+fence dependencies, bounded queueing and cancellation/error handling; simply
+removing the wait would allow mappings to disappear under active hardware.
+These serialization and presentation waits are targets for further work,
+not evidence that M4 hardware is inherently limited to 40 FPS.
+
+A fullscreen/direct-scanout control did not engage: monitor snapshots continued
+to report WINDOWED/CANDIDATE and directScanoutTo=0. Its temporary configuration
+was restored. No fullscreen speedup or direct application scanout is claimed.
