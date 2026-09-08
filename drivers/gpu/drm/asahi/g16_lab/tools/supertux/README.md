@@ -103,3 +103,37 @@ The enclosing 300-second desktop run then passed in full: 5,098 client VM
 publications/completed jobs, 55 successful GPU health checks, clean module
 removal, watchdog disarm, and no new kernel fault. Its final manifest reports
 `hardware_regression_passed: true` and `passed: true`.
+
+
+## Performance and retirement checkpoint, 2026-09-08
+
+The M4 lab memory preference now places GPU-heavy allocations in WC memory,
+while retaining a separate CPU-cached memory type. The kernel maintains the
+union of cached CPU ranges, merging executable aliases without merging gaps.
+A five-second worker profile changed from about 67% CPU cache maintenance to
+less than 1%; remaining samples predominantly wait for GPU/firmware progress.
+This is real GPU shader execution with CPU driver overhead.
+
+Faster submissions exposed two command-lifetime bugs. Firmware ring retirement
+alone was insufficient: its deferred notifier still referenced command metadata.
+Both stages now wait for their separate firmware stamps as well as GPU stamps
+and queue retirement. Each stage publishes the cumulative host work count to
+the shared notifier target; without it, firmware could defer notification until
+later commands that a synchronous submitter cannot issue.
+
+Run `20260908T143717Z-render-ta`, boot
+`ae94dabb-aa14-429f-b76d-bfbf6dc47085`, passed with 29,758 completed jobs,
+a 240-second SuperTux session, independent Vulkan pixel checks, clean module
+removal and watchdog disarm. Module SHA-256:
+`5f3ca3884286afb9125cd1a197948986e05642daf1197bf82204b8659128ae42`.
+The first-level screenshots show correct rendering and movement. Warm gameplay
+swap cadence was roughly 24–37 FPS, including slower windows; this is not a
+60 FPS result or a measurement of physical display presentation.
+
+That run also enabled `--render-power-controller`, using the existing qualified
+J713/25G83 four-object power configuration. Its firmware telemetry remained at
+pstate 1 with performance limit 100. Clock scaling is still under investigation.
+The earlier optimized runs `20260908T141646Z` and `20260908T142246Z` failed at
+1,513 and 8,020 jobs respectively; they are diagnostic failures, not sustained
+passes. Complete artifacts are in the workspace under
+`_provenance/omarchy-m4-render/hardware/supertux-speed-20260908/`.
