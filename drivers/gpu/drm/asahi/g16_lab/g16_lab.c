@@ -2429,7 +2429,24 @@ MODULE_PARM_DESC(render_rebuild_job_tables,
 	"Render diagnostic: rebuild and verify each job's client mappings instead of cloning the VM cache");
 
 static unsigned int render_submit_delay_us;
-module_param(render_submit_delay_us, uint, 0444);
+static int g16_render_set_submit_delay(const char *value, const struct kernel_param *kp)
+{
+	unsigned int delay;
+	int ret = kstrtouint(value, 0, &delay);
+
+	if (ret)
+		return ret;
+	if (delay > 5000)
+		return -EINVAL;
+	WRITE_ONCE(*(unsigned int *)kp->arg, delay);
+	pr_info("g16_lab: render diagnostic pre-publication delay=%u us\n", delay);
+	return 0;
+}
+static const struct kernel_param_ops g16_render_submit_delay_ops = {
+	.set = g16_render_set_submit_delay,
+	.get = param_get_uint,
+};
+module_param_cb(render_submit_delay_us, &g16_render_submit_delay_ops, &render_submit_delay_us, 0644);
 MODULE_PARM_DESC(render_submit_delay_us,
 	"Render diagnostic: delay before publishing each prepared client job (0-5000 us)");
 
