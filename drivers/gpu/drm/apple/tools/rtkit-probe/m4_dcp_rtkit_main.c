@@ -11,6 +11,7 @@
 
 #include "../../dcp-link.h"
 #include "m4_dcp_bridge.h"
+#include "m4_dcp_native.h"
 
 struct m4_dcp_rtkit {
 	struct device *dev;
@@ -21,6 +22,7 @@ struct m4_dcp_rtkit {
 	int result;
 	bool awaiting_rpc;
 	struct m4_dcp_bridge *bridge;
+	struct m4_dcp_native *native;
 };
 
 static bool start_link;
@@ -32,6 +34,9 @@ MODULE_PARM_DESC(query_display, "Issue the M4 A412 read-only main-display query 
 static bool bridge;
 module_param(bridge, bool, 0400);
 MODULE_PARM_DESC(bridge, "Expose a root-only diagnostic RPC bridge after DCPLink READY");
+static bool kernel_client;
+module_param(kernel_client, bool, 0400);
+MODULE_PARM_DESC(kernel_client, "Run qualified startup and a background swap entirely in the kernel");
 
 static void crashed(void *cookie, const void *log, size_t size)
 {
@@ -168,6 +173,8 @@ static int probe(struct platform_device *pdev)
 	u64 message;
 	int ret;
 
+	if (kernel_client && (bridge || query_display))
+		return -EINVAL;
 	if (!of_machine_is_compatible("apple,j713") ||
 	    of_property_read_string(dev->of_node, "apple,firmware-uuid", &uuid) ||
 	    strcmp(uuid, "81BAF476-679D-3CC0-8C6A-E6B6FA659D5E"))
@@ -199,7 +206,7 @@ static int probe(struct platform_device *pdev)
 	if (ret)
 		goto retained;
 	dev_info(dev, "M4 native RTKit boot complete; running=%d\n", apple_rtkit_is_running(dcp->rtkit));
-	if (!start_link && !query_display && !bridge)
+	if (!start_link && !query_display && !bridge && !kernel_client)
 		goto retained;
 	dcp->rpc = dma_alloc_coherent(dev, APPLE_DCP_LINK_RPC_MEMORY_SIZE,
 				      &dcp->rpc_dva, GFP_KERNEL);
@@ -245,14 +252,21 @@ static int probe(struct platform_device *pdev)
 				ret = dcp->result;
 		}
 	}
-	if (!ret && bridge) {
-		struct m4_dcp_bridge *rpc_bridge = m4_dcp_bridge_create(dev, dcp->rtkit, dcp->rpc, false);
+	if (!ret && (bridge || kernel_client)) {
+		struct m4_dcp_bridge *rpc_bridge = m4_dcp_bridge_create(dev, dcp->rtkit, dcp->rpc, kernel_client);
 
 		if (IS_ERR(rpc_bridge))
 			ret = PTR_ERR(rpc_bridge);
 		else {
 			dcp->bridge = rpc_bridge;
 			m4_dcp_bridge_activate(rpc_bridge);
+			if (kernel_client) {
+				dcp->native = m4_dcp_native_start(dev, rpc_bridge);
+				if (IS_ERR(dcp->native))
+					ret = PTR_ERR(dcp->native);
+				else
+					ret = m4_dcp_native_swap(dcp->native, NULL, 0, 0, 0);
+			}
 		}
 	}
 retained:

@@ -16,7 +16,10 @@ p.add_argument("--output", type=Path, required=True)
 p.add_argument("--start-link", action="store_true")
 p.add_argument("--query-display", action="store_true")
 p.add_argument("--bridge", action="store_true")
+p.add_argument("--kernel-client", action="store_true")
 a = p.parse_args()
+if a.kernel_client and (a.bridge or a.query_display):
+    p.error('--kernel-client requires sole RPC ownership')
 sys.path.insert(0, str(a.guards))
 from experiment_watchdog import ExperimentWatchdog
 from experiment_thermals import ExperimentThermals
@@ -26,6 +29,7 @@ w = ExperimentWatchdog()
 r = {"watchdog": w.arm(), "start_link": a.start_link,
      "query_display": a.query_display,
      "bridge": a.bridge,
+     "kernel_client": a.kernel_client,
      "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip()}
 t = ExperimentThermals(a.output)
 try:
@@ -37,7 +41,8 @@ since = str(int(time.time()))
 try:
     t.check()
     proc = subprocess.run(["insmod", str(a.module), f"start_link={int(a.start_link)}",
-                           f"query_display={int(a.query_display)}", f"bridge={int(a.bridge)}"],
+                           f"query_display={int(a.query_display)}", f"bridge={int(a.bridge)}",
+                           f"kernel_client={int(a.kernel_client)}"],
                           capture_output=True, text=True, timeout=30)
     r.update(returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
     time.sleep(1)
@@ -54,6 +59,9 @@ try:
         raise RuntimeError("main-display RPC query did not return a valid reply")
     if a.bridge and "M4 DCP RPC bridge /dev/m4-dcp-rpc ready" not in log:
         raise RuntimeError("diagnostic RPC bridge did not start")
+    if a.kernel_client and ("M4 DCP kernel startup and first-client-open complete" not in log or
+                            "completed, surface=0" not in log):
+        raise RuntimeError("kernel-owned startup/swap did not complete")
     if "DCP firmware crashed" in log:
         raise RuntimeError("DCP firmware crash")
     t.check()

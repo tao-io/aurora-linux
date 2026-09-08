@@ -55,3 +55,14 @@ layer 0. It requires the separate m1n1-validated scanout device. Ioctl
 panel dimensions are supplied. One allocation is allowed per boot, outside
 active RPC/callbacks. Memory and device references stay pinned until reboot.
 This is a bring-up buffer, not a userspace framebuffer or DRM/KMS ABI.
+
+`run-native.py --kernel-client` selects an exclusive in-kernel RPC client and
+performs the qualified startup sequence, first-client-open, and background swap.
+It does not expose the userspace RPC device in this mode. The native callback
+handler preserves bounded numeric/raw properties, validates all known shapes,
+and uses the same DMA allocator and PIODMA mapper as the userspace diagnostic.
+The startup path still explicitly declines bandwidth/default-surface services
+and uses the previously qualified clock fallback. Unknown callbacks fail closed.
+`../m4_dcp_native_callbacks_test.py TRACE/rpc.jsonl` replays captured input
+packets through the production callback handler with stubbed RPC/DMA operations
+under ASan/UBSan; it is not a hardware execution test.
