@@ -30,6 +30,16 @@ class DCP:
                   'dva': hex(dva), 'id': ident})
         return struct.pack('<QQQI', physical, dva, size, ident)
 
+    def map_piodma(self, ident):
+        request = bytearray(struct.pack('=QQQII', 0, 0, 0, ident, 0))
+        self.check()
+        fcntl.ioctl(self.fd, 0xc0204d42, request, True)
+        size, physical, dva, mapped, flags = struct.unpack('=QQQII', request)
+        if mapped != ident or not dva or not size or flags:
+            raise RuntimeError('invalid native PIODMA mapping')
+        self.log({'event': 'piodma_mapping', 'id': ident, 'dva': hex(dva), 'size': size})
+        return struct.pack('<IQI', ident, dva, 0)
+
     def retire_buffer(self, ident):
         self.check()
         fcntl.ioctl(self.fd, 0x40044d41, struct.pack('=I', ident))

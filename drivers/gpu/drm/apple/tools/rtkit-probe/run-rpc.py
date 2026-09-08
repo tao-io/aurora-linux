@@ -198,6 +198,13 @@ def startup_callback(dcp, tag, data, output_size):
     if tag == 'D454' and len(data) == 4 and output_size == 4:
         dcp.retire_buffer(struct.unpack('<I', data)[0])
         return b'\x01\0\0\0'
+    # M4 0x251018 has a 32-bit mapping cookie, u64 DVA and u32 status.
+    # PIODMA uses DISP0 SID16, not the DCP coprocessor's SID23 mapping.
+    if tag == 'D201' and len(data) == 12 and output_size == 16:
+        ident = struct.unpack_from('<Q', data)[0]
+        if data[8:12] != b'\x01\0\0\0':
+            raise RuntimeError('unqualified PIODMA map flags')
+        return dcp.map_piodma(ident)
     # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
     # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.
     if tag == 'D401' and len(data) == 80 and output_size == 12:

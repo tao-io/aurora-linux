@@ -41,3 +41,8 @@ D451 callback, is limited to 16 MiB each/64 MiB total/64 handles, and uses the D
 API with contiguous physical backing verified through its scatterlist. Handles
 start at one. Ioctl 0x40044d41 retires a u32 handle; memory and mappings remain
 pinned until reboot. No arbitrary physical-memory mapping is exposed.
+
+Ioctl 0xc0204d42 maps an existing allocation for PIODMA, with only `id` supplied
+in the same 32-byte structure. It requires an active D201 callback and a
+bootloader-qualified SID16 device; every translated page is checked before the
+address is returned. All PIODMA mappings also remain pinned until reboot.

@@ -6,7 +6,11 @@
 #include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/iommu.h>
+#include <linux/of_platform.h>
+#include <linux/of_device.h>
 #include <linux/poll.h>
+#include <linux/platform_device.h>
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/sizes.h>
@@ -27,6 +31,7 @@ struct buffer_request {
 };
 #define BRIDGE_ALLOC_BUFFER _IOWR('M', 0x40, struct buffer_request)
 #define BRIDGE_RETIRE_BUFFER _IOW('M', 0x41, __u32)
+#define BRIDGE_MAP_PIODMA _IOWR('M', 0x42, struct buffer_request)
 
 /* Write op 1: submit, message=0 (normal) or 1 (nested), data=RPC packet.
  * Write op 2: callback reply, message=original message, data=output bytes.
@@ -58,10 +63,13 @@ struct m4_dcp_bridge {
 	bool enabled;
 	u32 buffer_count;
 	u64 buffer_bytes;
+	struct platform_device *piodma;
+	struct iommu_domain *piodma_domain;
 	struct {
 		void *cpu;
 		struct buffer_request info;
 		bool retired;
+		bool piodma_mapped;
 	} buffers[MAX_BUFFERS];
 	struct {
 		bool active;
@@ -76,6 +84,7 @@ struct m4_dcp_bridge {
 		u32 size;
 		u32 call;
 		u64 allocation_size;
+		u64 mapping_id;
 	} callbacks[MAX_CALLBACKS];
 };
 
@@ -173,11 +182,18 @@ void m4_dcp_bridge_receive(struct m4_dcp_bridge *b, u64 message)
 	b->callbacks[b->callback_count].size = view.output_size;
 	b->callbacks[b->callback_count].call = view.call;
 	b->callbacks[b->callback_count].allocation_size = 0;
+	b->callbacks[b->callback_count].mapping_id = 0;
 	if (view.call == 0x44343531 && view.input_size == 20 && view.output_size == 28) {
 		__le64 allocation_size;
 
 		memcpy(&allocation_size, view.input + 4, sizeof(allocation_size));
 		b->callbacks[b->callback_count].allocation_size = le64_to_cpu(allocation_size);
+	}
+	if (view.call == 0x44323031 && view.input_size == 12 && view.output_size == 16) {
+		__le64 mapping_id;
+
+		memcpy(&mapping_id, view.input, sizeof(mapping_id));
+		b->callbacks[b->callback_count].mapping_id = le64_to_cpu(mapping_id);
 	}
 	b->callback_count++;
 	dev_info(b->dev, "M4 DCP callback tag=%#x input=%u output=%u\n",
@@ -344,6 +360,54 @@ static __poll_t bridge_poll(struct file *file, poll_table *wait)
 	return mask;
 }
 
+static int map_piodma_buffer(struct m4_dcp_bridge *b, u32 id)
+{
+	struct buffer_request *info = &b->buffers[id - 1].info;
+	struct device_node *node;
+	u64 offset;
+	int ret;
+
+	if (b->buffers[id - 1].piodma_mapped)
+		return 0;
+	if (!b->piodma) {
+		node = of_get_child_by_name(b->dev->of_node, "piodma");
+		if (!node || !of_device_is_available(node) ||
+		    !of_property_read_bool(node, "apple,j713-inherited-mappings")) {
+			of_node_put(node);
+			return -ENODEV;
+		}
+		b->piodma = of_platform_device_create(node, NULL, b->dev);
+		if (!b->piodma) {
+			of_node_put(node);
+			return -ENOMEM;
+		}
+		ret = dma_set_mask_and_coherent(&b->piodma->dev, DMA_BIT_MASK(42));
+		if (!ret)
+			ret = of_dma_configure(&b->piodma->dev, node, true);
+		of_node_put(node);
+		/* Never destroy an attached locked DART stream on an error path. */
+		if (ret)
+			return ret;
+		b->piodma_domain = iommu_get_domain_for_dev(&b->piodma->dev);
+	}
+	if (IS_ERR_OR_NULL(b->piodma_domain))
+		return -EIO;
+	ret = iommu_map(b->piodma_domain, info->dva, info->physical, info->size,
+			IOMMU_READ | IOMMU_WRITE, GFP_KERNEL);
+	if (ret)
+		return ret;
+	for (offset = 0; offset < info->size; offset += SZ_16K) {
+		if (iommu_iova_to_phys(b->piodma_domain, info->dva + offset) != info->physical + offset) {
+			fail(b);
+			return -EIO;
+		}
+	}
+	b->buffers[id - 1].piodma_mapped = true;
+	dev_info(b->dev, "M4 PIODMA mapped buffer %u size=%llu dva=%#llx\n",
+		 id, info->size, info->dva);
+	return 0;
+}
+
 static long bridge_ioctl(struct file *file, unsigned int command, unsigned long argument)
 {
 	struct m4_dcp_bridge *b = container_of(file->private_data, struct m4_dcp_bridge, misc);
@@ -356,7 +420,8 @@ static long bridge_ioctl(struct file *file, unsigned int command, unsigned long 
 	size_t size;
 	int ret = -EINVAL;
 
-	if (command != BRIDGE_ALLOC_BUFFER && command != BRIDGE_RETIRE_BUFFER)
+	if (command != BRIDGE_ALLOC_BUFFER && command != BRIDGE_RETIRE_BUFFER &&
+	    command != BRIDGE_MAP_PIODMA)
 		return -ENOTTY;
 	mutex_lock(&b->lock);
 	if (b->failed || !b->enabled) {
@@ -379,6 +444,18 @@ static long bridge_ioctl(struct file *file, unsigned int command, unsigned long 
 	if (copy_from_user(&request, user, sizeof(request)))
 		goto out;
 	ret = -EINVAL;
+	if (command == BRIDGE_MAP_PIODMA) {
+		id = request.id;
+		if (!b->callback_count || !id || id > b->buffer_count ||
+		    b->buffers[id - 1].retired || request.size || request.physical || request.dva || request.flags ||
+		    b->callbacks[b->callback_count - 1].call != 0x44323031 ||
+		    b->callbacks[b->callback_count - 1].mapping_id != id)
+			goto out;
+		ret = map_piodma_buffer(b, id);
+		if (!ret)
+			ret = copy_to_user(user, &b->buffers[id - 1].info, sizeof(request)) ? -EFAULT : 0;
+		goto out;
+	}
 	if (!b->callback_count || request.flags || request.id || request.dva || request.physical ||
 	    !request.size || request.size > SZ_16M ||
 	    b->callbacks[b->callback_count - 1].call != 0x44343531 ||

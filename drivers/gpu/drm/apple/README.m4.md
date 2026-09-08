@@ -347,3 +347,17 @@ panel video clock (138521008 Hz); it gives up frequency metadata and selects
 display performance state 1 with requested display clock 180077280 Hz. Thus
 48 MHz is a protocol fallback, not a qualified active display rate. Correct
 host clock metadata remains open; no GPU clock has been increased.
+
+On boot `bc01936b-3b17-40d4-8043-af1d67abae8e`, firmware accepted the native
+256 KiB allocation (DCP DVA 0x10fffec0000) and requested D201 (12/16). M4's
+0x251018 wrapper returns a u32 mapping cookie, u64 address at +4, and status at
++12; the older 20-byte response does not apply. The diagnostic maps the same
+buffer through the native DISP0 SID16 domain and verifies each translated page.
+It requires m1n1's explicit inherited-mapping qualification marker. Evidence:
+`20260908-dma-start`, peak 53.75 C.
+
+The DT opts into qualified PIODMA handoff while leaving scanout disabled. m1n1
+validates every inherited SID0/SID16 PTE against full firmware segments before
+publishing both devices' reserved IOMMU mappings and enabling SID16's device.
+Unknown or partial mappings retain the disabled path. The DART aperture uses
+the same 1 TiB alias as DCP, allowing shared command-buffer addresses.
