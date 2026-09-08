@@ -45,6 +45,17 @@ class DCP:
         fcntl.ioctl(self.fd, 0x40044d41, struct.pack('=I', ident))
         self.log({'event': 'dma_retired_until_reboot', 'id': ident})
 
+    def allocate_scanout(self):
+        request = bytearray(struct.pack('=IIIIQQ', 2560, 1664, 0, 0, 0, 0))
+        self.check()
+        fcntl.ioctl(self.fd, 0xc0204d43, request, True)
+        width, height, stride, fmt, size, dva = struct.unpack('=IIIIQQ', request)
+        if (width, height, stride, fmt) != (2560, 1664, 10240, 0x42475241) or size < stride*height or not dva:
+            raise RuntimeError('invalid native scanout allocation')
+        info = dict(width=width, height=height, stride=stride, format=fmt, size=size, dva=dva)
+        self.log({'event': 'scanout_allocation', **info})
+        return info
+
     def write(self, kind, message, data):
         record = struct.pack('<IIQ', kind, len(data), message) + data
         if os.write(self.fd, record) != len(record):

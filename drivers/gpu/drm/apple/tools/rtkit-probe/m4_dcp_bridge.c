@@ -33,6 +33,12 @@ struct buffer_request {
 #define BRIDGE_RETIRE_BUFFER _IOW('M', 0x41, __u32)
 #define BRIDGE_MAP_PIODMA _IOWR('M', 0x42, struct buffer_request)
 
+struct scanout_request {
+	__u32 width, height, stride, format;
+	__u64 size, dva;
+};
+#define BRIDGE_ALLOC_SCANOUT _IOWR('M', 0x43, struct scanout_request)
+
 /* Write op 1: submit, message=0 (normal) or 1 (nested), data=RPC packet.
  * Write op 2: callback reply, message=original message, data=output bytes.
  * Read kind 1: command reply, kind 2: callback, kind 3: unexpected message.
@@ -65,6 +71,9 @@ struct m4_dcp_bridge {
 	u64 buffer_bytes;
 	struct platform_device *piodma;
 	struct iommu_domain *piodma_domain;
+	struct platform_device *scanout;
+	void *scanout_cpu;
+	struct scanout_request scanout_info;
 	struct {
 		void *cpu;
 		struct buffer_request info;
@@ -408,6 +417,71 @@ static int map_piodma_buffer(struct m4_dcp_bridge *b, u32 id)
 	return 0;
 }
 
+static int allocate_scanout(struct m4_dcp_bridge *b, void __user *user)
+{
+	static const u32 colors[] = {
+		0xffffffff, 0xffffff00, 0xff00ffff, 0xff00ff00,
+		0xffff00ff, 0xffff0000, 0xff0000ff, 0xff202020,
+	};
+	struct scanout_request info;
+	struct device_node *node;
+	dma_addr_t dva;
+	u32 *pixels;
+	u32 x, y;
+	int ret;
+
+	if (copy_from_user(&info, user, sizeof(info)))
+		return -EFAULT;
+	/* One diagnostic allocation per boot; native J713 panel dimensions. */
+	if (b->scanout_cpu || b->calls[0].active || b->calls[1].active || b->callback_count ||
+	    info.width != 2560 || info.height != 1664 || info.stride || info.format || info.size || info.dva)
+		return -EINVAL;
+	if (!b->scanout) {
+		node = of_find_node_by_path("disp0");
+		if (!node || !of_device_is_available(node) ||
+		    !of_device_is_compatible(node, "apple,t8132-display-diagnostics") ||
+		    !of_property_read_bool(node, "apple,j713-inherited-mappings")) {
+			of_node_put(node);
+			return -ENODEV;
+		}
+		b->scanout = of_find_device_by_node(node);
+		if (!b->scanout) {
+			of_node_put(node);
+			return -ENODEV;
+		}
+		ret = dma_set_mask_and_coherent(&b->scanout->dev, DMA_BIT_MASK(42));
+		if (!ret)
+			ret = of_dma_configure(&b->scanout->dev, node, true);
+		of_node_put(node);
+		/* Retain the device reference and inherited mappings until reboot. */
+		if (ret)
+			return ret;
+	}
+	info.stride = info.width * 4;
+	info.size = ALIGN((u64)info.stride * info.height, SZ_16K);
+	info.format = 0x42475241; /* DCP BGRA8: wire FourCC ARGB */
+	pixels = dma_alloc_coherent(&b->scanout->dev, info.size, &dva, GFP_KERNEL);
+	if (!pixels)
+		return -ENOMEM;
+	info.dva = dva;
+	/* Fill once; there is no per-frame CPU framebuffer copy. */
+	for (y = 0; y < info.height; y++) {
+		for (x = 0; x < info.width; x++) {
+			u32 color = colors[x * ARRAY_SIZE(colors) / info.width];
+
+			if (x < 4 || y < 4 || x >= info.width - 4 || y >= info.height - 4)
+				color = 0xffffffff;
+			pixels[y * info.width + x] = cpu_to_le32(color);
+		}
+	}
+	dma_wmb();
+	b->scanout_cpu = pixels;
+	b->scanout_info = info;
+	dev_info(b->dev, "M4 native scanout allocated %ux%u stride=%u size=%llu dva=%#llx\n",
+		 info.width, info.height, info.stride, info.size, info.dva);
+	return copy_to_user(user, &info, sizeof(info)) ? -EFAULT : 0;
+}
+
 static long bridge_ioctl(struct file *file, unsigned int command, unsigned long argument)
 {
 	struct m4_dcp_bridge *b = container_of(file->private_data, struct m4_dcp_bridge, misc);
@@ -421,11 +495,15 @@ static long bridge_ioctl(struct file *file, unsigned int command, unsigned long 
 	int ret = -EINVAL;
 
 	if (command != BRIDGE_ALLOC_BUFFER && command != BRIDGE_RETIRE_BUFFER &&
-	    command != BRIDGE_MAP_PIODMA)
+	    command != BRIDGE_MAP_PIODMA && command != BRIDGE_ALLOC_SCANOUT)
 		return -ENOTTY;
 	mutex_lock(&b->lock);
 	if (b->failed || !b->enabled) {
 		ret = -EIO;
+		goto out;
+	}
+	if (command == BRIDGE_ALLOC_SCANOUT) {
+		ret = allocate_scanout(b, user);
 		goto out;
 	}
 	if (command == BRIDGE_RETIRE_BUFFER) {

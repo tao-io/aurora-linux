@@ -46,3 +46,12 @@ Ioctl 0xc0204d42 maps an existing allocation for PIODMA, with only `id` supplied
 in the same 32-byte structure. It requires an active D201 callback and a
 bootloader-qualified SID16 device; every translated page is checked before the
 address is returned. All PIODMA mappings also remain pinned until reboot.
+
+`--initialize` verifies A401's boolean success and opens the first client before
+running the requested diagnostic. `--scanout-pattern` allocates one 2560x1664
+BGRA8 buffer via native DISP0 SID0, fills color bars once, and submits it as
+layer 0. It requires the separate m1n1-validated scanout device. Ioctl
+0xc0204d43 uses `u32 width,height,stride,format; u64 size,dva`; only the exact
+panel dimensions are supplied. One allocation is allowed per boot, outside
+active RPC/callbacks. Memory and device references stay pinned until reboot.
+This is a bring-up buffer, not a userspace framebuffer or DRM/KMS ABI.

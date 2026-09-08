@@ -49,6 +49,7 @@
 		compatible = "apple,t8132-dcp";
 		/* m1n1 enables PIODMA only after validating every inherited mapping. */
 		apple,j713-native-piodma;
+		apple,j713-native-scanout;
 		mboxes = <&dcp_mbox>;
 		mbox-names = "mbox";
 		iommus = <&dcp_dart 23>;
@@ -75,7 +76,8 @@
 	};
 
 	display: display-subsystem {
-		compatible = "apple,display-subsystem";
+		/* Explicit diagnostic client; do not bind the imported DRM driver. */
+		compatible = "apple,t8132-display-diagnostics";
 		iommus = <&disp0_dart 0>;
 		status = "disabled";
 	};

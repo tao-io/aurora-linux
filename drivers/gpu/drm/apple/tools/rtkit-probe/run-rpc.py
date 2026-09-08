@@ -31,12 +31,13 @@ p.add_argument('--initialize', action='store_true',
 p.add_argument('--swap-completion', type=int)
 p.add_argument('--noop-swap', action='store_true')
 p.add_argument('--background-swap', type=lambda s: int(s, 0))
+p.add_argument('--scanout-pattern', action='store_true')
 a = p.parse_args()
 if not 1 <= a.repeat <= 100 or not 0 <= a.output_size <= 0x7000:
     p.error('invalid repeat count/output size')
 if a.background_swap is not None and not 0 <= a.background_swap <= 0xffffffff:
     p.error('background color must fit u32')
-swapping = a.noop_swap or a.background_swap is not None
+swapping = a.noop_swap or a.background_swap is not None or a.scanout_pattern
 if a.input_file and a.input_hex:
     p.error('choose input file or hex')
 if a.initialize and not (a.startup_callbacks and a.hardware_boot):
@@ -289,6 +290,7 @@ try:
             raise RuntimeError('A401 startup returned false')
         dcp.call('A457', output_size=0)
         log({'event': 'initialized', 'first_client_open': True})
+    scanout = dcp.allocate_scanout() if a.scanout_pattern else None
     for i in range(a.repeat):
         if time.monotonic() - start > 20:
             raise TimeoutError('RPC test exceeded 20 seconds')
@@ -305,6 +307,16 @@ try:
                 struct.pack_into('<III', payload, 0x14c, 1 << 31, 1 << 31, a.background_swap)
             payload[0x1bcb:0x1bd5] = bytes([1])*10
             payload[0x1bd6:0x1bd8] = b'\x01\x01'
+            if scanout:
+                from surface import scanout_surface
+                payload[0x588:0x7b4] = scanout_surface(scanout)
+                struct.pack_into('<Q', payload, 0xe38, scanout['dva'])
+                struct.pack_into('<I', payload, 0x9c, 1)
+                for offset in (0xac, 0x10c):
+                    struct.pack_into('<IIII', payload, offset, 0, 0, scanout['width'], scanout['height'])
+                # Clear inherited layers and set opaque black below layer 0.
+                struct.pack_into('<III', payload, 0x14c, 0x80000007, 0x80000007, 0xff000000)
+                payload[0x1bcb] = 0
             a.call, a.output_size, a.swap_completion = 'A407', 12, swap_id
         result = dcp.call(a.call, payload, a.output_size,
                           completion=('D590', a.swap_completion) if a.swap_completion is not None else None)
