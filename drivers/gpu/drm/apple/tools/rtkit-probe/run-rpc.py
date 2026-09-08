@@ -60,6 +60,7 @@ def log(event):
 
 dcp = None
 properties = {}
+dictionary_properties = {}
 def property_key(data, object_prefix=True):
     start = 4 if object_prefix else 0
     name = data[start:start+64].split(b'\0', 1)[0].decode('ascii')
@@ -85,6 +86,23 @@ def startup_callback(dcp, tag, data, output_size):
     if tag == 'D401' and len(data) == 80 and output_size == 12:
         key = property_key(data)
         return struct.pack('<QB3x', properties.get(key, 0), key in properties)
+    # M4 dictionary publishers 0x23a224, 0x1db450, 0x1dbed4.
+    if tag in ('D413', 'D552', 'D561') and len(data) == (0x1048 if tag == 'D413' else 0x1044) and output_size == 4:
+        prefix = 4 if tag == 'D413' else 0
+        if not data[prefix+0x1040] & 1:
+            key = property_key(data, bool(prefix))
+            dictionary_properties[key] = data[prefix+64:prefix+0x1040]
+            log({'event': 'dictionary_property', 'key': key, 'bytes': 4096})
+        return b'\x01\0\0\0'
+    if tag in ('D563', 'D565') and len(data) == (76 if tag == 'D563' else 72) and output_size == 4:
+        null_offset = 72 if tag == 'D563' else 68
+        if not data[null_offset] & 1:
+            properties[property_key(data, False)] = struct.unpack_from('<Q' if tag == 'D563' else '<I', data, 64)[0]
+        return b'\x01\0\0\0'
+    if tag == 'D567' and len(data) == 128 and output_size == 4:
+        log({'event': 'string_property', 'key': property_key(data, False),
+             'value': data[64:].split(b'\0', 1)[0].decode('ascii')})
+        return b'\x01\0\0\0'
     if tag in ('D414', 'D415') and len(data) == (80 if tag == 'D414' else 76) and output_size == 4:
         null_offset = 76 if tag == 'D414' else 72
         if not data[null_offset] & 1:

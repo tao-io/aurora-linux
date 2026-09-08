@@ -235,7 +235,7 @@ message 0x1000400002 takes the normal handler. The callback wait loop at
 0x195f78 dispatches non-reply messages through 0x196444 before resuming its wait.
 The diagnostic therefore re-enters the callback's stream, preserves the parent
 packet at offset zero, uses offset 64 for the nested query, and keeps bit 9 clear.
-This route still requires hardware qualification. The bridge immediately wakes
+This route is qualified by the hardware test below. The bridge immediately wakes
 its reader on an RTKit crash. Arbitrary deeper command nesting is unsupported.
 
 The startup client also implements host property storage with exact M4 wrapper
@@ -244,3 +244,15 @@ and D415 (76/4). Call sites 0x2722e4, 0x272424, 0x27254c, 0x2397f0,
 0x23a004, 0x23a2e4 and 0x23a388 establish those packet shapes. Missing integer
 properties return false; publications are logged or stored, without clock or
 power changes.
+
+On boot `00dc3ee8-f430-4895-9d80-4c032f484167`, the D599 callback successfully
+re-entered A412 and received 01000000 with reply 0x42. A401 then continued through
+D108/D109/D110/D111, D406 and three D414 publications to D413 carrying
+`M3TimingParameters`. Evidence: `20260908-reentry-start`, peak 52.5 C. The test
+stopped at D413; this qualifies recursive transport, not completed startup.
+
+Dictionary publishers D413 (4168/4), D552/D561 (4164/4), and scalar/string
+properties D563 (76/4), D565 (72/4), D567 (128/4) now have exact-size host handlers.
+The M4 sites are 0x23a224, 0x1db450, 0x1dbed4, 0x1dc180, 0x1dc394, 0x1dc5a8.
+Dictionary bytes are retained as host metadata, without interpreting padding as
+part of the serialized object or changing display hardware state.
