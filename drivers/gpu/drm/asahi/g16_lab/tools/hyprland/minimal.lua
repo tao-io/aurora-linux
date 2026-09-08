@@ -8,3 +8,5 @@ hl.config({
   animations = { enabled = false },
   debug = { disable_logs = false, enable_stdout_logs = true },
 })
+hl.bind("SUPER + Return", hl.dsp.exec_cmd("foot"))
+hl.bind("SUPER + SHIFT + Escape", hl.dsp.exec_cmd("/usr/local/bin/m4-accelerated-hyprland stop"))
