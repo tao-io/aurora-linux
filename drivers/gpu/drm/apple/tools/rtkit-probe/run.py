@@ -14,6 +14,7 @@ parser.add_argument("--guards", required=True, type=Path)
 parser.add_argument("--module", required=True, type=Path)
 parser.add_argument("--output", required=True, type=Path)
 parser.add_argument("--power-on", action="store_true")
+parser.add_argument("--negotiate", action="store_true")
 args = parser.parse_args()
 sys.path.insert(0, str(args.guards))
 from experiment_watchdog import ExperimentWatchdog
@@ -22,6 +23,7 @@ from experiment_thermals import ExperimentThermals
 args.output.mkdir(parents=True, exist_ok=False)
 watchdog = ExperimentWatchdog()
 record = {"watchdog": watchdog.arm(), "power_on": args.power_on,
+          "negotiate": args.negotiate,
           "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip()}
 thermal = ExperimentThermals(args.output)
 try:
@@ -33,7 +35,7 @@ started = str(int(time.time()))
 try:
     thermal.check()
     proc = subprocess.run(["insmod", str(args.module),
-                           f"power_on={int(args.power_on)}"],
+                           f"power_on={int(args.power_on)}", f"negotiate={int(args.negotiate)}"],
                           capture_output=True, text=True, timeout=10)
     record.update(returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
     log = subprocess.check_output(["journalctl", "-k", "-b", "--since", "@" + started,
@@ -43,6 +45,8 @@ try:
         raise RuntimeError(f"probe failed: {proc.stderr.strip()}; watchdog remains armed")
     if args.power_on and "inherited RTKit acknowledged IOP power ON" not in log:
         raise RuntimeError("probe did not record power acknowledgement")
+    if args.negotiate and "endpoint enumeration complete; IOP quiesced" not in log:
+        raise RuntimeError("probe did not complete protocol negotiation")
     subprocess.run(["rmmod", "m4_dcp_probe"], check=True, timeout=5)
     thermal.check()
     record["passed"] = True
