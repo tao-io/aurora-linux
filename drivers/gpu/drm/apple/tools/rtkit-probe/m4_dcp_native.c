@@ -7,6 +7,7 @@
 #include <linux/slab.h>
 #include <linux/unaligned.h>
 #include <linux/vmalloc.h>
+#include <linux/workqueue.h>
 #include "m4_dcp_bridge.h"
 #include "m4_dcp_native.h"
 
@@ -25,6 +26,7 @@ struct m4_dcp_native {
 	struct device *dev;
 	struct m4_dcp_bridge *bridge;
 	struct mutex lock;
+	struct work_struct idle_work;
 	bool failed;
 	u32 stride;
 	struct m4_dcp_property properties[MAX_PROPERTIES];
@@ -34,6 +36,8 @@ struct m4_dcp_native {
 	void *chunk;
 	u32 chunk_size, chunk_offset;
 };
+
+static void idle_callbacks(struct work_struct *work);
 
 static int callback(struct m4_dcp_bridge *b, void *cookie, u32 tag,
 		    const void *input, u32 in_size, void *output, u32 out_size);
@@ -362,6 +366,7 @@ struct m4_dcp_native *m4_dcp_native_start(struct device *dev, struct m4_dcp_brid
 	dcp->dev = dev;
 	dcp->bridge = bridge;
 	mutex_init(&dcp->lock);
+	INIT_WORK(&dcp->idle_work, idle_callbacks);
 	fb = of_find_compatible_node(NULL, NULL, "simple-framebuffer");
 	ret = fb ? of_property_read_u32(fb, "stride", &dcp->stride) : -ENODEV;
 	of_node_put(fb);
@@ -372,6 +377,7 @@ struct m4_dcp_native *m4_dcp_native_start(struct device *dev, struct m4_dcp_brid
 		ret = simple_call(dcp, A(457), false, false, false);
 	if (ret)
 		return ERR_PTR(ret);
+	m4_dcp_bridge_set_work(bridge, &dcp->idle_work);
 	dev_info(dev, "M4 DCP kernel startup and first-client-open complete\n");
 	return dcp;
 }
@@ -429,15 +435,37 @@ out:
 	return ret;
 }
 
-const void *m4_dcp_native_property(struct m4_dcp_native *dcp, const char *key, u32 *size)
+void *m4_dcp_native_property(struct m4_dcp_native *dcp, const char *key, u32 *size)
 {
+	void *copy = NULL;
 	u32 i;
 
+	mutex_lock(&dcp->lock);
 	for (i = 0; i < dcp->raw_count; i++) {
 		if (!dcp->raw[i].service && !strcmp(dcp->raw[i].key, key)) {
 			*size = dcp->raw[i].size;
-			return dcp->raw[i].data;
+			copy = kmemdup(dcp->raw[i].data, *size, GFP_KERNEL);
+			break;
 		}
 	}
-	return NULL;
+	mutex_unlock(&dcp->lock);
+	return copy;
+}
+
+static void idle_callbacks(struct work_struct *work)
+{
+	struct m4_dcp_native *dcp = container_of(work, struct m4_dcp_native, idle_work);
+	int ret = 0;
+
+	/* Share RPC ownership with atomic flips; this worker never steals an
+	 * in-flight request's reply. Firmware notifications also need service
+	 * when the desktop is static or the CRTC is disabled. */
+	mutex_lock(&dcp->lock);
+	while (!dcp->failed && !ret)
+		ret = m4_dcp_bridge_pump(dcp->bridge, 0, callback, dcp);
+	if (ret && ret != -ETIMEDOUT && ret != -EAGAIN) {
+		dcp->failed = true;
+		dev_err(dcp->dev, "M4 idle callback failed %d; recovery requires reboot\n", ret);
+	}
+	mutex_unlock(&dcp->lock);
 }

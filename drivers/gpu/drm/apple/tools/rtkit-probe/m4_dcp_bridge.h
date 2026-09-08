@@ -3,6 +3,7 @@
 #define M4_DCP_BRIDGE_H
 
 struct device;
+struct work_struct;
 struct apple_rtkit;
 struct m4_dcp_bridge;
 
@@ -29,4 +30,5 @@ int m4_dcp_bridge_alloc(struct m4_dcp_bridge *bridge, struct m4_dcp_buffer *info
 int m4_dcp_bridge_map(struct m4_dcp_bridge *bridge, struct m4_dcp_buffer *info);
 int m4_dcp_bridge_retire(struct m4_dcp_bridge *bridge, u32 id);
 
+void m4_dcp_bridge_set_work(struct m4_dcp_bridge *bridge, struct work_struct *work);
 #endif

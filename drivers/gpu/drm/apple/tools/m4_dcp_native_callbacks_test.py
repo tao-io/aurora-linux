@@ -26,6 +26,7 @@ typedef uint32_t u32, __le32;
 typedef uint64_t u64;
 struct device {};
 struct mutex {};
+struct work_struct {};
 struct m4_dcp_bridge {};
 struct m4_dcp_buffer { u64 size,physical,dva;u32 id,flags; } allocations[64];
 static u32 alloc_count;

@@ -16,6 +16,7 @@
 #include <linux/sizes.h>
 #include <linux/soc/apple/rtkit.h>
 #include <linux/uaccess.h>
+#include <linux/workqueue.h>
 
 #include "../../dcp-link.h"
 #include "m4_dcp_bridge.h"
@@ -65,6 +66,7 @@ struct m4_dcp_bridge {
 	bool enabled;
 	bool kernel_client;
 	u32 kernel_callback_depth;
+	struct work_struct *kernel_work;
 	u32 buffer_count;
 	u64 buffer_bytes;
 	struct platform_device *piodma;
@@ -125,6 +127,8 @@ static void event(struct m4_dcp_bridge *b, u32 kind, u64 message,
 	list_add_tail(&e->list, &b->events);
 	b->event_count++;
 	wake_up_interruptible(&b->wait);
+	if (b->kernel_work)
+		queue_work(system_unbound_wq, b->kernel_work);
 }
 
 void m4_dcp_bridge_crashed(struct m4_dcp_bridge *b)
@@ -779,7 +783,8 @@ retry:
 	if (ret)
 		return ret;
 	while (time_before(jiffies, deadline)) {
-		struct bridge_event *e = kernel_event(b, deadline - jiffies);
+		long remaining = deadline - jiffies;
+		struct bridge_event *e = kernel_event(b, max(remaining, 0L));
 		struct apple_dcp_link_rpc_header *h;
 
 		if (IS_ERR(e))
@@ -825,4 +830,13 @@ int m4_dcp_bridge_retire(struct m4_dcp_bridge *b, u32 id)
 	struct m4_dcp_buffer info = { .id = id };
 
 	return bridge_buffer_request(b, BRIDGE_RETIRE_BUFFER, &info);
+}
+
+void m4_dcp_bridge_set_work(struct m4_dcp_bridge *b, struct work_struct *work)
+{
+	mutex_lock(&b->lock);
+	b->kernel_work = work;
+	if (b->event_count)
+		queue_work(system_unbound_wq, work);
+	mutex_unlock(&b->lock);
 }

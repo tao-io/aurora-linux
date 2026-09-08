@@ -505,6 +505,7 @@ int m4_dcp_kms_register(struct m4_dcp_native *native, bool takeover)
 	if (!timing)
 		return -ENODATA;
 	ret = m4_dcp_preferred_mode(timing, size, &m4->mode);
+	kfree(timing);
 	if (ret)
 		return ret;
 	ret = drmm_mode_config_init(drm);
