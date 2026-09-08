@@ -309,3 +309,9 @@ supports-power flag at object+0x52ce; A465 (0x1de7b8) is identified by its
 validation. M4 D000/D001 notifications (0x2dfb24/0x2dfb3c), in/out D006 frame
 sync properties (0x2e4814), and ordinary cold-boot D122/D123 flags are handled.
 No host framebuffer is allocated or claimed by the DFB query.
+
+Startup next reached D101 on boot `adee933b-8da9-40f0-9faa-5529c6067157`,
+before D121. The caller at 0x2df504 publishes its u32 reply as `DefaultStride`
+in `DisplayPipePlaneBaseAlignment`. The host reads the unique inherited
+simple-framebuffer DT stride (10240 bytes on J713), instead of inventing a
+stride or publishing zero. Evidence: `20260908-hwboot-start`, peak 53.75 C.

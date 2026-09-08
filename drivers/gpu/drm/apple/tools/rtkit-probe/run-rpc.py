@@ -165,6 +165,18 @@ def startup_callback(dcp, tag, data, output_size):
             if output and not reply[0] & 1:
                 raise RuntimeError(f'{method}: hardware boot step returned false')
         return b'\x01\0\0\0'
+    # M4 0x2df504 publishes the reply as DisplayPipePlaneBaseAlignment's
+    # DefaultStride. Describe the inherited simple-framebuffer exactly.
+    if tag == 'D101' and not data and output_size == 4:
+        nodes = [n for n in Path('/sys/firmware/devicetree/base/chosen').glob('framebuffer*')
+                 if b'simple-framebuffer' in (n/'compatible').read_bytes().split(b'\0')]
+        if len(nodes) != 1:
+            raise RuntimeError('cannot identify inherited framebuffer stride')
+        stride = struct.unpack('>I', (nodes[0]/'stride').read_bytes())[0]
+        if not 0 < stride <= 0x100000:
+            raise RuntimeError('invalid inherited framebuffer stride')
+        log({'event': 'default_stride', 'bytes': stride})
+        return struct.pack('<I', stride)
     # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
     # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.
     if tag == 'D401' and len(data) == 80 and output_size == 12:
