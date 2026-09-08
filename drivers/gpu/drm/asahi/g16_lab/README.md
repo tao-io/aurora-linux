@@ -76,3 +76,28 @@ reference code and are not claimed validated on this alpha kernel.
 Alpha adaptations retain the donor compute path but explicitly disable its
 unused PMP tool-snapshot diagnostic. PMP power requests use the active kernel
 PMP driver through a bridge serialized against driver removal.
+
+### Native DCP coexistence: misplaced PMGR retention writes (2026-09-09)
+
+The early GFX lab incorrectly treated PMGR `pwrgate-regs[0]` as a GFX
+retention register. On the captured J713 ADT it is physical `0x38072504c`,
+mask `0x00402001`, transition value `0x80000000`. The power-domain table
+associates retention with DISP_CPU (domain 23, flags `0x201`); the GFX power
+domain (48) has flags zero and its physical device has `pd=0`. The following
+entries are the two external display CPU gates, not GPU islands.
+
+A guarded native-display/GPU test on boot
+`73305a5b-928c-4349-a174-984a38a52733` sampled DCP CPU control/status before
+and 100 ms after every host GPU power operation. DCP stayed at `0x10/0x6c`
+through TVM enable, the transition write, and GFX PS activation. Immediately
+after the retention write its status became `0x10006c`; after 100 ms its
+control/status were `0/0x1000e8`. This occurs before the AGX PMP request or
+GPU firmware start. A separate AGX-only PMP request preserved DCP and was
+followed by 180 verified native flips in 3.000 seconds.
+
+Remove all accesses mislabelled as GFX retention, including startup, restore,
+and reset paths. Retire the explicit retention probes with EOPNOTSUPP. Keep
+GFX TVM, its actual PS register `0x380700250`, and the identified PMP AGX
+request. Prior offscreen/simpledrm GPU successes did not validate coexistence
+with running display firmware. The display CPU must never be reset as part
+of GPU initialization. Combined rendering validation follows this correction.

@@ -65,11 +65,6 @@ static u64 g16_lab_pmptool_word(u32 index)
 #define J713_PMGR_GFX_STATE		0x250
 #define J713_PMGR_PMP_STATE		0x488
 #define J713_PMGR_PMS_SRAM_STATE	0x490
-#define J713_PMGR_PWRGATE_BASE		0x380725000ULL
-#define J713_PMGR_PWRGATE_SIZE		SZ_4K
-#define J713_PMGR_PWRGATE_GFX		0x4c
-#define J713_PMGR_PWRGATE_TRANSITION	BIT(31)
-#define J713_PMGR_PWRGATE_RETENTION	0x00402001
 #define J713_PMGR_SOC_TVM_BASE		0x380760000ULL
 #define J713_PMGR_SOC_TVM_SIZE		SZ_16K
 #define J713_PMGR_SOC_TVM_GFX		0x800
@@ -2193,7 +2188,6 @@ static u32 g16_ocean_requested_width;
 static u32 g16_ocean_requested_height;
 
 static void __iomem *g16_power_pmgr;
-static void __iomem *g16_power_pwrgate;
 static void __iomem *g16_live_sgx_secondary;
 static u32 g16_power_original_state;
 static bool g16_power_changed;
@@ -3650,26 +3644,9 @@ static int g16_lab_pmgr_chain_state(void)
 
 static int g16_lab_gfx_pwrgate_state(void)
 {
-	void __iomem *pwrgate;
-	u32 state;
-	int ret;
-
-	ret = g16_lab_identity();
-	if (ret)
-		return ret;
-
-	pwrgate = ioremap(J713_PMGR_PWRGATE_BASE,
-			   J713_PMGR_PWRGATE_SIZE);
-	if (!pwrgate)
-		return -ENOMEM;
-	state = readl_relaxed(pwrgate + J713_PMGR_PWRGATE_GFX);
-	pr_info("g16_lab: GFX power-gate phys=%#llx state=%#010x transition=%u retention-mask=%#010x\n",
-		J713_PMGR_PWRGATE_BASE + J713_PMGR_PWRGATE_GFX, state,
-		!!(state & J713_PMGR_PWRGATE_TRANSITION),
-		J713_PMGR_PWRGATE_RETENTION);
-	pr_info("g16_lab: stage=gfx-pwrgate-state complete; read-only\n");
-	iounmap(pwrgate);
-	return 0;
+	/* ADT pwrgate-regs[0] belongs to DISP_CPU, not GFX. */
+	pr_err("g16_lab: J713 GFX has no PMGR retention register; retired probe\n");
+	return -EOPNOTSUPP;
 }
 
 static int g16_lab_enable_gfx_tvm(void)
@@ -3762,15 +3739,9 @@ static void g16_lab_restore_power(void)
 	g16_lab_restore_pmp();
 
 	if (!g16_power_pmgr)
-		goto out_pwrgate;
+		return;
 
 	if (g16_power_changed) {
-		if (g16_power_pwrgate) {
-			writel(J713_PMGR_PWRGATE_TRANSITION,
-			       g16_power_pwrgate + J713_PMGR_PWRGATE_GFX);
-			wmb();
-			pr_info("g16_lab: armed Apple GFX power-gate transition before restore\n");
-		}
 		original_actual = FIELD_GET(APPLE_PMGR_PS_ACTUAL,
 					    g16_power_original_state);
 		state = readl_relaxed(g16_power_pmgr + J713_PMGR_GFX_STATE);
@@ -3794,11 +3765,6 @@ static void g16_lab_restore_power(void)
 	g16_power_pmgr = NULL;
 	g16_power_changed = false;
 
-out_pwrgate:
-	if (g16_power_pwrgate) {
-		iounmap(g16_power_pwrgate);
-		g16_power_pwrgate = NULL;
-	}
 }
 
 static int g16_lab_firmware_state(void)
@@ -3827,36 +3793,14 @@ static int g16_lab_firmware_state(void)
 
 static int g16_lab_apply_gfx_retention(void __iomem *pmgr)
 {
-	void __iomem *pwrgate;
-	u32 state;
-
-	state = readl_relaxed(pmgr + J713_PMGR_GFX_STATE);
-	if (FIELD_GET(APPLE_PMGR_PS_ACTUAL, state) != APPLE_PMGR_PS_ACTIVE ||
-	    state & APPLE_PMGR_PARENT_OFF) {
-		pr_err("g16_lab: refusing retention write unless GFX is active and idle; state=%#010x\n",
-		       state);
-		return -EIO;
-	}
-
-	pwrgate = ioremap(J713_PMGR_PWRGATE_BASE,
-			   J713_PMGR_PWRGATE_SIZE);
-	if (!pwrgate)
-		return -ENOMEM;
-	writel(J713_PMGR_PWRGATE_RETENTION,
-	       pwrgate + J713_PMGR_PWRGATE_GFX);
-	wmb();
-	pr_info("g16_lab: applied bounded active-state GFX retention repair phys=%#llx value=%#010x state=%#010x\n",
-		J713_PMGR_PWRGATE_BASE + J713_PMGR_PWRGATE_GFX,
-		J713_PMGR_PWRGATE_RETENTION, state);
-	iounmap(pwrgate);
-	return 0;
+	/* Keep the old explicit experiment from touching DISP_CPU again. */
+	return -EOPNOTSUPP;
 }
 
 static int g16_lab_reset_gfx_off(void)
 {
 	void __iomem *asc;
 	void __iomem *pmgr;
-	void __iomem *pwrgate;
 	u32 control;
 	u32 state;
 	u32 value;
@@ -3891,15 +3835,6 @@ static int g16_lab_reset_gfx_off(void)
 		goto out_pmgr;
 	}
 
-	pwrgate = ioremap(J713_PMGR_PWRGATE_BASE,
-			   J713_PMGR_PWRGATE_SIZE);
-	if (!pwrgate) {
-		ret = -ENOMEM;
-		goto out_pmgr;
-	}
-	writel(J713_PMGR_PWRGATE_TRANSITION,
-	       pwrgate + J713_PMGR_PWRGATE_GFX);
-	wmb();
 	value = state & ~APPLE_PMGR_CONTROL_MASK;
 	writel(value, pmgr + J713_PMGR_GFX_STATE);
 	ret = readl_poll_timeout_atomic(
@@ -3911,7 +3846,6 @@ static int g16_lab_reset_gfx_off(void)
 		       state);
 	else
 		pr_info("g16_lab: reset stopped GFX to off state=%#010x\n", state);
-	iounmap(pwrgate);
 out_pmgr:
 	iounmap(pmgr);
 	return ret;
@@ -19032,26 +18966,9 @@ static int g16_lab_registers(bool allow_power)
 		pr_info("g16_lab: GFX inactive (parent-off=%u); using guarded direct PMGR activation\n",
 			!!(state & APPLE_PMGR_PARENT_OFF));
 		g16_power_pmgr = pmgr;
-		g16_power_pwrgate = ioremap(J713_PMGR_PWRGATE_BASE,
-					       J713_PMGR_PWRGATE_SIZE);
-		if (!g16_power_pwrgate) {
-			g16_power_pmgr = NULL;
-			iounmap(pmgr);
-			g16_lab_restore_pmp();
-			g16_lab_restore_gfx_tvm();
-			return -ENOMEM;
-		}
 		g16_power_original_state = state;
 		g16_power_changed = true;
 		keep_power = true;
-		g16_lab_trace_dcp("before-gfx-powergate-transition");
-		writel(J713_PMGR_PWRGATE_TRANSITION,
-		       g16_power_pwrgate + J713_PMGR_PWRGATE_GFX);
-		wmb();
-		pr_info("g16_lab: armed Apple GFX power-gate transition phys=%#llx value=%#010x\n",
-			J713_PMGR_PWRGATE_BASE + J713_PMGR_PWRGATE_GFX,
-			(u32)J713_PMGR_PWRGATE_TRANSITION);
-		g16_lab_trace_dcp("after-gfx-powergate-transition");
 		value = state & ~APPLE_PMGR_CONTROL_MASK;
 		value |= FIELD_PREP(APPLE_PMGR_PS_TARGET,
 				    APPLE_PMGR_PS_ACTIVE);
@@ -19071,22 +18988,16 @@ static int g16_lab_registers(bool allow_power)
 		pr_info("g16_lab: GFX powered for guarded identity read; state=%#010x\n",
 			state);
 		g16_lab_trace_dcp("after-gfx-ps-active");
-		writel(J713_PMGR_PWRGATE_RETENTION,
-		       g16_power_pwrgate + J713_PMGR_PWRGATE_GFX);
-		wmb();
-		pr_info("g16_lab: applied Apple GFX retention mask phys=%#llx value=%#010x\n",
-			J713_PMGR_PWRGATE_BASE + J713_PMGR_PWRGATE_GFX,
-			J713_PMGR_PWRGATE_RETENTION);
+
 	}
-	g16_lab_trace_dcp("after-gfx-retention");
 	if (exact_pmgr_auto) {
 		state = readl_relaxed(pmgr + J713_PMGR_GFX_STATE);
 		if (!(state & APPLE_PMGR_AUTO_ENABLE)) {
 			/*
 			 * Exact ApplePMGR setPSLevel() postamble for GFX: the
 			 * DeviceData flags are 0x82, so bit 2 is clear and automatic
-			 * gating is enabled after the active-state transition and
-			 * retention programming.
+			 * gating is enabled after the active-state transition. GFX has no retention entry;
+			 * pwrgate-regs[0] controls the display CPU.
 			 */
 			value = (state & ~(APPLE_PMGR_WAS_CLKGATED |
 					   APPLE_PMGR_WAS_PWRGATED)) |
@@ -19210,9 +19121,7 @@ static int g16_lab_registers(bool allow_power)
 		 !strcmp(stage, "rtkit-initdata-exact-user-terminate") ||
 		 !strcmp(stage, "rtkit-initdata-exact-offscreen-store") ||
 		 !strcmp(stage, "rtkit-initdata-force-snapshot")) {
-		ret = g16_lab_apply_gfx_retention(pmgr);
-		if (!ret)
-			ret = g16_lab_rtkit_hello();
+		ret = g16_lab_rtkit_hello();
 	}
 	else
 		ret = 0;
