@@ -50,7 +50,10 @@ static ssize_t g16_render_service_write(struct file *file, const char __user *bu
 		if (memcmp(command, "stop\n", sizeof(command)))
 			return -EINVAL;
 		mutex_lock(&g16_render_service_mutex);
+		spin_lock(&g16_render_service_state_lock);
+		WRITE_ONCE(g16_render_service_ready, false);
 		WRITE_ONCE(g16_render_service_stop_requested, true);
+		spin_unlock(&g16_render_service_state_lock);
 		mutex_unlock(&g16_render_service_mutex);
 		return count;
 	}

@@ -215,6 +215,9 @@ def main():
         expected_resource = '43e630484f7b5de294911fb6e5f78dc38b833d3d7d409c03fa3cdc4da98b27bf'
         if not resource.exists() or hashlib.sha256(resource.read_bytes()).hexdigest() != expected_resource:
             parser.error('install the checksummed encoded M4 render-reference.bin first')
+    result = args.results / (datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + ('-render-ta' if args.render_ta else '-render-queues' if args.render_queues else '-mandelbrot'))
+    result.mkdir(parents=True, exist_ok=False)
+    ACTIVE_RESULT = result
     global DMESG_READER
     with (result / 'dmesg-live.log').open('w') as stream:
         DMESG_READER = subprocess.Popen(['stdbuf', '-oL', 'dmesg', '--follow'], stdout=stream)
@@ -226,9 +229,6 @@ def main():
     debug = Path('/sys/kernel/debug')
     if subprocess.run(['mountpoint', '-q', str(debug)]).returncode:
         subprocess.run(['mount', '-t', 'debugfs', 'debugfs', str(debug)], check=True)
-    result = args.results / (datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%dT%H%M%SZ') + ('-render-ta' if args.render_ta else '-render-queues' if args.render_queues else '-mandelbrot'))
-    result.mkdir(parents=True, exist_ok=False)
-    ACTIVE_RESULT = result
     metadata = {
         'kernel': release,
         'boot_id': Path('/proc/sys/kernel/random/boot_id').read_text().strip(),
