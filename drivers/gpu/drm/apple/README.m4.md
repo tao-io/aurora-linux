@@ -128,4 +128,8 @@ must be retained when adding nested RPC buffer allocation.
 A412 resolves to 0x1e2480 and requires four output bytes, with no input-size
 check. Its handler reads a one-byte display flag without a virtual call. The
 diagnostic's optional main-display query uses this entry, not H17P method-table
-assumptions. Hardware validation of that query follows the READY checkpoint.
+assumptions. On boot `6f5d606d-4adc-4983-b5ab-2ccb652b3175`, the firmware
+acknowledged that query with message `0x42` and replaced the output sentinel
+with `is_main_display=1`. The guarded run passed with four thermal samples,
+peak 53.25 C. Evidence is in `20260908-native-query`. This establishes native
+RPC transport; it does not yet qualify display startup, buffer flips or KMS.
