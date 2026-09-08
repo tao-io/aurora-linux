@@ -251,3 +251,15 @@ follows. Run the standalone test with:
 ```sh
 python3 drivers/gpu/drm/asahi/g16_lab/tools/hyprland/test_sysfb_neon.py
 ```
+
+
+The first SIMD scanout boot used Image SHA-256
+`a7ba977047fb1a1b10785af25a62e7d751374b55da50937bb70cec8337e02336`.
+Run `20260908T163717Z-render-ta` was stopped deliberately after the user's 1TR
+report, pending clarification of target identity. The SSH target remained on
+boot `e7788467-4ca4-45e3-94af-7175b2459fd6`, with the native SMC reboot driver
+bound. It completed 11,267 jobs and 24 independent pixel checks, removed the
+module cleanly, and disarmed its watchdog after evidence collection. The
+hottest recorded channel reached 70 C without a thermal cutoff. This was an
+abbreviated run, not the planned full gameplay comparison. FPS did not show
+a clear improvement; runtime A/B profiling of the SIMD path remains pending.
