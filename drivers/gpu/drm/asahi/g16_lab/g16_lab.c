@@ -2998,7 +2998,6 @@ static int g16_lab_export_adt(void)
 	unsigned int copies = 0;
 	int ret;
 
-	g16_lab_trace_dcp("before-gfx-power");
 	ret = g16_lab_identity();
 	if (ret)
 		return ret;
@@ -3624,7 +3623,6 @@ static int g16_lab_pmgr_chain_state(void)
 	if (ret)
 		return ret;
 
-	g16_lab_trace_dcp("after-gfx-tvm");
 	pmgr = ioremap(J713_PMGR_BASE, J713_PMGR_SIZE);
 	if (!pmgr)
 		return -ENOMEM;
@@ -4564,9 +4562,7 @@ static int g16_lab_pmp_rtkit_hello(bool retain_votes)
 	}
 
 	if (!(control & ASC_CPU_CONTROL_START))
-		g16_lab_trace_dcp("before-gfx-asc-start");
-	writel(control | ASC_CPU_CONTROL_START, asc + ASC_CPU_CONTROL);
-	g16_lab_trace_dcp("after-gfx-asc-start");
+		writel(control | ASC_CPU_CONTROL_START, asc + ASC_CPU_CONTROL);
 	message = FIELD_PREP(RTKIT_MGMT_TYPE, RTKIT_MGMT_IOP_PWR_STATE) |
 		  FIELD_PREP(RTKIT_MGMT_PWR_STATE, RTKIT_POWER_INIT);
 	ret = g16_asc_send(asc, message, 0);
@@ -18339,7 +18335,6 @@ static int g16_lab_rtkit_hello(void)
 		goto out_stop;
 	}
 	pr_info("g16_lab: GFX RTKit IOP reached POWER_ON\n");
-	g16_lab_trace_dcp("gfx-iop-on");
 
 	ret = g16_rtkit_power_transition(asc, RTKIT_MGMT_AP_PWR_STATE,
 					 RTKIT_MGMT_AP_PWR_STATE,
@@ -18347,7 +18342,7 @@ static int g16_lab_rtkit_hello(void)
 	if (ret)
 		goto out_stop;
 	pr_info("g16_lab: GFX RTKit AP reached POWER_ON\n");
-	g16_lab_trace_dcp("gfx-ap-on");
+
 	if (!strcmp(stage, "rtkit-app-start") ||
 	    !strcmp(stage, "rtkit-initdata-first-log") ||
 	    !strcmp(stage, "rtkit-initdata-boot-logs") ||
@@ -18966,6 +18961,7 @@ static int g16_lab_registers(bool allow_power)
 	unsigned int i;
 	int ret;
 
+	g16_lab_trace_dcp("before-gfx-power");
 	ret = g16_lab_identity();
 	if (ret)
 		return ret;
@@ -18987,6 +18983,7 @@ static int g16_lab_registers(bool allow_power)
 			return ret;
 	}
 
+	g16_lab_trace_dcp("after-gfx-tvm");
 	pmgr = ioremap(J713_PMGR_BASE, J713_PMGR_SIZE);
 	if (!pmgr) {
 		g16_lab_restore_gfx_tvm();
@@ -19044,12 +19041,14 @@ static int g16_lab_registers(bool allow_power)
 		g16_power_original_state = state;
 		g16_power_changed = true;
 		keep_power = true;
+		g16_lab_trace_dcp("before-gfx-powergate-transition");
 		writel(J713_PMGR_PWRGATE_TRANSITION,
 		       g16_power_pwrgate + J713_PMGR_PWRGATE_GFX);
 		wmb();
 		pr_info("g16_lab: armed Apple GFX power-gate transition phys=%#llx value=%#010x\n",
 			J713_PMGR_PWRGATE_BASE + J713_PMGR_PWRGATE_GFX,
 			(u32)J713_PMGR_PWRGATE_TRANSITION);
+		g16_lab_trace_dcp("after-gfx-powergate-transition");
 		value = state & ~APPLE_PMGR_CONTROL_MASK;
 		value |= FIELD_PREP(APPLE_PMGR_PS_TARGET,
 				    APPLE_PMGR_PS_ACTIVE);
@@ -19068,6 +19067,7 @@ static int g16_lab_registers(bool allow_power)
 		}
 		pr_info("g16_lab: GFX powered for guarded identity read; state=%#010x\n",
 			state);
+		g16_lab_trace_dcp("after-gfx-ps-active");
 		writel(J713_PMGR_PWRGATE_RETENTION,
 		       g16_power_pwrgate + J713_PMGR_PWRGATE_GFX);
 		wmb();
@@ -19075,6 +19075,7 @@ static int g16_lab_registers(bool allow_power)
 			J713_PMGR_PWRGATE_BASE + J713_PMGR_PWRGATE_GFX,
 			J713_PMGR_PWRGATE_RETENTION);
 	}
+	g16_lab_trace_dcp("after-gfx-retention");
 	if (exact_pmgr_auto) {
 		state = readl_relaxed(pmgr + J713_PMGR_GFX_STATE);
 		if (!(state & APPLE_PMGR_AUTO_ENABLE)) {
@@ -19102,6 +19103,7 @@ static int g16_lab_registers(bool allow_power)
 		pr_info("g16_lab: exact ApplePMGR GFX auto-enable active; state=%#010x\n",
 			state);
 	}
+	g16_lab_trace_dcp("after-gfx-auto-enable");
 	if (needs_pmp_gfx) {
 		if (rtkit_pmp_gfx || rtkit_core_power) {
 			ret = g16_lab_acquire_pmp_gfx_via_rtkit();
@@ -19116,7 +19118,6 @@ static int g16_lab_registers(bool allow_power)
 	}
 	if (!strcmp(stage, "gfx-retention-test")) {
 		ret = g16_lab_apply_gfx_retention(pmgr);
-		g16_lab_trace_dcp("after-gfx-retention");
 		if (ret) {
 			if (keep_power)
 				g16_lab_restore_power();
@@ -19136,6 +19137,7 @@ static int g16_lab_registers(bool allow_power)
 		g16_lab_restore_gfx_tvm();
 		return -ENOMEM;
 	}
+
 	g16_lab_trace_dcp("after-gfx-power-and-pmp");
 	WRITE_ONCE(g16_live_sgx_secondary, sgx);
 
