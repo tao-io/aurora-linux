@@ -123,8 +123,8 @@ static void g16_drm_gem_close(struct drm_gem_object *obj, struct drm_file *file)
 		if (--entry->handles)
 			break;
 		if (render_drm_submit && priv->vm) {
-			/* The per-VM root is only a CPU validation cache. Jobs own
-			 * separately built roots; discard stale PTEs before unpinning. */
+			/* Discard stale PTEs before unpinning. The next submit or bind
+			 * rebuilds this CPU cache before a job can clone its tables. */
 			g16_render_uat_free(&priv->vm->uat);
 			list_for_each_entry_safe(mapping, next, &priv->vm->mappings, link) {
 				if (mapping->obj != obj)

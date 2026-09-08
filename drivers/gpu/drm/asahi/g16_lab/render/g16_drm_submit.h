@@ -225,6 +225,14 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 	/* Bind already verified every client leaf and holds its GEM/vmap pin.
 	 * Snapshot those tables instead of walking all mapped data pages twice.
 	 */
+	/* GEM close discards this CPU cache before unpinning removed mappings.
+	 * Reconstruct surviving bindings lazily, before taking the snapshot.
+	 */
+	if (!job->vm->uat.count && job->vm->mapping_count) {
+		ret = g16_drm_vm_rebuild(job->vm);
+		if (ret)
+			return ret;
+	}
 	ret = g16_render_uat_clone(&job->uat, &job->vm->uat);
 	if (!ret)
 		ret = g16_render_uat_map(&job->uat, graph, g16_render_graph,
