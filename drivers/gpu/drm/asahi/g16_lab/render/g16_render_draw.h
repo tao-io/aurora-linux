@@ -232,6 +232,11 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 		g16_render_put(work + G16_RENDER_QUEUE_RING(0) + 8,
 			G16_RENDER_GRAPH_VA + G16_RENDER_INIT_PB, 8);
 	g16_render_put(work + G16_RENDER_QUEUE_RING(0) + ((end + J713_INITDATA_QUEUE_RING_COUNT - 1) % J713_INITDATA_QUEUE_RING_COUNT) * 8, G16_RENDER_GRAPH_VA, 8);
+	/* Host-published work count, as in the compute gate. Firmware compares
+	 * notifier.current_count against this target before flushing stamps.
+	 * Publish one stage at a time because the next stage waits for retirement.
+	 */
+	g16_render_put(work + 0xcb00, g16_render_frame * 2 + 1, 4);
 	g16_lab_dcache_clean(work, G16_RENDER_GRAPH_BYTES);
 	dma_wmb();
 	g16_render_put(state + J713_QUEUE_RING_CPU_WPTR_OFFSET, end, 4);
@@ -272,14 +277,16 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 			break;
 		}
 		g16_lab_dcache_invalidate(work + 0xc900, 8);
+		g16_lab_dcache_invalidate(work + 0xc800, 8);
 		g16_lab_dcache_invalidate(queue, J713_INITDATA_QUEUE_INFO_SIZE);
 		g16_lab_dcache_invalidate(state, J713_INITDATA_QUEUE_RING_STATE_SIZE);
-		/* The GPU stamp and fetch pointer can advance before firmware has
-		 * finished accessing this command. Reuse its storage and UAT only
-		 * after the firmware completion pointer retires the entire ring. */
+		/* Ring retirement precedes deferred notification processing. The
+		 * separate firmware stamp proves that processing has consumed this
+		 * command's metadata, which must survive until then. */
 		if (g16_render_get(work + 0xc900, 4) == stamp &&
 		    g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4) == end &&
 		    g16_render_get(state + J713_QUEUE_RING_GPU_DONEPTR_OFFSET, 4) == end &&
+		    g16_render_get(work + 0xc800, 4) == stamp &&
 		    !g16_render_get(queue + J713_QUEUE_BUSY_OFFSET, 4)) {
 			unsigned int i;
 
@@ -321,8 +328,11 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 	} while (time_before(jiffies, deadline));
 	g16_lab_log_fault_generation_state(6, "render-TA completion failure");
 	g16_lab_dcache_invalidate(work, G16_RENDER_GRAPH_BYTES);
-	pr_err("g16_lab: render: TA failed ret=%d stamp=%#llx pipe=%llu/%llu q=%llu/%llu/%llu ring=%llu busy=%llu\n",
-		ret, g16_render_get(work + 0xc900, 4), g16_render_get(pipe_state, 4),
+	pr_err("g16_lab: render: TA failed ret=%d gpu-stamp=%#llx fw-stamp=%#llx expected=%#x done=%llu pipe=%llu/%llu q=%llu/%llu/%llu ring=%llu busy=%llu\n",
+		ret, g16_render_get(work + 0xc900, 4),
+		g16_render_get(work + 0xc800, 4), stamp,
+		g16_render_get(state + J713_QUEUE_RING_GPU_DONEPTR_OFFSET, 4),
+		g16_render_get(pipe_state, 4),
 		g16_render_get(pipe_state + J713_PIPE_CFI_OFFSET, 4),
 		g16_render_get(queue + J713_QUEUE_READER_OFFSET, 4),
 		g16_render_get(queue + J713_QUEUE_CFI_OFFSET, 4),

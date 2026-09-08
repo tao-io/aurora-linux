@@ -258,6 +258,8 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 		return ret;
 	g16_render_put(work + G16_RENDER_QUEUE_RING(1) + ((end + J713_INITDATA_QUEUE_RING_COUNT - 1) % J713_INITDATA_QUEUE_RING_COUNT) * 8,
 		G16_RENDER_GRAPH_VA + 0x4000, 8);
+	/* Both stages share the notifier's cumulative host-published count. */
+	g16_render_put(work + 0xcb00, g16_render_frame * 2 + 2, 4);
 	g16_lab_dcache_clean(work, G16_RENDER_GRAPH_BYTES);
 	dma_wmb();
 	g16_render_put(state + J713_QUEUE_RING_CPU_WPTR_OFFSET, end, 4);
@@ -284,14 +286,16 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 		if (ret || g16_firmware_recovery_observed)
 			return ret ? ret : -EIO;
 		g16_lab_dcache_invalidate(work + 0xc908, 8);
+		g16_lab_dcache_invalidate(work + 0xc808, 8);
 		g16_lab_dcache_invalidate(queue, J713_INITDATA_QUEUE_INFO_SIZE);
 		g16_lab_dcache_invalidate(state, J713_INITDATA_QUEUE_RING_STATE_SIZE);
-		/* The GPU stamp and fetch pointer can advance before firmware has
-		 * finished accessing this command. Reuse its storage and UAT only
-		 * after the firmware completion pointer retires the entire ring. */
+		/* Ring retirement precedes deferred notification processing. The
+		 * separate firmware stamp proves that processing has consumed this
+		 * command's metadata, which must survive until then. */
 		if (g16_render_get(work + 0xc908, 4) == stamp &&
 		    g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4) == end &&
 		    g16_render_get(state + J713_QUEUE_RING_GPU_DONEPTR_OFFSET, 4) == end &&
+		    g16_render_get(work + 0xc808, 4) == stamp &&
 		    !g16_render_get(queue + J713_QUEUE_BUSY_OFFSET, 4)) {
 			pr_info("g16_lab: render: fragment diagnostic retired stamp=%#x ring=%u; pixel verification still required\n", stamp, end);
 			/* Client commands are checked by their application. Never compare
@@ -310,8 +314,10 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 	} while (time_before(jiffies, deadline));
 	g16_lab_log_fault_generation_state(6, "render-fragment completion failure");
 	g16_lab_log_gpu_dvfs_constraints("render-fragment completion failure");
-	pr_err("g16_lab: render: fragment timed out stamp=%#llx ring=%llu busy=%llu\n",
+	pr_err("g16_lab: render: fragment timed out gpu-stamp=%#llx fw-stamp=%#llx expected=%#x done=%llu ring=%llu busy=%llu\n",
 		g16_render_get(work + 0xc908, 4),
+		g16_render_get(work + 0xc808, 4), stamp,
+		g16_render_get(state + J713_QUEUE_RING_GPU_DONEPTR_OFFSET, 4),
 		g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4),
 		g16_render_get(queue + J713_QUEUE_BUSY_OFFSET, 4));
 	return -ETIMEDOUT;
