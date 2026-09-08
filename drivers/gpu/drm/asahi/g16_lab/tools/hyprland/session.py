@@ -45,12 +45,46 @@ def verify_scanout(result, width, height):
     return red
 
 
+
+def native_kms_status():
+    paths = {p.resolve() for p in Path('/sys/kernel/debug/dri').glob('*/m4_status')}
+    if len(paths) != 1:
+        raise RuntimeError('Expected one native M4 KMS status node')
+    path = paths.pop()
+    status = dict((k, int(v)) for k, v in (line.split() for line in path.read_text().splitlines()))
+    if status['failed'] or not status['active_fb'] or not status['imported'] or not status['completed']:
+        raise RuntimeError(f'Native KMS is not scanning out an imported GPU buffer: {status}')
+    return path, status
+
+
+def verify_native_scanout(result, width, height):
+    path, status = native_kms_status()
+    snapshot = path.with_name('m4_scanout').read_bytes()
+    magic, w, h, stride, fmt, fb, imported, size = struct.unpack_from('<8I', snapshot)
+    if (magic != 0x4246344d or (w, h) != (width, height) or stride < width * 4 or
+        fmt not in (int.from_bytes(b'XR24', 'little'), int.from_bytes(b'AR24', 'little')) or
+        imported != 1 or size != stride * height or len(snapshot) != 32 + size):
+        raise RuntimeError('Unexpected native scanout snapshot layout')
+    words = array.array('I', snapshot[32:])
+    red = sum((pixel & 0x00ff0000) > 0x00f00000 and (pixel & 0x0000ff00) < 0x1000 and
+              (pixel & 255) < 16 for pixel in words)
+    evidence = {**status, 'framebuffer': fb, 'width': w, 'height': h, 'stride': stride,
+                'format': fmt, 'imported': True, 'bytes': size, 'red_pixels': red,
+                'sha256': hashlib.sha256(snapshot).hexdigest(), 'native_kms': True}
+    (result / 'scanout.json').write_text(json.dumps(evidence, indent=2) + '\n')
+    (result / 'scanout.m4fb').write_bytes(snapshot)
+    if red < width * height // 2:
+        raise RuntimeError(f'Native DCP buffer did not contain the red terminal: {red} pixels')
+    return red
+
+
 def main():
     result = Path(os.environ['M4_RENDER_OUTPUT'])
     live_seconds = int(os.environ.get('M4_HYPR_INTERACTIVE_SECONDS', '0'))
     width = int(os.environ.get('M4_HYPR_WIDTH', '256'))
     height = int(os.environ.get('M4_HYPR_HEIGHT', '256'))
-    if not (1 <= width <= 2560 and 1 <= height <= 1600):
+    native = os.environ.get('M4_HYPR_NATIVE_KMS') == '1'
+    if not (1 <= width <= 2560 and 1 <= height <= (1664 if native else 1600)):
         raise ValueError('Probe size exceeds the J713 panel bounds')
     account = pwd.getpwnam(os.environ['M4_HYPR_USER']) if os.environ.get('M4_HYPR_USER') else None
     runtime = Path(f'/run/user/{account.pw_uid}') if account else Path('/run/m4h')
@@ -68,11 +102,19 @@ def main():
                     'LIBGL_ALWAYS_SOFTWARE': '0', 'QT_OPENGL': 'es2',
                     'QSG_RHI_BACKEND': 'opengl'})
     physical = os.environ.get('M4_HYPR_PHYSICAL') == '1'
-    output_name = 'Unknown-1' if physical else 'HEADLESS-1'
+    output_name = ('eDP-1' if native else 'Unknown-1') if physical else 'HEADLESS-1'
     env['M4_HYPR_OUTPUT'] = output_name
     if physical:
         env.pop('AQ_HEADLESS_RENDER_NODE', None)
-        env['AQ_DRM_DEVICES'] = '/dev/dri/card0'
+        if native:
+            cards = [p for p in Path('/sys/class/drm').glob('card*')
+                     if '-' not in p.name and (p / 'device/of_node/compatible').exists()
+                     and b'apple,t8132-display-diagnostics\0' in (p / 'device/of_node/compatible').read_bytes()]
+            if len(cards) != 1:
+                raise RuntimeError('Expected one native M4 KMS device')
+            env['AQ_DRM_DEVICES'] = '/dev/dri/' + cards[0].name
+        else:
+            env['AQ_DRM_DEVICES'] = '/dev/dri/card0'
         env['AQ_USE_RENDER_NODE'] = '1'
     env.pop('WAYLAND_DISPLAY', None)
     env.pop('DISPLAY', None)
@@ -154,10 +196,11 @@ def main():
             if not any('Renderer:' in line and 'zink' in line.lower() and 'M4' in line
                        for line in text.splitlines()):
                 raise RuntimeError('Hyprland did not identify the M4 Zink renderer')
-            scanout_red = verify_scanout(result, width, height) if physical else None
+            scanout_red = (verify_native_scanout(result, width, height) if native else
+                           verify_scanout(result, width, height)) if physical else None
             summary = {'passed': True, 'hyprland': True,
                        'scope': f'{width}x{height} {output_name} compositor',
-                       'physical_display': physical,
+                       'physical_display': physical, 'native_kms': native,
                        'scanout_red_pixels_verified': scanout_red,
                        'red_pixels_verified': red, 'screenshot': pixels.name}
             if live_seconds:
@@ -191,6 +234,8 @@ def main():
                                                                env=env, text=True, timeout=2))
                     evidence['compositor_responsive'] = any(m.get('name') == output_name and
                         not m.get('disabled', False) for m in reply)
+                    if native:
+                        _, evidence['native_kms_status'] = native_kms_status()
                     # Parent validates all fields before feeding the hardware watchdog.
                     print(json.dumps({'event': 'gpu-progress', 'check': evidence}), flush=True)
                     checks += 1
