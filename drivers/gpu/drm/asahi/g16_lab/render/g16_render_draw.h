@@ -329,6 +329,8 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 		if (ret && ret != -ETIMEDOUT)
 			break;
 	} while (time_before(jiffies, deadline));
+	if (g16_drm_active_job)
+		g16_drm_job_log_fault(g16_drm_active_job);
 	g16_lab_log_fault_generation_state(6, "render-TA completion failure");
 	g16_lab_dcache_invalidate(work, G16_RENDER_GRAPH_BYTES);
 	pr_err("g16_lab: render: TA failed ret=%d gpu-stamp=%#llx fw-stamp=%#llx expected=%#x done=%llu pipe=%llu/%llu q=%llu/%llu/%llu ring=%llu busy=%llu\n",

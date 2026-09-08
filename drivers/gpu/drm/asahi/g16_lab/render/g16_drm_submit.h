@@ -237,6 +237,29 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 	return g16_drm_job_cache_ranges(job);
 }
 
+/* Retain the CPU view before error cleanup frees the submitted tree. */
+static void g16_drm_job_log_fault(struct g16_drm_job *job)
+{
+	struct g16_uat_context_slot *slot = g16_initdata_live_uat_kernel_context + 6;
+	u64 va = job->render.vdm_ctrl_stream_base;
+	u64 *root = page_address(job->uat.tables[0]);
+	u64 l1 = root[(va >> 36) & 63], l2 = 0, pte = 0;
+	u64 *table = g16_render_uat_owned_table(&job->uat, l1);
+	u64 *source = g16_render_uat_leaf(&job->vm->uat, va, false);
+
+	if (table) {
+		l2 = table[(va >> 25) & 0x7ff];
+		table = g16_render_uat_owned_table(&job->uat, l2);
+		if (table)
+			pte = table[(va >> 14) & 0x7ff];
+	}
+	g16_lab_dcache_invalidate(slot, sizeof(*slot));
+	pr_err("g16_lab: DRM fault command-va=%#llx published=%u slot-ttbr0=%#llx job-root=%#llx l1=%#llx l2=%#llx pte=%#llx vm-pte=%#llx tables=%u leaves=%u\n",
+		va, job->published, READ_ONCE(slot->ttbr0),
+		(u64)page_to_phys(job->uat.tables[0]), l1, l2, pte,
+		source ? *source : 0, job->uat.count, job->uat.leaves);
+}
+
 static int g16_drm_job_switch_root(struct g16_drm_job *job, bool enter)
 {
 	struct g16_uat_context_slot *slot = g16_initdata_live_uat_kernel_context + 6;

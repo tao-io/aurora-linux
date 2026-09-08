@@ -29,6 +29,7 @@ struct g16_drm_job {
 
 static struct g16_drm_job *g16_drm_active_job;
 static int g16_drm_job_enter(struct g16_drm_job *job);
+static void g16_drm_job_log_fault(struct g16_drm_job *job);
 static int g16_drm_job_leave(struct g16_drm_job *job);
 static void g16_drm_job_complete(int result);
 
