@@ -274,5 +274,18 @@ The kernel parameter `drm_sysfb_helper.parallel_blit` defaults to true; change
 `/sys/module/drm_sysfb_helper/parameters/parallel_blit` between `Y` and `N` for
 same-boot comparisons. This uses the existing scalar conversion; it does not
 restore the SIMD path. CPU governors, thermal policy and GPU clocks are unchanged.
-Remove the workaround when native display presentation is available. Hardware
-qualification of the four-worker implementation is pending.
+Remove the workaround when native display presentation is available.
+
+`20260908T170633Z-render-ta` passed 40,551 GPU jobs and 63 independent pixel
+checks with 240 seconds of SuperTux. The highest of the six temperature channels
+was 67.75 C, with no thermal cutoff. The watchdog was disarmed after evidence
+collection and clean module removal. Image SHA-256 was
+`68fc15055feea60258ecd80d73ca55a79d38698818c2b95d5fb8f91205e66be5`.
+
+The same boot alternated parallel/serial/parallel/serial/parallel at 45-second
+intervals. Excluding the menu, switch transitions and five seconds after each
+switch, frame-count/time averages were 44.87, 34.97, 48.60, 32.63 and 45.49 FPS.
+These are bounded gameplay measurements, not a sustained 60 FPS result. All
+four worker CPU counters advanced during parallel phases and stopped during
+serial phases. `scanout-four-worker-ab.json` records phase boundaries and worker
+CPU counters; the run also retains temperature telemetry and game screenshots.
