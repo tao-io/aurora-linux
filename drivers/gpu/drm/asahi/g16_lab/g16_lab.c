@@ -14373,12 +14373,12 @@ static int g16_lab_uat_initdata_map_test(void)
 		     J713_INITDATA_PWRPERF_SIZE);
 	if (exact_power_sample_period) {
 		*(u32 *)((u8 *)pwrperf + J713_PWRPERF_SAMPLE_PERIOD_OFFSET) =
-			compute_macos_ocean ?
+			(compute_macos_ocean || render_power_controller) ?
 			J713_PWRPERF_MACOS_SAMPLE_PERIOD :
 			J713_GPU_PWR_SAMPLE_PERIOD_AIC_CLKS;
 		*(u32 *)((u8 *)pwrperf +
 			 J713_PWRPERF_SAMPLE_PERIOD_COPY_OFFSET) =
-			compute_macos_ocean ?
+			(compute_macos_ocean || render_power_controller) ?
 			J713_PWRPERF_MACOS_SAMPLE_PERIOD_COPY :
 			J713_GPU_PWR_SAMPLE_PERIOD_AIC_CLKS;
 	}
@@ -16335,12 +16335,13 @@ static int g16_lab_uat_initdata_map_test(void)
 		(exact_compute_wfi ? J713_GPU_DEFAULT_MCACHE_WRITES : 0) ||
 	    *(u32 *)((u8 *)pwrperf + J713_PWRPERF_SAMPLE_PERIOD_OFFSET) !=
 		(exact_power_sample_period ?
-		 (compute_macos_ocean ? J713_PWRPERF_MACOS_SAMPLE_PERIOD :
+		 ((compute_macos_ocean || render_power_controller) ?
+		  J713_PWRPERF_MACOS_SAMPLE_PERIOD :
 		  J713_GPU_PWR_SAMPLE_PERIOD_AIC_CLKS) : 0) ||
 	    *(u32 *)((u8 *)pwrperf +
 		      J713_PWRPERF_SAMPLE_PERIOD_COPY_OFFSET) !=
 		(exact_power_sample_period ?
-		 (compute_macos_ocean ?
+		 ((compute_macos_ocean || render_power_controller) ?
 		  J713_PWRPERF_MACOS_SAMPLE_PERIOD_COPY :
 		  J713_GPU_PWR_SAMPLE_PERIOD_AIC_CLKS) : 0) ||
 	    *(u32 *)((u8 *)fw_data +
