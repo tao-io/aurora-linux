@@ -13,6 +13,7 @@ static DEFINE_SPINLOCK(g16_render_service_state_lock);
 static DECLARE_COMPLETION(g16_render_service_done);
 static bool g16_render_service_ready;
 static bool g16_render_service_stopped;
+static bool g16_render_service_stop_requested;
 static u32 g16_render_service_pending;
 static u32 g16_render_service_completed;
 static int g16_render_service_result = -EINPROGRESS;
@@ -39,8 +40,20 @@ static ssize_t g16_render_service_write(struct file *file, const char __user *bu
 
 	if (!capable(CAP_SYS_ADMIN))
 		return -EPERM;
-	if (render_drm_submit)
-		return -EOPNOTSUPP;
+	if (render_drm_submit) {
+		char command[5];
+
+		if (count != sizeof(command))
+			return -EINVAL;
+		if (copy_from_user(command, buf, sizeof(command)))
+			return -EFAULT;
+		if (memcmp(command, "stop\n", sizeof(command)))
+			return -EINVAL;
+		mutex_lock(&g16_render_service_mutex);
+		WRITE_ONCE(g16_render_service_stop_requested, true);
+		mutex_unlock(&g16_render_service_mutex);
+		return count;
+	}
 	if (!count || count > 16)
 		return -EINVAL;
 	ret = kstrtou32_from_user(buf, count, 10, &sequence);
@@ -99,6 +112,8 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 	pr_info("g16_lab: render: userspace-paced service ready, maximum %u frames in 20 seconds\n",
 		render_frames);
 	while (g16_render_service_completed < render_frames) {
+		if (READ_ONCE(g16_render_service_stop_requested))
+			break;
 		if (kthread_should_stop()) {
 			ret = -ECANCELED;
 			break;

@@ -2662,7 +2662,7 @@ module_param(render_triangle, bool, 0444);
 MODULE_PARM_DESC(render_triangle, "RGB coordinate-colored triangle (requires render_xy)");
 static unsigned int render_frames = 1;
 module_param(render_frames, uint, 0444);
-MODULE_PARM_DESC(render_frames, "One to eight sequential triangle frames in one firmware boot");
+MODULE_PARM_DESC(render_frames, "Up to eight fixture frames or 128 client passes in one bounded firmware session");
 static unsigned int g16_render_frame;
 static bool render_bindings;
 module_param(render_bindings, bool, 0444);
@@ -19263,7 +19263,7 @@ static int __init g16_lab_init(void)
 		return -EINVAL;
 	if (render_drm_submit && (!render_service || render_drm_target))
 		return -EINVAL;
-	if (render_service && (!render_mesa_vertex || !render_mesa_fragment || render_frames != 8))
+	if (render_service && (!render_mesa_vertex || !render_mesa_fragment || (!render_drm_submit && render_frames != 8)))
 		return -EINVAL;
 	if (render_ta_probe && !render_queue_probe)
 		return -EINVAL;
@@ -19287,7 +19287,7 @@ static int __init g16_lab_init(void)
 		return -EINVAL;
 	if (render_varying_rhw && !render_varying)
 		return -EINVAL;
-	if (!render_frames || render_frames > 8 || (render_frames > 1 && !render_triangle))
+	if (!render_frames || render_frames > (render_drm_submit ? 128 : 8) || (render_frames > 1 && !render_triangle))
 		return -EINVAL;
 	if ((render_size != 4 && render_size != 32 && render_size != 256) ||
 	    (render_size != 4 && !render_generated_shaders))

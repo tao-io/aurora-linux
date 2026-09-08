@@ -90,3 +90,14 @@ idempotent. The older memory-only mode retains its explicit binding lifetime.
 `g16submittest.c` now retains its handles through submission and checks that
 closing them removes those mappings; its updated hardware regression remains
 to be run. Existing earlier validation records describe the old contract.
+
+Compile `upload.c` with `-DM4_UPLOAD_FRAMES=32` and run with
+`--drm-frame-budget 64` to exercise queue-ring wraparound. The runner sends an
+explicit stop after the client passes, while preserving the 20-second service
+limit and 60-second watchdog. J713 run `20260908T004234Z-render-ta` passed all
+32 submissions and clean teardown; both 16-entry command rings wrapped twice.
+
+The compositing test's optional `--local-textures` mode isolates rendering from
+PRIME import/export and explicitly reports `egl_dma_buf_roundtrip: false`.
+The default remains the complete shared-image gate. The render runner accepts
+`--drm-client-mode local-composite` or `composite` for their argument conventions.

@@ -67,6 +67,8 @@ def main():
                         help='fenced GEM target read by a separate unprivileged process')
     parser.add_argument('--render-drm-submit', action='store_true',
                         help='Asahi command submissions using client-created GEM resources')
+    parser.add_argument('--drm-frame-budget', type=int, choices=range(8, 129), default=8)
+    parser.add_argument('--drm-client-mode', choices=('legacy', 'composite', 'local-composite'), default='legacy')
     parser.add_argument('--drm-submit-test', type=Path, default=Path('/root/g16submittest'))
     parser.add_argument('--mesa-device-probe', type=Path,
                         help='optional Vulkan device/queue initialization probe before the client draws')
@@ -92,7 +94,7 @@ def main():
         args.render_service = True
     if args.render_service:
         args.render_mesa_fragment = args.render_mesa_vertex = True
-        args.render_frames = 8
+        args.render_frames = args.drm_frame_budget if args.render_drm_submit else 8
     if args.render_mesa_fragment or args.render_mesa_vertex:
         args.render_varying_rgb = True
     if args.render_varying_rgb and (args.render_varying_uniform or args.render_varying_rhw):
@@ -256,7 +258,7 @@ def main():
                 with service.open('wb', buffering=0) as control:
                     control.write(payload)
             except OSError as error:
-                if error.errno != (errno.EOPNOTSUPP if args.render_drm_submit else errno.EINVAL):
+                if error.errno != errno.EINVAL:
                     raise
             else:
                 raise RuntimeError('service accepted an invalid sequence')
@@ -273,8 +275,12 @@ def main():
             nodes = list(Path('/dev/dri').glob('renderD*'))
             if len(nodes) != 1:
                 raise RuntimeError('expected one lab render node')
-            target = subprocess.run([str(args.drm_submit_test), str(nodes[0]),
-                                     str(debug / 'g16_lab_render'), str(result)],
+            client = [str(args.drm_submit_test)]
+            if args.drm_client_mode == 'legacy':
+                client += [str(nodes[0]), str(debug / 'g16_lab_render'), str(result)]
+            elif args.drm_client_mode == 'local-composite':
+                client += ['--local-textures']
+            target = subprocess.run(client,
                                     capture_output=True, text=True, timeout=15,
                                     env={**os.environ, 'M4_RENDER_OUTPUT': str(result)})
             (result / 'drm-submit.stdout').write_text(target.stdout)
@@ -283,6 +289,9 @@ def main():
             metadata['drm_submit'] = json.loads(target.stdout)
             if not metadata['drm_submit'].get('passed'):
                 raise RuntimeError('DRM submit check failed')
+            if args.drm_frame_budget != 8:
+                with service.open('wb', buffering=0) as control:
+                    control.write(b'stop\n')
         elif args.render_drm_target:
             nodes = list(Path('/dev/dri').glob('renderD*'))
             if len(nodes) != 1:
@@ -528,7 +537,8 @@ def main():
             metadata['vertex_fragment_pixels_verified'] = metadata.get('drm_submit', {}).get('passed', False)
             metadata['client_vm_publications'] = current_log.count('DRM submit: publishing ')
             passed = (passed and metadata['vertex_fragment_pixels_verified']
-                      and metadata['client_vm_publications'] == 8
+                      and (metadata['client_vm_publications'] == 8 if args.drm_frame_budget == 8
+                           else 0 < metadata['client_vm_publications'] <= args.drm_frame_budget)
                       and metadata['fragment_job_retired'])
         passed = passed and metadata['render_queues_passed']
     if passed:

@@ -195,7 +195,7 @@ static int g16_render_prepare(void)
 
 	if (PAGE_SIZE != 0x4000 || !of_machine_is_compatible("apple,j713"))
 		return -ENODEV;
-	if (!render_frames || render_frames > ARRAY_SIZE(g16_render_frames))
+	if (!render_frames || render_frames > (render_drm_submit ? 128 : ARRAY_SIZE(g16_render_frames)))
 		return -EINVAL;
 	ret = request_firmware_direct(&fw, G16_RENDER_RESOURCE_FILE, NULL);
 	if (ret)
@@ -686,7 +686,7 @@ static int g16_render_prepare(void)
 	g16_render_pool_blob.data = g16_render_pool;
 	g16_render_pool_blob.size = G16_RENDER_POOL_BYTES;
 	debugfs_create_blob("pool.bin", 0400, g16_render_output_dir, &g16_render_pool_blob);
-	if (render_triangle) {
+	if (render_triangle && !render_drm_submit) {
 		for (i = 0; i < render_frames; i++) {
 			char name[32];
 

@@ -80,7 +80,7 @@ int main(void)
         "\"graphics_commands_recorded\":true,"
 #endif
 #if defined(M4_UPLOAD_PROBE)
-        "\"shader_submitted\":true,\"pixels_checked\":true,\"frames\":8,\"upload\":true,\"vulkan\":true}");
+        "\"shader_submitted\":true,\"pixels_checked\":true,\"frames\":" M4_STRINGIFY(M4_UPLOAD_FRAMES) ",\"upload\":true,\"vulkan\":true}");
 #elif defined(M4_SUBMIT_PROBE)
         "\"shader_submitted\":true,\"pixels_checked\":true,\"frames\":8,\"pixels_verified\":524288,\"vulkan\":true}");
 #else

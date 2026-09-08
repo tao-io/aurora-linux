@@ -108,7 +108,8 @@ static GLuint shared_texture(EGLDisplay display, EGLContext context, GLuint sour
 int main(int argc, char **argv)
 {
    bool development = argc == 2 && !strcmp(argv[1], "--development-gpu");
-   CHECK(argc == 1 || development);
+   bool local = argc == 2 && !strcmp(argv[1], "--local-textures");
+   CHECK(argc == 1 || development || local);
    EGLDisplay display = eglGetPlatformDisplay(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
    CHECK(display != EGL_NO_DISPLAY && eglInitialize(display, NULL, NULL));
    const char *extensions = eglQueryString(display, EGL_EXTENSIONS);
@@ -159,7 +160,7 @@ int main(int argc, char **argv)
    uint8_t base[4][4] = {{255,0,0,255}, {0,255,0,255}, {0,0,255,255}, {255,255,255,255}};
    const uint8_t over[4][4] = {{64,0,0,128}, {0,96,0,128}, {0,0,32,64}, {32,32,32,64}};
    GLuint base_tex = texture(base, GL_NEAREST), over_tex = texture(over, GL_LINEAR), target, fbo;
-   GLuint imported_over = shared_texture(display, context, over_tex);
+   GLuint imported_over = local ? over_tex : shared_texture(display, context, over_tex);
    glGenTextures(1, &target); glBindTexture(GL_TEXTURE_2D, target);
    glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, SIDE, SIDE);
    glGenFramebuffers(1, &fbo); glBindFramebuffer(GL_FRAMEBUFFER, fbo);
@@ -221,10 +222,10 @@ int main(int argc, char **argv)
    printf(",\"frames\":8,\"pixels_verified\":8192,\"max_channel_error\":%u,"
           "\"nearest_and_linear_sampling\":true,\"premultiplied_alpha\":true,"
           "\"scissor_damage\":true,\"texture_reuse\":true,\"native_fences\":8,"
-          "\"egl_dma_buf_roundtrip\":true,\"native_fence_import_wait\":true}\n", max_error);
+          "\"egl_dma_buf_roundtrip\":%s,\"native_fence_import_wait\":true}\n", max_error, local ? "false" : "true");
    glDeleteFramebuffers(1, &fbo); glDeleteTextures(1, &target);
    glDeleteTextures(1, &over_tex); glDeleteTextures(1, &base_tex);
-   glDeleteTextures(1, &imported_over);
+   if (!local) glDeleteTextures(1, &imported_over);
    glDeleteBuffers(1, &vbo); glDeleteVertexArrays(1, &vao);
    glDeleteProgram(program); glDeleteShader(vertex); glDeleteShader(fragment);
    CHECK(eglMakeCurrent(display, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT));

@@ -1,6 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 #include <stdlib.h>
 #include "memory.h"
+#ifndef M4_UPLOAD_FRAMES
+#define M4_UPLOAD_FRAMES 8
+#endif
+#define M4_STRINGIFY_INNER(x) #x
+#define M4_STRINGIFY(x) M4_STRINGIFY_INNER(x)
 
 /* Exercise the graphics meta-copy path with varying image sizes and padded
  * source rows. Read the raw optimal image only for this known M4 tile layout. */
@@ -29,8 +34,8 @@ static VkResult m4_upload_images(VkPhysicalDevice physical, VkDevice device, VkQ
       .commandPool = pool, .level = VK_COMMAND_BUFFER_LEVEL_PRIMARY, .commandBufferCount = 1};
    VkCommandBuffer cmd;
    TRY(vkAllocateCommandBuffers(device, &ainfo, &cmd));
-   for (unsigned frame = 0; frame < 8; ++frame) {
-      unsigned side = sizes[frame], stride = side + 8;
+   for (unsigned frame = 0; frame < M4_UPLOAD_FRAMES; ++frame) {
+      unsigned side = sizes[frame % 8], stride = side + 8;
       VkImageCreateInfo iinfo = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
          .imageType = VK_IMAGE_TYPE_2D, .format = VK_FORMAT_R8G8B8A8_UNORM,
          .extent = {side, side, 1}, .mipLevels = 1, .arrayLayers = 1,

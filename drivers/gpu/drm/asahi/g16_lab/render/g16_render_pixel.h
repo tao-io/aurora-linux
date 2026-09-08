@@ -217,8 +217,8 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 	u8 *work = g16_render_graph;
 	u8 *queue = work + G16_RENDER_QUEUE(1);
 	u8 *state = work + G16_RENDER_QUEUE_STATE(1);
-	u8 *pipe = work + G16_RENDER_PIPE_RING(1) + (g16_render_frame + 1) * J713_INITDATA_PIPE_ENTRY_SIZE;
-	u32 end = g16_render_frame + 2, stamp = (g16_render_frame + 1) << 8;
+	u8 *pipe = work + G16_RENDER_PIPE_RING(1) + ((g16_render_frame + 1) % J713_INITDATA_PIPE_ENTRY_COUNT) * J713_INITDATA_PIPE_ENTRY_SIZE;
+	u32 end = (g16_render_frame + 2) % J713_INITDATA_QUEUE_RING_COUNT, stamp = (g16_render_frame + 1) << 8;
 	u8 *pipe_state = work + G16_RENDER_PIPE_STATE(1);
 	unsigned long deadline;
 	u64 timestamp, message;
@@ -228,7 +228,7 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 	ret = g16_render_build_fragment();
 	if (ret)
 		return ret;
-	g16_render_put(work + G16_RENDER_QUEUE_RING(1) + (end - 1) * 8,
+	g16_render_put(work + G16_RENDER_QUEUE_RING(1) + ((end + J713_INITDATA_QUEUE_RING_COUNT - 1) % J713_INITDATA_QUEUE_RING_COUNT) * 8,
 		G16_RENDER_GRAPH_VA + 0x4000, 8);
 	g16_lab_dcache_clean(work, G16_RENDER_GRAPH_BYTES);
 	dma_wmb();
@@ -242,7 +242,7 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 	pipe[J713_PIPE_ENTRY_SCHEDULER_SLOT_OFFSET] = 0x71;
 	g16_lab_dcache_clean(pipe, J713_INITDATA_PIPE_ENTRY_SIZE);
 	dma_wmb();
-	g16_render_put(pipe_state + J713_PIPE_PRODUCER_OFFSET, g16_render_frame + 2, 4);
+	g16_render_put(pipe_state + J713_PIPE_PRODUCER_OFFSET, (g16_render_frame + 2) % J713_INITDATA_PIPE_ENTRY_COUNT, 4);
 	g16_lab_dcache_clean(pipe_state, J713_INITDATA_PIPE_STATE_SIZE);
 	dma_wmb();
 	g16_firmware_recovery_observed = false;
