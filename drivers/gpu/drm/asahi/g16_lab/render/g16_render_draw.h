@@ -36,9 +36,12 @@ static int g16_render_build_ta(void)
 #define TILER(o) (((base + (o)) & ((1ULL << 42) - 1)) - G16_RENDER_COMPACT_BASE)
 	/* Native normal -> compact range-1 address for captured VDM resource 29. */
 	D(0xea8, g16_render_vdm_base(), 8);
-	/* Zero-backed dedicated preemption storage; size is provisional. */
-	D(0xf48, GPU(0x40000), 8);
-	D(0xf50, GPU(0x50000), 8);
+	/* TA consumes compact range-1 pointers here, like its tilemap. A normal
+	 * pointer made SuperTux's first preemption write land at 0x4000050000,
+	 * one compact-range base above the mapped graph at 0x3000050000.
+	 * Zero-backed dedicated storage; the 64 KiB sizes remain provisional. */
+	D(0xf48, TILER(0x40000), 8);
+	D(0xf50, TILER(0x50000), 8);
 	/* Same-M4 Metal endRenderPassCommon raw segment +b8/+c0. */
 	D(0xf88, 0x003a0012006b0003ULL, 8);
 	D(0xf90, 1, 4);
