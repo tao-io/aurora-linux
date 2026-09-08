@@ -46,6 +46,11 @@ static void test_geometry(void)
 	assert(g.tiles == 4000 && g.blocks == 320);
 	assert(g.region_stride == 400 && g.tpc_stride == 640);
 	assert(g.tilemap_bytes == 28672 && g.tpc_bytes == 40960);
+	/* Native J713 KMS includes the 64-row notch strip; the same padded
+	 * 20x16 tile groups cover its 80x52 visible tiles. */
+	assert(!g16_render_geometry_single(&g, 2560, 1664, 32, 32, 1));
+	assert(g.tiles == 4160 && g.blocks == 320);
+	assert(g.tilemap_bytes == 28672 && g.tpc_bytes == 40960);
 	before = g;
 	assert(g16_render_geometry_single(&g, 0, 4, 32, 32, 1) == -EINVAL);
 	assert(!memcmp(&g, &before, sizeof(g)));

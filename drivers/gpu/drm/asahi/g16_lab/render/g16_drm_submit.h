@@ -131,7 +131,7 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 		/* Native render passes: one uncompressed RGBA8 target and optional Z/S,
 		 * no shader scratch, no sampler heap and no timestamps. Keep every
 		 * unimplemented field outside the admitted packet. */
-		if (!r->width_px || r->width_px > 2560 || !r->height_px || r->height_px > 1600 ||
+		if (!r->width_px || r->width_px > 2560 || !r->height_px || r->height_px > 1664 ||
 		    r->flags & ~(BIT(4) | DRM_ASAHI_RENDER_PROCESS_EMPTY_TILES))
 			return -EOPNOTSUPP;
 		ret = g16_render_geometry_single(&geometry, r->width_px, r->height_px, 32, 32, 1);
