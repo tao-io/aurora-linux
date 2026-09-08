@@ -7,7 +7,9 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/poll.h>
+#include <linux/scatterlist.h>
 #include <linux/slab.h>
+#include <linux/sizes.h>
 #include <linux/soc/apple/rtkit.h>
 #include <linux/uaccess.h>
 
@@ -16,6 +18,15 @@
 
 #define MAX_EVENTS 32
 #define MAX_CALLBACKS 8
+#define MAX_BUFFERS 64
+
+/* Diagnostic ABI: allocations are retained until reboot, including releases. */
+struct buffer_request {
+	__u64 size, physical, dva;
+	__u32 id, flags;
+};
+#define BRIDGE_ALLOC_BUFFER _IOWR('M', 0x40, struct buffer_request)
+#define BRIDGE_RETIRE_BUFFER _IOW('M', 0x41, __u32)
 
 /* Write op 1: submit, message=0 (normal) or 1 (nested), data=RPC packet.
  * Write op 2: callback reply, message=original message, data=output bytes.
@@ -45,6 +56,13 @@ struct m4_dcp_bridge {
 	unsigned int event_count, callback_count;
 	bool failed;
 	bool enabled;
+	u32 buffer_count;
+	u64 buffer_bytes;
+	struct {
+		void *cpu;
+		struct buffer_request info;
+		bool retired;
+	} buffers[MAX_BUFFERS];
 	struct {
 		bool active;
 		bool remote;
@@ -56,6 +74,8 @@ struct m4_dcp_bridge {
 		u64 message;
 		void *output;
 		u32 size;
+		u32 call;
+		u64 allocation_size;
 	} callbacks[MAX_CALLBACKS];
 };
 
@@ -151,6 +171,14 @@ void m4_dcp_bridge_receive(struct m4_dcp_bridge *b, u64 message)
 	b->callbacks[b->callback_count].message = message;
 	b->callbacks[b->callback_count].output = view.output;
 	b->callbacks[b->callback_count].size = view.output_size;
+	b->callbacks[b->callback_count].call = view.call;
+	b->callbacks[b->callback_count].allocation_size = 0;
+	if (view.call == 0x44343531 && view.input_size == 20 && view.output_size == 28) {
+		__le64 allocation_size;
+
+		memcpy(&allocation_size, view.input + 4, sizeof(allocation_size));
+		b->callbacks[b->callback_count].allocation_size = le64_to_cpu(allocation_size);
+	}
 	b->callback_count++;
 	dev_info(b->dev, "M4 DCP callback tag=%#x input=%u output=%u\n",
 		 view.call, view.input_size, view.output_size);
@@ -316,11 +344,94 @@ static __poll_t bridge_poll(struct file *file, poll_table *wait)
 	return mask;
 }
 
+static long bridge_ioctl(struct file *file, unsigned int command, unsigned long argument)
+{
+	struct m4_dcp_bridge *b = container_of(file->private_data, struct m4_dcp_bridge, misc);
+	void __user *user = (void __user *)argument;
+	struct buffer_request request;
+	struct sg_table table;
+	dma_addr_t dva;
+	void *cpu;
+	u32 id;
+	size_t size;
+	int ret = -EINVAL;
+
+	if (command != BRIDGE_ALLOC_BUFFER && command != BRIDGE_RETIRE_BUFFER)
+		return -ENOTTY;
+	mutex_lock(&b->lock);
+	if (b->failed || !b->enabled) {
+		ret = -EIO;
+		goto out;
+	}
+	if (command == BRIDGE_RETIRE_BUFFER) {
+		ret = -EFAULT;
+		if (copy_from_user(&id, user, sizeof(id)))
+			goto out;
+		ret = -EINVAL;
+		if (!id || id > b->buffer_count || b->buffers[id - 1].retired)
+			goto out;
+		/* Keep mappings and memory pinned: this diagnostic has no DMA fence. */
+		b->buffers[id - 1].retired = true;
+		ret = 0;
+		goto out;
+	}
+	ret = -EFAULT;
+	if (copy_from_user(&request, user, sizeof(request)))
+		goto out;
+	ret = -EINVAL;
+	if (!b->callback_count || request.flags || request.id || request.dva || request.physical ||
+	    !request.size || request.size > SZ_16M ||
+	    b->callbacks[b->callback_count - 1].call != 0x44343531 ||
+	    b->callbacks[b->callback_count - 1].allocation_size != request.size)
+		goto out;
+	size = ALIGN(request.size, SZ_16K);
+	ret = -ENOSPC;
+	if (b->buffer_count == MAX_BUFFERS || b->buffer_bytes + size > SZ_64M)
+		goto out;
+	/* D451 requests both a physical address and a DCP address. Require a
+	 * physically contiguous backing allocation before advertising either.
+	 */
+	cpu = dma_alloc_attrs(b->dev, size, &dva, GFP_KERNEL, DMA_ATTR_FORCE_CONTIGUOUS);
+	ret = -ENOMEM;
+	if (!cpu)
+		goto out;
+	ret = dma_get_sgtable_attrs(b->dev, &table, cpu, dva, size, DMA_ATTR_FORCE_CONTIGUOUS);
+	if (ret)
+		goto free_dma;
+	ret = -ERANGE;
+	if (table.orig_nents != 1 || table.sgl->length < size) {
+		sg_free_table(&table);
+		goto free_dma;
+	}
+	request.physical = sg_phys(table.sgl);
+	sg_free_table(&table);
+	request.size = size;
+	request.dva = dva;
+	request.id = b->buffer_count + 1; /* firmware treats zero as failure */
+	memset(cpu, 0, size);
+	dma_wmb();
+	b->buffers[b->buffer_count].cpu = cpu;
+	b->buffers[b->buffer_count].info = request;
+	b->buffer_count++;
+	b->buffer_bytes += size;
+	/* One allocation per callback. Retain even on copy_to_user failure. */
+	b->callbacks[b->callback_count - 1].allocation_size = 0;
+	dev_info(b->dev, "M4 DCP buffer id=%u size=%zu dma=%pad\n", request.id, size, &dva);
+	ret = copy_to_user(user, &request, sizeof(request)) ? -EFAULT : 0;
+	goto out;
+free_dma:
+	dma_free_attrs(b->dev, size, cpu, dva, DMA_ATTR_FORCE_CONTIGUOUS);
+out:
+	mutex_unlock(&b->lock);
+	return ret;
+}
+
 static const struct file_operations bridge_fops = {
 	.owner = THIS_MODULE,
 	.read = bridge_read,
 	.write = bridge_write,
 	.poll = bridge_poll,
+	.unlocked_ioctl = bridge_ioctl,
 };
 
 struct m4_dcp_bridge *m4_dcp_bridge_create(struct device *dev,

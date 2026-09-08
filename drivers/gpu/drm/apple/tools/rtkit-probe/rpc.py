@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: GPL-2.0-only OR MIT
 """Small client for the root-only M4 DCP diagnostic bridge."""
 import os
+import fcntl
 import select
 import struct
 import time
@@ -17,6 +18,22 @@ class DCP:
 
     def close(self):
         os.close(self.fd)
+
+    def allocate_buffer(self, size):
+        request = bytearray(struct.pack('=QQQII', size, 0, 0, 0, 0))
+        self.check()
+        fcntl.ioctl(self.fd, 0xc0204d40, request, True)
+        size, physical, dva, ident, flags = struct.unpack('=QQQII', request)
+        if not ident or not physical or not dva or flags:
+            raise RuntimeError('invalid native DCP allocation')
+        self.log({'event': 'dma_allocation', 'size': size, 'physical': hex(physical),
+                  'dva': hex(dva), 'id': ident})
+        return struct.pack('<QQQI', physical, dva, size, ident)
+
+    def retire_buffer(self, ident):
+        self.check()
+        fcntl.ioctl(self.fd, 0x40044d41, struct.pack('=I', ident))
+        self.log({'event': 'dma_retired_until_reboot', 'id': ident})
 
     def write(self, kind, message, data):
         record = struct.pack('<IIQ', kind, len(data), message) + data

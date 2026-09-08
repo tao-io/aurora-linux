@@ -185,6 +185,19 @@ def startup_callback(dcp, tag, data, output_size):
     if a.decline_bandwidth and tag == 'D003' and len(data) == 4 and output_size == 60:
         log({'event': 'bandwidth_declined', 'status': 1})
         return bytes(56) + struct.pack('<I', 1)
+    # M4 0x238270..0x2382d8: flags, size, mode, three null flags;
+    # reply contains physical/DCP addresses, mapped size and a nonzero handle.
+    if tag == 'D451' and len(data) == 20 and output_size == 28:
+        flags, size, mode = struct.unpack_from('<IQI', data)
+        log({'event': 'allocate_request', 'flags': hex(flags), 'size': size, 'mode': mode})
+        if flags != 0x703 or mode != 4 or data[16:19] != bytes(3):
+            raise RuntimeError('unqualified M4 DMA allocation flags')
+        return dcp.allocate_buffer(size)
+    # M4 destructor 0x237cb8 releases a descriptor; defer physical freeing
+    # until reboot because this diagnostic has no display retirement fence.
+    if tag == 'D454' and len(data) == 4 and output_size == 4:
+        dcp.retire_buffer(struct.unpack('<I', data)[0])
+        return b'\x01\0\0\0'
     # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
     # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.
     if tag == 'D401' and len(data) == 80 and output_size == 12:

@@ -332,3 +332,18 @@ checks status at output+56 before touching register fields. The optional
 the checked error exit at 0x2cf480. It tests inherited-state fallback without
 programming unqualified PMGR registers or supplying invented register addresses.
 Evidence: `20260908-limits-start`, peak 52.5 C.
+
+Declining D003 allowed A000 to continue on boot
+`74e55a90-d9a6-4b68-b00a-0a4945ed37cc`, reaching D451 (20/28) for 256 KiB
+with flags 0x703/mode 4. Wrapper 0x238270 requires a nonzero handle and size.
+The native bridge now supplies bounded DMA allocations, verifies contiguous
+physical backing, returns physical/DCP addresses and retains buffers until
+reboot. D454 (0x237cb8, 4/4) retires handles without unsafe early freeing.
+Build validation uses the live kernel's configuration. Evidence:
+`20260908-bw-decline-start`, peak 53.5 C.
+
+The same firmware log reports that its 48 MHz host-less fallback is below the
+panel video clock (138521008 Hz); it gives up frequency metadata and selects
+display performance state 1 with requested display clock 180077280 Hz. Thus
+48 MHz is a protocol fallback, not a qualified active display rate. Correct
+host clock metadata remains open; no GPU clock has been increased.
