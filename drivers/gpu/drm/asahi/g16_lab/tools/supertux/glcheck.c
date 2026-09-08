@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 /* Observe the context SDL actually made current, without replacing any GL
  * implementation or altering the result of a draw. This is linked only into
@@ -31,4 +32,35 @@ void *SDL_GL_CreateContext(void *window)
       exit(1);
    }
    return ctx;
+}
+
+/* Wall-clock application swap cadence, including rendering and blocking in
+ * SDL/EGL. This observes real swaps; it is not a scanout presentation counter. */
+void SDL_GL_SwapWindow(void *window)
+{
+   static void (*swap)(void *);
+   static double start;
+   static unsigned frames;
+   struct timespec now;
+   if (!swap) {
+      swap = dlsym(RTLD_NEXT, "SDL_GL_SwapWindow");
+      if (!swap) {
+         fputs("m4-supertux: SDL swap entry point unavailable\n", stderr);
+         exit(1);
+      }
+   }
+   swap(window);
+   if (clock_gettime(CLOCK_MONOTONIC, &now))
+      return;
+   double end = now.tv_sec + now.tv_nsec * 1e-9;
+   if (!start) {
+      start = end;
+      return;
+   }
+   if (++frames == 120) {
+      fprintf(stderr, "m4-supertux: 120 swaps in %.3f s = %.2f FPS (wall clock)\n",
+              end - start, frames / (end - start));
+      start = end;
+      frames = 0;
+   }
 }
