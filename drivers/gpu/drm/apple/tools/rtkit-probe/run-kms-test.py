@@ -2,6 +2,7 @@
 # SPDX-License-Identifier: MIT
 """Bound the native KMS flip test with watchdog and thermal guards."""
 import argparse
+import struct
 import json
 import os
 from pathlib import Path
@@ -40,12 +41,28 @@ try:
     t.check()
     info = subprocess.check_output(['modetest', '-M', 'm4-dcp', '-c', '-p'], text=True, timeout=5)
     (a.output / 'resources.txt').write_text(info)
-    result = subprocess.run([str(binary), a.device], text=True, capture_output=True, timeout=30)
+    snapshots = {p.resolve() for p in Path('/sys/kernel/debug/dri').glob('*/m4_scanout')}
+    command = [str(binary), a.device]
+    if len(snapshots) == 1:
+        command += [str(snapshots.pop()), str(a.output / 'scanout.m4fb')]
+    result = subprocess.run(command, text=True, capture_output=True, timeout=30)
     r.update(returncode=result.returncode, stdout=result.stdout, stderr=result.stderr)
     (a.output / 'flips.log').write_text(result.stdout + result.stderr)
     t.check()
     if result.returncode or 'PASS: 180 completed native KMS flips' not in result.stdout:
         raise RuntimeError('native flip test failed')
+    snapshot = a.output / 'scanout.m4fb'
+    if snapshot.exists():
+        data = snapshot.read_bytes()
+        magic, width, height, stride, fmt, fb, imported, size = struct.unpack_from('<8I', data)
+        assert (magic, width, height, fmt, imported) == (0x4246344d, 2560, 1664, int.from_bytes(b'XR24', 'little'), 0)
+        assert len(data) == 32 + size and size == stride * height
+        pixel = lambda x, y: struct.unpack_from('<I', data, 32 + y * stride + x * 4)[0]
+        assert pixel(100, 50) == 255 and pixel(0, 0) == 0xffffff
+        for band in range(8):
+            expected = ((band & 1) and 0xff0000) | ((band & 2) and 0xff00) | ((band & 4) and 255)
+            assert pixel(band * 320 + 160, 800) == expected
+        r['native_snapshot_pixels_verified'] = True
     r['passed'] = True
 except BaseException as error:
     r.update(passed=False, failure=repr(error))

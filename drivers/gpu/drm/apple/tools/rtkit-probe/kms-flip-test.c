@@ -50,8 +50,8 @@ int main(int argc, char **argv)
 	double started, elapsed;
 	int fd, i;
 
-	if (argc != 2) {
-		fprintf(stderr, "usage: %s /dev/dri/cardN\n", argv[0]);
+	if (argc != 2 && argc != 4) {
+		fprintf(stderr, "usage: %s /dev/dri/cardN [snapshot-node output-file]\n", argv[0]);
 		return 2;
 	}
 	fd = open(argv[1], O_RDWR | O_CLOEXEC);
@@ -129,6 +129,22 @@ int main(int argc, char **argv)
 	printf("PASS: %u completed native KMS flips in %.3f s (%.2f FPS), sequence=%u; three prefilled buffers, no per-frame CPU copy\n",
 	       received, elapsed, received / elapsed, last_sequence);
 	fflush(stdout);
+	if (argc == 4) {
+		char data[16384];
+		ssize_t count;
+		int in = open(argv[2], O_RDONLY | O_CLOEXEC);
+		int out = open(argv[3], O_WRONLY | O_CREAT | O_TRUNC | O_CLOEXEC, 0600);
+
+		if (in < 0 || out < 0)
+			fail("open native snapshot");
+		while ((count = read(in, data, sizeof(data))) > 0)
+			if (write(out, data, count) != count)
+				fail("write native snapshot");
+		if (count < 0)
+			fail("read native snapshot");
+		close(in);
+		close(out);
+	}
 	/* Disable through KMS before closing so the last buffer is retired safely. */
 	if (drmModeSetCrtc(fd, crtc, 0, 0, 0, NULL, 0, NULL))
 		fail("disable CRTC");
