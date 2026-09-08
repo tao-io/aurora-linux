@@ -1,0 +1,39 @@
+From d22d7d9d0ed45a5eb13f951e2cd2d758a96ab28f Mon Sep 17 00:00:00 2001
+From: Eryk Wieliczko <github@wieliczko.ninja>
+Date: Tue, 8 Sep 2026 15:21:29 +0200
+Subject: [PATCH] video: query GL version without leaving an error in GL 2
+ contexts
+
+---
+ src/video/SDL_egl.c | 15 ++++++++++-----
+ 1 file changed, 10 insertions(+), 5 deletions(-)
+
+diff --git a/src/video/SDL_egl.c b/src/video/SDL_egl.c
+index 50f7082..43271d5 100644
+--- a/src/video/SDL_egl.c
++++ b/src/video/SDL_egl.c
+@@ -1068,11 +1068,16 @@ SDL_GLContext SDL_EGL_CreateContext(_THIS, EGLSurface egl_surface)
+ #if defined(SDL_VIDEO_OPENGL) && !defined(SDL_VIDEO_DRIVER_VITA)
+         } else {
+             /* Desktop OpenGL supports it by default from version 3.0 on. */
+-            void(APIENTRY * glGetIntegervFunc)(GLenum pname, GLint * params);
+-            glGetIntegervFunc = SDL_GL_GetProcAddress("glGetIntegerv");
+-            if (glGetIntegervFunc) {
+-                GLint v = 0;
+-                glGetIntegervFunc(GL_MAJOR_VERSION, &v);
++            const GLubyte *(APIENTRY * glGetStringFunc)(GLenum name);
++            glGetStringFunc = SDL_GL_GetProcAddress("glGetString");
++            if (glGetStringFunc) {
++                const char *version = (const char *)glGetStringFunc(GL_VERSION);
++                int v = 0;
++                /* GL_MAJOR_VERSION is invalid before GL 3.0. Avoid leaving
++                 * GL_INVALID_ENUM in a successfully created GL 2.x context. */
++                if (version) {
++                    SDL_sscanf(version, "%d", &v);
++                }
+                 if (v >= 3) {
+                     _this->gl_allow_no_surface = SDL_TRUE;
+                 }
+-- 
+2.55.0
+

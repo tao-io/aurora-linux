@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=SuperTux (M4 Zink)
+Comment=Play SuperTux in the accelerated M4 desktop
+Exec=/usr/bin/foot --app-id=m4-supertux-launch /usr/local/bin/m4-supertux
+Icon=supertux2
+Terminal=false
+Categories=Game;ArcadeGame;
