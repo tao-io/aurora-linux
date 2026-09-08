@@ -329,6 +329,7 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	struct dma_fence_chain *chains[16] = {};
 	struct g16_target_fence *fence;
 	struct g16_drm_job *job;
+	unsigned long dependency_deadline;
 	u32 sequence, i, count;
 	void *command;
 	int ret;
@@ -383,9 +384,14 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	if (ret)
 		goto free;
 	init_completion(&job->done);
+	/* A game frame can take longer than 100 ms on the serialized lab path.
+	 * Wait for its real completion before the compositor samples it, without
+	 * holding either the file lock or the global submission lock. Share one
+	 * five-second budget across all explicit dependencies. */
+	dependency_deadline = jiffies + msecs_to_jiffies(5000);
 	for (i = 0; i < count; i++) {
 		struct dma_fence *dependency;
-		long waited;
+		long waited, remaining;
 
 		if (syncs[i].sync_type > DRM_ASAHI_SYNC_TIMELINE_SYNCOBJ ||
 		    (syncs[i].sync_type == DRM_ASAHI_SYNC_SYNCOBJ && syncs[i].timeline_value)) {
@@ -410,7 +416,8 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 		ret = drm_syncobj_find_fence(file, syncs[i].handle, syncs[i].timeline_value, 0, &dependency);
 		if (ret)
 			goto free;
-		waited = dma_fence_wait_timeout(dependency, true, msecs_to_jiffies(100));
+		remaining = dependency_deadline - jiffies;
+		waited = dma_fence_wait_timeout(dependency, true, max(remaining, 0L));
 		ret = waited < 0 ? waited : !waited ? -ETIMEDOUT : dma_fence_get_status(dependency);
 		dma_fence_put(dependency);
 		if (ret < 0)
