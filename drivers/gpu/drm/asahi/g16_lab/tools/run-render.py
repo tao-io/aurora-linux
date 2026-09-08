@@ -43,6 +43,60 @@ def captured_dmesg():
     return output('dmesg')
 
 
+def run_interactive_client(client, env, result, watchdog, seconds):
+    import selectors
+    summary = None
+    checks = 0
+    deadline = time.monotonic() + seconds + 25
+    progress_deadline = time.monotonic() + 30
+    with (result / 'interactive.stderr').open('w') as errors, (result / 'interactive-health.jsonl').open('w') as history:
+        process = subprocess.Popen(client, env=env, stdout=subprocess.PIPE,
+                                   stderr=errors, text=True, bufsize=1)
+        selector = selectors.DefaultSelector()
+        selector.register(process.stdout, selectors.EVENT_READ)
+        try:
+            while True:
+                now = time.monotonic()
+                if now > deadline or now > progress_deadline:
+                    raise RuntimeError('interactive session stopped providing verified GPU progress')
+                if not selector.select(timeout=1):
+                    if process.poll() is not None:
+                        break
+                    continue
+                line = process.stdout.readline()
+                if not line:
+                    break
+                record = json.loads(line)
+                history.write(json.dumps(record) + '\n')
+                history.flush()
+                os.fsync(history.fileno())
+                if record.get('event') == 'gpu-progress':
+                    watchdog.keepalive_after_gpu_check(record['check'])
+                    checks += 1
+                    progress_deadline = time.monotonic() + 30
+                elif record.get('event') == 'ready':
+                    print('Interactive M4 Hyprland ready: ' + json.dumps(record['result']), flush=True)
+                elif record.get('passed') is True:
+                    summary = record
+                else:
+                    raise RuntimeError('unrecognized interactive supervisor record')
+            rc = process.wait(timeout=5)
+            if rc or summary is None or not checks:
+                raise RuntimeError(f'interactive client failed: exit={rc}, checks={checks}')
+            summary['verified_watchdog_keepalives'] = checks
+            return subprocess.CompletedProcess(client, rc, json.dumps(summary), '')
+        finally:
+            selector.close()
+            if process.poll() is None:
+                process.terminate()
+                try:
+                    process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=2)
+            process.stdout.close()
+
+
 def main():
     global ACTIVE_RESULT
     parser = argparse.ArgumentParser(description=__doc__)
@@ -79,6 +133,8 @@ def main():
                         help='fenced GEM target read by a separate unprivileged process')
     parser.add_argument('--render-drm-submit', action='store_true',
                         help='Asahi command submissions using client-created GEM resources')
+    parser.add_argument('--interactive-seconds', type=int, default=0,
+                        help='30..3600 seconds of interactive Hyprland with GPU-verified watchdog progress')
     parser.add_argument('--drm-frame-budget', type=int, choices=range(8, 129), default=8)
     parser.add_argument('--drm-client-mode', choices=('legacy', 'composite', 'local-composite'), default='legacy')
     parser.add_argument('--drm-submit-test', type=Path, default=Path('/root/g16submittest'))
@@ -98,6 +154,10 @@ def main():
     parser.add_argument('--render-varying-rhw', action='store_true',
                         help='interpolate reciprocal W to isolate coefficient setup')
     args = parser.parse_args()
+    if args.interactive_seconds:
+        if not 30 <= args.interactive_seconds <= 3600 or not args.render_drm_submit or args.drm_client_mode != 'composite' or args.firmware_ktrace:
+            parser.error('interactive mode requires DRM composite, 30..3600 seconds, and KTrace disabled')
+        args.drm_frame_budget = 65535
     if args.render_drm_submit and args.render_drm_target:
         parser.error('client submission and lab target export are separate tests')
     if args.mesa_device_probe and not args.render_drm_submit:
@@ -138,7 +198,7 @@ def main():
         args.render_ta = True
     if args.render_ta:
         args.render_queues = True
-    params = PARAMS + (['render_queue_probe=1'] if args.render_queues else [])
+    params = PARAMS + ([f'render_service_seconds={args.interactive_seconds + 20}'] if args.interactive_seconds else []) + (['render_queue_probe=1'] if args.render_queues else [])
     if args.render_ta:
         params += ['render_ta_probe=1']
     if args.render_fragment:
@@ -295,9 +355,13 @@ def main():
                 client += [str(nodes[0]), str(debug / 'g16_lab_render'), str(result)]
             elif args.drm_client_mode == 'local-composite':
                 client += ['--local-textures']
-            target = subprocess.run(client,
-                                    capture_output=True, text=True, timeout=15,
-                                    env={**os.environ, 'M4_RENDER_OUTPUT': str(result)})
+            client_env = {**os.environ, 'M4_RENDER_OUTPUT': str(result),
+                          'M4_HYPR_INTERACTIVE_SECONDS': str(args.interactive_seconds)}
+            if args.interactive_seconds:
+                target = run_interactive_client(client, client_env, result, watchdog, args.interactive_seconds)
+                metadata['watchdog']['progress_verified_keepalives'] = json.loads(target.stdout)['verified_watchdog_keepalives']
+            else:
+                target = subprocess.run(client, capture_output=True, text=True, timeout=20, env=client_env)
             (result / 'drm-submit.stdout').write_text(target.stdout)
             (result / 'drm-submit.stderr').write_text(target.stderr)
             target.check_returncode()
@@ -331,6 +395,9 @@ def main():
                                'status': current})
                 if sequence < 8:
                     time.sleep(0.2)
+        # Shutdown gets its own bound; the startup deadline has elapsed
+        # after a healthy interactive session lasting minutes.
+        deadline = time.monotonic() + 5
         while not status()['stopped']:
             if time.monotonic() >= deadline:
                 raise RuntimeError('render worker did not stop')

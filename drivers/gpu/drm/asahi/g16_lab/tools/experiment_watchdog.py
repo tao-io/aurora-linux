@@ -14,6 +14,7 @@ SETOPTIONS = 0x80045704
 SETTIMEOUT = 0xc0045706
 GETTIMEOUT = 0x80045707
 GETTIMELEFT = 0x8004570a
+KEEPALIVE = 0x80045705
 
 
 class ExperimentWatchdog:
@@ -58,6 +59,16 @@ class ExperimentWatchdog:
         self.integer(SETOPTIONS, 1)
         os.close(self.fd)
         self.fd = None
+
+    def keepalive_after_gpu_check(self, check):
+        # No timer thread. A hung GPU or compositor cannot reach this call.
+        if not (check.get('passed') is True and check.get('shader_submitted') is True
+                and check.get('vulkan') is True and check.get('frames') == 8
+                and check.get('device_id') == 0x8132
+                and check.get('pixels_verified') == 524288
+                and check.get('compositor_responsive') is True):
+            raise RuntimeError('refusing watchdog keepalive without verified GPU/compositor progress')
+        self.integer(KEEPALIVE)
 
 
 def main():

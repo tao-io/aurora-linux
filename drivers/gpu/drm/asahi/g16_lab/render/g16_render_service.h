@@ -106,14 +106,14 @@ static void g16_render_service_finish(int result)
 static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 				  unsigned int crashlog_pages)
 {
-	unsigned long deadline = jiffies + msecs_to_jiffies(20000);
+	unsigned long deadline = jiffies + msecs_to_jiffies(render_service_seconds * 1000);
 	u64 message;
 	u32 endpoint, sequence;
 	int ret = 0;
 
 	smp_store_release(&g16_render_service_ready, true);
-	pr_info("g16_lab: render: userspace-paced service ready, maximum %u frames in 20 seconds\n",
-		render_frames);
+	pr_info("g16_lab: render: userspace-paced service ready, maximum %u frames in %u seconds\n",
+		render_frames, render_service_seconds);
 	while (g16_render_service_completed < render_frames) {
 		if (READ_ONCE(g16_render_service_stop_requested))
 			break;

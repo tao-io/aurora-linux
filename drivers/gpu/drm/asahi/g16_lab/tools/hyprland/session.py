@@ -46,6 +46,7 @@ def verify_scanout(result, width, height):
 
 def main():
     result = Path(os.environ['M4_RENDER_OUTPUT'])
+    live_seconds = int(os.environ.get('M4_HYPR_INTERACTIVE_SECONDS', '0'))
     width = int(os.environ.get('M4_HYPR_WIDTH', '256'))
     height = int(os.environ.get('M4_HYPR_HEIGHT', '256'))
     if not (1 <= width <= 2560 and 1 <= height <= 1600):
@@ -101,7 +102,7 @@ def main():
                 raise RuntimeError(f'Expected active {width}x{height} {output_name} output')
             terminal = subprocess.Popen(['foot', '--app-id=m4-gpu-check',
                 '-o', 'colors.background=ff0000', '-o', 'font=monospace:size=10',
-                '/bin/sh', '-c', 'printf "M4 GPU compositing\n"; sleep 8'],
+                '/bin/sh', '-c', 'printf "M4 GPU compositing\n"; ' + ('exec /bin/bash' if live_seconds else 'sleep 8')],
                 env=env, stdout=log, stderr=log, start_new_session=True)
             time.sleep(0.8)
             pixels = result / 'hyprland.ppm'
@@ -122,11 +123,34 @@ def main():
                        for line in text.splitlines()):
                 raise RuntimeError('Hyprland did not identify the M4 Zink renderer')
             scanout_red = verify_scanout(result, width, height) if physical else None
-            print(json.dumps({'passed': True, 'hyprland': True,
-                              'scope': f'{width}x{height} {output_name} compositor',
-                              'physical_display': physical,
-                              'scanout_red_pixels_verified': scanout_red,
-                              'red_pixels_verified': red, 'screenshot': pixels.name}))
+            summary = {'passed': True, 'hyprland': True,
+                       'scope': f'{width}x{height} {output_name} compositor',
+                       'physical_display': physical,
+                       'scanout_red_pixels_verified': scanout_red,
+                       'red_pixels_verified': red, 'screenshot': pixels.name}
+            if live_seconds:
+                stop_file = Path('/run/m4-hyprland-stop')
+                stop_file.unlink(missing_ok=True)
+                print(json.dumps({'event': 'ready', 'result': summary}), flush=True)
+                deadline = time.monotonic() + live_seconds
+                checks = 0
+                while time.monotonic() < deadline and not stop_file.exists():
+                    with (result / 'health-shaders.stderr').open('a') as diagnostics:
+                        check = subprocess.run(['/root/g16-submit-test/mesa-submit'],
+                                               env=env, stdout=subprocess.PIPE, stderr=diagnostics,
+                                               text=True, timeout=8, check=True)
+                    evidence = json.loads(check.stdout.strip().splitlines()[-1])
+                    reply = json.loads(subprocess.check_output(['hyprctl', '-j', 'monitors'],
+                                                               env=env, text=True, timeout=2))
+                    evidence['compositor_responsive'] = any(m.get('name') == output_name and
+                        not m.get('disabled', False) for m in reply)
+                    # Parent validates all fields before feeding the hardware watchdog.
+                    print(json.dumps({'event': 'gpu-progress', 'check': evidence}), flush=True)
+                    checks += 1
+                    time.sleep(min(5, max(0, deadline - time.monotonic())))
+                summary['interactive_seconds'] = live_seconds
+                summary['health_checks'] = checks
+            print(json.dumps(summary), flush=True)
         finally:
             for process in (terminal, child):
                 if process is None:

@@ -2,7 +2,9 @@
 
 The target is Hyprland's GLES renderer through Mesa Zink and Honeykrisp Vulkan
 on J713/T8132/G16G. A working triangle alone does not qualify the compositor.
-The current desktop remains on its existing software-rendered path.
+Physical 2560x1600 Hyprland rendering is now pixel-verified on J713. The normal
+Omarchy login remains on its existing software-rendered path; the GPU session
+uses private libraries and a minimal root-only bring-up configuration.
 
 ## Reference matching the installed compositor
 
@@ -116,4 +118,58 @@ native transform feedback and some optional features are still disabled.
 Unlike a full GLES readiness qualification, the reported result covers the
 pixel-checked compositor subset only. The GPU draws real Vulkan shader work;
 Vulkan host-image-copy performs CPU upload/readback after synchronization.
-Hyprland itself and the physical display presentation path remain to be tested.
+At this milestone, Hyprland and physical presentation had not yet been tested;
+see the subsequent qualification below.
+
+
+## Physical Hyprland, 2026-09-08
+
+`20260908T065056Z-render-ta` passes the complete physical-display test:
+60 real TA/fragment submissions, a 2560x1600 compositor screenshot with
+4,095,201 checked red pixels, and a separate read-only verification of
+4,064,763 red pixels in the DT-declared x2r10g10b10 panel framebuffer.
+The shader renderer is Zink/Honeykrisp on M4. Simple-framebuffer accepts the
+linear GPU DMA-BUF through KMS and presents it using its existing display path.
+This is GPU compositing with framebuffer presentation, not a new DCP driver.
+The module unloads cleanly and the watchdog is explicitly disarmed only after
+all evidence is saved. See `validation/j713-hyprland-physical-20260908.json`.
+
+The private Aquamarine branch adds explicit headless render-node selection and
+`AQ_USE_RENDER_NODE=1` for the split KMS/render-device allocator paths. System
+libraries and the normal user's configuration remain unchanged.
+
+Full-panel rendering requires larger independent tilemap/TPC allocations and
+non-null auxiliary fragment storage. Optional uncompressed depth/stencil fields
+are routed through the M4 register producer; the compositor workload is tested,
+not general Z/S conformance. Client limits are now 1,024 live GEM objects,
+2,048 bindings, and 512 MiB per file/VM. Individual objects remain bounded.
+Continuous dmesg collection avoids losing early completion evidence when
+printk's ring wraps. The process-local GLES 3.0 override remains a bring-up
+constraint; no full GLES or Vulkan conformance is claimed.
+
+`tools/hyprland/start-interactive.sh` prepares a root-only physical session
+through the same mandatory watchdog runner. It requires a fresh boot and
+restores SDDM on clean exit. The supervisor renews the 60-second watchdog only
+after a new Vulkan triangle test verifies 524,288 pixels and Hyprland answers
+an IPC monitor query. No timer-only heartbeat is used. A CPU-only unit test
+rejects missing, false, or malformed progress evidence without feeding.
+The requested duration is bounded to one hour, with a separate kernel deadline
+and 65,535-pass cap. To request clean shutdown, create `/run/m4-hyprland-stop`;
+killing the supervisor instead deliberately leaves watchdog recovery armed.
+
+
+The supervised physical test `20260908T070357Z-render-ta` passes 390 GPU
+submissions over a 35-second interactive interval, including queue and pipe
+wraparound. Seven independent health checks verify 3,670,016 Vulkan pixels;
+each also checks compositor IPC before renewing the watchdog. Both screenshot
+and panel memory pass, followed by clean exit and watchdog disarm. An earlier
+75-second run passed 444 submissions and 14 health checks but exposed the old
+startup deadline being incorrectly reused at shutdown; the passing run includes
+the separate shutdown deadline. See `validation/j713-hyprland-interactive-20260908.json`.
+
+Installed launcher: `/usr/local/bin/m4-accelerated-hyprland start`, also exposed
+as `M4 Accelerated Hyprland.desktop` in `/home/e`. It starts a systemd-owned
+one-hour root test session after a fresh boot. Use
+`m4-accelerated-hyprland stop` to restore login cleanly; `status` shows the
+supervisor. The session is deliberately minimal (blur, shadows, and animations
+disabled) and does not replace the normal Omarchy session or system Mesa.

@@ -1,0 +1,7 @@
+[Desktop Entry]
+Type=Application
+Name=M4 Accelerated Hyprland (experimental)
+Comment=Start the GPU session after a fresh boot; returns to login after one hour
+Exec=foot -e /usr/local/bin/m4-accelerated-hyprland start
+Icon=video-display
+Terminal=false
