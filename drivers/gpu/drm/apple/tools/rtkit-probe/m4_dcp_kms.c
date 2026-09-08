@@ -1,6 +1,12 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 /* J713 native SID0 scanout. Explicit-load, fixed inherited panel mode only. */
 #include <linux/dma-mapping.h>
+#include <linux/aperture.h>
+#include <linux/of_address.h>
+#include <linux/dma-buf.h>
+#include <linux/debugfs.h>
+#include <linux/iosys-map.h>
+#include <linux/vmalloc.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -10,6 +16,7 @@
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_connector.h>
+#include <drm/drm_debugfs.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_print.h>
@@ -39,6 +46,7 @@ struct m4_kms {
 	struct m4_dcp_native *native;
 	/* Keep scanout pinned independently of atomic state until real completion. */
 	struct drm_framebuffer *active_fb, *failed_fb;
+	struct mutex present_lock;
 	bool failed;
 	u64 completed;
 };
@@ -171,8 +179,11 @@ static bool m4_present(struct m4_kms *m4, struct drm_framebuffer *fb)
 	dma_addr_t dva = 0;
 	int ret;
 
-	if (m4->failed)
+	mutex_lock(&m4->present_lock);
+	if (m4->failed) {
+		mutex_unlock(&m4->present_lock);
 		return false;
+	}
 	if (fb) {
 		drm_framebuffer_get(fb);
 		m4_surface(surface, fb);
@@ -185,6 +196,7 @@ static bool m4_present(struct m4_kms *m4, struct drm_framebuffer *fb)
 		m4->failed_fb = fb;
 		WRITE_ONCE(m4->failed, true);
 		drm_err(&m4->drm, "native DCP flip failed %d; buffers pinned until reboot\n", ret);
+		mutex_unlock(&m4->present_lock);
 		return false;
 	}
 	if (m4->active_fb)
@@ -194,6 +206,7 @@ static bool m4_present(struct m4_kms *m4, struct drm_framebuffer *fb)
 	if (m4->completed <= 3 || !(m4->completed % 600))
 		drm_info(&m4->drm, "native KMS completed=%llu surface=%d imported=%d\n",
 			 m4->completed, !!fb, fb && !!fb->obj[0]->import_attach);
+	mutex_unlock(&m4->present_lock);
 	return true;
 }
 
@@ -339,7 +352,119 @@ static const struct drm_driver m4_driver = {
 	.minor = 1,
 };
 
-int m4_dcp_kms_register(struct m4_dcp_native *native)
+
+static int m4_status(struct seq_file *seq, void *unused)
+{
+	struct drm_debugfs_entry *entry = seq->private;
+	struct m4_kms *m4 = to_m4(entry->dev);
+	struct drm_framebuffer *fb;
+
+	mutex_lock(&m4->present_lock);
+	fb = m4->active_fb;
+	seq_printf(seq, "completed %llu\nfailed %u\nactive_fb %u\nimported %u\n",
+		   m4->completed, m4->failed, fb ? fb->base.id : 0,
+		   fb && !!fb->obj[0]->import_attach);
+	mutex_unlock(&m4->present_lock);
+	return 0;
+}
+
+struct m4_snapshot {
+	size_t size;
+	u8 bytes[];
+};
+
+static int m4_snapshot_open(struct inode *inode, struct file *file)
+{
+	struct m4_kms *m4 = inode->i_private;
+	struct m4_snapshot *snapshot;
+	struct drm_framebuffer *fb;
+	struct dma_buf *dmabuf = NULL;
+	struct iosys_map map = {};
+	u32 bytes;
+	int ret;
+
+	ret = mutex_lock_interruptible(&m4->present_lock);
+	if (ret)
+		return ret;
+	fb = m4->active_fb;
+	if (m4->failed || !fb) {
+		ret = -ENODATA;
+		goto unlock;
+	}
+	bytes = fb->pitches[0] * fb->height;
+	if (bytes > SZ_32M) {
+		ret = -E2BIG;
+		goto unlock;
+	}
+	snapshot = kvmalloc(sizeof(*snapshot) + 32 + bytes, GFP_KERNEL);
+	if (!snapshot) {
+		ret = -ENOMEM;
+		goto unlock;
+	}
+	/* Only this root-only diagnostic maps or reads imported GPU pixels. */
+	if (fb->obj[0]->import_attach) {
+		dmabuf = fb->obj[0]->import_attach->dmabuf;
+		ret = dma_buf_begin_cpu_access(dmabuf, DMA_FROM_DEVICE);
+		if (ret)
+			goto free;
+		ret = dma_buf_vmap_unlocked(dmabuf, &map);
+		if (ret) {
+			dma_buf_end_cpu_access(dmabuf, DMA_FROM_DEVICE);
+			goto free;
+		}
+	} else {
+		ret = drm_gem_dma_vmap(drm_fb_dma_get_gem_obj(fb, 0), &map);
+		if (ret)
+			goto free;
+	}
+	snapshot->size = 32 + bytes;
+	put_unaligned_le32(0x4246344d, snapshot->bytes); /* M4FB */
+	put_unaligned_le32(fb->width, snapshot->bytes + 4);
+	put_unaligned_le32(fb->height, snapshot->bytes + 8);
+	put_unaligned_le32(fb->pitches[0], snapshot->bytes + 12);
+	put_unaligned_le32(fb->format->format, snapshot->bytes + 16);
+	put_unaligned_le32(fb->base.id, snapshot->bytes + 20);
+	put_unaligned_le32(!!dmabuf, snapshot->bytes + 24);
+	put_unaligned_le32(bytes, snapshot->bytes + 28);
+	iosys_map_memcpy_from(snapshot->bytes + 32, &map, 0, bytes);
+	if (dmabuf) {
+		dma_buf_vunmap_unlocked(dmabuf, &map);
+		ret = dma_buf_end_cpu_access(dmabuf, DMA_FROM_DEVICE);
+		if (ret)
+			goto free;
+	}
+	file->private_data = snapshot;
+	mutex_unlock(&m4->present_lock);
+	return 0;
+free:
+	kvfree(snapshot);
+unlock:
+	mutex_unlock(&m4->present_lock);
+	return ret;
+}
+
+static ssize_t m4_snapshot_read(struct file *file, char __user *data, size_t size, loff_t *pos)
+{
+	struct m4_snapshot *snapshot = file->private_data;
+
+	return simple_read_from_buffer(data, size, pos, snapshot->bytes, snapshot->size);
+}
+
+static int m4_snapshot_release(struct inode *inode, struct file *file)
+{
+	kvfree(file->private_data);
+	return 0;
+}
+
+static const struct file_operations m4_snapshot_fops = {
+	.owner = THIS_MODULE,
+	.open = m4_snapshot_open,
+	.read = m4_snapshot_read,
+	.release = m4_snapshot_release,
+	.llseek = default_llseek,
+};
+
+int m4_dcp_kms_register(struct m4_dcp_native *native, bool takeover)
 {
 	static const u32 formats[] = { DRM_FORMAT_XRGB8888, DRM_FORMAT_ARGB8888 };
 	static const u64 modifiers[] = { DRM_FORMAT_MOD_LINEAR, DRM_FORMAT_MOD_INVALID };
@@ -375,6 +500,7 @@ int m4_dcp_kms_register(struct m4_dcp_native *native)
 		return PTR_ERR(m4);
 	drm = &m4->drm;
 	m4->native = native;
+	mutex_init(&m4->present_lock);
 	timing = m4_dcp_native_property(native, "PreferredTimingElements", &size);
 	if (!timing)
 		return -ENODATA;
@@ -412,9 +538,26 @@ int m4_dcp_kms_register(struct m4_dcp_native *native)
 	if (ret)
 		return ret;
 	drm_mode_config_reset(drm);
+	if (takeover) {
+		struct resource fb;
+
+		node = of_find_compatible_node(NULL, NULL, "simple-framebuffer");
+		ret = node ? of_address_to_resource(node, 0, &fb) : -ENODEV;
+		of_node_put(node);
+		if (ret)
+			return ret;
+		ret = aperture_remove_conflicting_devices(fb.start, resource_size(&fb), m4_driver.name);
+		if (ret)
+			return ret;
+	}
+	drm_debugfs_add_file(drm, "m4_status", m4_status, NULL);
 	ret = drm_dev_register(drm, 0);
+	if (!ret)
+		debugfs_create_file("m4_scanout", 0400, drm->debugfs_root, m4, &m4_snapshot_fops);
 	if (!ret)
 		drm_info(drm, "M4 native KMS ready: %ux%u at %d Hz, SID0 DMA scanout\n",
 			 m4->mode.hdisplay, m4->mode.vdisplay, drm_mode_vrefresh(&m4->mode));
 	return ret;
 }
+
+MODULE_IMPORT_NS("DMA_BUF");

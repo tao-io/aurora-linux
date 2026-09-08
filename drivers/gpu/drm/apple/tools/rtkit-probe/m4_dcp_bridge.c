@@ -203,7 +203,7 @@ void m4_dcp_bridge_receive(struct m4_dcp_bridge *b, u64 message)
 		b->callbacks[b->callback_count].mapping_id = le64_to_cpu(mapping_id);
 	}
 	b->callback_count++;
-	dev_info(b->dev, "M4 DCP callback tag=%#x input=%u output=%u\n",
+	dev_dbg(b->dev, "M4 DCP callback tag=%#x input=%u output=%u\n",
 		 view.call, view.input_size, view.output_size);
 	event(b, 2, message, b->rpc + layout.remote_offset + view.offset, view.total_size);
 	goto out;
