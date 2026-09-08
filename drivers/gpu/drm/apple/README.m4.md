@@ -98,3 +98,34 @@ watchdog-guarded ADT/FDT capture verified the firmware UUID and all seven
 no-map regions with the expected DCP phandle, remap address and rounded size.
 Evidence is in `_provenance/omarchy-m4-display/20260908-handoff/` in the workspace.
 This qualifies the passive metadata handoff only; native nodes remain disabled.
+
+## Native RTKit and DCPLink startup
+
+The explicit-load `tools/rtkit-probe/m4_dcp_rtkit.c` client uses the normal
+Linux IOMMU, coherent DMA, mailbox and RTKit APIs. It does not issue H17P display
+commands. Its allocations remain pinned until reboot; hot teardown is not yet
+qualified. The raw polling diagnostic established protocol 12 and endpoint
+bitmaps 0x51f (base 0) and 0x803ffd (base 1). Its early quiescence request was
+not acknowledged before system services had been initialized.
+
+On boot `dbe158d2-345f-40a8-bf82-f493fb21577a`, kernel build #10, the native
+client completed RTKit startup and DCPLink INIT/READY. Evidence is in the
+workspace's `20260908-native-link` display capture directory. The watchdog was
+armed for 60 seconds; three thermal samples peaked at 52.25 C, with no thermal
+failure. Host allocations used the DCP aperture (for example 0x10fffffc000),
+and firmware-supplied buffers were checked against reserved memory and the
+native IOMMU mappings before mapping them into the CPU.
+
+The raw READY message was `0x004045bc9ef40101`. The original diagnostic called
+the upper field version 64 because that is how the imported H17P helper names
+it. M4 disassembly shows that descriptor+12 is instead an alignment: at
+0x19843c..0x198458 it takes the maximum of the supplied value and the cache-line
+size at global 0x85ce34 (64). Helpers 0x1962b8 and 0x196328 use that same global
+to round cache operations. The M4 diagnostic now supplies alignment 64 and
+checks the READY alignment and firmware hash 0x45bc9ef4. This interpretation
+must be retained when adding nested RPC buffer allocation.
+
+A412 resolves to 0x1e2480 and requires four output bytes, with no input-size
+check. Its handler reads a one-byte display flag without a virtual call. The
+diagnostic's optional main-display query uses this entry, not H17P method-table
+assumptions. Hardware validation of that query follows the READY checkpoint.

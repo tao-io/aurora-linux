@@ -18,11 +18,15 @@ struct m4_dcp_rtkit {
 	void *rpc;
 	dma_addr_t rpc_dva;
 	int result;
+	bool awaiting_rpc;
 };
 
 static bool start_link;
 module_param(start_link, bool, 0400);
 MODULE_PARM_DESC(start_link, "Also negotiate DCPLink, without issuing display RPCs");
+static bool query_display;
+module_param(query_display, bool, 0400);
+MODULE_PARM_DESC(query_display, "Issue the M4 A412 read-only main-display query after READY");
 
 static void crashed(void *cookie, const void *log, size_t size)
 {
@@ -36,19 +40,39 @@ static void crashed(void *cookie, const void *log, size_t size)
 static void receive(void *cookie, u8 ep, u64 message)
 {
 	struct m4_dcp_rtkit *dcp = cookie;
-	u16 version;
+	u16 alignment;
 	u32 hash;
 
 	dev_info(dcp->dev, "DCP app rx ep=%#x message=%#llx\n", ep, message);
 	if (ep != APPLE_DCP_LINK_ENDPOINT)
 		return;
+	if (dcp->awaiting_rpc) {
+		u32 output;
+
+		dma_rmb();
+		output = le32_to_cpup((__le32 *)(dcp->rpc + 12));
+		if (message != APPLE_DCP_LINK_MSG_RPC_REPLY || output > 1) {
+			dcp->result = -EPROTO;
+		} else {
+			dcp->result = 0;
+			dev_info(dcp->dev, "M4 A412 reply: is_main_display=%u\n", output);
+		}
+		dcp->awaiting_rpc = false;
+		complete(&dcp->ready);
+		return;
+	}
 	if ((message & 3) == APPLE_DCP_LINK_MSG_FIRMWARE_INIT)
 		return;
-	if (apple_dcp_link_ready_reply(message, &version, &hash) || !version) {
+	/* On this M4 firmware the upper field is the shared-memory alignment.
+	 * __TEXT 0x19843c reads descriptor+12 and takes max(host, cacheline=64).
+	 * It is not a protocol version; do not clamp the reply to version 4.
+	 */
+	if (apple_dcp_link_ready_reply(message, &alignment, &hash) ||
+	    alignment != 64 || hash != 0x45bc9ef4) {
 		dcp->result = -EPROTO;
 	} else {
 		dcp->result = 0;
-		dev_info(dcp->dev, "M4 DCPLink READY version=%u hash=%#x\n", version, hash);
+		dev_info(dcp->dev, "M4 DCPLink READY alignment=%u hash=%#x\n", alignment, hash);
 	}
 	complete(&dcp->ready);
 }
@@ -164,7 +188,7 @@ static int probe(struct platform_device *pdev)
 	if (ret)
 		goto retained;
 	dev_info(dev, "M4 native RTKit boot complete; running=%d\n", apple_rtkit_is_running(dcp->rtkit));
-	if (!start_link)
+	if (!start_link && !query_display)
 		goto retained;
 	dcp->rpc = dma_alloc_coherent(dev, APPLE_DCP_LINK_RPC_MEMORY_SIZE,
 				      &dcp->rpc_dva, GFP_KERNEL);
@@ -174,6 +198,8 @@ static int probe(struct platform_device *pdev)
 	}
 	memset(dcp->rpc, 0, APPLE_DCP_LINK_RPC_MEMORY_SIZE);
 	apple_dcp_link_init_desc_encode(dcp->rpc, 0, false);
+	/* The imported descriptor names this field version; M4 uses alignment. */
+	((struct apple_dcp_link_init_desc *)dcp->rpc)->version = cpu_to_le32(64);
 	ret = apple_dcp_link_init_message(dcp->rpc_dva, &message);
 	if (ret)
 		goto retained;
@@ -189,6 +215,25 @@ static int probe(struct platform_device *pdev)
 		ret = -ETIMEDOUT;
 	else
 		ret = dcp->result;
+	if (!ret && query_display) {
+		/* __TEXT 0x1e2480: no input, output >= 4; reads one display flag.
+		 * One request on AP stream 0 at offset 0, already 64-byte aligned.
+		 */
+		reinit_completion(&dcp->ready);
+		apple_dcp_link_rpc_header_encode(dcp->rpc, 0x41343132, 0, 4);
+		*(__le32 *)(dcp->rpc + 12) = cpu_to_le32(0xa5);
+		dcp->result = -ETIMEDOUT;
+		dcp->awaiting_rpc = true;
+		dma_wmb();
+		ret = apple_rtkit_send_message(dcp->rtkit, APPLE_DCP_LINK_ENDPOINT,
+					      (16ULL << 32) | APPLE_DCP_LINK_MSG_RPC, NULL, false);
+		if (!ret) {
+			if (!wait_for_completion_timeout(&dcp->ready, msecs_to_jiffies(3000)))
+				ret = -ETIMEDOUT;
+			else
+				ret = dcp->result;
+		}
+	}
 retained:
 	dcp->result = ret;
 	dev_info(dev, "M4 native DCP diagnostic finished ret=%d; resources retained until reboot\n", ret);
