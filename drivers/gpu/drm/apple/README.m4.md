@@ -262,3 +262,9 @@ query and published timing dictionaries and display metadata (2560x1664, timing
 mode 2). It stopped at D112, peak 53 C (`20260908-properties-start`). The M4
 startup call sites 0x26e4dc/0x26e57c issue D112/D113 with no input and four-byte
 boolean output, extending the host service creation handlers.
+
+D112/D113 passed on boot `fda4641c-ca7f-407c-a032-dc33c784c95e`; startup next
+emitted D575 (88/76), the hotplug notification. M4 wrapper 0x1dcae8 establishes
+the connection u64, 76-byte in/out field and null byte at +84; the host preserves
+that field. D576 at 0x1dcbf0 publishes two power-state bytes (4/0). Evidence:
+`20260908-services6-start`, peak 52.5 C.

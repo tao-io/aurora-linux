@@ -82,6 +82,15 @@ def startup_callback(dcp, tag, data, output_size):
     # add D112/D113; each returns a four-byte slot with boolean byte 0.
     if tag in ('D108', 'D109', 'D110', 'D111', 'D112', 'D113') and not data and output_size == 4:
         return b'\x01\0\0\0'
+    # M4 0x1dcae8 marshals an eight-byte connection value, 75-byte tile
+    # data, one extra flag, then a null byte at +84. Preserve all 76 bytes.
+    if tag == 'D575' and len(data) == 88 and output_size == 76:
+        log({'event': 'hotplug', 'connected': struct.unpack_from('<Q', data)[0]})
+        return data[8:84] if not data[84] & 1 else bytes(76)
+    # M4 0x1dcbf0 publishes two byte-sized power state flags in a u32 slot.
+    if tag == 'D576' and len(data) == 4 and output_size == 0:
+        log({'event': 'powerstate', 'flags': list(data[:2])})
+        return b''
     # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
     # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.
     if tag == 'D401' and len(data) == 80 and output_size == 12:
