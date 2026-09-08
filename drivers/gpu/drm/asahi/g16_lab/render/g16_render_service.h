@@ -151,6 +151,10 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 			if (!ret || ret == -ENODATA)
 				ret = g16_render_test_fragment(asc, crashlog_iova, crashlog_pages);
 			timing[3] = ktime_get_ns();
+			/* Firmware recovery can fail a stage before its timeout path.
+			 * Preserve the active VM and command evidence in that case too. */
+			if (ret && g16_drm_active_job)
+				g16_drm_job_log_fault(g16_drm_active_job);
 			if (!ret && g16_drm_active_job)
 				ret = g16_drm_job_leave(g16_drm_active_job);
 			if (!ret)
