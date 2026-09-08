@@ -78,8 +78,9 @@ def startup_callback(dcp, tag, data, output_size):
             raise RuntimeError('nested main-display query failed')
         return b''
     # M4 wrappers 0x265e20, 0x2700b0, 0x260c74, 0x26d708:
-    # create PROV/PROD/PMUS/IOMF services; a four-byte slot with boolean byte 0.
-    if tag in ('D108', 'D109', 'D110', 'D111') and not data and output_size == 4:
+    # create PROV/PROD/PMUS/IOMF services. Startup sites 0x26e4dc/0x26e57c
+    # add D112/D113; each returns a four-byte slot with boolean byte 0.
+    if tag in ('D108', 'D109', 'D110', 'D111', 'D112', 'D113') and not data and output_size == 4:
         return b'\x01\0\0\0'
     # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
     # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.

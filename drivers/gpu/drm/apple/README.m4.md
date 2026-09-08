@@ -256,3 +256,9 @@ properties D563 (76/4), D565 (72/4), D567 (128/4) now have exact-size host handl
 The M4 sites are 0x23a224, 0x1db450, 0x1dbed4, 0x1dc180, 0x1dc394, 0x1dc5a8.
 Dictionary bytes are retained as host metadata, without interpreting padding as
 part of the serialized object or changing display hardware state.
+
+On boot `b47a936a-3ff5-4b31-b70a-2a40ef4adc24`, startup passed the recursive
+query and published timing dictionaries and display metadata (2560x1664, timing
+mode 2). It stopped at D112, peak 53 C (`20260908-properties-start`). The M4
+startup call sites 0x26e4dc/0x26e57c issue D112/D113 with no input and four-byte
+boolean output, extending the host service creation handlers.
