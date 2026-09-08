@@ -418,3 +418,16 @@ DCP background transaction completion, not surface scanout, visual correctness,
 a DRM/KMS device, or removal of simpledrm CPU copies. Existing clock-frequency,
 PMU/calibration, declined bandwidth and optional default-surface diagnostics
 remain in the firmware log and are not hidden by the successful transaction.
+
+**First native surface submission completion:** `20260908-scanout`, boot
+`2f02e4e3-ba70-4ea9-a423-605e50700258`, kernel #11, m1n1 `b3e54db`.
+DISP0 SID0 attaches with inherited mappings intact. The diagnostic allocates
+17,039,360 bytes through that native DMA device, fills a 2560x1664 BGRA8 color-bar
+pattern once, and submits layer 0 through M4 A407. DCP returns status zero and
+D590 completes the matching swap ID 5. Startup plus submission takes 2.779 s;
+peak exposed temperature is 53.5 C, guards pass/disarm. No per-frame CPU copy
+is involved in this diagnostic. Visual confirmation is pending; completion
+alone does not prove the pattern is visible or correct. A DRM/KMS connector,
+DMA-BUF import from the GPU, atomic page flips and desktop integration remain
+unimplemented on this native path. Existing firmware clock/PMU/calibration
+warnings and explicitly declined services still apply.
