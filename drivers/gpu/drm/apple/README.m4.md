@@ -171,3 +171,12 @@ D406, a 72-byte IOMF `InitialPanelTemperature` property publication with no
 output. The client records and acknowledges this exact property shape, matching
 `iomfb_set_fx_prop_req`; no thermal policy or clock change is requested.
 Evidence: `20260908-services-start`. Full startup is still unqualified.
+
+`tools/m4_dcp_swap_layout.py` executes only the captured A407 marshalling wrapper
+in Unicorn, substituting allocation, surface constructors and the final display
+virtual call. It checks both all-null and all-present surface lists. The checks
+pass for the hash-pinned M4 image: wire size 0x1bd8, four primary surfaces at
+0x588 with stride 0x22c, primary IOVAs at 0xe38, extra words at 0xe58, six secondary
+surfaces at 0xe78, and secondary IOVAs at 0x1b80. It never runs the actual display
+implementation and does not establish a successful hardware flip or the internal
+meaning of the swap-header fields.
