@@ -127,6 +127,8 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 		}
 		sequence = smp_load_acquire(&g16_render_service_pending);
 		if (sequence) {
+			if (!(sequence & 127))
+				g16_lab_log_gpu_dvfs_constraints("render service");
 			if (g16_drm_active_job) {
 				ret = g16_drm_job_enter(g16_drm_active_job);
 				if (ret)

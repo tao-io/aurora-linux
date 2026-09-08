@@ -2417,6 +2417,11 @@ module_param(compute_mandelbrot, bool, 0444);
 MODULE_PARM_DESC(compute_mandelbrot,
 	"Replace only the proven iadd main body with the offline-assembled 64x64 Mandelbrot compute shader");
 
+static bool render_power_controller;
+module_param(render_power_controller, bool, 0444);
+MODULE_PARM_DESC(render_power_controller,
+	"Render-only: initialize the captured J713/25G83 firmware power controller and static clock tables");
+
 static unsigned int compute_ocean_initial_pstate =
 	J713_PWRPERF_INITIAL_PSTATE;
 module_param(compute_ocean_initial_pstate, uint, 0444);
@@ -14057,7 +14062,7 @@ static int g16_lab_uat_initdata_map_test(void)
 					     &objects[G16_INITDATA_RUNTIME], 0);
 	globals = g16_lab_initdata_object_ptr(pages,
 					     &objects[G16_INITDATA_GLOBALS], 0);
-	if (compute_macos_ocean) {
+	if (compute_macos_ocean || render_power_controller) {
 		ret = g16_lab_initialize_ocean_host_globals(globals);
 		if (ret)
 			goto out;
@@ -14074,21 +14079,21 @@ static int g16_lab_uat_initdata_map_test(void)
 	devctrl_ring = g16_lab_initdata_object_ptr(pages, &objects[G16_INITDATA_DEVCTRL_RING], 0);
 	power = g16_lab_initdata_object_ptr(pages,
 					  &objects[G16_INITDATA_POWER], 0);
-	if (compute_macos_ocean) {
+	if (compute_macos_ocean || render_power_controller) {
 		ret = g16_lab_initialize_ocean_root_power(power);
 		if (ret)
 			goto out;
 	}
 	main = g16_lab_initdata_object_ptr(pages,
 					  &objects[G16_INITDATA_MAIN], 0);
-	if (compute_macos_ocean) {
+	if (compute_macos_ocean || render_power_controller) {
 		ret = g16_lab_initialize_ocean_static_gpu_configuration(main);
 		if (ret)
 			goto out;
 	}
 	pwrperf = g16_lab_initdata_object_ptr(pages,
 					      &objects[G16_INITDATA_PWRPERF], 0);
-	if (compute_macos_ocean) {
+	if (compute_macos_ocean || render_power_controller) {
 		ret = g16_lab_initialize_ocean_power_performance(pwrperf);
 		if (ret)
 			goto out;
@@ -19257,6 +19262,8 @@ static int __init g16_lab_init(void)
 {
 	int ret;
 
+	if (render_power_controller && !render_queue_probe)
+		return -EINVAL;
 	if (render_trusted_uid && (!render_drm_submit ||
 	    !uid_valid(make_kuid(&init_user_ns, render_trusted_uid))))
 		return -EINVAL;
