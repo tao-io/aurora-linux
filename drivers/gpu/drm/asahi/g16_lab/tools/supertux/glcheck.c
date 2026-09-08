@@ -40,8 +40,9 @@ void SDL_GL_SwapWindow(void *window)
 {
    static void (*swap)(void *);
    static double start;
+   static double swap_seconds, cpu_start;
    static unsigned frames;
-   struct timespec now;
+   struct timespec now, before, cpu;
    if (!swap) {
       swap = dlsym(RTLD_NEXT, "SDL_GL_SwapWindow");
       if (!swap) {
@@ -49,18 +50,27 @@ void SDL_GL_SwapWindow(void *window)
          exit(1);
       }
    }
+   int before_error = clock_gettime(CLOCK_MONOTONIC, &before);
    swap(window);
-   if (clock_gettime(CLOCK_MONOTONIC, &now))
+   if (before_error || clock_gettime(CLOCK_MONOTONIC, &now) ||
+       clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cpu))
       return;
    double end = now.tv_sec + now.tv_nsec * 1e-9;
+   double cpu_end = cpu.tv_sec + cpu.tv_nsec * 1e-9;
    if (!start) {
       start = end;
+      cpu_start = cpu_end;
       return;
    }
+   swap_seconds += end - (before.tv_sec + before.tv_nsec * 1e-9);
    if (++frames == 120) {
-      fprintf(stderr, "m4-supertux: 120 swaps in %.3f s = %.2f FPS (wall clock)\n",
-              end - start, frames / (end - start));
+      fprintf(stderr, "m4-supertux: 120 swaps in %.3f s = %.2f FPS (wall clock); "
+              "mean frame %.2f ms, in SDL swap %.2f ms, main-thread CPU %.2f ms\n",
+              end - start, frames / (end - start), (end - start) * 1000 / frames,
+              swap_seconds * 1000 / frames, (cpu_end - cpu_start) * 1000 / frames);
       start = end;
+      cpu_start = cpu_end;
+      swap_seconds = 0;
       frames = 0;
    }
 }
