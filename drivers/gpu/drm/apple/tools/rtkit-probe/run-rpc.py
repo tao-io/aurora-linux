@@ -57,6 +57,12 @@ def startup_callback(dcp, tag, data, output_size):
     # create PROV/PROD/PMUS/IOMF services; a four-byte slot with boolean byte 0.
     if tag in ('D108', 'D109', 'D110', 'D111') and not data and output_size == 4:
         return b'\x01\0\0\0'
+    # Observed M4 publication: IOMF / InitialPanelTemperature / fixed-point value.
+    # The host records this property; the firmware requests no reply payload.
+    if (tag == 'D406' and len(data) == 72 and output_size == 0
+            and data[:4] == b'FMOI'
+            and data[4:68].split(b'\0', 1)[0] == b'InitialPanelTemperature'):
+        return b''
     if tag == 'D100' and not data and output_size == 0:
         # 0x272d3c is a no-input, four-byte-output flag query on this firmware.
         dcp.call('A390', output_size=4, nested=True)

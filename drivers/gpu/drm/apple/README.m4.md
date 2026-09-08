@@ -164,3 +164,10 @@ creation, respectively (0x265e20, 0x2700b0, 0x260c74, 0x26d708). Each reads a
 boolean from byte zero of a four-byte reply. These IDs differ from H17P.
 The startup client answers those exact shapes and uses the M4 A390 flag query
 (0x272d3c, no input/four output bytes) for the D100 nested handshake.
+
+On boot `c5a676ff-941d-4a28-bdeb-37dc5178fd9a`, A401 passed D599 and all four
+service-creation handlers, including a repeated D108. The next callback was
+D406, a 72-byte IOMF `InitialPanelTemperature` property publication with no
+output. The client records and acknowledges this exact property shape, matching
+`iomfb_set_fx_prop_req`; no thermal policy or clock change is requested.
+Evidence: `20260908-services-start`. Full startup is still unqualified.
