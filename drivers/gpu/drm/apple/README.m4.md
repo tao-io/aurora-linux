@@ -387,3 +387,11 @@ follows its missing-property path. The captured J713 ADT has no such calibration
 property. Add bounded raw-property lookup with an explicit missing result.
 Native PIODMA mappings are now tested; hardware DMA completion/page flips are
 still unproven.
+
+`20260908-rawprop-start` (boot `6afc7254-f0c1-483e-892c-6d4ebfbbd19e`,
+54.25 C peak) accepted the absent raw property and returned true from both
+A000 late-init and A465 refresh publication. D121 completed and startup next
+requested D582, 2560x1664, 8/4 bytes. Its M4 caller at 0x1d0268 explicitly
+handles false by logging allocation failure and releasing the optional default
+surface, then returning to startup. Add `--decline-default-surface` to exercise
+that path without pretending that a native default scanout surface exists.

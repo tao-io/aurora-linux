@@ -25,6 +25,7 @@ p.add_argument('--startup-callbacks', action='store_true')
 p.add_argument('--test-nested-query', action='store_true')
 p.add_argument('--hardware-boot', action='store_true')
 p.add_argument('--decline-bandwidth', action='store_true')
+p.add_argument('--decline-default-surface', action='store_true')
 p.add_argument('--swap-completion', type=int)
 p.add_argument('--noop-swap', action='store_true')
 p.add_argument('--background-swap', type=lambda s: int(s, 0))
@@ -205,6 +206,13 @@ def startup_callback(dcp, tag, data, output_size):
         if data[8:12] != b'\x01\0\0\0':
             raise RuntimeError('unqualified PIODMA map flags')
         return dcp.map_piodma(ident)
+    # M4 0x1d0268 checks D582's boolean. False logs allocation failure,
+    # releases the optional default surface and returns to startup. This
+    # diagnostic has not supplied a native scanout surface yet.
+    if a.decline_default_surface and tag == 'D582' and len(data) == 8 and output_size == 4:
+        width, height = struct.unpack('<II', data)
+        log({'event': 'default_surface_declined', 'width': width, 'height': height})
+        return bytes(4)
     # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
     # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.
     # M4 0x239b28..0x239bd0 returns up to 3072 property bytes and a u32
