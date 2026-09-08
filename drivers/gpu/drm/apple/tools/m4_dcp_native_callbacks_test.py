@@ -65,6 +65,8 @@ harness+=body
 harness+=r'''
 int main(int argc,char **argv) {
     struct m4_dcp_native *d=calloc(1,sizeof(*d));d->stride=10240;
+    u8 invalid_output[4]={0};
+    assert(callback(NULL,d,0x4431303a,NULL,0,invalid_output,4)<0);
     FILE *f=fopen(argv[1],"rb");assert(f);u32 h[3],cases=0;
     while (fread(h,sizeof(h),1,f)==1) {
         u8 *in=malloc(h[1]+1),*out=calloc(1,h[2]+1);assert(in && out);

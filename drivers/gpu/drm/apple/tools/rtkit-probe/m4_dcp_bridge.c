@@ -64,6 +64,7 @@ struct m4_dcp_bridge {
 	bool failed;
 	bool enabled;
 	bool kernel_client;
+	u32 kernel_callback_depth;
 	u32 buffer_count;
 	u64 buffer_bytes;
 	struct platform_device *piodma;
@@ -700,7 +701,9 @@ static int kernel_callback(struct m4_dcp_bridge *b, struct bridge_event *e,
 	if (in > size - sizeof(*h) || out != size - sizeof(*h) - in || !callback)
 		return -EPROTO;
 	memset(e->data + sizeof(*h) + in, 0, out);
+	b->kernel_callback_depth++;
 	ret = callback(b, cookie, tag, h + 1, in, e->data + sizeof(*h) + in, out);
+	b->kernel_callback_depth--;
 	if (ret)
 		return ret;
 	if (tag == 0x44353930 && in == 0x730 && completed)
@@ -746,12 +749,32 @@ int m4_dcp_bridge_call(struct m4_dcp_bridge *b, u32 tag,
 	apple_dcp_link_rpc_header_encode(packet, tag, input_size, output_size);
 	if (input_size)
 		memcpy(packet + 1, input, input_size);
+retry:
+	/* Drain asynchronous notifications before starting an outer request.
+	 * A queued callback is not recursive entry until its handler is running.
+	 */
+	if (!b->kernel_callback_depth) {
+		while (READ_ONCE(b->event_count)) {
+			ret = m4_dcp_bridge_pump(b, 0, callback, cookie);
+			if (ret) {
+				kfree(packet);
+				return ret;
+			}
+		}
+	}
 	mutex_lock(&b->lock);
-	nested = b->callback_count != 0;
+	nested = b->kernel_callback_depth != 0;
+	if (nested && !b->callback_count) {
+		mutex_unlock(&b->lock);
+		kfree(packet);
+		return -EPROTO;
+	}
 	if (nested)
 		expected |= b->callbacks[b->callback_count - 1].message & BIT_ULL(8);
 	mutex_unlock(&b->lock);
 	ret = kernel_send(b, 1, nested, packet, size);
+	if (ret == -EBUSY && !nested && time_before(jiffies, deadline))
+		goto retry; /* A callback arrived between draining and submitting. */
 	kfree(packet);
 	if (ret)
 		return ret;

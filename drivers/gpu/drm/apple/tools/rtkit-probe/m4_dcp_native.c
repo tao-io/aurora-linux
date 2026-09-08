@@ -136,7 +136,8 @@ static int callback(struct m4_dcp_bridge *b, void *cookie, u32 tag,
 		return 0;
 	if (tag == D(599) && SHAPE(0, 0))
 		return simple_call(dcp, A(412), false, true, true);
-	if (((tag >= D(108) && tag <= D(113)) || tag == D(0) || tag == D(1)) && SHAPE(0, 4)) {
+	if ((tag == D(108) || tag == D(109) || tag == D(110) || tag == D(111) ||
+	     tag == D(112) || tag == D(113) || tag == D(0) || tag == D(1)) && SHAPE(0, 4)) {
 		out[0] = 1;
 		return 0;
 	}
