@@ -19,6 +19,7 @@ p.add_argument('--input-hex', default='')
 p.add_argument('--output-size', type=int, default=4)
 p.add_argument('--repeat', type=int, default=1)
 p.add_argument('--expect-hex')
+p.add_argument('--startup-callbacks', action='store_true')
 a = p.parse_args()
 if not 1 <= a.repeat <= 100 or not 0 <= a.output_size <= 0x7000:
     p.error('invalid repeat count/output size')
@@ -47,8 +48,15 @@ def log(event):
     print(json.dumps(event), flush=True)
 
 dcp = None
+def startup_callback(dcp, tag, data, output_size):
+    # J713 __TEXT 0x1d7760..0x1d7778: D599, no input or output.
+    # This is the first callback observed from A401 on the inherited display.
+    if tag == 'D599' and not data and output_size == 0:
+        return b''
+    raise RuntimeError(f'unhandled startup callback {tag}, {len(data)}/{output_size} bytes')
+
 try:
-    dcp = DCP(log, t.check)
+    dcp = DCP(log, t.check, startup_callback if a.startup_callbacks else None)
     start = time.monotonic()
     for i in range(a.repeat):
         if time.monotonic() - start > 20:

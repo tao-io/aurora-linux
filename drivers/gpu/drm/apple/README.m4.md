@@ -145,3 +145,12 @@ client refused to acknowledge it and left the watchdog armed for recovery.
 Evidence: `20260908-bridge-start`. Callback placement must be qualified before
 using the imported callback handlers. The diagnostic now rejects non-D tags
 and records the stream headers on a placement mismatch.
+
+The placement capture on boot `69bdd424-0a5f-4d2b-80fe-39084d581236`
+found the actual callback at 0x60000: D599, zero input/output bytes. All other
+stream headers were empty except the active A401 command at offset zero.
+`20260908-bridge-placement` records this evidence. The AP callback buffer must
+use the incoming remote bit, rather than always selecting the remote half as
+in the imported handler. J713 TEXT 0x1d7760..0x1d7778 independently emits D599
+with null pointers and zero sizes. The bounded startup client now acknowledges
+only that exact callback shape; other callbacks still stop the test.

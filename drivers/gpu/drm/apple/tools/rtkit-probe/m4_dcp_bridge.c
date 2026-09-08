@@ -117,7 +117,7 @@ void m4_dcp_bridge_receive(struct m4_dcp_bridge *b, u64 message)
 		goto out;
 	}
 	if (b->callback_count >= MAX_CALLBACKS ||
-	    apple_dcp_link_stream_layout(APPLE_DCP_LINK_SIDE_AP, stream, true, &layout))
+	    apple_dcp_link_stream_layout(APPLE_DCP_LINK_SIDE_AP, stream, remote, &layout))
 		goto error;
 	ret = apple_dcp_link_rpc_decode(message, b->rpc + layout.remote_offset,
 				      layout.capacity, &view);
