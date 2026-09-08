@@ -101,6 +101,19 @@ struct apple_rtkit *apple_rtkit_init(struct device *dev, void *cookie,
 					  const struct apple_rtkit_ops *ops);
 
 /*
+ * Adopt a session verified by the caller to be running and ready, with the
+ * previous owner detached. Initialize inherited system endpoints and power
+ * state BEFORE enabling receive processing; do not reboot the coprocessor.
+ * Application endpoint discovery/start remains the caller's responsibility.
+ */
+struct apple_rtkit *apple_rtkit_init_adopted(
+	struct device *dev, void *cookie, const char *mbox_name, int mbox_idx,
+	const struct apple_rtkit_ops *ops);
+struct apple_rtkit *devm_apple_rtkit_init_adopted(
+	struct device *dev, void *cookie, const char *mbox_name, int mbox_idx,
+	const struct apple_rtkit_ops *ops);
+
+/*
  * Free an instance of apple_rtkit.
  */
 void apple_rtkit_free(struct apple_rtkit *rtk);

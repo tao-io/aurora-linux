@@ -579,9 +579,9 @@ static void apple_rtkit_syslog_rx_log(struct apple_rtkit *rtk, u64 msg)
 	int msglen;
 
 	if (!rtk->syslog_msg_buffer) {
-		dev_warn(
-			rtk->dev,
-			"RTKit: received syslog message but no syslog_msg_buffer\n");
+		if (!rtk->adopted)
+			dev_warn(rtk->dev,
+				 "RTKit: received syslog message but no syslog_msg_buffer\n");
 		goto done;
 	}
 	if (!rtk->syslog_buffer.size) {
@@ -800,9 +800,28 @@ int apple_rtkit_start_ep(struct apple_rtkit *rtk, u8 endpoint)
 }
 EXPORT_SYMBOL_GPL(apple_rtkit_start_ep);
 
-struct apple_rtkit *apple_rtkit_init(struct device *dev, void *cookie,
-					    const char *mbox_name, int mbox_idx,
-					    const struct apple_rtkit_ops *ops)
+/* Match the inherited-session initialization used by Aurora's DCP driver. */
+static void apple_rtkit_mark_running(struct apple_rtkit *rtk)
+{
+	static const u8 system_endpoints[] = {
+		APPLE_RTKIT_EP_CRASHLOG, APPLE_RTKIT_EP_SYSLOG,
+		APPLE_RTKIT_EP_DEBUG, APPLE_RTKIT_EP_IOREPORT,
+		APPLE_RTKIT_EP_OSLOG, APPLE_RTKIT_EP_TRACEKIT,
+		APPLE_RTKIT_EP_COREANALYTICS,
+	};
+	unsigned int i;
+
+	/* The caller has verified the previous owner's live RTKit session. */
+	for (i = 0; i < ARRAY_SIZE(system_endpoints); i++)
+		set_bit(system_endpoints[i], rtk->endpoints);
+	rtk->iop_power_state = APPLE_RTKIT_PWR_STATE_ON;
+	rtk->ap_power_state = APPLE_RTKIT_PWR_STATE_ON;
+	rtk->adopted = true;
+}
+
+static struct apple_rtkit *__apple_rtkit_init(
+	struct device *dev, void *cookie, const char *mbox_name, int mbox_idx,
+	const struct apple_rtkit_ops *ops, bool adopted)
 {
 	struct apple_rtkit *rtk;
 	int ret;
@@ -836,8 +855,10 @@ struct apple_rtkit *apple_rtkit_init(struct device *dev, void *cookie,
 		goto free_rtk;
 	}
 
-	rtk->mbox->rx = apple_rtkit_rx;
-	rtk->mbox->cookie = rtk;
+	if (rtk->mbox->rx) {
+		ret = -EBUSY;
+		goto free_rtk;
+	}
 
 	rtk->wq = alloc_ordered_workqueue("rtkit-%s", WQ_HIGHPRI | WQ_MEM_RECLAIM,
 					  dev_name(rtk->dev));
@@ -846,6 +867,12 @@ struct apple_rtkit *apple_rtkit_init(struct device *dev, void *cookie,
 		goto free_rtk;
 	}
 
+	/* Publish a complete receive context before enabling mailbox IRQs. */
+	rtk->mbox->cookie = rtk;
+	rtk->mbox->rx = apple_rtkit_rx;
+	if (adopted)
+		apple_rtkit_mark_running(rtk);
+
 	ret = apple_mbox_start(rtk->mbox);
 	if (ret)
 		goto destroy_wq;
@@ -853,12 +880,29 @@ struct apple_rtkit *apple_rtkit_init(struct device *dev, void *cookie,
 	return rtk;
 
 destroy_wq:
+	rtk->mbox->rx = NULL;
+	rtk->mbox->cookie = NULL;
 	destroy_workqueue(rtk->wq);
 free_rtk:
 	kfree(rtk);
 	return ERR_PTR(ret);
 }
+
+struct apple_rtkit *apple_rtkit_init(struct device *dev, void *cookie,
+				  const char *mbox_name, int mbox_idx,
+				  const struct apple_rtkit_ops *ops)
+{
+	return __apple_rtkit_init(dev, cookie, mbox_name, mbox_idx, ops, false);
+}
 EXPORT_SYMBOL_GPL(apple_rtkit_init);
+
+struct apple_rtkit *apple_rtkit_init_adopted(
+	struct device *dev, void *cookie, const char *mbox_name, int mbox_idx,
+	const struct apple_rtkit_ops *ops)
+{
+	return __apple_rtkit_init(dev, cookie, mbox_name, mbox_idx, ops, true);
+}
+EXPORT_SYMBOL_GPL(apple_rtkit_init_adopted);
 
 static int apple_rtkit_wait_for_completion(struct completion *c)
 {
@@ -901,6 +945,7 @@ int apple_rtkit_reinit(struct apple_rtkit *rtk)
 	reinit_completion(&rtk->ap_pwr_ack_completion);
 
 	rtk->crashed = false;
+	rtk->adopted = false;
 	rtk->iop_power_state = APPLE_RTKIT_PWR_STATE_OFF;
 	rtk->ap_power_state = APPLE_RTKIT_PWR_STATE_OFF;
 
@@ -1091,6 +1136,8 @@ void apple_rtkit_free(struct apple_rtkit *rtk)
 {
 	apple_mbox_stop(rtk->mbox);
 	destroy_workqueue(rtk->wq);
+	rtk->mbox->rx = NULL;
+	rtk->mbox->cookie = NULL;
 
 	apple_rtkit_free_buffer(rtk, &rtk->coreanalytics_buffer);
 	apple_rtkit_free_buffer(rtk, &rtk->ioreport_buffer);
@@ -1126,6 +1173,23 @@ struct apple_rtkit *devm_apple_rtkit_init(struct device *dev, void *cookie,
 	return rtk;
 }
 EXPORT_SYMBOL_GPL(devm_apple_rtkit_init);
+
+struct apple_rtkit *devm_apple_rtkit_init_adopted(
+	struct device *dev, void *cookie, const char *mbox_name, int mbox_idx,
+	const struct apple_rtkit_ops *ops)
+{
+	struct apple_rtkit *rtk;
+	int ret;
+
+	rtk = apple_rtkit_init_adopted(dev, cookie, mbox_name, mbox_idx, ops);
+	if (IS_ERR(rtk))
+		return rtk;
+	ret = devm_add_action_or_reset(dev, apple_rtkit_free_wrapper, rtk);
+	if (ret)
+		return ERR_PTR(ret);
+	return rtk;
+}
+EXPORT_SYMBOL_GPL(devm_apple_rtkit_init_adopted);
 
 void devm_apple_rtkit_free(struct device *dev, struct apple_rtkit *rtk)
 {
