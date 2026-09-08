@@ -26,6 +26,8 @@ p.add_argument('--test-nested-query', action='store_true')
 p.add_argument('--hardware-boot', action='store_true')
 p.add_argument('--decline-bandwidth', action='store_true')
 p.add_argument('--decline-default-surface', action='store_true')
+p.add_argument('--initialize', action='store_true',
+               help='complete A401 startup and A457 first-client-open before the requested call')
 p.add_argument('--swap-completion', type=int)
 p.add_argument('--noop-swap', action='store_true')
 p.add_argument('--background-swap', type=lambda s: int(s, 0))
@@ -37,6 +39,8 @@ if a.background_swap is not None and not 0 <= a.background_swap <= 0xffffffff:
 swapping = a.noop_swap or a.background_swap is not None
 if a.input_file and a.input_hex:
     p.error('choose input file or hex')
+if a.initialize and not (a.startup_callbacks and a.hardware_boot):
+    p.error('--initialize requires --startup-callbacks and --hardware-boot')
 payload = a.input_file.read_bytes() if a.input_file else bytes.fromhex(a.input_hex)
 sys.path.insert(0, str(a.guards))
 from experiment_watchdog import ExperimentWatchdog
@@ -279,6 +283,12 @@ def startup_callback(dcp, tag, data, output_size):
 try:
     dcp = DCP(log, t.check, startup_callback if a.startup_callbacks or swapping else None)
     start = time.monotonic()
+    if a.initialize:
+        # M4 0x1e33bc converts internal status zero to output boolean one.
+        if dcp.call('A401', output_size=4) != b'\x01\0\0\0':
+            raise RuntimeError('A401 startup returned false')
+        dcp.call('A457', output_size=0)
+        log({'event': 'initialized', 'first_client_open': True})
     for i in range(a.repeat):
         if time.monotonic() - start > 20:
             raise TimeoutError('RPC test exceeded 20 seconds')
