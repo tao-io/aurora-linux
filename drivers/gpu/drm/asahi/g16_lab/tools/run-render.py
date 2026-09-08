@@ -162,8 +162,10 @@ def main():
         if not args.interactive_seconds or not desktop_account.pw_uid:
             parser.error('--desktop-user requires an interactive session and a non-root account')
     if args.interactive_seconds:
-        if not 30 <= args.interactive_seconds <= 3600 or not args.render_drm_submit or args.drm_client_mode != 'composite' or args.firmware_ktrace:
-            parser.error('interactive mode requires DRM composite, 30..3600 seconds, and KTrace disabled')
+        if not 30 <= args.interactive_seconds <= 3600 or not args.render_drm_submit or args.drm_client_mode != 'composite':
+            parser.error('interactive mode requires DRM composite and 30..3600 seconds')
+        if args.firmware_ktrace and args.interactive_seconds > 120:
+            parser.error('interactive KTrace diagnostics are limited to 120 seconds')
         args.drm_frame_budget = 65535
     if args.render_drm_submit and args.render_drm_target:
         parser.error('client submission and lab target export are separate tests')
