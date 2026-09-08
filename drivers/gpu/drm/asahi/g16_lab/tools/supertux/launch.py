@@ -75,7 +75,7 @@ def main():
         raise RuntimeError('Expected one accelerated Hyprland session')
     keys = {'LD_LIBRARY_PATH', '__EGL_VENDOR_LIBRARY_FILENAMES',
             'LIBGL_DRIVERS_PATH', 'GBM_BACKENDS_PATH', 'GALLIUM_DRIVER',
-            'ASAHI_M4_LAB', 'ASAHI_MESA_DEBUG', 'VK_DRIVER_FILES',
+            'ASAHI_M4_LAB', 'ASAHI_M4_WC_ONLY', 'ASAHI_MESA_DEBUG', 'VK_DRIVER_FILES',
             'MESA_GLES_VERSION_OVERRIDE', 'MESA_LOADER_DRIVER_OVERRIDE',
             'LIBGL_ALWAYS_SOFTWARE'}
     raw = Path('/proc', compositor[0], 'environ').read_bytes().split(b'\0')

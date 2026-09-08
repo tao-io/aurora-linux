@@ -622,6 +622,10 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 				drm_syncobj_replace_fence(outputs[i], job->fence);
 			}
 		}
+		/* Order this submitting CPU's Normal-NC userspace buffer stores
+		 * before publishing work to another CPU. The worker's DMA barrier
+		 * cannot drain write-combining stores issued by this CPU. */
+		dma_wmb();
 		INIT_WORK(&job->work, g16_drm_submit_work);
 		atomic_inc(&g16_drm_queued_jobs);
 		atomic64_inc(&g16_drm_queued_total);

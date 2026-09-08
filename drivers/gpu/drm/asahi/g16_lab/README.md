@@ -168,3 +168,17 @@ new kernel fault. Both startup and GPU execution used the 60-second watchdog
 and six-channel thermal guard. The initial test attempt stopped before GPU
 submission because its dma-buf export omitted DRM_RDWR; this test-only bug was
 corrected before the passing run.
+
+Async native desktop validation remains incomplete. Runs
+`20260908T230059Z-render-ta` and `20260908T230453Z-render-ta` faulted in TA
+at VA 0x40, with all retained client mappings verifying correctly. Adding a
+submitting-CPU DMA write barrier did not cure this. A full-TLBI control run,
+`20260908T230723Z-render-ta`, reached 6,863 jobs and approximately 60 FPS in
+SuperTux before another fault (VA 0x12380). Full invalidation is therefore not
+a demonstrated fix. The deployed desktop was returned to serial submission.
+
+Whole-VM cache invalidation at completion is unsafe for asynchronous clients:
+another CPU can be preparing a future buffer in the same VM. A separately
+installed Mesa `ASAHI_M4_WC_ONLY=1` diagnostic removes cached Vulkan memory
+and requests WC internal BOs, to test this concrete coherency hazard. This
+is pending hardware validation, not a confirmed explanation of either fault.
