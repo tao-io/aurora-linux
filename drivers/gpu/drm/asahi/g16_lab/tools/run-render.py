@@ -113,6 +113,9 @@ def main():
                         help='diagnose shared-context translation with a full outer-shareable TLBI')
     parser.add_argument('--render-rebuild-job-tables', action='store_true',
                         help='diagnose the VM cache with the original per-job mapping builder')
+    parser.add_argument('--render-submit-delay-us', type=int, choices=range(5001),
+                        metavar='0..5000', default=0,
+                        help='diagnose submission timing with a bounded pre-publication delay')
     parser.add_argument('--render-power-controller', action='store_true',
                         help='initialize the qualified J713 power-controller data for the render experiment')
     parser.add_argument('--firmware-ktrace', type=lambda value: int(value, 0),
@@ -254,6 +257,8 @@ def main():
         params += ['render_full_tlbi=1']
     if args.render_rebuild_job_tables:
         params += ['render_rebuild_job_tables=1']
+    if args.render_submit_delay_us:
+        params += [f'render_submit_delay_us={args.render_submit_delay_us}']
     if args.render_power_controller:
         params += ['render_power_controller=1']
     if args.firmware_ktrace:

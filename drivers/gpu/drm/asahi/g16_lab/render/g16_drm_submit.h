@@ -554,6 +554,8 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	if (!((g16_render_service_completed + 1) & 127))
 		pr_info("g16_lab: DRM submit CPU preparation pid=%d elapsed-us=%llu\n",
 			task_pid_nr(current), (ktime_get_ns() - prepare_start) / 1000);
+	if (render_submit_delay_us)
+		usleep_range(render_submit_delay_us, render_submit_delay_us + 50);
 	spin_lock(&g16_render_service_state_lock);
 	sequence = g16_render_service_completed + 1;
 	if (!g16_render_service_ready || g16_render_service_pending || sequence > render_frames) {

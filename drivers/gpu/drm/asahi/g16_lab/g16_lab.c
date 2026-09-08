@@ -2428,6 +2428,11 @@ module_param(render_rebuild_job_tables, bool, 0444);
 MODULE_PARM_DESC(render_rebuild_job_tables,
 	"Render diagnostic: rebuild and verify each job's client mappings instead of cloning the VM cache");
 
+static unsigned int render_submit_delay_us;
+module_param(render_submit_delay_us, uint, 0444);
+MODULE_PARM_DESC(render_submit_delay_us,
+	"Render diagnostic: delay before publishing each prepared client job (0-5000 us)");
+
 static bool render_power_controller;
 module_param(render_power_controller, bool, 0444);
 MODULE_PARM_DESC(render_power_controller,
@@ -19274,6 +19279,8 @@ static int __init g16_lab_init(void)
 {
 	int ret;
 
+	if (render_submit_delay_us > 5000)
+		return -EINVAL;
 	if (render_power_controller && !render_queue_probe)
 		return -EINVAL;
 	if (render_trusted_uid && (!render_drm_submit ||
