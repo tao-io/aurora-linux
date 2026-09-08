@@ -104,7 +104,22 @@ def main():
                 '-o', 'colors.background=ff0000', '-o', 'font=monospace:size=10',
                 '/bin/sh', '-c', 'printf "M4 GPU compositing\n"; ' + ('exec /bin/bash' if live_seconds else 'sleep 8')],
                 env=env, stdout=log, stderr=log, start_new_session=True)
-            time.sleep(0.8)
+            # A Wayland socket is ready before foot has mapped its first
+            # buffer. Wait for that window before requesting a screencopy;
+            # a fixed startup delay can capture the empty desktop.
+            deadline = time.monotonic() + 7
+            while time.monotonic() < deadline:
+                if terminal.poll() is not None:
+                    raise RuntimeError('The validation terminal exited before mapping')
+                clients = json.loads(subprocess.check_output(
+                    ['hyprctl', '-j', 'clients'], env=env, text=True, timeout=2))
+                if any(c.get('class') == 'm4-gpu-check' and c.get('mapped')
+                       for c in clients):
+                    break
+                time.sleep(0.1)
+            else:
+                raise RuntimeError('The validation terminal did not map within seven seconds')
+            time.sleep(0.3)
             pixels = result / 'hyprland.ppm'
             subprocess.run(['grim', '-t', 'ppm', '-o', output_name, str(pixels)],
                            env=env, check=True, stdout=log, stderr=log, timeout=6)

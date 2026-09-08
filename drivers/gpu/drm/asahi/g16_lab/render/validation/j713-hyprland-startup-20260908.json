@@ -1,0 +1,25 @@
+{
+  "platform": "J713 / T8132 / M4 G16G B1",
+  "result_directory": "20260908T114751Z-render-ta",
+  "boot_id": "02516f02-4c57-4836-bd02-5cfb847c71ef",
+  "scope": "Running experimental root Hyprland session, physical 2560x1600 output via Zink/Honeykrisp",
+  "change": "Wait for the validation terminal to map before capturing its pixels",
+  "previous_failure": "20260908T114519Z-render-ta captured zero red pixels before the terminal mapped; watchdog recovered the machine",
+  "physical_scanout_red_pixels": 4064153,
+  "compositor_screenshot_red_pixels": 4064152,
+  "scanout_sha256": "9d6583d3332bbe5adf89320d9a56cabb11819114ad72f9cc471c59dcc3e92894",
+  "active_vt": "tty1",
+  "service_state_at_snapshot": "active",
+  "config_errors": "",
+  "completed_submissions_at_snapshot": 384,
+  "pending_submissions_at_snapshot": 0,
+  "verified_gpu_health_checks_at_snapshot": 7,
+  "pixels_per_health_check": 524288,
+  "watchdog_timeout_seconds": 60,
+  "watchdog_renewal": "Only after successful GPU pixel checks and responsive compositor",
+  "limitations": [
+    "Session remains running; this snapshot does not establish successful teardown",
+    "Maximum session duration is one hour; normal Omarchy login is unchanged",
+    "Earlier 20260908T070728Z-render-ta session failed a TA completion after approximately twenty minutes; long-term stability remains unresolved"
+  ]
+}
