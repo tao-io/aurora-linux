@@ -446,3 +446,20 @@ Peak exposed temperature is 53.25 C and the guard passes/disarms. The production
 native callback handler also passes offline replay of 257 recorded callbacks,
 514 wrong-size rejections and a malformed service-tag rejection under ASan/UBSan.
 DRM/KMS registration and GPU DMA-BUF imports are still the next integration step.
+
+Native KMS milestone, 2026-09-08 (`b8b4dc14bf6a`, boot
+`73207202-310d-4389-942a-ce1712505d94`): explicit `m4-dcp` registered one
+2560x1664 eDP mode from the retained firmware timing property. Existing
+software Hyprland automatically discovered it and completed native DMA flips.
+The user reported correct desktop appearance but alternating stale cursor/text
+on the password screen; that remains unresolved. No accelerated KMS desktop
+is claimed by this result.
+
+After stopping SDDM, `kms-flip-test` completed 180 native D590-backed page flips
+in 3.000 seconds (60.00 FPS), using three prefilled XRGB8888 dumb buffers with
+zero alpha. No CPU writes/copies occur in its flip loop. Maximum PMP sample
+53.25 C, watchdog armed at 60 seconds then disarmed after success. Evidence:
+`20260908-kms-flips-device`. The first startup needed `drm_dma_helper` loaded
+before `insmod`; the guarded runner now does this. Raw initial driver load
+failure did not enter DCP. This test checks completion cadence and sequence,
+not actual displayed pixel order or GPU import coherency.

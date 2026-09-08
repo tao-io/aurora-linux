@@ -43,6 +43,8 @@ except BaseException:
 since = str(int(time.time()))
 try:
     t.check()
+    if a.kms:
+        subprocess.run(["modprobe", "drm_dma_helper"], check=True, timeout=10)
     proc = subprocess.run(["insmod", str(a.module), f"start_link={int(a.start_link)}",
                            f"query_display={int(a.query_display)}", f"bridge={int(a.bridge)}",
                            f"kernel_client={int(a.kernel_client)}", f"kms={int(a.kms)}"],
