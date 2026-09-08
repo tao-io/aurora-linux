@@ -360,6 +360,9 @@ void drm_sysfb_plane_helper_atomic_update(struct drm_plane *plane, struct drm_at
 			continue;
 
 		iosys_map_incr(&dst, drm_fb_clip_offset(dst_pitch, dst_format, &dst_clip));
+		if (drm_rect_equals(&dst_clip, &damage) &&
+		    drm_sysfb_parallel_blit(sysfb, dst, shadow_plane_state->data, fb, &damage))
+			continue;
 		blit_to_crtc(&dst, &dst_pitch, shadow_plane_state->data, fb, &damage,
 			     &shadow_plane_state->fmtcnv_state);
 	}

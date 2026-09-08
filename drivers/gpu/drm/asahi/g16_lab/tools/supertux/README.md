@@ -241,17 +241,10 @@ clear FPS gain.
 Sampling all kernel worker threads identified the final CPU scanout conversion
 as a substantial remaining cost: 2,491 samples in two workers, predominantly
 memcpy and `drm_fb_xrgb8888_to_xrgb2101010_line`. Simpledrm maps its framebuffer
-with WC attributes; on ARM64 this is Normal-NC memory. The new optional
-`drm_sysfb_helper.neon_blit` path converts that memory in one vector pass,
-retaining the generic conversion when disabled or unsupported. SIMD ownership
-is bounded to one row. The exact assembly passes exhaustive 24-bit RGB,
-unaligned/tail and guard-page tests under qemu-aarch64; hardware qualification
-follows. Run the standalone test with:
-
-```sh
-python3 drivers/gpu/drm/asahi/g16_lab/tools/hyprland/test_sysfb_neon.py
-```
-
+with WC attributes; on ARM64 this is Normal-NC memory. An optional one-pass
+SIMD conversion was tried in `b8e368ee1a4d` and reverted in `c73cf6b86406`.
+Its exhaustive color and memory-boundary tests passed, but hardware throughput
+did not improve. The standalone test was removed with the implementation.
 
 The first SIMD scanout boot used Image SHA-256
 `a7ba977047fb1a1b10785af25a62e7d751374b55da50937bb70cec8337e02336`.
@@ -262,4 +255,24 @@ bound. It completed 11,267 jobs and 24 independent pixel checks, removed the
 module cleanly, and disarmed its watchdog after evidence collection. The
 hottest recorded channel reached 70 C without a thermal cutoff. This was an
 abbreviated run, not the planned full gameplay comparison. FPS did not show
-a clear improvement; runtime A/B profiling of the SIMD path remains pending.
+a clear improvement. The user clarified that the 1TR report concerned another
+machine. The subsequent `20260908T164548Z-render-ta` completed 23,868 jobs,
+81 independent pixel checks and 240 seconds of SuperTux, peaking at 69.25 C.
+Its SIMD/serial comparison favored the serial path; SIMD was disabled and
+reverted. The physical display still needs native DCP buffer presentation.
+
+### HACK - REVERT LATER: four scanout copy workers
+
+At the user's request, a temporary J713-only simpledrm path splits damage of
+at least 65,536 pixels and four rows into four disjoint row bands. Each persistent
+kernel thread owns its scratch storage. All four must complete, including a
+write barrier, before atomic_update releases the framebuffer's CPU-access and
+mapping lifetime. Small damage and other formats retain the serial path.
+Worker initialization failure also falls back to serial conversion.
+
+The kernel parameter `drm_sysfb_helper.parallel_blit` defaults to true; change
+`/sys/module/drm_sysfb_helper/parameters/parallel_blit` between `Y` and `N` for
+same-boot comparisons. This uses the existing scalar conversion; it does not
+restore the SIMD path. CPU governors, thermal policy and GPU clocks are unchanged.
+Remove the workaround when native display presentation is available. Hardware
+qualification of the four-worker implementation is pending.

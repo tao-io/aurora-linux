@@ -16,6 +16,7 @@
 struct drm_format_info;
 struct drm_scanout_buffer;
 struct screen_info;
+struct drm_sysfb_parallel;
 
 typedef void (*drm_sysfb_blit_func)(struct iosys_map *, const unsigned int *,
 				    const struct iosys_map *,
@@ -80,7 +81,14 @@ struct drm_sysfb_device {
 
 	/* hardware-framebuffer kernel address */
 	struct iosys_map fb_addr;
+	struct drm_sysfb_parallel *parallel;
 };
+
+void drm_sysfb_parallel_init(struct drm_sysfb_device *sysfb);
+bool drm_sysfb_parallel_blit(struct drm_sysfb_device *sysfb,
+			     struct iosys_map dst, const struct iosys_map *src,
+			     const struct drm_framebuffer *fb,
+			     const struct drm_rect *clip);
 
 static inline struct drm_sysfb_device *to_drm_sysfb_device(struct drm_device *dev)
 {

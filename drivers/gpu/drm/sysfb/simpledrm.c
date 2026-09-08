@@ -746,6 +746,8 @@ static struct simpledrm_device *simpledrm_device_create(struct drm_driver *drv,
 	 * Modesetting
 	 */
 
+	drm_sysfb_parallel_init(sysfb);
+
 	ret = drmm_mode_config_init(dev);
 	if (ret)
 		return ERR_PTR(ret);
