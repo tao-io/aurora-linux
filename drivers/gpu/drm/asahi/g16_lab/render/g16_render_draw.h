@@ -8,6 +8,27 @@ static u64 g16_render_gpu_address(u64 va)
 	return va & ((1ULL << 43) - 1);
 }
 
+static int g16_render_check_uma(const char *where)
+{
+	struct g16_usc_private_memory_descriptor *uma =
+		g16_lab_live_object_ptr(g16_initdata_live_barrier_first, 0xe00);
+	u32 expected = compute_macos_iadd_populated_usc_private_memory ?
+		(compute_macos_ocean ? J713_MACOS_OCEAN_USC_HARDWARE_BUFFER_ID :
+		 J713_MACOS_IADD_USC_HARDWARE_BUFFER_ID) : 1;
+
+	if (!uma)
+		return -EINVAL;
+	g16_lab_dcache_invalidate(uma, sizeof(*uma));
+	if (get_unaligned_le32(&uma->hardware_buffer_id) != expected) {
+		pr_err("g16_lab: render UMA descriptor changed at %s frame=%u id=%u expected=%u\n",
+			where, g16_render_frame, get_unaligned_le32(&uma->hardware_buffer_id), expected);
+		print_hex_dump(KERN_ERR, "g16_lab: UMA: ", DUMP_PREFIX_OFFSET,
+			       16, 1, uma, sizeof(*uma), false);
+		return -EPROTO;
+	}
+	return 0;
+}
+
 static int g16_render_build_ta(void)
 {
 	struct g16_render_geometry geometry;
@@ -201,6 +222,9 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 	void __iomem *sgx = NULL;
 	int ret;
 
+	ret = g16_render_check_uma("before TA");
+	if (ret)
+		return ret;
 	ret = g16_render_build_ta();
 	if (ret)
 		return ret;

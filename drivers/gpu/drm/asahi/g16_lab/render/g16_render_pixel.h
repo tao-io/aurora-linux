@@ -250,6 +250,9 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 	u32 endpoint;
 	int ret;
 
+	ret = g16_render_check_uma("before fragment");
+	if (ret)
+		return ret;
 	ret = g16_render_build_fragment();
 	if (ret)
 		return ret;

@@ -244,7 +244,8 @@ static int g16_drm_job_enter(struct g16_drm_job *job)
 
 	if (!g16_render_context_published || root[7])
 		return -EINVAL;
-	root[7] = g16_initdata_live_user_root[7];
+	/* Borrow the render pool without compute-bootstrap command aliases. */
+	root[7] = ((u64 *)page_address(g16_render_user_uat.tables[0]))[7];
 	list_for_each_entry(m, &job->vm->mappings, link) {
 		/* Native WC objects have Normal-NC mappings in both the vmap and
 		 * userspace. There are no CPU cache lines to clean. Imported vmap

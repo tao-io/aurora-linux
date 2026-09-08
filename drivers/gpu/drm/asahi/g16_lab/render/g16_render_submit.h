@@ -2,6 +2,8 @@
 #ifndef G16_RENDER_SUBMIT_H
 #define G16_RENDER_SUBMIT_H
 
+static int g16_render_check_uma(const char *where);
+
 /* First live gate: independent TA and fragment queues, no render commands yet. */
 static bool g16_render_attached;
 static bool g16_render_context_published;
@@ -54,12 +56,53 @@ static void g16_render_initialize_queue(unsigned int engine)
 					     G16_RENDER_QUEUE_CONTEXT(engine));
 }
 
+/* The compute bootstrap overlays RunCompute on a USC freelist leaf. That
+ * alias is harmless for its bounded initial submission, but a persistent
+ * renderer eventually cycles through it and overwrites the UMA descriptor.
+ * Own the low L3 and its L2, retaining the resident high private-data leaves.
+ * The bootstrap context and firmware hardware-table aliases stay independent.
+ */
+static int g16_render_attach_usc_pool(u64 *user)
+{
+	u64 *l2, *l3;
+	unsigned int i, repaired = 0;
+
+	if (!g16_initdata_live_capture_command_l2 ||
+	    !g16_initdata_live_capture_command_l3 ||
+	    !g16_initdata_live_usc_private_memory_pool_state_first)
+		return -EINVAL;
+	BUILD_BUG_ON(J713_USC_PRIVATE_MEMORY_POOL_STATE_SIZE != SZ_4M);
+	BUILD_BUG_ON(J713_USC_PRIVATE_MEMORY_CAPTURE_POOL_STATE_VA != 0x7000000000ULL);
+	l2 = g16_render_uat_new_table(&g16_render_user_uat);
+	if (!l2)
+		return -ENOMEM;
+	l3 = g16_render_uat_new_table(&g16_render_user_uat);
+	if (!l3)
+		return -ENOMEM;
+	memcpy(l2, g16_initdata_live_capture_command_l2, PAGE_SIZE);
+	memcpy(l3, g16_initdata_live_capture_command_l3, PAGE_SIZE);
+	for (i = 0; i < J713_USC_PRIVATE_MEMORY_POOL_STATE_SIZE / PAGE_SIZE; i++) {
+		u64 expected = page_to_phys(g16_initdata_live_pages[
+			g16_initdata_live_usc_private_memory_pool_state_first + i]) |
+			J713_UAT_USER_CAPTURE_GPU_DATA_SHARED_FLAGS;
+
+		repaired += l3[i] != expected;
+		l3[i] = expected;
+	}
+	l2[0] = virt_to_phys(l3) | J713_UAT_TABLE_DESC_FLAGS;
+	user[7] = virt_to_phys(l2) | J713_UAT_TABLE_DESC_FLAGS;
+	pr_info("g16_lab: render: restored all 256 USC freelist leaves in private context-6 tables (%u bootstrap aliases removed)\n",
+		repaired);
+	return 0;
+}
+
 /* Called only while the existing initdata owner still holds all its backing. */
 static int g16_render_attach(u64 scratch_va)
 {
 	u64 *fw, *upper, *user;
 	u8 *runtime;
 	unsigned int i;
+	int ret;
 
 	if (!g16_render_graph || !g16_render_fw_uat.count ||
 	    !g16_render_user_uat.count || !g16_initdata_live_shared_root ||
@@ -85,6 +128,9 @@ static int g16_render_attach(u64 scratch_va)
 			return -EBUSY;
 		}
 	}
+	ret = g16_render_attach_usc_pool(user);
+	if (ret)
+		return ret;
 	g16_render_upper_root = alloc_page(GFP_KERNEL | __GFP_ZERO);
 	if (!g16_render_upper_root)
 		return -ENOMEM;
@@ -99,7 +145,6 @@ static int g16_render_attach(u64 scratch_va)
 	}
 	/* The GPU upper alias needs writable data leaves, not firmware AP1. */
 	upper[3] = user[3];
-	user[7] = g16_initdata_live_user_root[7];
 	for (i = 0; i < 2; i++)
 		g16_render_initialize_queue(i);
 	g16_render_clean_tree(&g16_render_user_uat);
