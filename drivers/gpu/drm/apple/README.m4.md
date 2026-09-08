@@ -431,3 +431,8 @@ alone does not prove the pattern is visible or correct. A DRM/KMS connector,
 DMA-BUF import from the GPU, atomic page flips and desktop integration remain
 unimplemented on this native path. Existing firmware clock/PMU/calibration
 warnings and explicitly declined services still apply.
+
+User visually confirmed the native color-bar pattern on the J713 panel:
+"It's visible! :D Looks perfect." This adds actual panel-output validation to
+`20260908-scanout`'s matching D590 completion. Native surface scanout works for
+this diagnostic; the desktop still needs the DRM/KMS and GPU-buffer integration.
