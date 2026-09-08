@@ -54,6 +54,15 @@ static int g16_render_build_ta(void)
 	D(0x1038, 1, 4);
 	D(0x1040, TILER(0x29000), 8);
 	D(0x10a8, geometry.utile_config, 8);
+	if (g16_drm_active_job && (g16_drm_active_job->render.flags & BIT(4))) {
+		const struct drm_asahi_cmd_render *r = &g16_drm_active_job->render;
+
+		D(0x10b0, r->ppp_multisamplectl, 8);
+		/* M4 generateRegisterListForTA derives PPP_CTRL[9] from this
+		 * accelerator flag and bit 0 from descriptor+ff8. */
+		platform.accelerator_flags_6a8 |= (u64)(r->ppp_ctrl & 0x200) << 7;
+		D(0xff8, r->ppp_ctrl & 1, 1);
+	}
 	D(0x10b8, geometry.pixels, 4);
 	D(0x10bc, geometry.screen, 4);
 	D(0x10c0, geometry.x_blocks, 4);

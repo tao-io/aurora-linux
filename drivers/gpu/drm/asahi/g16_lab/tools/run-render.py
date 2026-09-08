@@ -275,7 +275,8 @@ def main():
                 raise RuntimeError('expected one lab render node')
             target = subprocess.run([str(args.drm_submit_test), str(nodes[0]),
                                      str(debug / 'g16_lab_render'), str(result)],
-                                    capture_output=True, text=True, timeout=15)
+                                    capture_output=True, text=True, timeout=15,
+                                    env={**os.environ, 'M4_RENDER_OUTPUT': str(result)})
             (result / 'drm-submit.stdout').write_text(target.stdout)
             (result / 'drm-submit.stderr').write_text(target.stderr)
             target.check_returncode()

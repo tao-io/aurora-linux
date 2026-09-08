@@ -2,6 +2,7 @@
 /* Device/queue creation, optionally graphics command recording.
  * Neither mode submits commands or GPU jobs. */
 #include <stdio.h>
+#include <stdbool.h>
 #include <string.h>
 #include <vulkan/vulkan.h>
 #ifdef M4_PIPELINE_PROBE
@@ -68,6 +69,10 @@ int main(void)
 #ifdef M4_PIPELINE_PROBE
         "\"graphics_commands_recorded\":true,"
 #endif
+#ifdef M4_SUBMIT_PROBE
+        "\"shader_submitted\":true,\"pixels_checked\":true,\"frames\":8,\"pixels_verified\":524288,\"vulkan\":true}");
+#else
         "\"shader_submitted\":false}");
+#endif
    return 0;
 }

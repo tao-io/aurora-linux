@@ -1,5 +1,54 @@
 /* SPDX-License-Identifier: MIT */
 #include "triangle_spirv.h"
+#include <stdlib.h>
+
+#ifdef M4_SUBMIT_PROBE
+static int m4_check_pixels(const void *image, unsigned frame)
+{
+   unsigned char linear[256 * 256 * 4];
+   unsigned failures = 0;
+   const unsigned char expected[4] = {
+      (frame * 255 + 4) / 8, ((7 - frame) * 255 + 4) / 8, 32, 255,
+   };
+   for (unsigned y = 0; y < 256; ++y) {
+      for (unsigned x = 0; x < 256; ++x) {
+         unsigned index = ((y / 64) * 4 + x / 64) * 4096;
+         for (unsigned bit = 0; bit < 6; ++bit)
+            index |= ((x >> bit) & 1) << (2 * bit) |
+                     ((y >> bit) & 1) << (2 * bit + 1);
+         const unsigned char *p = (const unsigned char *)image + index * 4;
+         memcpy(linear + (y * 256 + x) * 4, p, 4);
+         bool triangle = true, clear = true;
+         for (unsigned c = 0; c < 4; ++c) {
+            triangle &= abs((int)p[c] - expected[c]) <= 1;
+            clear &= p[c] == 0;
+         }
+         /* Pixel centers on the diagonal depend on the top-left edge rule.
+          * Require either the exact triangle color or the clear there. */
+         bool valid = x + y < 255 ? triangle : x + y > 255 ? clear : triangle || clear;
+         if (!valid && failures++ < 8)
+            fprintf(stderr, "frame %u pixel %u,%u: %u,%u,%u,%u\n",
+                    frame, x, y, p[0], p[1], p[2], p[3]);
+      }
+   }
+   const char *directory = getenv("M4_RENDER_OUTPUT");
+   if (directory) {
+      char path[4096];
+      int count = snprintf(path, sizeof(path), "%s/vulkan-frame-%02u.rgba", directory, frame);
+      if (count < 0 || (size_t)count >= sizeof(path))
+         return -1;
+      FILE *file = fopen(path, "wb");
+      if (!file)
+         return -1;
+      size_t written = fwrite(linear, 1, sizeof(linear), file);
+      int closed = fclose(file);
+      if (written != sizeof(linear) || closed)
+         return -1;
+   }
+   fprintf(stderr, "frame %u: %u/65536 pixels match\n", frame, 65536 - failures);
+   return failures ? -1 : 0;
+}
+#endif
 
 static VkResult m4_allocate(VkPhysicalDevice physical, VkDevice device,
                            VkMemoryRequirements requirements, VkDeviceMemory *memory)
@@ -31,6 +80,10 @@ static VkResult m4_record_triangle(VkPhysicalDevice physical, VkDevice device)
    VkPipeline pipeline = VK_NULL_HANDLE;
    VkCommandPool pool = VK_NULL_HANDLE;
    VkMemoryRequirements requirements;
+#ifdef M4_SUBMIT_PROBE
+   void *image_map = NULL;
+   VkDeviceSize image_bytes = 0;
+#endif
 #define TRY(call) do { result = (call); if (result != VK_SUCCESS) { fprintf(stderr, "%s: %d\n", #call, result); goto out; } } while (0)
    VkImageCreateInfo image_info = {.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
       .imageType = VK_IMAGE_TYPE_2D, .format = VK_FORMAT_R8G8B8A8_UNORM,
@@ -39,6 +92,14 @@ static VkResult m4_record_triangle(VkPhysicalDevice physical, VkDevice device)
       .usage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT};
    TRY(vkCreateImage(device, &image_info, NULL, &image));
    vkGetImageMemoryRequirements(device, image, &requirements);
+#ifdef M4_SUBMIT_PROBE
+   image_bytes = requirements.size;
+   fprintf(stderr, "M4 uncompressed RGBA8 image allocation: %llu bytes\n", (unsigned long long)image_bytes);
+   if (image_bytes != 256 * 256 * 4) {
+      result = VK_ERROR_FORMAT_NOT_SUPPORTED;
+      goto out;
+   }
+#endif
    TRY(m4_allocate(physical, device, requirements, &image_memory));
    TRY(vkBindImageMemory(device, image, image_memory, 0));
    VkImageViewCreateInfo view_info = {.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
@@ -124,7 +185,35 @@ static VkResult m4_record_triangle(VkPhysicalDevice physical, VkDevice device)
    vkCmdEndRenderPass(commands);
    TRY(vkEndCommandBuffer(commands));
    fprintf(stderr, "M4 triangle commands recorded; no GPU submission\n");
+#ifdef M4_SUBMIT_PROBE
+   VkQueue queue;
+   vkGetDeviceQueue(device, 0, 0, &queue);
+   VkSubmitInfo submit = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+      .commandBufferCount = 1, .pCommandBuffers = &commands};
+   TRY(vkMapMemory(device, image_memory, 0, VK_WHOLE_SIZE, 0, &image_map));
+   for (unsigned frame = 0; frame < 8; ++frame) {
+      TRY(vkMapMemory(device, vertex_memory, 0, VK_WHOLE_SIZE, 0, &mapped));
+      float (*vertex)[4] = mapped;
+      for (unsigned i = 0; i < 3; ++i) {
+         vertex[i][2] = frame / 8.0f;
+         vertex[i][3] = (7 - frame) / 8.0f;
+      }
+      vkUnmapMemory(device, vertex_memory);
+      memset(image_map, 0xcd, image_bytes);
+      TRY(vkQueueSubmit(queue, 1, &submit, VK_NULL_HANDLE));
+      TRY(vkQueueWaitIdle(queue));
+      if (m4_check_pixels(image_map, frame)) {
+         result = VK_ERROR_UNKNOWN;
+         goto out;
+      }
+   }
+   fprintf(stderr, "M4 Vulkan triangle: 8 submissions, 524288 pixels checked\n");
+#endif
 out:
+#ifdef M4_SUBMIT_PROBE
+   if (image_map)
+      vkUnmapMemory(device, image_memory);
+#endif
    vkDestroyCommandPool(device, pool, NULL);
    vkDestroyPipeline(device, pipeline, NULL);
    vkDestroyPipelineLayout(device, layout, NULL);

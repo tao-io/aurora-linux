@@ -13,6 +13,8 @@ struct g16_drm_vm;
  */
 struct g16_drm_job {
 	struct drm_asahi_cmd_render render;
+	/* Aurora's appended EOT, partial-EOT, BG, partial-BG high dwords. */
+	u32 rsrc_hi[4];
 	struct g16_drm_vm *vm;
 	struct g16_render_uat uat;
 	struct dma_fence *fence;
@@ -35,13 +37,13 @@ static u64 g16_render_vdm_base(void)
 
 static u64 g16_render_bg_base(void)
 {
-	return g16_drm_active_job ? 0x10000000000ULL + g16_drm_active_job->render.bg.usc :
+	return g16_drm_active_job ? 0x10000000000ULL + (g16_drm_active_job->render.bg.usc & ~63U) :
 		0x10000158000ULL;
 }
 
 static u64 g16_render_eot_base(void)
 {
-	return g16_drm_active_job ? 0x10000000000ULL + g16_drm_active_job->render.eot.usc :
+	return g16_drm_active_job ? 0x10000000000ULL + (g16_drm_active_job->render.eot.usc & ~63U) :
 		0x10000158480ULL;
 }
 

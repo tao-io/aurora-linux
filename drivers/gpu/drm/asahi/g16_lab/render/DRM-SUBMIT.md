@@ -2,7 +2,7 @@
 
 `render_drm_submit=1` connects Asahi `QUEUE_CREATE`, `QUEUE_DESTROY` and
 `SUBMIT` to the retained M4 firmware worker. It remains the root-only
-`g16-lab` device, without Vulkan device admission.
+`g16-lab` device, with opt-in private Mesa admission.
 
 Each submission snapshots the command and sync arrays, validates its queue and
 VM, and builds a new UAT containing the client's GEM mappings plus the owned
@@ -43,6 +43,31 @@ are G16G B1, ten core positions and mask `0x3bd` (eight active cores). The Asahi
 user timestamp unit is nanoseconds; raw firmware counters remain private and
 timestamp commands are still rejected. `stage=drm-frontend` performs no GPU
 probe and returns EAGAIN for the identity query.
+
+## Native Vulkan pass
+
+The native Mesa path additionally consumes the empty attachment-set header and
+the four appended resource-count high dwords. It strips USC pointer tags and
+programs M4 descriptor fields for background/EOT resources, pass multisampling,
+scissor/depth-bias/query addresses, clear values and empty-tile processing.
+Admission remains bounded to one 256x256 RGBA8 pass with one sample and no
+depth/stencil, shader scratch, timestamp or sampler-heap use.
+
+`tools/hyprland/submit.c` creates real Vulkan shaders, pipeline, image, vertex
+buffer and render pass. It records once, changes vertex colors between eight
+serial submissions, and checks every output pixel. Readback uses the known
+M4 uncompressed RGBA8 Morton layout directly through host-visible memory;
+this is a bring-up check, not a general Vulkan image-copy implementation.
+The diagonal coverage boundary permits either valid edge convention; triangle
+channels allow one UNORM unit, and clear pixels must be exactly zero.
+
+J713 run `20260908T002333Z-render-ta` passed all eight Vulkan submissions and
+524,288 pixel checks, with eight TA/fragment completions, no dropped KTrace
+records, clean module unload and watchdog disarm after evidence collection.
+See `validation/j713-vulkan-submit-20260908.json`. Mesa supplied all shaders,
+commands and render-target storage; the kernel's fixture resources were not
+used for these draws. Texture sampling, blending, WSI, Zink and Hyprland remain
+separate work.
 
 ## Hardware evidence
 

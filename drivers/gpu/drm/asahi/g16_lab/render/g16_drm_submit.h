@@ -52,16 +52,21 @@ static int g16_drm_queue_destroy_ioctl(struct drm_device *dev, void *data,
 	return ret;
 }
 
-static bool g16_drm_vm_contains(struct g16_drm_vm *vm, u64 va, u64 size)
+static bool g16_drm_vm_range(struct g16_drm_vm *vm, u64 va, u64 size, bool executable)
 {
 	struct g16_drm_mapping *m;
 
 	list_for_each_entry(m, &vm->mappings, link)
 		if (va >= m->va && va - m->va < m->size &&
 		    size <= m->size - (va - m->va) &&
-		    m->pte_flags == J713_UAT_USER_CAPTURE_GPU_EXEC_SHARED_FLAGS)
+		    (!executable || m->pte_flags == J713_UAT_USER_CAPTURE_GPU_EXEC_SHARED_FLAGS))
 			return true;
 	return false;
+}
+
+static bool g16_drm_vm_contains(struct g16_drm_vm *vm, u64 va, u64 size)
+{
+	return g16_drm_vm_range(vm, va, size, true);
 }
 
 static int g16_drm_job_prepare(struct g16_drm_job *job)
@@ -76,7 +81,34 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 	};
 	struct g16_drm_mapping *m;
 	u64 graph = G16_RENDER_GRAPH_VA & (BIT_ULL(42) - 1);
+	bool native = r->flags & BIT(4);
 	int ret;
+
+	if (native) {
+		/* First native Mesa pass: one uncompressed RGBA8 target, no Z/S,
+		 * no shader scratch, no sampler heap and no timestamps. Keep every
+		 * unimplemented field outside the admitted packet. */
+		supported.flags = BIT(4) | DRM_ASAHI_RENDER_PROCESS_EMPTY_TILES;
+		supported.sample_size_B = 8;
+		supported.ppp_ctrl = 0x202;
+		supported.ppp_multisamplectl = 0x88;
+		supported.isp_bgobjdepth = 0x3f800000;
+		supported.isp_bgobjvals = 0x300;
+		supported.isp_merge_upper_x = supported.isp_merge_upper_y = 0x3bddb3d9;
+		supported.isp_scissor_base = r->isp_scissor_base;
+		supported.isp_dbias_base = r->isp_dbias_base;
+		supported.isp_oclqry_base = r->isp_oclqry_base;
+		supported.bg.rsrc_spec = supported.partial_bg.rsrc_spec = 0x40;
+		supported.partial_bg.usc = r->partial_bg.usc;
+		supported.partial_eot.usc = r->partial_eot.usc;
+		if (job->rsrc_hi[0] || job->rsrc_hi[1] ||
+		    job->rsrc_hi[2] != 0xffff8000 || job->rsrc_hi[3] != 0xffff8000 ||
+		    (r->bg.usc & 63) != 4 || (r->eot.usc & 63) != 4 ||
+		    (r->partial_bg.usc & 63) != 4 || (r->partial_eot.usc & 63) != 4)
+			return -EOPNOTSUPP;
+	} else if (memchr_inv(job->rsrc_hi, 0, sizeof(job->rsrc_hi))) {
+		return -EOPNOTSUPP;
+	}
 
 	/* Start with the qualified geometry and register allocation. Commands
 	 * select their own streams/programs; no fixture bytes are copied here.
@@ -89,8 +121,15 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 	    !r->bg.usc || !r->eot.usc || (r->bg.usc | r->eot.usc) & 3)
 		return -EINVAL;
 	if (!g16_drm_vm_contains(job->vm, r->vdm_ctrl_stream_base, 4) ||
-	    !g16_drm_vm_contains(job->vm, 0x10000000000ULL + r->bg.usc, 4) ||
-	    !g16_drm_vm_contains(job->vm, 0x10000000000ULL + r->eot.usc, 4))
+	    !g16_drm_vm_contains(job->vm, 0x10000000000ULL + (r->bg.usc & ~63U), 4) ||
+	    !g16_drm_vm_contains(job->vm, 0x10000000000ULL + (r->eot.usc & ~63U), 4))
+		return -EFAULT;
+	if (native &&
+	    (!g16_drm_vm_contains(job->vm, 0x10000000000ULL + (r->partial_bg.usc & ~63U), 4) ||
+	     !g16_drm_vm_contains(job->vm, 0x10000000000ULL + (r->partial_eot.usc & ~63U), 4) ||
+	     !g16_drm_vm_range(job->vm, r->isp_scissor_base, 16, false) ||
+	     !g16_drm_vm_range(job->vm, r->isp_dbias_base, 12, false) ||
+	     !g16_drm_vm_range(job->vm, r->isp_oclqry_base, 8, false)))
 		return -EFAULT;
 	if (job->vm->kernel_start > graph || job->vm->kernel_end < graph + G16_RENDER_GRAPH_BYTES)
 		return -EINVAL;
@@ -256,6 +295,16 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	if (IS_ERR(command))
 		return PTR_ERR(command);
 	memcpy(&header, command, sizeof(header));
+	/* Mesa publishes an empty optional attachment set when max_attachments
+	 * is zero. Consume that state command, still admitting exactly one draw. */
+	if (header.cmd_type == DRM_ASAHI_SET_FRAGMENT_ATTACHMENTS && !header.size &&
+	    header.vdm_barrier == DRM_ASAHI_BARRIER_NONE &&
+	    header.cdm_barrier == DRM_ASAHI_BARRIER_NONE &&
+	    args->cmdbuf_size >= 2 * sizeof(header)) {
+		args->cmdbuf_size -= sizeof(header);
+		memmove(command, command + sizeof(header), args->cmdbuf_size);
+		memcpy(&header, command, sizeof(header));
+	}
 	if (header.cmd_type != DRM_ASAHI_CMD_RENDER ||
 	    header.size != args->cmdbuf_size - sizeof(header) ||
 	    (header.vdm_barrier && header.vdm_barrier != DRM_ASAHI_BARRIER_NONE) ||
@@ -272,11 +321,13 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	 * the Asahi command buffer ABI. Copy the snapshot, not user memory twice.
 	 */
 	ret = 0;
-	if (header.size > sizeof(job->render) &&
-	    memchr_inv(command + sizeof(header) + sizeof(job->render), 0,
-		       header.size - sizeof(job->render)))
+	BUILD_BUG_ON(offsetof(struct g16_drm_job, rsrc_hi) != sizeof(job->render));
+	if (header.size > sizeof(job->render) + sizeof(job->rsrc_hi) &&
+	    memchr_inv(command + sizeof(header) + sizeof(job->render) + sizeof(job->rsrc_hi), 0,
+		       header.size - sizeof(job->render) - sizeof(job->rsrc_hi)))
 		ret = -E2BIG;
-	memcpy(&job->render, command + sizeof(header), min_t(size_t, header.size, sizeof(job->render)));
+	memcpy(job, command + sizeof(header), min_t(size_t, header.size,
+		 sizeof(job->render) + sizeof(job->rsrc_hi)));
 	kfree(command);
 	if (ret)
 		goto free;

@@ -1,0 +1,115 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "boot_id": "99b85709-fd5d-406b-8d03-57719dcf26b5",
+  "module_sha256": "89a19d061151b6e145428ae801b84d774fa009e77507d80b259cb3aee4827a51",
+  "drm_submit_test_sha256": "621bb5f157dd66f5983b2a7f998de5cfa76f42fc252622b4f391876a4208aac6",
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": false,
+    "disarmed_after_evidence_collection": true
+  },
+  "drm_submit": {
+    "passed": true,
+    "device_id": 33074,
+    "physical_device_initialized": true,
+    "logical_device_initialized": true,
+    "graphics_commands_recorded": true,
+    "shader_submitted": true,
+    "pixels_checked": true,
+    "frames": 8,
+    "pixels_verified": 524288,
+    "vulkan": true
+  },
+  "firmware_ktrace": {
+    "platform": "J713/T8132/G16G",
+    "firmware_build": "25G83",
+    "record_size": 72,
+    "record_count": 4129,
+    "sha256": "9eea67d6a78b8d33c6f13ee520115876ba3e7293af1e8fd65408da7f16d52ea8",
+    "firmware_reported_lost_records": 0,
+    "event_counts": {
+      "EventNotify": 9,
+      "Finish3D": 8,
+      "FinishCompute": 1,
+      "FinishTA": 8,
+      "StampUpdate3D": 7,
+      "StampUpdateCompute": 1,
+      "StampUpdateTA": 8,
+      "Start3D": 8,
+      "StartCompute": 1,
+      "StartTA": 8,
+      "event_000005": 8,
+      "event_00000f": 2,
+      "event_000017": 8,
+      "event_00002c": 1,
+      "event_00004d": 8,
+      "event_00004f": 8,
+      "event_000054": 17,
+      "event_000056": 35,
+      "event_000100": 773,
+      "event_000101": 773,
+      "event_000102": 67,
+      "event_000103": 67,
+      "event_000105": 11,
+      "event_000106": 11,
+      "event_000109": 17,
+      "event_00010a": 17,
+      "event_00010c": 2,
+      "event_000111": 19,
+      "event_000112": 2222,
+      "event_00013c": 2,
+      "event_00013e": 2
+    },
+    "host_dropped_records": 0,
+    "drain_result": 0
+  },
+  "client_vm_publications": 8,
+  "rmmod_rc": 0,
+  "new_kernel_fault": false,
+  "render_node_removed": true,
+  "passed": true,
+  "platform": "J713/T8132/G16G B1",
+  "firmware": "25G83",
+  "run": "20260908T002333Z-render-ta",
+  "icd_sha256": "abd612da881fbabcf5a95f5645696263611c5e5310cc86c504a5b33eb1ec32bd",
+  "shader_cache_disabled": true,
+  "scope": "Real Vulkan API pipelines and eight GPU render submissions; uncompressed RGBA8 raw mapping readback with known M4 Morton tiling. No texture sampling, blending, WSI, Zink or Hyprland qualification.",
+  "images": [
+    {
+      "file": "vulkan-frame-00.rgba",
+      "sha256": "e4984d8158f6a9395bfef55d77a83ed96c080183cc47af396d369cf76ba615e1"
+    },
+    {
+      "file": "vulkan-frame-01.rgba",
+      "sha256": "e3122bcea548ecdab4fdcc60737651f46647e5e09dd6852509fbad552c1e99f8"
+    },
+    {
+      "file": "vulkan-frame-02.rgba",
+      "sha256": "a3d6779c155b09c911b81e96dfab46ac05d18b5a6323fc8204d00df615dfc1c4"
+    },
+    {
+      "file": "vulkan-frame-03.rgba",
+      "sha256": "7112747f55dcc733b047f25ab096dc4f0bece2ba4ec3e2f1e755afcc723a280d"
+    },
+    {
+      "file": "vulkan-frame-04.rgba",
+      "sha256": "7c22b1aca39a722e4c185a9eb779c5a8326d0c8c5d56017484ed7f376aff7854"
+    },
+    {
+      "file": "vulkan-frame-05.rgba",
+      "sha256": "018ab26fff1ff0e001988ef48ac91b34aa8990d491c6f6fde39d647d2bc8c9c9"
+    },
+    {
+      "file": "vulkan-frame-06.rgba",
+      "sha256": "6c0f3b28a9b1370d3c79c2e4d06b9b50ef721a9168a83f828920a17c89772ffe"
+    },
+    {
+      "file": "vulkan-frame-07.rgba",
+      "sha256": "50c47c72d45ee6441085d5f1046f4752f415a65a5c43f81cf1b356e34bdd75f4"
+    }
+  ]
+}

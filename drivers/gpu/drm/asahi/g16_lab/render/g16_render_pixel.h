@@ -41,6 +41,19 @@ static int g16_render_build_fragment(void)
 	 */
 	D(0x588, g16_render_bg_base(), 8);
 	D(0x6e0, g16_render_eot_base(), 8);
+	if (g16_drm_active_job && (g16_drm_active_job->render.flags & BIT(4))) {
+		const struct drm_asahi_cmd_render *r = &g16_drm_active_job->render;
+
+		D(0x580, (u64)g16_drm_active_job->rsrc_hi[2] << 32 | r->bg.rsrc_spec, 8);
+		D(0x6d8, (u64)g16_drm_active_job->rsrc_hi[0] << 32 | r->eot.rsrc_spec, 8);
+		D(0x428, r->isp_dbias_base, 8);
+		D(0x430, r->isp_scissor_base, 8);
+		D(0x438, r->isp_oclqry_base, 8);
+		D(0x720, r->isp_bgobjdepth, 4);
+		D(0x724, r->isp_bgobjvals, 4);
+		D(0x7e8, r->ppp_multisamplectl, 8);
+		D(0x7bd, !!(r->flags & DRM_ASAHI_RENDER_PROCESS_EMPTY_TILES), 1);
+	}
 	D(0x7d0, GPU(0x28000), 8);
 	D(0x7d8, GPU(0x29000), 8);
 	D(0x7e0, GPU(0x29000), 8);
