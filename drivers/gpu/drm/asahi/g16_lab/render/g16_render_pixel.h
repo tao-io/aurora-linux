@@ -291,7 +291,7 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 			 * arbitrary draws against the lab's canned RGB image. */
 			return g16_drm_active_job ? 0 : g16_render_verify_pixels();
 		}
-		ret = g16_asc_recv_timeout(asc, &message, &endpoint, 10000);
+		ret = g16_asc_recv_timeout(asc, &message, &endpoint, 1000);
 		if (!ret && endpoint == 1 &&
 		    FIELD_GET(RTKIT_MGMT_TYPE, message) == RTKIT_BUFFER_REQUEST &&
 		    crashlog_iova && FIELD_GET(RTKIT_BUFFER_IOVA, message) == crashlog_iova) {

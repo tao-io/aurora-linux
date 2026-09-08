@@ -162,7 +162,7 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 			ret = ret ? ret : -EIO;
 			break;
 		}
-		ret = g16_asc_recv_timeout(asc, &message, &endpoint, 10000);
+		ret = g16_asc_recv_timeout(asc, &message, &endpoint, 1000);
 		if (!ret && endpoint == 1 &&
 		    FIELD_GET(RTKIT_MGMT_TYPE, message) == RTKIT_BUFFER_REQUEST &&
 		    FIELD_GET(RTKIT_BUFFER_IOVA, message) == crashlog_iova) {
