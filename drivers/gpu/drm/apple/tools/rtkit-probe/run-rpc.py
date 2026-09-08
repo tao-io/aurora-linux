@@ -61,12 +61,15 @@ def log(event):
 dcp = None
 properties = {}
 dictionary_properties = {}
+chunked_property = None
+chunked_length = 0
 def property_key(data, object_prefix=True):
     start = 4 if object_prefix else 0
     name = data[start:start+64].split(b'\0', 1)[0].decode('ascii')
     return (data[:4].hex() if object_prefix else 'root', name)
 
 def startup_callback(dcp, tag, data, output_size):
+    global chunked_property, chunked_length
     # M4 call sites 0x1dce18 and 0x1dced0; no callback output payload.
     if a.swap_completion is not None and output_size == 0:
         if (tag == 'D588' and not data) or (tag == 'D590' and len(data) == 0x730):
@@ -91,6 +94,34 @@ def startup_callback(dcp, tag, data, output_size):
     if tag == 'D576' and len(data) == 4 and output_size == 0:
         log({'event': 'powerstate', 'flags': list(data[:2])})
         return b''
+    # M4 0x1ca55c: property ID, parameter and u64 publication value.
+    if tag == 'D300' and len(data) == 16 and output_size == 0:
+        ident, param, value = struct.unpack('<IIQ', data)
+        log({'event': 'pr_publish', 'id': ident, 'parameter': param, 'value': value})
+        return b''
+    # M4 0x257c78..0x257ddc: length + 1, chunks, then property key.
+    if tag == 'D127' and len(data) == 4 and output_size == 4:
+        length = struct.unpack('<I', data)[0]
+        if chunked_property is not None or not 1 <= length <= 0x100001:
+            raise RuntimeError('invalid chunked property start')
+        chunked_length, chunked_property = length - 1, bytearray()
+        return b'\x01\0\0\0'
+    if tag == 'D128' and len(data) == 0x1008 and output_size == 4:
+        offset, length = struct.unpack_from('<II', data, 0x1000)
+        if chunked_property is None or offset != len(chunked_property) or length > 4096 or offset+length > chunked_length:
+            raise RuntimeError('invalid chunked property range')
+        chunked_property.extend(data[:length])
+        return b'\x01\0\0\0'
+    if tag == 'D129' and len(data) == 64 and output_size == 4:
+        if chunked_property is None or len(chunked_property) != chunked_length:
+            raise RuntimeError('incomplete chunked property')
+        key = property_key(data, False)
+        dictionary_properties[key] = bytes(chunked_property)
+        log({'event': 'chunked_property', 'key': key, 'bytes': chunked_length})
+        # Keep the serialized property as evidence, without trusting the name as a path.
+        (a.output / ('property-%d.bin' % len(dictionary_properties))).write_bytes(chunked_property)
+        chunked_property = None
+        return b'\x01\0\0\0'
     # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
     # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.
     if tag == 'D401' and len(data) == 80 and output_size == 12:

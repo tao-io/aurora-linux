@@ -268,3 +268,11 @@ emitted D575 (88/76), the hotplug notification. M4 wrapper 0x1dcae8 establishes
 the connection u64, 76-byte in/out field and null byte at +84; the host preserves
 that field. D576 at 0x1dcbf0 publishes two power-state bytes (4/0). Evidence:
 `20260908-services6-start`, peak 52.5 C.
+
+The hotplug notification reported connected=1 on boot
+`55123d7e-2ff7-4318-8739-9829c04478de`, then startup stopped at D300 (16/0).
+The publisher at 0x1ca55c passes two u32 fields and a u64 value. The client now
+logs it. Offline inspection also qualifies the M4 chunked metadata sequence
+D127 (4/4), D128 (0x1008/4), D129 (64/4) at 0x257c78..0x257ddc. The receiver
+bounds total length to 1 MiB, requires contiguous chunks and saves completed
+serialized properties. Evidence: `20260908-hotplug-start`, peak 54.25 C.
