@@ -22,6 +22,7 @@ p.add_argument('--output-size', type=int, default=4)
 p.add_argument('--repeat', type=int, default=1)
 p.add_argument('--expect-hex')
 p.add_argument('--startup-callbacks', action='store_true')
+p.add_argument('--test-nested-query', action='store_true')
 p.add_argument('--swap-completion', type=int)
 p.add_argument('--noop-swap', action='store_true')
 p.add_argument('--background-swap', type=lambda s: int(s, 0))
@@ -66,6 +67,8 @@ def startup_callback(dcp, tag, data, output_size):
     # J713 __TEXT 0x1d7760..0x1d7778: D599, no input or output.
     # This is the first callback observed from A401 on the inherited display.
     if tag == 'D599' and not data and output_size == 0:
+        if a.test_nested_query and dcp.call('A412', output_size=4, nested=True) != b'\x01\0\0\0':
+            raise RuntimeError('nested main-display query failed')
         return b''
     # M4 wrappers 0x265e20, 0x2700b0, 0x260c74, 0x26d708:
     # create PROV/PROD/PMUS/IOMF services; a four-byte slot with boolean byte 0.

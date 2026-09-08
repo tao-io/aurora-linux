@@ -13,6 +13,7 @@ class DCP:
         self.log = log
         self.check = check
         self.callback = callback
+        self.callback_message = None
 
     def close(self):
         os.close(self.fd)
@@ -25,6 +26,11 @@ class DCP:
     def call(self, tag, data=b'', output_size=4, nested=False, completion=None):
         if len(tag) != 4 or tag[0] != 'A' or not tag[1:].isdigit():
             raise ValueError('expected an A000..A999 method tag')
+        expected_message = 0x42
+        if nested:
+            if self.callback_message is None:
+                raise RuntimeError('nested RPC outside a callback')
+            expected_message |= 0x200 | (self.callback_message & 0x100)
         wire = int.from_bytes(tag.encode('ascii'), 'big')
         packet = struct.pack('<III', wire, len(data), output_size) + data + bytes(output_size)
         self.check()
@@ -56,7 +62,7 @@ class DCP:
                       'message': hex(message), 'input': incoming.hex(),
                       'output_size': out_size, 'output': output.hex()})
             if kind == 1:
-                expected_message = 0x142 if nested else 0x42
+                # Firmware 0x196f64 retains both remote and nested control bits.
                 if call != wire or message != expected_message or in_size != len(data) or out_size != output_size:
                     raise RuntimeError('unexpected RPC reply header/status')
                 reply = output
@@ -67,7 +73,12 @@ class DCP:
                 continue
             if self.callback is None:
                 raise RuntimeError(f'unhandled DCP callback {name}, {in_size}/{out_size} bytes')
-            response = self.callback(self, name, incoming, out_size)
+            previous = self.callback_message
+            self.callback_message = message
+            try:
+                response = self.callback(self, name, incoming, out_size)
+            finally:
+                self.callback_message = previous
             if len(response) != out_size:
                 raise RuntimeError(f'{name}: wrong callback output length')
             self.write(2, message, response)

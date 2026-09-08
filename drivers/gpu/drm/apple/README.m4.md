@@ -209,3 +209,17 @@ also returned A407 status 0 without a D590 completion within five seconds.
 Evidence: `20260908-background`, peak 54.25 C. Therefore accepted inherited-state
 swaps alone do not qualify the completion path. Display startup/client state
 must be investigated before assuming that native KMS can retire framebuffers.
+
+A457 (no input/output, virtual slot 0x1c0, inferred first-client notification)
+was acknowledged on boot `102786ac-a1b7-4091-bfae-54088997c486`; repeating the
+background swap still lacked completion. Evidence: `20260908-client-open` and
+`20260908-client-background`. Further inherited-state variations are deferred
+in favor of completing startup.
+
+Nested commands must re-enter the incoming callback's stream, not always the
+remote half. M4 0x196398 encodes the selected stream's owner in message bit 8;
+0x196f64 retains both nested and remote bits in the reply. The diagnostic now
+uses the callback's remote bit and places a nested packet after the active
+parent, aligned to 64 bytes. An A401/D599 nested A412 check can qualify this
+before relying on the PMU startup handshake. Arbitrary deeper command nesting
+is still unsupported.

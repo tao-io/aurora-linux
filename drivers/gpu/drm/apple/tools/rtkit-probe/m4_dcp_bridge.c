@@ -47,6 +47,8 @@ struct m4_dcp_bridge {
 	bool enabled;
 	struct {
 		bool active;
+		bool remote;
+		u32 offset;
 		u32 size;
 		struct apple_dcp_link_rpc_header header;
 	} calls[2];
@@ -95,6 +97,7 @@ void m4_dcp_bridge_receive(struct m4_dcp_bridge *b, u64 message)
 	struct apple_dcp_link_rpc_view view;
 	u8 stream = apple_dcp_link_message_stream(message);
 	bool remote = apple_dcp_link_message_is_remote(message);
+	bool nested = message & APPLE_DCP_LINK_MSG_NESTED;
 	int ret;
 
 	mutex_lock(&b->lock);
@@ -106,14 +109,15 @@ void m4_dcp_bridge_receive(struct m4_dcp_bridge *b, u64 message)
 	}
 	dma_rmb();
 	if (message & BIT_ULL(6)) {
-		if (stream || !b->calls[remote].active ||
+		if (stream || !b->calls[nested].active || b->calls[nested].remote != remote ||
 		    apple_dcp_link_stream_layout(APPLE_DCP_LINK_SIDE_AP, 0, remote, &layout))
 			goto error;
-		if (memcmp(b->rpc + layout.local_offset, &b->calls[remote].header,
-			   sizeof(b->calls[remote].header)))
+		if (memcmp(b->rpc + layout.local_offset + b->calls[nested].offset,
+			   &b->calls[nested].header, sizeof(b->calls[nested].header)))
 			goto error;
-		event(b, 1, message, b->rpc + layout.local_offset, b->calls[remote].size);
-		b->calls[remote].active = false;
+		event(b, 1, message, b->rpc + layout.local_offset + b->calls[nested].offset,
+		      b->calls[nested].size);
+		b->calls[nested].active = false;
 		goto out;
 	}
 	if (b->callback_count >= MAX_CALLBACKS ||
@@ -193,8 +197,8 @@ static ssize_t bridge_write(struct file *file, const char __user *user, size_t c
 	struct apple_dcp_link_rpc_header *rpc;
 	struct record_header *record;
 	u64 message, control;
-	u32 kind, size, total;
-	bool nested;
+	u32 kind, size, total, offset = 0;
+	bool nested, remote = false;
 	int ret;
 
 	if (count < sizeof(*record) || count > sizeof(*record) + APPLE_DCP_LINK_STREAM_BUFFER_SIZE)
@@ -243,6 +247,18 @@ static ssize_t bridge_write(struct file *file, const char __user *user, size_t c
 		ret = -EBUSY;
 		goto out;
 	}
+	if (nested) {
+		u64 callback = b->callbacks[b->callback_count - 1].message;
+
+		if (apple_dcp_link_message_stream(callback)) {
+			ret = -EOPNOTSUPP;
+			goto out;
+		}
+		/* Re-enter the callback's stream, preserving the active parent packet. */
+		remote = apple_dcp_link_message_is_remote(callback);
+		if (b->calls[0].active && b->calls[0].remote == remote)
+			offset = ALIGN(b->calls[0].size, 64);
+	}
 	rpc = (void *)(record + 1);
 	ret = apple_dcp_link_rpc_payload_size(le32_to_cpu(rpc->input_size),
 					    le32_to_cpu(rpc->output_size), &total);
@@ -250,17 +266,23 @@ static ssize_t bridge_write(struct file *file, const char __user *user, size_t c
 		ret = -EMSGSIZE;
 		goto out;
 	}
-	ret = apple_dcp_link_stream_layout(APPLE_DCP_LINK_SIDE_AP, 0, nested, &layout);
+	ret = apple_dcp_link_stream_layout(APPLE_DCP_LINK_SIDE_AP, 0, remote, &layout);
 	if (ret)
 		goto out;
-	memcpy(b->rpc + layout.local_offset, rpc, size);
-	memset(b->rpc + layout.local_offset + sizeof(*rpc) + le32_to_cpu(rpc->input_size),
+	if (offset + size > layout.capacity) {
+		ret = -EMSGSIZE;
+		goto out;
+	}
+	memcpy(b->rpc + layout.local_offset + offset, rpc, size);
+	memset(b->rpc + layout.local_offset + offset + sizeof(*rpc) + le32_to_cpu(rpc->input_size),
 	       0, le32_to_cpu(rpc->output_size));
 	b->calls[nested].header = *rpc;
 	b->calls[nested].size = size;
+	b->calls[nested].offset = offset;
+	b->calls[nested].remote = remote;
 	b->calls[nested].active = true;
-	apple_dcp_link_rpc_message(0, size, nested, &message);
-	apple_dcp_link_stream_message(message, 0, nested, &message);
+	apple_dcp_link_rpc_message(offset, size, nested, &message);
+	apple_dcp_link_stream_message(message, 0, remote, &message);
 	dma_wmb();
 	ret = apple_rtkit_send_message(b->rtkit, APPLE_DCP_LINK_ENDPOINT, message, NULL, false);
 	if (ret)
