@@ -262,12 +262,35 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 /* Retain the CPU view before error cleanup frees the submitted tree. */
 static void g16_drm_job_log_fault(struct g16_drm_job *job)
 {
+	struct g16_drm_mapping *m;
 	struct g16_uat_context_slot *slot = g16_initdata_live_uat_kernel_context + 6;
 	u64 va = job->render.vdm_ctrl_stream_base;
 	u64 *root = page_address(job->uat.tables[0]);
 	u64 l1 = root[(va >> 36) & 63], l2 = 0, pte = 0;
 	u64 *table = g16_render_uat_owned_table(&job->uat, l1);
 	u64 *source = g16_render_uat_leaf(&job->vm->uat, va, false);
+	u32 checked = 0, mismatches = 0;
+
+	/* Compare against the pinned GEM pages, not only the cached VM tree:
+	 * source and clone could otherwise agree on the same stale leaf. */
+	list_for_each_entry(m, &job->vm->mappings, link) {
+		void *data = (u8 *)m->map.vaddr + m->offset;
+
+		checked++;
+		if (g16_render_uat_verify(&job->uat, m->va, data, m->size, m->pte_flags)) {
+			mismatches++;
+			pr_err("g16_lab: DRM fault mapping mismatch va=%#llx size=%#llx flags=%#llx\n",
+				m->va, m->size, m->pte_flags);
+		}
+		if (va >= m->va && va - m->va < m->size) {
+			size_t bytes = min_t(u64, 256, m->size - (va - m->va));
+
+			print_hex_dump(KERN_ERR, "g16_lab: DRM fault VDM: ", DUMP_PREFIX_OFFSET,
+				       16, 1, (u8 *)data + (va - m->va), bytes, false);
+		}
+	}
+	pr_err("g16_lab: DRM fault pinned-mapping verification checked=%u mismatches=%u\n",
+		checked, mismatches);
 
 	if (table) {
 		l2 = table[(va >> 25) & 0x7ff];
