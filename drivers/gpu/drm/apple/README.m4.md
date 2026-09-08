@@ -405,3 +405,16 @@ status to a boolean: zero internal status produces output byte 1. Startup
 success must be checked against `01000000`, not `00000000`. Repeat with the
 correct assertion before using the session for swaps. Declining the optional
 surface does not abort firmware startup; no default framebuffer was allocated.
+
+**First native background-swap completion:** `20260908-startswap`, boot
+`310a0f5a-d386-4b2e-8076-1e8457fd9d34`, kernel #11. Native RTKit/DCPLink,
+A401 output `01000000`, A457, A406 swap ID 5/status zero, and background-only
+A407 color `0xff402060` completed in 2.584 s including startup. A407 returned
+status zero and firmware then emitted D590 (1840 bytes) with the matching ID 5;
+the runner waited for that callback before passing/disarming. Maximum among
+all six exposed channels was 65.25 C (aggregate hotspot 64 C), below the 75 C
+stop threshold. No dedicated GPU sensor is inferred. This establishes a native
+DCP background transaction completion, not surface scanout, visual correctness,
+a DRM/KMS device, or removal of simpledrm CPU copies. Existing clock-frequency,
+PMU/calibration, declined bandwidth and optional default-surface diagnostics
+remain in the firmware log and are not hidden by the successful transaction.
