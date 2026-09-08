@@ -790,7 +790,8 @@ static u64 g16_lab_pmptool_word(u32 index)
 #define J713_KTRACE_RECORD_SIZE 0x48
 #define J713_KTRACE_COUNT 0x200
 #define J713_KTRACE_DATA_SIZE (J713_KTRACE_RECORD_SIZE * J713_KTRACE_COUNT)
-#define J713_KTRACE_CAPTURE_COUNT 8192
+/* Bounded compositor probes can issue 128 passes; retain their full trace. */
+#define J713_KTRACE_CAPTURE_COUNT 65536
 #define J713_INITDATA_STAT_STATE_SIZE	0x30
 #define J713_INITDATA_STAT_DATA_SIZE	0x4800
 #define J713_INITDATA_STAT_STATE_PTR_OFFSET	0x1f0

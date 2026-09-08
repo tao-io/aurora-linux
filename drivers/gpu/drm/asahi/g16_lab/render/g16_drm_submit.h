@@ -394,8 +394,12 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 		ret = -ENOENT;
 		goto unlock;
 	}
-	if (!mutex_trylock(&g16_render_service_mutex)) {
-		ret = -EBUSY;
+	/* Hyprland and Xwayland can submit concurrently. Queue behind the
+	 * bounded worker instead of reporting a transient collision as loss
+	 * of the Vulkan device. No worker path acquires another file's lock.
+	 */
+	ret = mutex_lock_interruptible(&g16_render_service_mutex);
+	if (ret) {
 		goto unlock;
 	}
 	job->vm = priv->vm;
@@ -452,6 +456,9 @@ service_unlock:
 unlock:
 	mutex_unlock(&priv->lock);
 free:
+	if (ret < 0)
+		pr_info("g16_lab: DRM submit failed pid=%d queue=%u error=%d\n",
+			task_pid_nr(current), args->queue_id, ret);
 	for (i = 0; i < ARRAY_SIZE(outputs); i++) {
 		if (outputs[i])
 			drm_syncobj_put(outputs[i]);
