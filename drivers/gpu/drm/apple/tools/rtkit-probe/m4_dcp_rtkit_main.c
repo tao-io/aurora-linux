@@ -10,6 +10,7 @@
 #include <linux/soc/apple/rtkit.h>
 
 #include "../../dcp-link.h"
+#include "m4_dcp_bridge.h"
 
 struct m4_dcp_rtkit {
 	struct device *dev;
@@ -19,6 +20,7 @@ struct m4_dcp_rtkit {
 	dma_addr_t rpc_dva;
 	int result;
 	bool awaiting_rpc;
+	struct m4_dcp_bridge *bridge;
 };
 
 static bool start_link;
@@ -27,6 +29,9 @@ MODULE_PARM_DESC(start_link, "Also negotiate DCPLink, without issuing display RP
 static bool query_display;
 module_param(query_display, bool, 0400);
 MODULE_PARM_DESC(query_display, "Issue the M4 A412 read-only main-display query after READY");
+static bool bridge;
+module_param(bridge, bool, 0400);
+MODULE_PARM_DESC(bridge, "Expose a root-only diagnostic RPC bridge after DCPLink READY");
 
 static void crashed(void *cookie, const void *log, size_t size)
 {
@@ -46,6 +51,10 @@ static void receive(void *cookie, u8 ep, u64 message)
 	dev_info(dcp->dev, "DCP app rx ep=%#x message=%#llx\n", ep, message);
 	if (ep != APPLE_DCP_LINK_ENDPOINT)
 		return;
+	if (dcp->bridge) {
+		m4_dcp_bridge_receive(dcp->bridge, message);
+		return;
+	}
 	if (dcp->awaiting_rpc) {
 		u32 output;
 
@@ -188,7 +197,7 @@ static int probe(struct platform_device *pdev)
 	if (ret)
 		goto retained;
 	dev_info(dev, "M4 native RTKit boot complete; running=%d\n", apple_rtkit_is_running(dcp->rtkit));
-	if (!start_link && !query_display)
+	if (!start_link && !query_display && !bridge)
 		goto retained;
 	dcp->rpc = dma_alloc_coherent(dev, APPLE_DCP_LINK_RPC_MEMORY_SIZE,
 				      &dcp->rpc_dva, GFP_KERNEL);
@@ -232,6 +241,16 @@ static int probe(struct platform_device *pdev)
 				ret = -ETIMEDOUT;
 			else
 				ret = dcp->result;
+		}
+	}
+	if (!ret && bridge) {
+		struct m4_dcp_bridge *rpc_bridge = m4_dcp_bridge_create(dev, dcp->rtkit, dcp->rpc);
+
+		if (IS_ERR(rpc_bridge))
+			ret = PTR_ERR(rpc_bridge);
+		else {
+			dcp->bridge = rpc_bridge;
+			m4_dcp_bridge_activate(rpc_bridge);
 		}
 	}
 retained:

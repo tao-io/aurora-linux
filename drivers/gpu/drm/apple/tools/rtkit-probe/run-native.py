@@ -15,6 +15,7 @@ p.add_argument("--module", type=Path, required=True)
 p.add_argument("--output", type=Path, required=True)
 p.add_argument("--start-link", action="store_true")
 p.add_argument("--query-display", action="store_true")
+p.add_argument("--bridge", action="store_true")
 a = p.parse_args()
 sys.path.insert(0, str(a.guards))
 from experiment_watchdog import ExperimentWatchdog
@@ -24,6 +25,7 @@ a.output.mkdir(parents=True, exist_ok=False)
 w = ExperimentWatchdog()
 r = {"watchdog": w.arm(), "start_link": a.start_link,
      "query_display": a.query_display,
+     "bridge": a.bridge,
      "boot_id": Path("/proc/sys/kernel/random/boot_id").read_text().strip()}
 t = ExperimentThermals(a.output)
 try:
@@ -35,7 +37,7 @@ since = str(int(time.time()))
 try:
     t.check()
     proc = subprocess.run(["insmod", str(a.module), f"start_link={int(a.start_link)}",
-                           f"query_display={int(a.query_display)}"],
+                           f"query_display={int(a.query_display)}", f"bridge={int(a.bridge)}"],
                           capture_output=True, text=True, timeout=30)
     r.update(returncode=proc.returncode, stdout=proc.stdout, stderr=proc.stderr)
     time.sleep(1)
@@ -46,10 +48,12 @@ try:
         raise RuntimeError("native RTKit did not reach running state")
     if "M4 native DCP diagnostic finished ret=0;" not in log:
         raise RuntimeError("native DCP startup failed")
-    if (a.start_link or a.query_display) and "M4 DCPLink READY alignment=64" not in log:
+    if (a.start_link or a.query_display or a.bridge) and "M4 DCPLink READY alignment=64" not in log:
         raise RuntimeError("DCPLink did not reach READY")
     if a.query_display and "M4 A412 reply: is_main_display=" not in log:
         raise RuntimeError("main-display RPC query did not return a valid reply")
+    if a.bridge and "M4 DCP RPC bridge /dev/m4-dcp-rpc ready" not in log:
+        raise RuntimeError("diagnostic RPC bridge did not start")
     if "DCP firmware crashed" in log:
         raise RuntimeError("DCP firmware crash")
     t.check()
