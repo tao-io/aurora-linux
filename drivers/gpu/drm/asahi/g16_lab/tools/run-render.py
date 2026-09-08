@@ -18,6 +18,7 @@ from experiment_watchdog import ExperimentWatchdog
 
 EXPECTED = '792314d0bce27c82b5777d559020eba427b687d8fc4d6b1c031d9c915fc7ffc1'
 ACTIVE_RESULT = None
+DMESG_READER = None
 PARAMS = [
     'stage=rtkit-initdata-exact-offscreen-store',
     'compute_macos_iadd=1', 'compute_mandelbrot=1',
@@ -29,6 +30,17 @@ PARAMS = [
 
 def output(*args):
     return subprocess.check_output(args, text=True)
+
+
+def captured_dmesg():
+    # A compositor can wrap printk's ring before the end of the experiment.
+    # Retain a continuously drained copy rather than infer missing events.
+    if DMESG_READER is not None:
+        if DMESG_READER.poll() is not None:
+            raise RuntimeError('continuous kernel log reader exited')
+        time.sleep(0.05)
+        return (ACTIVE_RESULT / 'dmesg-live.log').read_text()
+    return output('dmesg')
 
 
 def main():
@@ -203,7 +215,10 @@ def main():
         expected_resource = '43e630484f7b5de294911fb6e5f78dc38b833d3d7d409c03fa3cdc4da98b27bf'
         if not resource.exists() or hashlib.sha256(resource.read_bytes()).hexdigest() != expected_resource:
             parser.error('install the checksummed encoded M4 render-reference.bin first')
-    before = output('dmesg')
+    global DMESG_READER
+    with (result / 'dmesg-live.log').open('w') as stream:
+        DMESG_READER = subprocess.Popen(['stdbuf', '-oL', 'dmesg', '--follow'], stdout=stream)
+    before = captured_dmesg()
     initial_render_nodes = set(Path('/dev/dri').glob('renderD*'))
     marker = Path('/run/g16-lab-firmware-used')
     if marker.exists() or 'GFX RTKit' in before or Path('/sys/module/g16_lab').exists():
@@ -323,7 +338,7 @@ def main():
         metadata['render_service'] = {'idle_verified': True, 'invalid_requests_rejected': 4,
                                       'events': events, 'final_status': status()}
         (result / 'render-service.json').write_text(json.dumps(metadata['render_service'], indent=2) + '\n')
-    after = output('dmesg')
+    after = captured_dmesg()
     (result / 'dmesg.log').write_text(after)
     print(after[len(before):] if after.startswith(before) else after, end='')
     metadata['insmod_rc'] = run.returncode
@@ -389,7 +404,7 @@ def main():
             'render: removed context-6 and root-3 mappings after firmware stop',
         ))
         graph = result / 'render-graph.bin'
-        metadata['render_queues_passed'] = queue_evidence and graph.exists() and graph.stat().st_size == 0x80000
+        metadata['render_queues_passed'] = queue_evidence and graph.exists() and graph.stat().st_size == 0xf0000
         metadata['render_shaders_submitted'] = 'render: submitted InitPB + captured vertex/TA job' in current_log
         if args.render_ta:
             metadata['ta_retired_with_writes'] = 'render: TA retired with GPU-written pool/tilemap' in current_log
@@ -546,7 +561,7 @@ def main():
         metadata['rmmod_rc'] = unload.returncode
         (result / 'rmmod.txt').write_text(unload.stdout + unload.stderr)
         passed = unload.returncode == 0
-    final_log = output('dmesg')
+    final_log = captured_dmesg()
     (result / 'dmesg-final.log').write_text(final_log)
     new_log = final_log[len(before):] if final_log.startswith(before) else final_log
     metadata['new_kernel_fault'] = any(marker in new_log for marker in
@@ -578,10 +593,14 @@ if __name__ == '__main__':
         # Do not unload a possibly active GPU or disarm the watchdog here.
         if ACTIVE_RESULT is not None:
             (ACTIVE_RESULT / 'exception.txt').write_text(repr(error) + '\n')
-            (ACTIVE_RESULT / 'dmesg-failure.log').write_text(output('dmesg'))
+            (ACTIVE_RESULT / 'dmesg-failure.log').write_text(captured_dmesg())
             for name in ('g16_lab_crashlog', 'g16_lab_ktrace', 'g16_lab_render_prepared'):
                 source = Path('/sys/kernel/debug') / name
                 if source.exists():
                     (ACTIVE_RESULT / (name + '-failure.bin')).write_bytes(source.read_bytes())
             os.sync()
         raise
+    finally:
+        if DMESG_READER is not None and DMESG_READER.poll() is None:
+            DMESG_READER.terminate()
+            DMESG_READER.wait(timeout=2)

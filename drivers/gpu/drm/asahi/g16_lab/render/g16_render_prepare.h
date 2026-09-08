@@ -16,7 +16,14 @@
 #include "g16_render_stream.h"
 
 #define G16_RENDER_RESOURCE_COUNT 34
-#define G16_RENDER_GRAPH_BYTES 0x80000
+#define G16_RENDER_GRAPH_BYTES 0xf0000
+/* Separate client geometry storage from the retained small fixture layout. */
+#define G16_RENDER_CLIENT_TILEMAP 0x80000
+#define G16_RENDER_CLIENT_TILEMAP_BYTES 0x20000
+#define G16_RENDER_CLIENT_TPC 0xa0000
+#define G16_RENDER_CLIENT_TPC_BYTES 0x40000
+#define G16_RENDER_CLIENT_AUX_FB 0xe0000
+#define G16_RENDER_CLIENT_AUX_FB_BYTES 0x10000
 #define G16_RENDER_POOL_BYTES 0x400000
 #define G16_RENDER_GRAPH_VA 0xfffffc3000000000ULL
 #define G16_RENDER_POOL_VA 0x6000000000ULL
@@ -51,6 +58,16 @@ static struct debugfs_blob_wrapper g16_render_pool_blob;
 static struct debugfs_blob_wrapper g16_render_frames[8];
 static struct g16_render_uat g16_render_user_uat;
 static struct g16_render_uat g16_render_fw_uat;
+
+static u32 g16_render_tilemap_offset(void)
+{
+	return g16_drm_active_job ? G16_RENDER_CLIENT_TILEMAP : 0x28000;
+}
+
+static u32 g16_render_tpc_offset(void)
+{
+	return g16_drm_active_job ? G16_RENDER_CLIENT_TPC : 0x38000;
+}
 
 static u32 g16_render_width(void)
 {

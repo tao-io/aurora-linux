@@ -53,8 +53,24 @@ static int g16_render_build_fragment(void)
 		D(0x724, r->isp_bgobjvals, 4);
 		D(0x7e8, r->ppp_multisamplectl, 8);
 		D(0x7bd, !!(r->flags & DRM_ASAHI_RENDER_PROCESS_EMPTY_TILES), 1);
+		/* The exact M4 producer routes descriptor+6b0 to 16460/16090.
+		 * Larger passes use this auxiliary storage: leaving it null caused
+		 * a dIPP_CS write to VA 0x80 after successful full-panel tiling.
+		 */
+		D(0x6b0, GPU(G16_RENDER_CLIENT_AUX_FB), 8);
+		D(0x5d8, r->isp_zls_pixels, 8);
+		D(0x5c0, r->zls_ctrl, 8);
+		D(0x5c8, 0x04040404, 8);
+		D(0x5e0, r->depth.base, 8);
+		D(0x5e8, r->depth.base, 8);
+		D(0x5f8, r->stencil.base, 8);
+		D(0x600, r->stencil.base, 8);
+		D(0x640, r->depth.stride, 8);
+		D(0x648, r->depth.stride, 8);
+		D(0x650, r->stencil.stride, 8);
+		D(0x658, r->stencil.stride, 8);
 	}
-	D(0x7d0, GPU(0x28000), 8);
+	D(0x7d0, GPU(g16_render_tilemap_offset()), 8);
 	D(0x7d8, GPU(0x29000), 8);
 	D(0x7e0, GPU(0x29000), 8);
 	D(0x7f8, 1, 4);
@@ -108,7 +124,7 @@ static int g16_render_build_fragment(void)
 	if (ret)
 		goto out;
 	/* submitBuffer mirrors geometry into the firmware command prefix too. */
-	g16_render_put(work + 0x40, GPU(0x28000), 8);
+	g16_render_put(work + 0x40, GPU(g16_render_tilemap_offset()), 8);
 	g16_render_put(work + 0x50, 1, 4);
 	g16_render_put(work + 0x54, g.isp_blocks, 4);
 	g16_render_put(work + 0x60, g.x_blocks, 4);

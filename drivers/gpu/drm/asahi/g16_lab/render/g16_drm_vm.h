@@ -132,7 +132,8 @@ static int g16_drm_vm_bind_one(struct g16_drm_vm *vm, struct drm_file *file,
 		      found->offset == op->offset && found->pte_flags == flags ? 0 : -EEXIST;
 		goto put;
 	}
-	if (vm->mapping_count >= (render_drm_submit ? 1024 : 128) || op->range > SZ_256M - vm->mapping_bytes) {
+	if (vm->mapping_count >= (render_drm_submit ? 2048 : 128) ||
+	    op->range > (render_drm_submit ? SZ_512M : SZ_256M) - vm->mapping_bytes) {
 		ret = -ENOSPC;
 		goto put;
 	}

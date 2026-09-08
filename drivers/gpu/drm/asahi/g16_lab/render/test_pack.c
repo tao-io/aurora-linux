@@ -41,6 +41,11 @@ static void test_geometry(void)
 	assert(g.x_blocks == 0x10100c && g.y_blocks == 0x10100c);
 	assert(g.region_stride == 20 && g.tpc_stride == 32);
 	assert(g.tilemap_bytes == 4096 && g.tpc_bytes == 2048);
+	/* J713 panel: 80x50 tiles, padded to 20x16 groups of 4x4. */
+	assert(!g16_render_geometry_single(&g, 2560, 1600, 32, 32, 1));
+	assert(g.tiles == 4000 && g.blocks == 320);
+	assert(g.region_stride == 400 && g.tpc_stride == 640);
+	assert(g.tilemap_bytes == 28672 && g.tpc_bytes == 40960);
 	before = g;
 	assert(g16_render_geometry_single(&g, 0, 4, 32, 32, 1) == -EINVAL);
 	assert(!memcmp(&g, &before, sizeof(g)));

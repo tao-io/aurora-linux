@@ -321,6 +321,11 @@ static void g16_render_next_frame(void)
 	memset(g16_render_graph + 0x24000, 0, 0x2000);
 	memset(g16_render_graph + 0x28000, 0, 0x2000);
 	memset(g16_render_graph + 0x38000, 0, 0x800);
+	if (g16_drm_active_job) {
+		memset(g16_render_graph + G16_RENDER_CLIENT_TILEMAP, 0, G16_RENDER_CLIENT_TILEMAP_BYTES);
+		memset(g16_render_graph + G16_RENDER_CLIENT_TPC, 0, G16_RENDER_CLIENT_TPC_BYTES);
+		memset(g16_render_graph + G16_RENDER_CLIENT_AUX_FB, 0, G16_RENDER_CLIENT_AUX_FB_BYTES);
+	}
 	memset(g16_render_graph + 0x60000, 0, 0x200);
 	for (i = 0; i < G16_RENDER_RESOURCE_COUNT; i++) {
 		struct g16_render_resource *r = &g16_render_resources[i];

@@ -69,6 +69,15 @@ static bool g16_drm_vm_contains(struct g16_drm_vm *vm, u64 va, u64 size)
 	return g16_drm_vm_range(vm, va, size, true);
 }
 
+static bool g16_drm_zls_valid(struct g16_drm_vm *vm, const struct drm_asahi_zls_buffer *z)
+{
+	if (!z->base)
+		return !memchr_inv(z, 0, sizeof(*z));
+	return !(z->base & (PAGE_SIZE - 1)) && !z->comp_base && !z->comp_stride &&
+		(z->stride & 0x3fff) == 1 &&
+		g16_drm_vm_range(vm, z->base, ((u64)(z->stride >> 14) + 1) << 14, false);
+}
+
 static int g16_drm_job_prepare(struct g16_drm_job *job)
 {
 	struct drm_asahi_cmd_render *r = &job->render;
@@ -80,17 +89,22 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 		.bg.usc = r->bg.usc, .eot.usc = r->eot.usc,
 	};
 	struct g16_drm_mapping *m;
+	struct g16_render_geometry geometry;
 	u64 graph = G16_RENDER_GRAPH_VA & (BIT_ULL(42) - 1);
 	bool native = r->flags & BIT(4);
 	int ret;
 
 	if (native) {
-		/* Native small render passes: one uncompressed RGBA8 target, no Z/S,
+		/* Native render passes: one uncompressed RGBA8 target and optional Z/S,
 		 * no shader scratch, no sampler heap and no timestamps. Keep every
 		 * unimplemented field outside the admitted packet. */
-		if (!r->width_px || r->width_px > 256 || !r->height_px || r->height_px > 256 ||
+		if (!r->width_px || r->width_px > 2560 || !r->height_px || r->height_px > 1600 ||
 		    r->flags & ~(BIT(4) | DRM_ASAHI_RENDER_PROCESS_EMPTY_TILES))
 			return -EOPNOTSUPP;
+		ret = g16_render_geometry_single(&geometry, r->width_px, r->height_px, 32, 32, 1);
+		if (ret || geometry.tilemap_bytes > G16_RENDER_CLIENT_TILEMAP_BYTES ||
+		    geometry.tpc_bytes > G16_RENDER_CLIENT_TPC_BYTES)
+			return ret ?: -E2BIG;
 		supported.width_px = r->width_px;
 		supported.height_px = r->height_px;
 		supported.flags = r->flags;
@@ -99,6 +113,19 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 		supported.ppp_multisamplectl = 0x88;
 		supported.isp_bgobjdepth = 0x3f800000;
 		supported.isp_bgobjvals = 0x300;
+		if (r->depth.base || r->stencil.base) {
+			if (!g16_drm_zls_valid(job->vm, &r->depth) ||
+			    !g16_drm_zls_valid(job->vm, &r->stencil) ||
+			    r->zls_ctrl & ~(0x6000000ULL | 0xcc000ULL | 0xaaULL) ||
+			    r->isp_bgobjvals & ~0x3ffU)
+				return -EOPNOTSUPP;
+			supported.depth = r->depth;
+			supported.stencil = r->stencil;
+			supported.zls_ctrl = r->zls_ctrl;
+			supported.isp_zls_pixels = r->isp_zls_pixels;
+			supported.isp_bgobjdepth = r->isp_bgobjdepth;
+			supported.isp_bgobjvals = r->isp_bgobjvals;
+		}
 		/* Positive finite merge thresholds; the current M4 register list
 		 * does not consume these legacy UAPI hints. */
 		if (r->isp_merge_upper_x >= 0x7f800000 || r->isp_merge_upper_y >= 0x7f800000)

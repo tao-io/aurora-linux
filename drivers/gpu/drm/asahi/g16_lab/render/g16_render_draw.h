@@ -44,10 +44,10 @@ static int g16_render_build_ta(void)
 	D(0xf90, 1, 4);
 	/* loadRenderTargetMemoryData takes the compact (+160) address for TA;
 	 * fragment uses the corresponding normal (+158) address instead. */
-	D(0x1000, TILER(0x38000), 8);
-	D(0x1008, base + 0x38000, 8);
+	D(0x1000, TILER(g16_render_tpc_offset()), 8);
+	D(0x1008, base + g16_render_tpc_offset(), 8);
 	D(0x1010, geometry.tpc_stride, 4);
-	D(0x1018, TILER(0x28000), 8);
+	D(0x1018, TILER(g16_render_tilemap_offset()), 8);
 	D(0x1020, geometry.region_stride, 4);
 	D(0x1028, geometry.tpc_bytes, 8);
 	D(0x1030, TILER(0x29000), 8);
@@ -114,7 +114,7 @@ static int g16_render_build_ta(void)
 		base & ((1ULL << 42) - 1), regs, count);
 	if (ret)
 		goto out;
-	g16_render_put(work + 0x760, base + 0x38000, 8);
+	g16_render_put(work + 0x760, base + g16_render_tpc_offset(), 8);
 	g16_render_put(work + 0x768, geometry.tpc_bytes, 8);
 	g16_render_put(work + 0x7a8, GPU(0x40000), 8);
 	g16_render_put(work + 0x8fe, g16_initdata_live_barrier_va + 0xe00, 8);
