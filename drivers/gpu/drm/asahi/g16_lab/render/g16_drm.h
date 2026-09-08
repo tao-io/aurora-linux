@@ -171,7 +171,9 @@ static int g16_drm_gem_create_ioctl(struct drm_device *dev, void *data,
 		return PTR_ERR(shmem);
 	shmem->map_wc = !(args->flags & G16_GEM_WRITEBACK);
 	g16_drm_to_gem(&shmem->base)->private_vm_id = args->vm_id;
-	ret = drm_gem_handle_create(file, &shmem->base, &args->handle);
+	ret = g16_drm_gem_prepare_wc(shmem);
+	if (!ret)
+		ret = drm_gem_handle_create(file, &shmem->base, &args->handle);
 	drm_gem_object_put(&shmem->base);
 	return ret;
 out:
