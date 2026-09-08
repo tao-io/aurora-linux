@@ -23,6 +23,7 @@ p.add_argument('--repeat', type=int, default=1)
 p.add_argument('--expect-hex')
 p.add_argument('--startup-callbacks', action='store_true')
 p.add_argument('--test-nested-query', action='store_true')
+p.add_argument('--hardware-boot', action='store_true')
 p.add_argument('--swap-completion', type=int)
 p.add_argument('--noop-swap', action='store_true')
 p.add_argument('--background-swap', type=lambda s: int(s, 0))
@@ -139,6 +140,31 @@ def startup_callback(dcp, tag, data, output_size):
             raise RuntimeError('invalid EDT element count')
         log({'event': 'edt_default', 'key': property_key(data, False), 'count': count})
         return data[68:68+count*4] + bytes(36-count*4)
+    # M4 0x2dfb24/0x2dfb3c: host boot/power-on notifications.
+    if tag in ('D000', 'D001') and not data and output_size == 4:
+        return b'\x01\0\0\0'
+    # M4 0x2e47e4..0x2e482c returns the frame sync properties in place.
+    if tag == 'D006' and len(data) == 84 and output_size == 80:
+        return data[:80] if not data[80] & 1 else bytes(80)
+    # M4 0x2728e8 and startup 0x26eb98: ordinary interactive cold boot,
+    # with no dark-boot or hibernation resume requested by this host.
+    if tag in ('D122', 'D123') and not data and output_size == 4:
+        return bytes(4)
+    # M4 startup 0x26e920 explicitly diagnoses false as start_hardware_boot
+    # failure. The sequence follows the existing host protocol, using M4 IDs.
+    if a.hardware_boot and tag == 'D121' and not data and output_size == 4:
+        dcp.call('A389', output_size=0, nested=True)
+        # A446 reads the existing default-framebuffer enable flag; it does not
+        # allocate a host buffer. Keep inherited framebuffer ownership here.
+        dcp.call('A446', output_size=4, nested=True)
+        for method, payload, output in (('A024', b'', 4),
+                                        ('A468', b'\x01\0\0\0', 0),
+                                        ('A000', b'\x01\0\0\0', 4),
+                                        ('A465', b'', 4)):
+            reply = dcp.call(method, payload, output, nested=True)
+            if output and not reply[0] & 1:
+                raise RuntimeError(f'{method}: hardware boot step returned false')
+        return b'\x01\0\0\0'
     # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
     # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.
     if tag == 'D401' and len(data) == 80 and output_size == 12:

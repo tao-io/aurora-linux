@@ -299,3 +299,13 @@ u32 defaults, then unconditionally copies the returned values before reading
 the success flag. The host preserves only the declared defaults and returns
 false; zeroing the whole response would incorrectly erase them. Evidence:
 `20260908-clocks-start`, peak 61.25 C.
+
+The optional `--hardware-boot` diagnostic handles the actual M4 D121 request
+at 0x26e920 (its false branch logs `start_hardware_boot failed`). It sequences
+A389, the inherited DFB flag query A446, A024, A468(true), A000(true), A465.
+A024 (0x2fb5e8) has a four-byte boolean result on M4; A468 (0x1de4f0) sets the
+supports-power flag at object+0x52ce; A465 (0x1de7b8) is identified by its
+`setDisplayRefreshProperties` diagnostic. The sequence is pending hardware
+validation. M4 D000/D001 notifications (0x2dfb24/0x2dfb3c), in/out D006 frame
+sync properties (0x2e4814), and ordinary cold-boot D122/D123 flags are handled.
+No host framebuffer is allocated or claimed by the DFB query.
