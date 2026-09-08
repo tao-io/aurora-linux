@@ -259,6 +259,8 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 	return g16_drm_job_cache_ranges(job);
 }
 
+#include "g16_drm_fault.h"
+
 /* Retain the CPU view before error cleanup frees the submitted tree. */
 static void g16_drm_job_log_fault(struct g16_drm_job *job)
 {
@@ -270,6 +272,8 @@ static void g16_drm_job_log_fault(struct g16_drm_job *job)
 	u64 *table = g16_render_uat_owned_table(&job->uat, l1);
 	u64 *source = job->owns_vm ? NULL : g16_render_uat_leaf(&job->vm->uat, va, false);
 	u32 checked = 0, mismatches = 0;
+
+	g16_drm_fault_capture(job);
 
 	/* Compare against the pinned GEM pages, not only the cached VM tree:
 	 * source and clone could otherwise agree on the same stale leaf. */

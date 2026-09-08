@@ -182,3 +182,14 @@ another CPU can be preparing a future buffer in the same VM. A separately
 installed Mesa `ASAHI_M4_WC_ONLY=1` diagnostic removes cached Vulkan memory
 and requests WC internal BOs, to test this concrete coherency hazard. This
 is pending hardware validation, not a confirmed explanation of either fault.
+
+The WC-only run `20260908T231605Z-render-ta` also faulted after 5,022 jobs
+(VA 0, unit 0x41), despite zero client cache-maintenance bytes. Combining WC
+with full TLBI in `20260908T232125Z-render-ta` faulted after 1,263 jobs
+(VA 0x40, unit 0x21). Neither cache diagnostic is a fix for the async fault.
+The latter run retained the complete submitted render packet, all private UAT
+pages and up to 128 KiB from each bound client range before releasing pins.
+`run-render.py` saves these under `drm-fault-state/` on failure. Filenames
+record VA, complete mapping size and PTE flags; data can be a truncated prefix.
+The captured health-check root descriptor has a valid self-pointer and vertex
+buffer address; further GPU execution-state analysis is required.

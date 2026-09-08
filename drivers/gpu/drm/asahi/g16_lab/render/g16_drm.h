@@ -388,6 +388,7 @@ parent:
 
 static void g16_drm_stop(void)
 {
+	g16_drm_fault_release();
 	if (g16_drm_device) {
 		drm_dev_unregister(g16_drm_device);
 		if (g16_drm_submit_wq) {

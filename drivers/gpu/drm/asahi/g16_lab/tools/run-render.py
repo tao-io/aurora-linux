@@ -714,6 +714,12 @@ if __name__ == '__main__':
                 source = Path('/sys/kernel/debug') / name
                 if source.exists():
                     (ACTIVE_RESULT / (name + '-failure.bin')).write_bytes(source.read_bytes())
+            fault = Path('/sys/kernel/debug/g16_lab_drm_fault')
+            if fault.is_dir():
+                saved = ACTIVE_RESULT / 'drm-fault-state'
+                saved.mkdir(exist_ok=True)
+                for source in fault.glob('*.bin'):
+                    (saved / source.name).write_bytes(source.read_bytes())
             os.sync()
         raise
     finally:
