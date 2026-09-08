@@ -38,6 +38,8 @@ static void crashed(void *cookie, const void *log, size_t size)
 	struct m4_dcp_rtkit *dcp = cookie;
 
 	dcp->result = -EIO;
+	if (dcp->bridge)
+		m4_dcp_bridge_crashed(dcp->bridge);
 	dev_err(dcp->dev, "DCP firmware crashed; retain all DMA allocations until reboot\n");
 	complete(&dcp->ready);
 }

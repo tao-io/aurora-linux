@@ -91,6 +91,13 @@ static void event(struct m4_dcp_bridge *b, u32 kind, u64 message,
 	wake_up_interruptible(&b->wait);
 }
 
+void m4_dcp_bridge_crashed(struct m4_dcp_bridge *b)
+{
+	mutex_lock(&b->lock);
+	fail(b);
+	mutex_unlock(&b->lock);
+}
+
 void m4_dcp_bridge_receive(struct m4_dcp_bridge *b, u64 message)
 {
 	struct apple_dcp_link_stream_layout layout;
@@ -254,8 +261,8 @@ static ssize_t bridge_write(struct file *file, const char __user *user, size_t c
 			ret = -EOPNOTSUPP;
 			goto out;
 		}
-		/* Re-enter the callback's stream, preserving the active parent packet. */
-		remote = apple_dcp_link_message_is_remote(callback);
+		/* The callback occupies the parent stream. Use its opposite TX half. */
+		remote = !apple_dcp_link_message_is_remote(callback);
 		if (b->calls[0].active && b->calls[0].remote == remote)
 			offset = ALIGN(b->calls[0].size, 64);
 	}

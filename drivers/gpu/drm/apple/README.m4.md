@@ -216,10 +216,16 @@ background swap still lacked completion. Evidence: `20260908-client-open` and
 `20260908-client-background`. Further inherited-state variations are deferred
 in favor of completing startup.
 
-Nested commands must re-enter the incoming callback's stream, not always the
-remote half. M4 0x196398 encodes the selected stream's owner in message bit 8;
-0x196f64 retains both nested and remote bits in the reply. The diagnostic now
-uses the callback's remote bit and places a nested packet after the active
-parent, aligned to 64 bytes. An A401/D599 nested A412 check can qualify this
-before relying on the PMU startup handshake. Arbitrary deeper command nesting
-is still unsupported.
+The first nested A412 test during A401/D599 on boot
+`bf6ed78a-7a89-4f7a-8337-42a5fb1b5458` sent message 0x1000400202, reusing
+the parent stream at offset 64. Firmware asserted `link_msg_int_handler
+stream:0 not free`. This disproved the same-stream nesting hypothesis. Evidence:
+`20260908-nested-start`, including the RTKit crash mailbox history.
+
+The nested request now selects the opposite transmit half from the incoming
+callback's remote bit, preserving the parent allocation. M4 0x196398 encodes
+the stream owner in bit 8; 0x196f64 preserves remote and nested bits in replies.
+For the observed remote=0 callback this means AP buffer 0x20000, message bits
+0x302, expected reply 0x342. This routing still requires hardware qualification.
+The bridge now wakes its reader with an error immediately on an RTKit crash.
+Arbitrary deeper command nesting remains unsupported.
