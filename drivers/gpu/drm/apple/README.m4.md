@@ -43,8 +43,39 @@ confirms a 0xc0000-byte shared RPC allocation, 0x40000-byte sides, eight total
 qualify H17P RPC method IDs, request sizes, display registers or power sequencing
 on M4. Those must be checked before a native M4 client issues display commands.
 
-The current M4 stage2 logs that it skips display reserved-memory setup. The
-live ADT records DCP stream 23 and display streams 0 and 16, including firmware
-segments and inherited page-table regions. The next integration must transfer
-and preserve those mappings, verify the live coprocessor/session state, and
-complete the M4 link handshake before bringing up buffer submission and flips.
+The live ADT records DCP stream 23 and display streams 0 and 16, including
+firmware segments and inherited page-table regions. The next integration must
+transfer and preserve those mappings, verify the live coprocessor/session state,
+and complete the M4 link handshake before buffer submission and flips.
+
+## Firmware dispatch evidence
+
+`tools/m4_dcp_dispatch.py` uses Unicorn to run only the command lookup in the
+captured image, stopping before callback invocation. It verifies both input
+hashes, skips pointer signing and emits 213 nonzero handlers among A000..A499.
+This is offline analysis; it does not execute a display command on hardware.
+
+Inspection of the resulting handlers establishes these decoder bounds:
+
+| Tag | Text-relative handler | Minimum input | Minimum output |
+| --- | --- | --- | --- |
+| A401 | 0x1e32d0 | No input-size check observed | 4 bytes |
+| A406 | 0x1e2f10 | 0x10 bytes | 8 bytes |
+| A407 | 0x1e2b80 | 0x1bd8 bytes | 12 bytes |
+
+A407 checks `(input_size >> 3) >= 0x37b` at 0x1e2ba4 and copies 0x1bd8
+bytes at 0x1e2c10. The imported H17P request is 0x1d30 bytes: its layout cannot
+be assumed correct for this M4 firmware. Field meanings remain to be decoded.
+The H17P power method A483 resolves to no handler in this snapshot's lookup.
+Neither a matching tag nor a size check establishes full command semantics.
+
+## Handoff boot status
+
+The first passive handoff bundle (m1n1 c19b29c, Linux DT a95bc38570f6) did not
+return to SSH. Its validator incorrectly required DCP carveouts to fall inside
+the OS-usable boot-args range. The captured boot log gives usable RAM as
+0x10002770000..0x103dd1dc000, while firmware occupies reserved physical DRAM
+on either side. m1n1 759676a checks ADT physical DRAM bounds instead and adds a
+host regression test that rejects the original bug. The corrected release
+bundle is built; installation and hardware boot validation are pending recovery.
+All native DCP/display/DART nodes remain disabled in that DT.
