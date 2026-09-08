@@ -18,10 +18,17 @@
 static struct platform_device *g16_drm_parent;
 
 
+struct g16_drm_handle_object {
+	struct list_head link;
+	struct drm_gem_object *obj;
+	u32 handles;
+};
+
 struct g16_drm_file {
+	struct list_head objects;
 	struct mutex lock;
-	u64 bytes_created;
-	u32 objects_created;
+	u64 bytes_live;
+	u32 objects_live;
 	u32 next_vm_id;
 	u32 next_queue_id;
 	u32 queue_id;
@@ -38,6 +45,7 @@ static int g16_drm_open(struct drm_device *dev, struct drm_file *file)
 	if (!priv)
 		return -ENOMEM;
 	mutex_init(&priv->lock);
+	INIT_LIST_HEAD(&priv->objects);
 	file->driver_priv = priv;
 	return 0;
 }
@@ -48,6 +56,80 @@ static void g16_drm_postclose(struct drm_device *dev, struct drm_file *file)
 
 	g16_drm_vm_free(priv->vm);
 	kfree(priv);
+}
+
+/* Account live objects per file, including PRIME imports. Multiple handles
+ * to one object share one charge and retain their mappings until the last close.
+ */
+static int g16_drm_gem_open(struct drm_gem_object *obj, struct drm_file *file)
+{
+	struct g16_drm_file *priv = file->driver_priv;
+	struct g16_drm_handle_object *entry;
+	int ret = 0;
+
+	mutex_lock(&priv->lock);
+	list_for_each_entry(entry, &priv->objects, link) {
+		if (entry->obj == obj) {
+			if (entry->handles == U32_MAX)
+				ret = -ENOSPC;
+			else
+				entry->handles++;
+			goto out;
+		}
+	}
+	if (priv->objects_live == 64 || obj->size > SZ_256M - priv->bytes_live) {
+		ret = -ENOSPC;
+		goto out;
+	}
+	entry = kzalloc(sizeof(*entry), GFP_KERNEL);
+	if (!entry) {
+		ret = -ENOMEM;
+		goto out;
+	}
+	entry->obj = obj;
+	entry->handles = 1;
+	list_add_tail(&entry->link, &priv->objects);
+	priv->objects_live++;
+	priv->bytes_live += obj->size;
+out:
+	mutex_unlock(&priv->lock);
+	return ret;
+}
+
+static void g16_drm_gem_close(struct drm_gem_object *obj, struct drm_file *file)
+{
+	struct g16_drm_file *priv = file->driver_priv;
+	struct g16_drm_handle_object *entry;
+	struct g16_drm_mapping *mapping, *next;
+
+	/* SUBMIT holds this lock until retirement or stopped firmware. Thus no
+	 * active GPU root can still reference the mappings removed below. */
+	mutex_lock(&priv->lock);
+	list_for_each_entry(entry, &priv->objects, link) {
+		if (entry->obj != obj)
+			continue;
+		if (--entry->handles)
+			break;
+		if (render_drm_submit && priv->vm) {
+			/* The per-VM root is only a CPU validation cache. Jobs own
+			 * separately built roots; discard stale PTEs before unpinning. */
+			g16_render_uat_free(&priv->vm->uat);
+			list_for_each_entry_safe(mapping, next, &priv->vm->mappings, link) {
+				if (mapping->obj != obj)
+					continue;
+				list_del(&mapping->link);
+				priv->vm->mapping_count--;
+				priv->vm->mapping_bytes -= mapping->size;
+				g16_drm_mapping_free(mapping);
+			}
+		}
+		priv->bytes_live -= obj->size;
+		priv->objects_live--;
+		list_del(&entry->link);
+		kfree(entry);
+		break;
+	}
+	mutex_unlock(&priv->lock);
 }
 
 static int g16_drm_gem_create_ioctl(struct drm_device *dev, void *data,
@@ -71,24 +153,15 @@ static int g16_drm_gem_create_ioctl(struct drm_device *dev, void *data,
 		ret = -ENOENT;
 		goto out;
 	}
-	/* Cumulative per-open budget for this bounded memory probe. */
-	if (priv->objects_created == 64 || priv->bytes_created + size > SZ_256M) {
-		ret = -ENOSPC;
-		goto out;
-	}
+	mutex_unlock(&priv->lock);
 	shmem = drm_gem_shmem_create(dev, size);
-	if (IS_ERR(shmem)) {
-		ret = PTR_ERR(shmem);
-		goto out;
-	}
+	if (IS_ERR(shmem))
+		return PTR_ERR(shmem);
 	shmem->map_wc = !(args->flags & G16_GEM_WRITEBACK);
 	g16_drm_to_gem(&shmem->base)->private_vm_id = args->vm_id;
 	ret = drm_gem_handle_create(file, &shmem->base, &args->handle);
 	drm_gem_object_put(&shmem->base);
-	if (!ret) {
-		priv->bytes_created += size;
-		priv->objects_created++;
-	}
+	return ret;
 out:
 	mutex_unlock(&priv->lock);
 	return ret;
@@ -187,6 +260,9 @@ static int g16_drm_vm_bind_ioctl(struct drm_device *dev, void *data, struct drm_
 		ret = -ENOENT;
 	else
 		ret = g16_drm_vm_bind_one(priv->vm, file, &op);
+	if (ret)
+		pr_info("g16_lab: VM bind rejected: ret=%d handle=%u va=%#llx size=%#llx offset=%#llx flags=%#x\n",
+			ret, op.handle, op.addr, op.range, op.offset, op.flags);
 	mutex_unlock(&priv->lock);
 	return ret;
 }

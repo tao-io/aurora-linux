@@ -75,3 +75,18 @@ teardown permit watchdog disarm while the overall run still reports failure.
 The first recording attempt compiled the vertex/fragment pipeline but crashed
 on a null background shader returned by Mesa. This is diagnostic evidence,
 not successful command recording or Vulkan rendering.
+
+`submit.c` is the separate real-submission triangle probe: eight changing
+256x256 Vulkan draws, 524,288 checked pixels. `upload.c` executes eight
+buffer-to-image meta copies with padded rows at sizes 2,4,16,32,64,128,256,2.
+Both use `--drm-submit-test PATH`, never `--mesa-device-probe`, because they
+really execute GPU commands. Both passed on J713/25G83 with the watchdog.
+The upload result is recorded in `j713-vulkan-upload-20260908.json`.
+
+The native submission backend now removes an object's mappings on the last
+handle close, after synchronous retirement, and counts live objects rather
+than all historical allocations. An identical cached-BO shadow binding is
+idempotent. The older memory-only mode retains its explicit binding lifetime.
+`g16submittest.c` now retains its handles through submission and checks that
+closing them removes those mappings; its updated hardware regression remains
+to be run. Existing earlier validation records describe the old contract.

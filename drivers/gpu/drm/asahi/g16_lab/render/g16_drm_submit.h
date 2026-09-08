@@ -85,16 +85,26 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 	int ret;
 
 	if (native) {
-		/* First native Mesa pass: one uncompressed RGBA8 target, no Z/S,
+		/* Native small render passes: one uncompressed RGBA8 target, no Z/S,
 		 * no shader scratch, no sampler heap and no timestamps. Keep every
 		 * unimplemented field outside the admitted packet. */
-		supported.flags = BIT(4) | DRM_ASAHI_RENDER_PROCESS_EMPTY_TILES;
+		if (!r->width_px || r->width_px > 256 || !r->height_px || r->height_px > 256 ||
+		    r->flags & ~(BIT(4) | DRM_ASAHI_RENDER_PROCESS_EMPTY_TILES))
+			return -EOPNOTSUPP;
+		supported.width_px = r->width_px;
+		supported.height_px = r->height_px;
+		supported.flags = r->flags;
 		supported.sample_size_B = 8;
 		supported.ppp_ctrl = 0x202;
 		supported.ppp_multisamplectl = 0x88;
 		supported.isp_bgobjdepth = 0x3f800000;
 		supported.isp_bgobjvals = 0x300;
-		supported.isp_merge_upper_x = supported.isp_merge_upper_y = 0x3bddb3d9;
+		/* Positive finite merge thresholds; the current M4 register list
+		 * does not consume these legacy UAPI hints. */
+		if (r->isp_merge_upper_x >= 0x7f800000 || r->isp_merge_upper_y >= 0x7f800000)
+			return -EINVAL;
+		supported.isp_merge_upper_x = r->isp_merge_upper_x;
+		supported.isp_merge_upper_y = r->isp_merge_upper_y;
 		supported.isp_scissor_base = r->isp_scissor_base;
 		supported.isp_dbias_base = r->isp_dbias_base;
 		supported.isp_oclqry_base = r->isp_oclqry_base;
@@ -102,7 +112,8 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 		supported.partial_bg.usc = r->partial_bg.usc;
 		supported.partial_eot.usc = r->partial_eot.usc;
 		if (job->rsrc_hi[0] || job->rsrc_hi[1] ||
-		    job->rsrc_hi[2] != 0xffff8000 || job->rsrc_hi[3] != 0xffff8000 ||
+		    (job->rsrc_hi[2] && job->rsrc_hi[2] != 0xffff8000) ||
+		    job->rsrc_hi[3] != 0xffff8000 ||
 		    (r->bg.usc & 63) != 4 || (r->eot.usc & 63) != 4 ||
 		    (r->partial_bg.usc & 63) != 4 || (r->partial_eot.usc & 63) != 4)
 			return -EOPNOTSUPP;

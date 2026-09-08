@@ -21,7 +21,12 @@ static struct dma_buf *g16_drm_gem_export(struct drm_gem_object *obj, int flags)
 	return drm_gem_prime_export(obj, flags);
 }
 
+static int g16_drm_gem_open(struct drm_gem_object *obj, struct drm_file *file);
+static void g16_drm_gem_close(struct drm_gem_object *obj, struct drm_file *file);
+
 static const struct drm_gem_object_funcs g16_drm_gem_funcs = {
+	.open = g16_drm_gem_open,
+	.close = g16_drm_gem_close,
 	.free = drm_gem_shmem_object_free,
 	.print_info = drm_gem_shmem_object_print_info,
 	.pin = drm_gem_shmem_object_pin,

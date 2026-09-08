@@ -26,7 +26,7 @@ static int g16_render_build_fragment(void)
 		ret = -ENOMEM;
 		goto out;
 	}
-	ret = g16_render_geometry_single(&g, render_size, render_size, 32, 32, 1);
+	ret = g16_render_geometry_single(&g, g16_render_width(), g16_render_height(), 32, 32, 1);
 	if (ret)
 		goto out;
 #define D(o, v, n) g16_render_put(d + (o), (v), (n))
@@ -122,7 +122,7 @@ static int g16_render_build_fragment(void)
 	g16_render_put(work + 0xc57, base + 0x60100, 8);
 	g16_render_put(work + 0x9d8, mode, 8);
 	pr_info("g16_lab: render: built %ux%u fragment diagnostic registers=%d mode=%#llx; pixel output not yet verified\n",
-		render_size, render_size, count, mode);
+		g16_render_width(), g16_render_height(), count, mode);
 #undef GPU
 #undef D
 out:

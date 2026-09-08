@@ -28,7 +28,7 @@ static int g16_render_build_ta(void)
 		ret = -ENOMEM;
 		goto out;
 	}
-	ret = g16_render_geometry_single(&geometry, render_size, render_size, 32, 32, 1);
+	ret = g16_render_geometry_single(&geometry, g16_render_width(), g16_render_height(), 32, 32, 1);
 	if (ret)
 		goto out;
 #define D(o, v, n) g16_render_put(d + (o), (v), (n))
@@ -133,7 +133,7 @@ static int g16_render_build_ta(void)
 		g16_render_put((u8 *)notifier + 0xb8, 0x16000001, 4);
 	}
 	pr_info("g16_lab: render: built experimental %ux%u TA registers=%d VDM=%#llx PB=128 pages TPC=%llu bytes\n",
-		render_size, render_size, count, g16_render_vdm_base(), geometry.tpc_bytes);
+		g16_render_width(), g16_render_height(), count, g16_render_vdm_base(), geometry.tpc_bytes);
 #undef GPU
 #undef TILER
 #undef D

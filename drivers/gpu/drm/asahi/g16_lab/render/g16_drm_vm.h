@@ -110,10 +110,6 @@ static int g16_drm_vm_bind_one(struct g16_drm_vm *vm, struct drm_file *file,
 	}
 	if (!(op->flags & G16_BIND_READ) || op->flags & ~(G16_BIND_READ | G16_BIND_WRITE))
 		return -EINVAL;
-	if (found)
-		return -EEXIST;
-	if (vm->mapping_count == 128 || op->range > SZ_256M - vm->mapping_bytes)
-		return -ENOSPC;
 	obj = drm_gem_object_lookup(file, op->handle);
 	if (!obj)
 		return -ENOENT;
@@ -124,6 +120,20 @@ static int g16_drm_vm_bind_one(struct g16_drm_vm *vm, struct drm_file *file,
 	}
 	if (op->offset >= obj->size || op->range > obj->size - op->offset) {
 		ret = -EINVAL;
+		goto put;
+	}
+	/* Honeykrisp rebinds a cached allocation's existing read-only shadow.
+	 * Identical bindings are idempotent; conflicting overlaps remain errors. */
+	if (found) {
+		u64 flags = op->flags & G16_BIND_WRITE ? J713_UAT_USER_GPU_RW_NX_SHARED_FLAGS :
+			J713_UAT_USER_CAPTURE_GPU_EXEC_SHARED_FLAGS;
+
+		ret = found->obj == obj && found->va == op->addr && found->size == op->range &&
+		      found->offset == op->offset && found->pte_flags == flags ? 0 : -EEXIST;
+		goto put;
+	}
+	if (vm->mapping_count == 128 || op->range > SZ_256M - vm->mapping_bytes) {
+		ret = -ENOSPC;
 		goto put;
 	}
 	mapping = kzalloc(sizeof(*mapping), GFP_KERNEL);

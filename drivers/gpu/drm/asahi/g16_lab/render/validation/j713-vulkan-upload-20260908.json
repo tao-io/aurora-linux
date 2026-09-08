@@ -1,0 +1,125 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "boot_id": "6c62e373-50d4-4dff-b383-d88e3245c341",
+  "module_sha256": "8a08b20e6036b70e79faf8ac4b3b505744dfde6554e0b21a9b981b0bac287f19",
+  "drm_submit_test_sha256": "14bb9ec57a2f06802be49fbb1a902cbe81ca6b57e4e91834bf1b38222379140b",
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": false,
+    "disarmed_after_evidence_collection": true
+  },
+  "drm_submit": {
+    "passed": true,
+    "device_id": 33074,
+    "physical_device_initialized": true,
+    "logical_device_initialized": true,
+    "shader_submitted": true,
+    "pixels_checked": true,
+    "frames": 8,
+    "upload": true,
+    "vulkan": true
+  },
+  "firmware_ktrace": {
+    "platform": "J713/T8132/G16G",
+    "firmware_build": "25G83",
+    "record_size": 72,
+    "record_count": 4154,
+    "sha256": "dfc2aac9183a751bd7ea23c2ecf851aa115f1d0c850ca28b89d37c55067e8fb1",
+    "firmware_reported_lost_records": 0,
+    "event_counts": {
+      "EventNotify": 9,
+      "Finish3D": 8,
+      "FinishCompute": 1,
+      "FinishTA": 8,
+      "StampUpdate3D": 7,
+      "StampUpdateCompute": 1,
+      "StampUpdateTA": 8,
+      "Start3D": 8,
+      "StartCompute": 1,
+      "StartTA": 8,
+      "event_000005": 8,
+      "event_00000f": 2,
+      "event_000017": 8,
+      "event_00002c": 1,
+      "event_00004d": 8,
+      "event_00004f": 8,
+      "event_000054": 17,
+      "event_000056": 35,
+      "event_000100": 778,
+      "event_000101": 778,
+      "event_000102": 67,
+      "event_000103": 67,
+      "event_000105": 11,
+      "event_000106": 11,
+      "event_000109": 17,
+      "event_00010a": 17,
+      "event_00010c": 2,
+      "event_000111": 19,
+      "event_000112": 2237,
+      "event_00013c": 2,
+      "event_00013e": 2
+    },
+    "host_dropped_records": 0,
+    "drain_result": 0
+  },
+  "client_vm_publications": 8,
+  "rmmod_rc": 0,
+  "new_kernel_fault": false,
+  "render_node_removed": true,
+  "passed": true,
+  "platform": "J713/T8132/G16G B1",
+  "firmware": "25G83",
+  "run": "20260908T003904Z-render-ta",
+  "icd_sha256": "8e34b42ce21a1439eb2c9c5b807eed0fb31c42c872e819d0dea48ff808d26178",
+  "shader_cache_disabled": true,
+  "scope": "Eight Vulkan buffer-to-image graphics meta copies, padded source rows, varying sizes, raw optimal-image pixel checks. No texture sampling, blending, WSI, Zink or Hyprland qualification.",
+  "sizes": [
+    2,
+    4,
+    16,
+    32,
+    64,
+    128,
+    256,
+    2
+  ],
+  "pixels_verified": 87320,
+  "images": [
+    {
+      "file": "upload-00.raw",
+      "sha256": "e3b770f992b050300b6925a19b568a929e99374e9b76025f1f63396141c0003a"
+    },
+    {
+      "file": "upload-01.raw",
+      "sha256": "dc00449a84051247b319d5a756d3503714df44dd6d4b6995269ae9e75257f449"
+    },
+    {
+      "file": "upload-02.raw",
+      "sha256": "0a0c20ae0fbd83ad04f0eee52bb681fc184ec736c27299ba61114f336abf39f8"
+    },
+    {
+      "file": "upload-03.raw",
+      "sha256": "51951fe4ee9e0b287e57b53835d4509acb1099ce60f7245036fb94e2f37df9ae"
+    },
+    {
+      "file": "upload-04.raw",
+      "sha256": "a7310c3605b8293fa95693d0d704598817c0376bd4dfb2028a2ed0401832955b"
+    },
+    {
+      "file": "upload-05.raw",
+      "sha256": "44d1a206ab2667c8a4d3a6f0b884f3b494a9fe49337bd24ae7d02e00ffbd0a9f"
+    },
+    {
+      "file": "upload-06.raw",
+      "sha256": "451b02d6a4ff9cfab06ce99bbf404f5615dcb7f1eba56d26019b0f36635f2cca"
+    },
+    {
+      "file": "upload-07.raw",
+      "sha256": "111d7dd30c7fc44d25ef73c75f1751af0e425939cc6b5af70601ca5fcf9d6737"
+    }
+  ]
+}

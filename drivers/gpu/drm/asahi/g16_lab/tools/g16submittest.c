@@ -134,11 +134,6 @@ int main(int argc, char **argv)
    CHECK(closedir(directory) == 0 && count == 34 && vertices && target && target->size == 0x44000);
    struct drm_prime_handle prime = {.handle = target->handle, .flags = DRM_CLOEXEC, .fd = -1};
    CHECK(ioctl(drm, DRM_IOCTL_PRIME_HANDLE_TO_FD, &prime) == 0 && prime.fd >= 0);
-   /* Mappings, not handles, keep every input and output buffer alive. */
-   for (unsigned i = 0; i < count; ++i) {
-      struct drm_gem_close close_gem = {.handle = resources[i].handle};
-      CHECK(ioctl(drm, DRM_IOCTL_GEM_CLOSE, &close_gem) == 0);
-   }
    struct drm_syncobj_create dependency = {.flags = DRM_SYNCOBJ_CREATE_SIGNALED}, finished = {0};
    CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_CREATE, &dependency) == 0);
    CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_CREATE, &finished) == 0);
@@ -211,6 +206,13 @@ int main(int argc, char **argv)
       CHECK(ioctl(prime.fd, DMA_BUF_IOCTL_SYNC, &cpu) == 0);
       fprintf(stderr, "client frame %u: 65536 pixels verified, sync-file signalled\n", frame);
    }
+   /* Asahi closes remove mappings after the last handle. Completed exported
+    * fences and the target dma-buf remain valid independently. */
+   for (unsigned i = 0; i < count; ++i) {
+      struct drm_gem_close close_gem = {.handle = resources[i].handle};
+      CHECK(ioctl(drm, DRM_IOCTL_GEM_CLOSE, &close_gem) == 0);
+   }
+   FAILS(ioctl(drm, DRM_IOCTL_ASAHI_SUBMIT, &submit), EFAULT);
    struct drm_asahi_queue_destroy destroy_queue = {.queue_id = queue.queue_id};
    CHECK(ioctl(drm, DRM_IOCTL_ASAHI_QUEUE_DESTROY, &destroy_queue) == 0);
    FAILS(ioctl(drm, DRM_IOCTL_ASAHI_QUEUE_DESTROY, &destroy_queue), ENOENT);
@@ -223,9 +225,9 @@ int main(int argc, char **argv)
    CHECK(references && fscanf(references, "%u", &refs) == 1 && refs >= 1);
    CHECK(fclose(references) == 0 && retained_fence >= 0 && close(retained_fence) == 0);
    puts("{\"passed\":true,\"client_gem_resources\":34,\"frames\":8,\"pixels_verified\":524288,"
-        "\"binary_sync_files_verified\":8,\"gem_handles_closed_before_submit\":true,"
+        "\"binary_sync_files_verified\":8,\"last_handle_close_unmaps\":true,"
         "\"timeline_points_verified\":8,"
         "\"standalone_sync_file_pins_module\":true,"
-        "\"invalid_requests_rejected\":6,\"vulkan\":false}");
+        "\"invalid_requests_rejected\":7,\"vulkan\":false}");
    return 0;
 }

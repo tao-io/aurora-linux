@@ -52,6 +52,16 @@ static struct debugfs_blob_wrapper g16_render_frames[8];
 static struct g16_render_uat g16_render_user_uat;
 static struct g16_render_uat g16_render_fw_uat;
 
+static u32 g16_render_width(void)
+{
+	return g16_drm_active_job ? g16_drm_active_job->render.width_px : render_size;
+}
+
+static u32 g16_render_height(void)
+{
+	return g16_drm_active_job ? g16_drm_active_job->render.height_px : render_size;
+}
+
 static u64 g16_render_target_va(void)
 {
 	return render_size == 4 ? 0x10000058000ULL : 0x10001000000ULL;

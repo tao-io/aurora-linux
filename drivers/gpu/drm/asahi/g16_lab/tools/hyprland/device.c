@@ -1,12 +1,14 @@
 /* SPDX-License-Identifier: MIT */
-/* Device/queue creation, optionally graphics command recording.
- * Neither mode submits commands or GPU jobs. */
+/* Device/queue probe; submission is explicit in the selected probe mode. */
 #include <stdio.h>
 #include <stdbool.h>
 #include <string.h>
 #include <vulkan/vulkan.h>
 #ifdef M4_PIPELINE_PROBE
 #include "pipeline.h"
+#endif
+#ifdef M4_UPLOAD_PROBE
+#include "upload.h"
 #endif
 
 int main(void)
@@ -63,13 +65,23 @@ int main(void)
       return 1;
    }
 #endif
+#ifdef M4_UPLOAD_PROBE
+   ret = m4_upload_images(devices[0], device, graphics_queue);
+   if (ret != VK_SUCCESS) {
+      vkDestroyDevice(device, NULL);
+      vkDestroyInstance(instance, NULL);
+      return 1;
+   }
+#endif
    vkDestroyDevice(device, NULL);
    vkDestroyInstance(instance, NULL);
    puts("{\"passed\":true,\"device_id\":33074,\"physical_device_initialized\":true,\"logical_device_initialized\":true,"
 #ifdef M4_PIPELINE_PROBE
         "\"graphics_commands_recorded\":true,"
 #endif
-#ifdef M4_SUBMIT_PROBE
+#if defined(M4_UPLOAD_PROBE)
+        "\"shader_submitted\":true,\"pixels_checked\":true,\"frames\":8,\"upload\":true,\"vulkan\":true}");
+#elif defined(M4_SUBMIT_PROBE)
         "\"shader_submitted\":true,\"pixels_checked\":true,\"frames\":8,\"pixels_verified\":524288,\"vulkan\":true}");
 #else
         "\"shader_submitted\":false}");
