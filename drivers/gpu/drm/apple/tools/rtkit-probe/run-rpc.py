@@ -122,6 +122,15 @@ def startup_callback(dcp, tag, data, output_size):
         (a.output / ('property-%d.bin' % len(dictionary_properties))).write_bytes(chunked_property)
         chunked_property = None
         return b'\x01\0\0\0'
+    # M4 0x2394a4: service ID and clock index. Its built-in host-less path
+    # at 0x2394f8 returns 48 MHz for index 0 and 24 MHz for index 1.
+    if tag == 'D408' and len(data) == 8 and output_size == 8:
+        service, index = struct.unpack('<II', data)
+        if data[:4] != b'VORP' or index not in (0, 1):
+            raise RuntimeError(f'unsupported M4 display clock {service:#x}/{index}')
+        rate = (48000000, 24000000)[index]
+        log({'event': 'clock_rate', 'index': index, 'hz': rate})
+        return struct.pack('<Q', rate)
     # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
     # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.
     if tag == 'D401' and len(data) == 80 and output_size == 12:

@@ -283,3 +283,11 @@ The M4 D206/D207 callbacks at 0x2511f4/0x251250 use recursive A131/A132, whose
 wrappers at 0x2514e0/0x251394 return a translated status in four bytes. The host
 requires status zero before returning service-match success. Evidence:
 `20260908-metadata-start`, peak 53.75 C.
+
+Both PMU/backlight matches completed with status zero on boot
+`807626fb-37c6-4815-bca0-bd34b64295d2`. Startup next requested D408 for PROV
+clock index 0. Its M4 wrapper is 0x2394a4; the built-in host-less implementation
+at 0x2394f8 returns 48 MHz for index 0 and 24 MHz for index 1. The host handler
+uses exactly these two rates, rejects other services/indices, and does not
+program clock hardware. Neo's 0x154/0x194 clock IDs do not apply here.
+Evidence: `20260908-pmu-start`, peak 53.75 C.
