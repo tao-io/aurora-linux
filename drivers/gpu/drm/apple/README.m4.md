@@ -323,3 +323,12 @@ setup-video-limits ID. In the captured UPPipe vtable at 0x838ad0, slot 0xbd8
 resolves to 0x2ddd80, identified by its `setup_video_limits` diagnostic.
 A029 has no input or output; the corrected sequence uses it. Evidence:
 `20260908-stride-start`, peak 52.5 C.
+
+The corrected A029 and A468 completed on boot
+`15a09f54-98d9-4abe-bf4d-d0bcae60f10d`. A000 then requested D003 (4/60),
+which differs from Neo's 4/20 bandwidth request. The M4 caller at 0x2cf460
+checks status at output+56 before touching register fields. The optional
+`--decline-bandwidth` test returns status 1 (translated to 0x8000000a), taking
+the checked error exit at 0x2cf480. It tests inherited-state fallback without
+programming unqualified PMGR registers or supplying invented register addresses.
+Evidence: `20260908-limits-start`, peak 52.5 C.

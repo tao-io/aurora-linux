@@ -24,6 +24,7 @@ p.add_argument('--expect-hex')
 p.add_argument('--startup-callbacks', action='store_true')
 p.add_argument('--test-nested-query', action='store_true')
 p.add_argument('--hardware-boot', action='store_true')
+p.add_argument('--decline-bandwidth', action='store_true')
 p.add_argument('--swap-completion', type=int)
 p.add_argument('--noop-swap', action='store_true')
 p.add_argument('--background-swap', type=lambda s: int(s, 0))
@@ -177,6 +178,13 @@ def startup_callback(dcp, tag, data, output_size):
             raise RuntimeError('invalid inherited framebuffer stride')
         log({'event': 'default_stride', 'bytes': stride})
         return struct.pack('<I', stride)
+    # M4 0x2cf460 requests a 56-byte bandwidth configuration plus status.
+    # Status 1 maps to 0x8000000a and exits before consuming any registers.
+    # This diagnostic tests whether inherited display state permits declining
+    # the service; it never reports bandwidth setup success with fake addresses.
+    if a.decline_bandwidth and tag == 'D003' and len(data) == 4 and output_size == 60:
+        log({'event': 'bandwidth_declined', 'status': 1})
+        return bytes(56) + struct.pack('<I', 1)
     # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
     # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.
     if tag == 'D401' and len(data) == 80 and output_size == 12:
