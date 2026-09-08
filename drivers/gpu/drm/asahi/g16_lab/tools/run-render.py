@@ -179,7 +179,10 @@ def main():
             parser.error('interactive mode requires DRM composite and 30..3600 seconds')
         if args.firmware_ktrace and args.interactive_seconds > 120:
             parser.error('interactive KTrace diagnostics are limited to 120 seconds')
-        args.drm_frame_budget = 65535
+        # A desktop frame includes several GPU jobs. The old 65535-job limit
+        # stopped a healthy one-hour session after about nine minutes.
+        # Firmware stamps use job_index << 8; keep all 24 index bits valid.
+        args.drm_frame_budget = 0xffffff
     if args.render_drm_submit and args.render_drm_target:
         parser.error('client submission and lab target export are separate tests')
     if args.mesa_device_probe and not args.render_drm_submit:

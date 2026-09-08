@@ -211,6 +211,9 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 			break;
 		cond_resched();
 	}
+	pr_info("g16_lab: render service exit result=%d completed=%u budget=%u stop=%u\n",
+		ret, g16_render_service_completed, render_frames,
+		READ_ONCE(g16_render_service_stop_requested));
 	g16_render_service_finish(ret);
 	return ret;
 }

@@ -101,3 +101,23 @@ GFX TVM, its actual PS register `0x380700250`, and the identified PMP AGX
 request. Prior offscreen/simpledrm GPU successes did not validate coexistence
 with running display firmware. The display CPU must never be reset as part
 of GPU initialization. Combined rendering validation follows this correction.
+
+### Desktop stop at 65,535 jobs (2026-09-09)
+
+Run `20260908T222849Z-render-ta`, boot
+`89c52123-c6c2-489c-91a6-723edd752ae6`, stopped firmware normally at uptime
+612.343 s after about 535 s of rendering. Submissions then returned ESHUTDOWN,
+the next independent GPU pixel check timed out, and the supervisor closed the
+desktop. The service loop reached its configured 65,535-job limit despite a
+3,620-second lifetime. The continuous log has 511 full 128-job timing batches
+before its final partial batch, no GPU fault, and an orderly firmware teardown.
+101 health checks had passed. All six temperatures remained below 63.75 C.
+The later watchdog recovery follows the lost health check, not a thermal trip.
+
+Interactive sessions now use the full nonzero 24-bit job-index range
+(0xffffff), which fits the 32-bit firmware stamp `sequence << 8`. The elapsed
+service deadline and per-job waits remain bounded, as do the watchdog and
+thermal guards. Small explicit fixture budgets are preserved. Service exit
+logs now record the completed count, budget, result and stop request so an
+intentional limit is distinguishable from a hardware fault. Validation must
+cross the old 65,535-job boundary before calling the lifetime fix tested.

@@ -2695,7 +2695,7 @@ module_param(render_triangle, bool, 0444);
 MODULE_PARM_DESC(render_triangle, "RGB coordinate-colored triangle (requires render_xy)");
 static unsigned int render_frames = 1;
 module_param(render_frames, uint, 0444);
-MODULE_PARM_DESC(render_frames, "Up to eight fixture frames or 128 client passes in one bounded firmware session");
+MODULE_PARM_DESC(render_frames, "Up to eight fixture frames or 0xffffff client jobs; 24-bit job index keeps 32-bit firmware stamps nonzero");
 static unsigned int render_service_seconds = 20;
 module_param(render_service_seconds, uint, 0444);
 MODULE_PARM_DESC(render_service_seconds, "Root-only live DRM service deadline; longer sessions require progress-checked watchdog supervision");
@@ -19294,7 +19294,7 @@ static int __init g16_lab_init(void)
 	if (render_service_seconds < 20 || render_service_seconds > 86400 ||
 	    (render_service_seconds != 20 && !render_drm_submit))
 		return -EINVAL;
-	if (!render_frames || render_frames > (render_drm_submit ? (render_service_seconds > 20 ? 65535 : 128) : 8) || (render_frames > 1 && !render_triangle))
+	if (!render_frames || render_frames > (render_drm_submit ? (render_service_seconds > 20 ? 0xffffff : 128) : 8) || (render_frames > 1 && !render_triangle))
 		return -EINVAL;
 	if ((render_size != 4 && render_size != 32 && render_size != 256) ||
 	    (render_size != 4 && !render_generated_shaders))
