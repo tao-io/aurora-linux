@@ -110,8 +110,8 @@ def main():
     parser.add_argument('--render-loader-marker', action='store_true',
                         help='instrument the vertex state loader (implies --render-ta)')
     parser.add_argument('--firmware-ktrace', type=lambda value: int(value, 0),
-                        choices=(0, 1, 2, 3), default=0,
-                        help='25G83 firmware trace mask: 1 basic, 2 detail, 3 both')
+                        choices=(0, 1, 2, 3, 0x11, 0x31), default=0,
+                        help='25G83 firmware trace mask: 1 basic, 2 detail, 3 both, 0x11/0x31 basic + power')
     parser.add_argument('--render-fragment', action='store_true',
                         help='experimental fragment job after TA (implies --render-ta)')
     parser.add_argument('--render-generated-shaders', action='store_true',

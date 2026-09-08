@@ -302,6 +302,7 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 			return ret;
 	} while (time_before(jiffies, deadline));
 	g16_lab_log_fault_generation_state(6, "render-fragment completion failure");
+	g16_lab_log_gpu_dvfs_constraints("render-fragment completion failure");
 	pr_err("g16_lab: render: fragment timed out stamp=%#llx ring=%llu busy=%llu\n",
 		g16_render_get(work + 0xc908, 4),
 		g16_render_get(state + J713_QUEUE_RING_GPU_RPTR_OFFSET, 4),

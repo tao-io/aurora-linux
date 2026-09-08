@@ -2714,7 +2714,7 @@ MODULE_PARM_DESC(render_ta_probe, "Experimental captured vertex/tiling submissio
 
 static unsigned int firmware_ktrace_mask;
 module_param(firmware_ktrace_mask, uint, 0444);
-MODULE_PARM_DESC(firmware_ktrace_mask, "25G83 firmware execution trace: bit 0 basic, bit 1 detail (default off)");
+MODULE_PARM_DESC(firmware_ktrace_mask, "25G83 firmware execution trace: bit 0 basic, bit 1 detail, bits 4/5 power transitions (default off)");
 static bool render_loader_marker;
 module_param(render_loader_marker, bool, 0444);
 MODULE_PARM_DESC(render_loader_marker, "Instrument the captured vertex state loader before its first instruction");
@@ -14108,7 +14108,7 @@ static int g16_lab_uat_initdata_map_test(void)
 		u32 *control = g16_lab_initdata_object_ptr(pages,
 			&objects[G16_INITDATA_CONTROL], 0);
 
-		if (!exact_statistics_ring || (firmware_ktrace_mask & ~3U)) {
+		if (!exact_statistics_ring || (firmware_ktrace_mask & ~0x33U)) {
 			ret = -EINVAL;
 			goto out;
 		}
