@@ -109,6 +109,8 @@ def main():
                         help='experimental captured vertex/tiling submission after queue checks')
     parser.add_argument('--render-loader-marker', action='store_true',
                         help='instrument the vertex state loader (implies --render-ta)')
+    parser.add_argument('--render-full-tlbi', action='store_true',
+                        help='diagnose shared-context translation with a full outer-shareable TLBI')
     parser.add_argument('--render-power-controller', action='store_true',
                         help='initialize the qualified J713 power-controller data for the render experiment')
     parser.add_argument('--firmware-ktrace', type=lambda value: int(value, 0),
@@ -246,6 +248,8 @@ def main():
         params += ['render_triangle=1', f'render_frames={args.render_frames}']
     if args.render_loader_marker:
         params += ['render_loader_marker=1']
+    if args.render_full_tlbi:
+        params += ['render_full_tlbi=1']
     if args.render_power_controller:
         params += ['render_power_controller=1']
     if args.firmware_ktrace:

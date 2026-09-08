@@ -2418,6 +2418,11 @@ module_param(compute_mandelbrot, bool, 0444);
 MODULE_PARM_DESC(compute_mandelbrot,
 	"Replace only the proven iadd main body with the offline-assembled 64x64 Mandelbrot compute shader");
 
+static bool render_full_tlbi;
+module_param(render_full_tlbi, bool, 0444);
+MODULE_PARM_DESC(render_full_tlbi,
+	"Render diagnostic: invalidate all outer-shareable translations when switching the shared client context");
+
 static bool render_power_controller;
 module_param(render_power_controller, bool, 0444);
 MODULE_PARM_DESC(render_power_controller,

@@ -291,7 +291,15 @@ static int g16_drm_job_switch_root(struct g16_drm_job *job, bool enter)
 	g16_lab_dcache_clean(slot, sizeof(*slot));
 	dma_wmb();
 	g16_lab_uat_handoff_unlock(g16_initdata_live_uat_handoff);
-	g16_lab_uat_tlbi_context(6);
+	/* Diagnostic equivalent of Asahi's ConservativeTlbi: distinguish stale
+	 * translation across unrelated VMs sharing context 6 from bad commands.
+	 * All GPU jobs are serialized and retired before this root switch.
+	 */
+	if (render_full_tlbi)
+		asm volatile(".arch armv8.4-a\n\tdsb sy\n\ttlbi vmalle1os\n\tdsb sy"
+			     : : : "memory");
+	else
+		g16_lab_uat_tlbi_context(6);
 	g16_lab_dcache_invalidate(slot, sizeof(*slot));
 	return READ_ONCE(slot->ttbr0) == next ? 0 : -EIO;
 }
