@@ -99,3 +99,21 @@ of error. This is a checked test workload and a development-GPU result, not
 M4 graphics qualification. Its runner enforces the J713 watchdog and preserves
 results before disarming. See `tools/hyprland/README.md` and
 `validation/hyprland-zink-development-20260908.json`.
+
+## Native Zink compositing, 2026-09-08
+
+`20260908T004735Z-render-ta` passes the local-texture variant, and
+`20260908T060443Z-render-ta` passes the complete shared-image gate: eight frames,
+8,192 checked pixels, nearest/linear sampling, premultiplied blending, scissor,
+texture updates, EGL DMA-BUF export/import and eight native fence import waits.
+The latter executes 16 GPU render passes and cleanly unloads after saving traces.
+Client mode now permits 512 live GEM objects and 1,024 VM bindings while keeping
+the existing 256 MiB byte limits. This replaces the initial 64-object ceiling
+that stopped the shared-image test during pipeline creation.
+
+These diagnostic runs use a process-local `MESA_GLES_VERSION_OVERRIDE=3.0`:
+native transform feedback and some optional features are still disabled.
+Unlike a full GLES readiness qualification, the reported result covers the
+pixel-checked compositor subset only. The GPU draws real Vulkan shader work;
+Vulkan host-image-copy performs CPU upload/readback after synchronization.
+Hyprland itself and the physical display presentation path remain to be tested.

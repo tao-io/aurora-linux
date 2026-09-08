@@ -77,7 +77,7 @@ static int g16_drm_gem_open(struct drm_gem_object *obj, struct drm_file *file)
 			goto out;
 		}
 	}
-	if (priv->objects_live == 64 || obj->size > SZ_256M - priv->bytes_live) {
+	if (priv->objects_live >= (render_drm_submit ? 512 : 64) || obj->size > SZ_256M - priv->bytes_live) {
 		ret = -ENOSPC;
 		goto out;
 	}
