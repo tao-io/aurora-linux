@@ -79,6 +79,29 @@ and retains both potentially live buffers until reboot. No panel power, clock,
 suspend/resume, cursor plane or arbitrary modesetting is implemented yet.
 The explicit-load module remains pinned; replace it by rebooting.
 
-The native KMS path initially coexists with simpledrm and does not automatically
-start a compositor. Startup/scanout diagnostic success alone does not qualify
-GPU DMA-BUF import or accelerated Hyprland on this KMS node.
+Use `--takeover --stop-desktop` for compositor tests: the native device removes
+the conflicting simpledrm aperture before registration. The two drivers must
+not both own the panel. The native module does not start a compositor itself.
+
+On 2026-09-09, after removing the GPU lab's misplaced DISP_CPU retention writes
+(commit d0aaedfbc6ad), a guarded 120-second native Hyprland session passed on
+J713 boot `65b92581-db0a-49d8-9c72-b8912cf134d0`. Hyprland used the M4 Zink
+renderer; the native KMS snapshot verified 3,863,593 red test-window pixels in
+an imported GPU buffer. The session completed 23 independent eight-frame GPU
+pixel health checks and more than 1,600 native flips with no KMS failure.
+SuperTux ran through Zink for 45 seconds, about 34–40 FPS in this run; this is
+not a 60 FPS game claim. All six PMP sensors were monitored, peak 72 C, with
+GPU clocks unchanged. The watchdog was disarmed only after saved PASS evidence.
+The normal scanout path imports DMA-BUF directly; the explicit diagnostic
+snapshot still reads pixels on the CPU. Password-screen flicker remains a
+separate visual validation target.
+
+`run-greeter-test.py --output NEW_DIRECTORY` checks the installed SDDM greeter
+with native KMS already active. It arms the 60-second watchdog and thermal
+guard, moves only the cursor across an empty upper strip, saves cropped
+scanout pixels, and verifies that each of 18 positions contains the new cursor
+without stale bright pixels elsewhere. It restores the original cursor
+position on success. The check is specific to the qualified 2560x1664 panel,
+scale 2, and current greeter theme; it never types into the password field.
+A test error saves evidence and leaves recovery armed. This does not establish
+optical panel scanout order or validate arbitrary themes.

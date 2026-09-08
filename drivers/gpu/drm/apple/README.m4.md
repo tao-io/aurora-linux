@@ -463,3 +463,23 @@ zero alpha. No CPU writes/copies occur in its flip loop. Maximum PMP sample
 before `insmod`; the guarded runner now does this. Raw initial driver load
 failure did not enter DCP. This test checks completion cadence and sequence,
 not actual displayed pixel order or GPU import coherency.
+
+Native GPU/display integration passed on 2026-09-09, J713 boot
+`65b92581-db0a-49d8-9c72-b8912cf134d0`, GPU fix `d0aaedfbc6ad`. The old GPU
+lab wrote the DISP_CPU retention gate as if it belonged to GFX, halting DCP
+before GPU firmware started. Removing that write allows native KMS imports
+and accelerated Hyprland together. A 120-second test verified the composed
+red window directly in the imported scanout buffer (3,863,593 red pixels),
+23 eight-frame Vulkan health checks, and more than 1,600 display flips.
+SuperTux used the M4 Zink renderer for 45 seconds at roughly 34–40 FPS.
+Peak exposed temperature was 72 C, below the 75 C guard, without raising GPU
+clocks. This supersedes the earlier missing-KMS/import status above; it is
+still an explicit-load prototype, not suspend/resume or full display support.
+
+The subsequent SDDM cursor check sampled all three rotating dumb buffers with
+partial damage enabled. Eighteen forward cursor positions each contained
+exactly the expected 163 bright cursor pixels at the new x coordinate; no
+previous cursor positions remained. Peak temperature 55.5 C. Simpledrm had
+been removed by exclusive aperture takeover. These are source-buffer pixel
+checks, not a measurement of the panel's optical output: the user's original
+password-screen flicker still needs visual confirmation on this corrected path.
