@@ -1,6 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 /* Explicit-load J713 DCP bring-up client using the native DMA and RTKit APIs. */
 #include <linux/completion.h>
+#include <linux/delay.h>
+#include <linux/soc/apple/pmp.h>
+#include <linux/unaligned.h>
 #include <linux/dma-mapping.h>
 #include <linux/iommu.h>
 #include <linux/module.h>
@@ -171,6 +174,34 @@ static const struct apple_rtkit_ops ops = {
 	.shmem_destroy = shmem_destroy,
 };
 
+/* The PMP device-state command recomputes power votes for all domains. Native
+ * DCP must hold its own DISP vote before the GPU starts voting for AGX. The
+ * logical device ID is not a PMGR ID or a SOC-DEV-PS bitmap index. */
+static int keep_display_power(struct device *dev)
+{
+	struct device_node *node;
+	const u8 *table;
+	int length, ret = -EINVAL;
+
+	node = of_find_node_by_path("/soc/pmp@380500000");
+	if (!node)
+		return -ENODEV;
+	table = of_get_property(node, "apple,tunable-soc-device", &length);
+	/* J713/25G83: logical ID 8, record/bitmap index 15, name DISP. */
+	if (table && length == 34 * 0x7c &&
+	    get_unaligned_le32(table + 15 * 0x7c) == 8 &&
+	    !memcmp(table + 15 * 0x7c + 0x74, "DISP\0\0\0\0", 8))
+		ret = apple_pmp_set_device_power(0x0f, 8, 1);
+	of_node_put(node);
+	if (ret)
+		return ret;
+	/* The current PMP API reports queued delivery, not domain completion.
+	 * Retain the vote until reboot; combined GPU/DCP tests verify liveness. */
+	msleep(20);
+	dev_info(dev, "M4 native DISP power vote queued: logical-id=8 record=15\n");
+	return 0;
+}
+
 static int probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -196,6 +227,13 @@ static int probe(struct platform_device *pdev)
 		return PTR_ERR(cpu);
 	if (!(readl(cpu + 0x44) & BIT(4)))
 		return dev_err_probe(dev, -EBUSY, "DCP CPU is not already running\n");
+	if (kms) {
+		ret = keep_display_power(dev);
+		if (ret)
+			return dev_err_probe(dev, ret, "native DISP power vote failed\n");
+		if (!(readl(cpu + 0x44) & BIT(4)))
+			return dev_err_probe(dev, -EIO, "DCP CPU stopped after DISP vote\n");
+	}
 	dcp = devm_kzalloc(dev, sizeof(*dcp), GFP_KERNEL);
 	if (!dcp)
 		return -ENOMEM;
