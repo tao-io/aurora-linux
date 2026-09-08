@@ -293,7 +293,10 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 	      offset != 0x530 && offset != 0x538 &&
 	      offset != 0x540 && offset != 0x548 &&
 	      offset != 0x4000 && offset != 0x4008 &&
-	      offset != 0x4010 && offset != 0x4018)))
+	      offset != 0x4010 && offset != 0x4018 &&
+	      !(of_machine_is_compatible("apple,j713") &&
+	        of_property_read_bool(node, "apple,inherited-on") &&
+	        (offset == 0x240 || offset == 0x248 || offset == 0x10000)))))
 		return -ENODEV;
 
 	regmap = syscon_node_to_regmap(node->parent);

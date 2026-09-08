@@ -13,6 +13,21 @@
 	};
 };
 
+/* J713 capture: DISP_SYS=0xff, DISP_FE=0x20ff, DISP_CPU=0x1000030f.
+ * Keep the inherited power/automatic-gating policy throughout bring-up.
+ */
+&ps_disp_sys {
+	apple,inherited-on;
+};
+
+&ps_disp_fe {
+	apple,inherited-on;
+};
+
+&ps_disp_cpu {
+	apple,inherited-on;
+};
+
 &soc {
 	dcp_mbox: mailbox@30ae08000 {
 		compatible = "apple,t8132-asc-mailbox", "apple,asc-mailbox-v4";
