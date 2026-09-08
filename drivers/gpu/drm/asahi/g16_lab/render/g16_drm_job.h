@@ -3,6 +3,7 @@
 #define G16_DRM_JOB_H
 
 #include <uapi/drm/asahi_drm.h>
+#include <linux/workqueue.h>
 #include "g16_cache_ranges.h"
 
 struct g16_drm_vm;
@@ -25,6 +26,10 @@ struct g16_drm_job {
 	struct completion done;
 	int result;
 	bool published;
+	bool owns_vm;
+	struct work_struct work;
+	struct dma_fence **dependencies;
+	u32 dependency_count, dependency_capacity;
 };
 
 static struct g16_drm_job *g16_drm_active_job;

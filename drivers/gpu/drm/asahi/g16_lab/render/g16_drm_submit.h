@@ -268,7 +268,7 @@ static void g16_drm_job_log_fault(struct g16_drm_job *job)
 	u64 *root = page_address(job->uat.tables[0]);
 	u64 l1 = root[(va >> 36) & 63], l2 = 0, pte = 0;
 	u64 *table = g16_render_uat_owned_table(&job->uat, l1);
-	u64 *source = g16_render_uat_leaf(&job->vm->uat, va, false);
+	u64 *source = job->owns_vm ? NULL : g16_render_uat_leaf(&job->vm->uat, va, false);
 	u32 checked = 0, mismatches = 0;
 
 	/* Compare against the pinned GEM pages, not only the cached VM tree:

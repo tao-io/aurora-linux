@@ -43,6 +43,52 @@ static void g16_drm_vm_free(struct g16_drm_vm *vm)
 	kfree(vm);
 }
 
+/* Capture binding metadata and independent GEM/vmap pins after job_prepare
+ * cloned the page tables. No later bind, GEM close, or file close can change
+ * this snapshot. Its empty CPU UAT cache is not rebuilt or published. */
+static struct g16_drm_vm *g16_drm_vm_pin_snapshot(struct g16_drm_vm *source)
+{
+	struct g16_drm_vm *copy;
+	struct g16_drm_mapping *mapping, *pin;
+	int ret;
+
+	copy = kzalloc(sizeof(*copy), GFP_KERNEL);
+	if (!copy)
+		return ERR_PTR(-ENOMEM);
+	INIT_LIST_HEAD(&copy->mappings);
+	copy->id = source->id;
+	copy->kernel_start = source->kernel_start;
+	copy->kernel_end = source->kernel_end;
+	list_for_each_entry(mapping, &source->mappings, link) {
+		pin = kmemdup(mapping, sizeof(*pin), GFP_KERNEL);
+		if (!pin) {
+			ret = -ENOMEM;
+			goto fail;
+		}
+		drm_gem_object_get(pin->obj);
+		iosys_map_clear(&pin->map);
+		ret = drm_gem_vmap(pin->obj, &pin->map);
+		if (ret) {
+			drm_gem_object_put(pin->obj);
+			kfree(pin);
+			goto fail;
+		}
+		/* Cache ranges and the job UAT were derived from this mapping. */
+		if (!iosys_map_is_equal(&pin->map, &mapping->map)) {
+			g16_drm_mapping_free(pin);
+			ret = -EIO;
+			goto fail;
+		}
+		list_add_tail(&pin->link, &copy->mappings);
+		copy->mapping_count++;
+		copy->mapping_bytes += pin->size;
+	}
+	return copy;
+fail:
+	g16_drm_vm_free(copy);
+	return ERR_PTR(ret);
+}
+
 static int g16_drm_vm_rebuild(struct g16_drm_vm *vm)
 {
 	struct g16_render_uat *next;
