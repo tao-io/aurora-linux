@@ -375,3 +375,15 @@ node references. The host regression test
 stubbed OF translation; shared owners, NULL translation, invalid phandles and
 balanced references pass under address/undefined-behavior sanitizers. This does
 not yet qualify PIODMA execution or a page flip.
+
+With kernel #11 and corrected parent cells (`20260908-piodma-fix-start`, boot
+`0c8b026f-d4d1-4df6-aab5-f14bab1fa145`), D451/D201 successfully allocate and
+map two 256 KiB buffers and one 16 KiB buffer through DCP SID23 and DISP0 SID16.
+Every newly mapped page passes the kernel's IOVA-to-physical verification;
+firmware proceeds past each reply. Peak exposed temperature is 55 C. Startup
+next requests D400 `PROV/power-lut-data-x`, 76/3076 bytes. The hash-pinned M4
+wrapper at 0x239b28 returns 3072 bytes followed by a u32 length; zero length
+follows its missing-property path. The captured J713 ADT has no such calibration
+property. Add bounded raw-property lookup with an explicit missing result.
+Native PIODMA mappings are now tested; hardware DMA completion/page flips are
+still unproven.

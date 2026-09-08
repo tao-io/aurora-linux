@@ -207,6 +207,19 @@ def startup_callback(dcp, tag, data, output_size):
         return dcp.map_piodma(ident)
     # Hash-pinned M4 property wrappers: 0x2397f0, 0x23a004, 0x23a2e4,
     # 0x23a388, 0x2722e4, 0x272424 and 0x27254c. These exchange host metadata.
+    # M4 0x239b28..0x239bd0 returns up to 3072 property bytes and a u32
+    # length. Zero length is the wrapper's missing-property path. The J713
+    # ADT has no power-lut-data-x property; do not invent calibration data.
+    if tag == 'D400' and len(data) == 76 and output_size == 0xc04:
+        capacity = struct.unpack_from('<I', data, 68)[0]
+        if capacity > 0xc00 or data[72] & 1:
+            raise RuntimeError('unsupported raw property request')
+        key = property_key(data)
+        value = dictionary_properties.get(key, b'')
+        if len(value) > capacity:
+            raise RuntimeError('raw property exceeds caller capacity')
+        log({'event': 'raw_property', 'key': key, 'bytes': len(value)})
+        return value + bytes(0xc00-len(value)) + struct.pack('<I', len(value))
     if tag == 'D401' and len(data) == 80 and output_size == 12:
         key = property_key(data)
         return struct.pack('<QB3x', properties.get(key, 0), key in properties)
