@@ -107,8 +107,8 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 				  unsigned int crashlog_pages)
 {
 	unsigned long deadline = jiffies + msecs_to_jiffies(render_service_seconds * 1000);
-	u64 message;
-	u32 endpoint, sequence;
+	u64 message, timing_sum[5] = {};
+	u32 endpoint, sequence, timing_count = 0;
 	int ret = 0;
 
 	smp_store_release(&g16_render_service_ready, true);
@@ -127,8 +127,10 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 		}
 		sequence = smp_load_acquire(&g16_render_service_pending);
 		if (sequence) {
-			if (!(sequence & 127))
-				g16_lab_log_gpu_dvfs_constraints("render service");
+			u64 timing[6];
+			unsigned int i;
+
+			timing[0] = ktime_get_ns();
 			if (g16_drm_active_job) {
 				ret = g16_drm_job_enter(g16_drm_active_job);
 				if (ret)
@@ -140,19 +142,35 @@ static int g16_render_service_run(void __iomem *asc, u64 crashlog_iova,
 			g16_render_frame = sequence - 1;
 			if (g16_render_frame)
 				g16_render_next_frame();
+			timing[1] = ktime_get_ns();
 			ret = g16_render_test_ta(asc, crashlog_iova, crashlog_pages);
+			timing[2] = ktime_get_ns();
 			if (!ret || ret == -ENODATA)
 				ret = g16_render_test_fragment(asc, crashlog_iova, crashlog_pages);
+			timing[3] = ktime_get_ns();
 			if (!ret && g16_drm_active_job)
 				ret = g16_drm_job_leave(g16_drm_active_job);
 			if (!ret)
 				g16_render_buffer_end(0);
+			timing[4] = ktime_get_ns();
 			WRITE_ONCE(g16_render_service_result, ret);
 			if (!ret)
 				smp_store_release(&g16_render_service_completed, sequence);
 			WRITE_ONCE(g16_render_service_pending, 0);
 			if (!ret && g16_drm_active_job)
 				g16_drm_job_complete(0);
+			timing[5] = ktime_get_ns();
+			for (i = 0; i < ARRAY_SIZE(timing_sum); i++)
+				timing_sum[i] += timing[i + 1] - timing[i];
+			if (++timing_count == 128) {
+				pr_info("g16_lab: render timing mean-us over %u jobs prepare=%llu TA=%llu fragment=%llu leave=%llu complete=%llu\n",
+					timing_count, timing_sum[0] / 128000,
+					timing_sum[1] / 128000, timing_sum[2] / 128000,
+					timing_sum[3] / 128000, timing_sum[4] / 128000);
+				memset(timing_sum, 0, sizeof(timing_sum));
+				timing_count = 0;
+				g16_lab_log_gpu_dvfs_constraints("render service");
+			}
 			complete_all(&g16_render_service_done);
 			if (ret)
 				break;
