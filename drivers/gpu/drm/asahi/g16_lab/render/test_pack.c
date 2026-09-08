@@ -239,6 +239,38 @@ static void test_stream(void)
 	assert(g16_render_get(storage + 1 + 0x70, 4) == 3);
 }
 
+static void test_fragment_resume(void)
+{
+	u8 d[G16_RENDER_FRAGMENT_DESCRIPTOR_BYTES] = {0};
+	u8 work[0xca0], before[sizeof(work)];
+
+	/* Distinct normal and partial shaders: the firmware's resumed register
+	 * writes must select the partial pair, retaining all 64 resource bits. */
+	g16_render_put(d + 0x588, 0x1004, 8);
+	g16_render_put(d + 0x6e0, 0x2004, 8);
+	g16_render_put(d + 0x5b0, 0xffff800000000040ULL, 8);
+	g16_render_put(d + 0x5b8, 0x3004, 8);
+	g16_render_put(d + 0x6f8, 0x1234567800000000ULL, 8);
+	g16_render_put(d + 0x700, 0x4004, 8);
+	g16_render_put(d + 0x5f0, 0x2012340000ULL, 8);
+	g16_render_put(d + 0x608, 0x2056780000ULL, 8);
+	memset(work, 0xa5, sizeof(work));
+	memcpy(before, work, sizeof(work));
+	assert(g16_render_fragment_resume_state(work, 0xa57, d, sizeof(d)) == -EINVAL);
+	assert(g16_render_fragment_resume_state(work, sizeof(work), d, sizeof(d) - 1) == -EINVAL);
+	assert(!memcmp(work, before, sizeof(work)));
+	assert(!g16_render_fragment_resume_state(work, sizeof(work), d, sizeof(d)));
+	assert(g16_render_get(work + 0x900, 8) == 0x1004);
+	assert(g16_render_get(work + 0x9fc, 8) == 0x2004);
+	assert(g16_render_get(work + 0x928, 8) == 0xffff800000000040ULL);
+	assert(g16_render_get(work + 0x930, 8) == 0x3004);
+	assert(g16_render_get(work + 0xa14, 8) == 0x1234567800000000ULL);
+	assert(g16_render_get(work + 0xa1c, 8) == 0x4004);
+	assert(g16_render_get(work + 0x968, 8) == 0x2012340000ULL);
+	assert(g16_render_get(work + 0x998, 8) == 0x2056780000ULL);
+	assert(work[0xa13] == 0xa5 && work[0xa24] == 0xa5 && work[0xa58] == 0xa5);
+}
+
 int main(void)
 {
 	u8 descriptor[G16_RENDER_FRAGMENT_DESCRIPTOR_BYTES] = {0};
@@ -254,6 +286,7 @@ int main(void)
 	test_pages();
 	test_sku();
 	test_ta_registers();
+	test_fragment_resume();
 	n = g16_render_fragment_registers(regs, 128, descriptor, sizeof(descriptor), &p, 0, &mode);
 	assert(n > 80 && n <= 126);
 	assert(reg_value(regs, n, 0x10008) == 0x5000);

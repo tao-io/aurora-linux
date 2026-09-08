@@ -12,6 +12,38 @@ struct g16_render_fragment_platform {
 	u8 disable_spill_registers, debug_counters;
 };
 
+/* M4/25G83 AGX3DChannelSKU::submitBuffer (894aa94). Firmware 21c6c
+ * consumes this state when a pass is partially stored or resumed: +928/+930
+ * replace BGO registers 15368/15370, +a14/+a1c replace EOT 15378/15380.
+ * Preserve the accompanying Z/S state too, including packed EOT alignment.
+ */
+static inline int g16_render_fragment_resume_state(u8 *work, size_t capacity,
+		const u8 *d, size_t descriptor_bytes)
+{
+	static const struct { u16 dst, src; u8 bytes; } fields[] = {
+		{0x7a0, 0x428, 8}, {0x7b0, 0x430, 8}, {0x7c0, 0x438, 8},
+		{0x8f8, 0x580, 8}, {0x900, 0x588, 8},
+		{0x928, 0x5b0, 8}, {0x930, 0x5b8, 8},
+		{0x938, 0x5c0, 8}, {0x940, 0x5c8, 8},
+		{0x948, 0x5e0, 8}, {0x950, 0x640, 8}, {0x958, 0x678, 8},
+		{0x960, 0x5e8, 8}, {0x968, 0x5f0, 8}, {0x970, 0x670, 8},
+		{0x978, 0x5f8, 8}, {0x980, 0x650, 8}, {0x988, 0x6a0, 8},
+		{0x990, 0x600, 8}, {0x998, 0x608, 8}, {0x9a0, 0x698, 8},
+		{0x9a8, 0x620, 8}, {0x9b0, 0x638, 8},
+		{0x9e0, 0x708, 8}, {0x9f4, 0x6d8, 8}, {0x9fc, 0x6e0, 8},
+		{0xa14, 0x6f8, 8}, {0xa1c, 0x700, 8},
+		{0xa28, 0x720, 8}, {0xa30, 0x418, 4}, {0xa50, 0x5d8, 8},
+	};
+	unsigned int i;
+
+	if (!work || !d || capacity < 0xa58 ||
+	    descriptor_bytes < G16_RENDER_FRAGMENT_DESCRIPTOR_BYTES)
+		return -EINVAL;
+	for (i = 0; i < sizeof(fields) / sizeof(fields[0]); i++)
+		memcpy(work + fields[i].dst, d + fields[i].src, fields[i].bytes);
+	return 0;
+}
+
 static inline int g16_render_fragment_registers(struct g16_render_register *out,
 		size_t capacity, const u8 *descriptor, size_t descriptor_bytes,
 		const struct g16_render_fragment_platform *p, u32 uuid, u64 *mode_out)

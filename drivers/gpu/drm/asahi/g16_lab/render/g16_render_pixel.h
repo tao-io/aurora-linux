@@ -46,6 +46,10 @@ static int g16_render_build_fragment(void)
 
 		D(0x580, (u64)g16_drm_active_job->rsrc_hi[2] << 32 | r->bg.rsrc_spec, 8);
 		D(0x6d8, (u64)g16_drm_active_job->rsrc_hi[0] << 32 | r->eot.rsrc_spec, 8);
+		D(0x5b0, (u64)g16_drm_active_job->rsrc_hi[3] << 32 | r->partial_bg.rsrc_spec, 8);
+		D(0x5b8, r->partial_bg.usc, 8);
+		D(0x6f8, (u64)g16_drm_active_job->rsrc_hi[1] << 32 | r->partial_eot.rsrc_spec, 8);
+		D(0x700, r->partial_eot.usc, 8);
 		D(0x428, r->isp_dbias_base, 8);
 		D(0x430, r->isp_scissor_base, 8);
 		D(0x438, r->isp_oclqry_base, 8);
@@ -63,8 +67,10 @@ static int g16_render_build_fragment(void)
 		D(0x5c8, 0x04040404, 8);
 		D(0x5e0, r->depth.base, 8);
 		D(0x5e8, r->depth.base, 8);
+		D(0x5f0, r->depth.base, 8);
 		D(0x5f8, r->stencil.base, 8);
 		D(0x600, r->stencil.base, 8);
+		D(0x608, r->stencil.base, 8);
 		D(0x640, r->depth.stride, 8);
 		D(0x648, r->depth.stride, 8);
 		D(0x650, r->stencil.stride, 8);
@@ -131,9 +137,12 @@ static int g16_render_build_fragment(void)
 	g16_render_put(work + 0x64, g.y_blocks, 4);
 	g16_render_put(work + 0x68, g.blocks, 4);
 	g16_render_put(work + 0x78, g.tiles, 4);
-	/* Same native submitBuffer mirrors used by firmware diagnostics. */
-	g16_render_put(work + 0x900, g16_render_bg_base(), 8);
-	g16_render_put(work + 0x9fc, g16_render_eot_base(), 8);
+	/* Firmware rebuilds registers from these mirrors after a partial render;
+	 * the initial register list alone is not sufficient to resume a pass. */
+	ret = g16_render_fragment_resume_state(work, 0x4000, d,
+					     G16_RENDER_FRAGMENT_DESCRIPTOR_BYTES);
+	if (ret)
+		goto out;
 	g16_render_put(work + 0xc46, g16_initdata_live_barrier_va + 0xe00, 8);
 	g16_render_put(work + 0xc57, base + 0x60100, 8);
 	g16_render_put(work + 0x9d8, mode, 8);
