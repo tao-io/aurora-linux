@@ -157,7 +157,7 @@ def startup_callback(dcp, tag, data, output_size):
         # A446 reads the existing default-framebuffer enable flag; it does not
         # allocate a host buffer. Keep inherited framebuffer ownership here.
         dcp.call('A446', output_size=4, nested=True)
-        for method, payload, output in (('A024', b'', 4),
+        for method, payload, output in (('A029', b'', 0),
                                         ('A468', b'\x01\0\0\0', 0),
                                         ('A000', b'\x01\0\0\0', 4),
                                         ('A465', b'', 4)):

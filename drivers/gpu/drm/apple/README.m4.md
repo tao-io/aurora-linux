@@ -315,3 +315,11 @@ before D121. The caller at 0x2df504 publishes its u32 reply as `DefaultStride`
 in `DisplayPipePlaneBaseAlignment`. The host reads the unique inherited
 simple-framebuffer DT stride (10240 bytes on J713), instead of inventing a
 stride or publishing zero. Evidence: `20260908-hwboot-start`, peak 53.75 C.
+
+The first D121 attempt on boot `6652728c-2bcd-4214-8dd7-9c967e6e7cf0` passed
+A389 and A446, then stopped on A024=false. This disproves the imported Neo
+setup-video-limits ID. In the captured UPPipe vtable at 0x838ad0, slot 0xbd8
+(A024) resolves to the constant-false stub at 0x2ced4c. Slot 0x468 (A029)
+resolves to 0x2ddd80, identified by its `setup_video_limits` diagnostic.
+A029 has no input or output; the corrected sequence uses it. Evidence:
+`20260908-stride-start`, peak 52.5 C.
