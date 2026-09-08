@@ -8,10 +8,9 @@
 
 struct g16_drm_vm;
 
-/* A synchronous, single-queue backend during bring-up. The submitting ioctl
- * holds the file/VM lock until completion, including firmware teardown on
- * failure. Consequently neither bindings nor their GEM references can vanish
- * while the GPU can still access them.
+/* Queued jobs own immutable binding snapshots and independent GEM/vmap pins.
+ * Completion releases these only after retirement or firmware teardown.
+ * The serial diagnostic path instead holds the submitting file's VM lock.
  */
 struct g16_drm_job {
 	struct drm_asahi_cmd_render render;
@@ -33,6 +32,8 @@ struct g16_drm_job {
 };
 
 static struct g16_drm_job *g16_drm_active_job;
+static atomic_t g16_drm_queued_jobs = ATOMIC_INIT(0);
+static atomic64_t g16_drm_queued_total = ATOMIC64_INIT(0);
 static int g16_drm_job_enter(struct g16_drm_job *job);
 static void g16_drm_job_log_fault(struct g16_drm_job *job);
 static int g16_drm_job_leave(struct g16_drm_job *job);

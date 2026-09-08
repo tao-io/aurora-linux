@@ -120,6 +120,8 @@ def main():
     parser.add_argument('--render-submit-delay-us', type=int, choices=range(5001),
                         metavar='0..5000', default=0,
                         help='diagnose submission timing with a bounded pre-publication delay')
+    parser.add_argument('--render-async-submit', action='store_true',
+                        help='queue DRM jobs with independent buffer lifetimes')
     parser.add_argument('--render-power-controller', action='store_true',
                         help='initialize the qualified J713 power-controller data for the render experiment')
     parser.add_argument('--firmware-ktrace', type=lambda value: int(value, 0),
@@ -219,7 +221,7 @@ def main():
         args.render_ta = True
     if args.render_ta:
         args.render_queues = True
-    params = PARAMS + ([f'render_service_seconds={args.interactive_seconds + 20}'] if args.interactive_seconds else []) + (['render_queue_probe=1'] if args.render_queues else [])
+    params = PARAMS + (['render_async_submit=1'] if args.render_async_submit else []) + ([f'render_service_seconds={args.interactive_seconds + 20}'] if args.interactive_seconds else []) + (['render_queue_probe=1'] if args.render_queues else [])
     if args.render_ta:
         params += ['render_ta_probe=1']
     if args.render_fragment:
@@ -660,8 +662,8 @@ def main():
             # The stopped worker's completion counter is the job authority.
             metadata['client_jobs_completed'] = metadata['render_service']['final_status']['completed']
             passed = (passed and metadata['vertex_fragment_pixels_verified']
-                      and (metadata['client_jobs_completed'] == 8 if args.drm_frame_budget == 8
-                           else 0 < metadata['client_jobs_completed'] <= args.drm_frame_budget)
+                      and (metadata['client_jobs_completed'] >= 8 if args.interactive_seconds
+                           else metadata['client_jobs_completed'] == metadata['drm_submit'].get('jobs', 8))
                       and metadata['render_service']['final_status']['result'] == 0
                       and metadata['fragment_job_retired'])
         passed = passed and metadata['render_queues_passed']

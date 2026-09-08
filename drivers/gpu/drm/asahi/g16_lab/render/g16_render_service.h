@@ -2,10 +2,8 @@
 #ifndef G16_RENDER_SERVICE_H
 #define G16_RENDER_SERVICE_H
 
-/* Bounded lifetime test for a future DRM submission backend. Userspace owns
- * the pacing, but this first gate accepts only the eight qualified RGB draws.
- * It exposes neither command pointers nor arbitrary GPU memory to userspace.
- */
+/* The DRM service runs until explicit stop or an execution failure. The
+ * separate debugfs fixture mode retains its bounded eight-draw contract. */
 static struct task_struct *g16_render_thread;
 static struct dentry *g16_render_service_file;
 static DEFINE_MUTEX(g16_render_service_mutex);
@@ -22,13 +20,14 @@ static int g16_render_service_result = -EINPROGRESS;
 static ssize_t g16_render_service_read(struct file *file, char __user *buf,
 				       size_t count, loff_t *pos)
 {
-	char status[128];
+	char status[192];
 	int size;
 
-	size = scnprintf(status, sizeof(status), "ready=%u pending=%llu completed=%llu result=%d stopped=%u\n",
+	size = scnprintf(status, sizeof(status), "ready=%u pending=%llu completed=%llu result=%d stopped=%u queued=%d accepted=%lld\n",
 		READ_ONCE(g16_render_service_ready), READ_ONCE(g16_render_service_pending),
 		smp_load_acquire(&g16_render_service_completed), READ_ONCE(g16_render_service_result),
-		smp_load_acquire(&g16_render_service_stopped));
+		smp_load_acquire(&g16_render_service_stopped), atomic_read(&g16_drm_queued_jobs),
+		atomic64_read(&g16_drm_queued_total));
 	return simple_read_from_buffer(buf, count, pos, status, size);
 }
 

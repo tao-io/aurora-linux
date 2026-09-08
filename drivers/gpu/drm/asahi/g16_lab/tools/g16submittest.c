@@ -71,6 +71,8 @@ static void verify(const uint32_t *data, unsigned frame, const char *output)
 int main(int argc, char **argv)
 {
    CHECK(argc == 4 && geteuid() == 0 && sysconf(_SC_PAGESIZE) == 16384);
+   int lifetime = getenv("M4_SUBMIT_ASYNC_LIFETIME") != NULL;
+   unsigned pending_returns = 0, jobs = 0;
    int drm = open(argv[1], O_RDWR | O_CLOEXEC);
    CHECK(drm >= 0);
    struct drm_asahi_vm_create vm = {.kernel_start = 0x3000000000, .kernel_end = 0x3020000000};
@@ -134,6 +136,10 @@ int main(int argc, char **argv)
    CHECK(closedir(directory) == 0 && count == 34 && vertices && target && target->size == 0x44000);
    struct drm_prime_handle prime = {.handle = target->handle, .flags = DRM_CLOEXEC, .fd = -1};
    CHECK(ioctl(drm, DRM_IOCTL_PRIME_HANDLE_TO_FD, &prime) == 0 && prime.fd >= 0);
+   /* Keep the readback VMA independent of the DRM file for the close test. */
+   CHECK(munmap(target->cpu, target->size) == 0);
+   target->cpu = mmap(NULL, target->size, PROT_READ | PROT_WRITE, MAP_SHARED, prime.fd, 0);
+   CHECK(target->cpu != MAP_FAILED);
    struct drm_syncobj_create dependency = {.flags = DRM_SYNCOBJ_CREATE_SIGNALED}, finished = {0};
    CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_CREATE, &dependency) == 0);
    CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_CREATE, &finished) == 0);
@@ -186,13 +192,44 @@ int main(int argc, char **argv)
       }
       memset(target->cpu, 0, target->size);
       CHECK(ioctl(drm, DRM_IOCTL_ASAHI_SUBMIT, &submit) == 0);
-      point = 0;
-      CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_QUERY, &initial) == 0 && point == frame + 2);
+      jobs++;
+      /* Queue identical draws without CPU writes between them. The final
+       * fence must still be pending after every handle, binding and DRM VMA
+       * is gone, proving that the queued job owns its backing storage. */
+      if (lifetime && frame == 7) {
+         for (unsigned queued = 0; queued < 16; queued++) {
+            syncs[1].timeline_value++;
+            syncs[3].timeline_value++;
+            CHECK(ioctl(drm, DRM_IOCTL_ASAHI_SUBMIT, &submit) == 0);
+            jobs++;
+         }
+      }
       struct drm_syncobj_handle syncfd = {.handle = finished.handle, .fd = -1,
          .flags = DRM_SYNCOBJ_HANDLE_TO_FD_FLAGS_EXPORT_SYNC_FILE};
       CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_HANDLE_TO_FD, &syncfd) == 0 && syncfd.fd >= 0);
       struct pollfd p = {.fd = syncfd.fd, .events = POLLIN};
-      CHECK(poll(&p, 1, 1000) == 1 && p.revents & POLLIN);
+      if (poll(&p, 1, 0) == 0)
+         pending_returns++;
+      if (lifetime && frame == 7) {
+         for (unsigned i = 0; i < count; ++i) {
+            struct drm_gem_close close_gem = {.handle = resources[i].handle};
+            CHECK(ioctl(drm, DRM_IOCTL_GEM_CLOSE, &close_gem) == 0);
+            if (&resources[i] != target)
+               CHECK(munmap(resources[i].cpu, resources[i].size) == 0);
+         }
+         FAILS(ioctl(drm, DRM_IOCTL_ASAHI_SUBMIT, &submit), EFAULT);
+         struct drm_asahi_queue_destroy destroy_queue = {.queue_id = queue.queue_id};
+         CHECK(ioctl(drm, DRM_IOCTL_ASAHI_QUEUE_DESTROY, &destroy_queue) == 0);
+         CHECK(ioctl(drm, DRM_IOCTL_ASAHI_VM_DESTROY, &destroy_vm) == 0);
+         CHECK(close(drm) == 0);
+         drm = -1;
+         CHECK(poll(&p, 1, 0) == 0);
+      }
+      CHECK(poll(&p, 1, 3000) == 1 && p.revents & POLLIN);
+      if (drm >= 0) {
+         point = 0;
+         CHECK(ioctl(drm, DRM_IOCTL_SYNCOBJ_QUERY, &initial) == 0 && point == frame + 2);
+      }
       struct sync_file_info info = {0};
       CHECK(ioctl(syncfd.fd, SYNC_IOC_FILE_INFO, &info) == 0 && info.status == 1);
       if (frame == 7)
@@ -206,28 +243,33 @@ int main(int argc, char **argv)
       CHECK(ioctl(prime.fd, DMA_BUF_IOCTL_SYNC, &cpu) == 0);
       fprintf(stderr, "client frame %u: 65536 pixels verified, sync-file signalled\n", frame);
    }
-   /* Asahi closes remove mappings after the last handle. Completed exported
-    * fences and the target dma-buf remain valid independently. */
-   for (unsigned i = 0; i < count; ++i) {
-      struct drm_gem_close close_gem = {.handle = resources[i].handle};
-      CHECK(ioctl(drm, DRM_IOCTL_GEM_CLOSE, &close_gem) == 0);
+   if (!lifetime) {
+      for (unsigned i = 0; i < count; ++i) {
+         struct drm_gem_close close_gem = {.handle = resources[i].handle};
+         CHECK(ioctl(drm, DRM_IOCTL_GEM_CLOSE, &close_gem) == 0);
+      }
+      FAILS(ioctl(drm, DRM_IOCTL_ASAHI_SUBMIT, &submit), EFAULT);
+      struct drm_asahi_queue_destroy destroy_queue = {.queue_id = queue.queue_id};
+      CHECK(ioctl(drm, DRM_IOCTL_ASAHI_QUEUE_DESTROY, &destroy_queue) == 0);
+      FAILS(ioctl(drm, DRM_IOCTL_ASAHI_QUEUE_DESTROY, &destroy_queue), ENOENT);
+      CHECK(ioctl(drm, DRM_IOCTL_ASAHI_VM_DESTROY, &destroy_vm) == 0);
+      for (unsigned i = 0; i < count; ++i)
+         CHECK(munmap(resources[i].cpu, resources[i].size) == 0);
+      CHECK(close(drm) == 0);
+   } else {
+      CHECK(pending_returns > 0);
+      CHECK(munmap(target->cpu, target->size) == 0);
    }
-   FAILS(ioctl(drm, DRM_IOCTL_ASAHI_SUBMIT, &submit), EFAULT);
-   struct drm_asahi_queue_destroy destroy_queue = {.queue_id = queue.queue_id};
-   CHECK(ioctl(drm, DRM_IOCTL_ASAHI_QUEUE_DESTROY, &destroy_queue) == 0);
-   FAILS(ioctl(drm, DRM_IOCTL_ASAHI_QUEUE_DESTROY, &destroy_queue), ENOENT);
-   CHECK(ioctl(drm, DRM_IOCTL_ASAHI_VM_DESTROY, &destroy_vm) == 0);
-   for (unsigned i = 0; i < count; ++i)
-      CHECK(munmap(resources[i].cpu, resources[i].size) == 0);
-   CHECK(close(prime.fd) == 0 && close(drm) == 0);
+   CHECK(close(prime.fd) == 0);
    FILE *references = fopen("/sys/module/g16_lab/refcnt", "r");
    unsigned refs = 0;
    CHECK(references && fscanf(references, "%u", &refs) == 1 && refs >= 1);
    CHECK(fclose(references) == 0 && retained_fence >= 0 && close(retained_fence) == 0);
-   puts("{\"passed\":true,\"client_gem_resources\":34,\"frames\":8,\"pixels_verified\":524288,"
-        "\"binary_sync_files_verified\":8,\"last_handle_close_unmaps\":true,"
-        "\"timeline_points_verified\":8,"
-        "\"standalone_sync_file_pins_module\":true,"
-        "\"invalid_requests_rejected\":7,\"vulkan\":false}");
+   printf("{\"passed\":true,\"client_gem_resources\":34,\"frames\":8,\"jobs\":%u,"
+          "\"pixels_verified\":524288,\"binary_sync_files_verified\":8,"
+          "\"timeline_points_verified\":%u,\"pending_submit_returns\":%u,"
+          "\"closed_while_pending\":%s,\"standalone_sync_file_pins_module\":true,"
+          "\"vulkan\":false}\n", jobs, lifetime ? 7 : 8, pending_returns,
+          lifetime ? "true" : "false");
    return 0;
 }

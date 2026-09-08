@@ -114,13 +114,13 @@ before its final partial batch, no GPU fault, and an orderly firmware teardown.
 101 health checks had passed. All six temperatures remained below 63.75 C.
 The later watchdog recovery follows the lost health check, not a thermal trip.
 
-Interactive sessions now use the full nonzero 24-bit job-index range
+The first correction used the full nonzero 24-bit job-index range
 (0xffffff), which fits the 32-bit firmware stamp `sequence << 8`. The elapsed
 service deadline and per-job waits remain bounded, as do the watchdog and
 thermal guards. Small explicit fixture budgets are preserved. Service exit
 logs now record the completed count, budget, result and stop request so an
 intentional limit is distinguishable from a hardware fault. Validation must
-cross the old 65,535-job boundary before calling the lifetime fix tested.
+cross the old 65,535-job boundary before calling that correction tested.
 
 The user requested removing lifetime cutoffs entirely rather than raising them.
 DRM service now runs until an explicit client stop, thread shutdown, or actual
@@ -132,3 +132,29 @@ all nonzero 24-bit indices with the low eight bits clear, so crossing either
 65,535 or the stamp rollover cannot accidentally match a cleared completion
 word. `test_sequence.c` checks both boundaries and a complete stamp cycle under
 UBSan. These are wire-format constraints, not a job-count service cutoff.
+
+The serial regression `20260908T224300Z-render-ta`, boot
+`f72f966f-9bb8-46f5-80a3-1a9f31c3c8bf`, completed 85,008 jobs and 134
+independent eight-frame Vulkan health checks, then stopped explicitly and
+unloaded successfully. No new kernel fault occurred. The six-channel peak was
+69.5 C; the watchdog was disarmed only after evidence collection. This run used
+the initial enlarged budget; the no-cutoff source and wire rollover are separate
+changes and still require their own deployed validation.
+
+### Asynchronous submission
+
+`render_async_submit=1` enables ordered CPU-side submission queueing. IOCTLs
+validate and snapshot the VM, pin GEM objects and CPU mappings independently,
+then publish output fences and return. One worker waits on input/implicit
+fences and feeds the existing single active hardware job. It retains the
+snapshot until retirement or firmware teardown. Queue capacity provides
+backpressure on outstanding allocations, without limiting total jobs or uptime.
+The serial path remains available for A/B diagnostics. This overlaps client CPU
+work with GPU execution; it does not yet overlap TA and fragment hardware jobs.
+
+`M4_SUBMIT_ASYNC_LIFETIME=1 g16submittest ...` additionally queues 16 identical
+final draws, closes every GEM handle, destroys the queue and VM, unmaps DRM
+VMAs and closes the DRM file before waiting for its still-pending exported
+fence. Pixel readback uses a separately mapped dma-buf. The ordinary test also
+waits for completion before querying timeline progress, as required by async
+submission semantics. Build and host compilation pass; hardware results follow.

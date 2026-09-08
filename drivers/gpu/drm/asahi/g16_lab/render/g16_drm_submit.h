@@ -6,7 +6,7 @@
 #include <linux/sort.h>
 
 /* Initial Asahi wire submission backend: one root-owned VM/queue per file,
- * serialized render passes, binary/timeline syncobjs, and bounded firmware lifetime.
+ * ordered render passes and binary/timeline syncobjs.
  * Unsupported command fields fail explicitly. No GET_PARAMS admission to
  * Honeykrisp is advertised until its complete initialization contract works.
  */
@@ -79,7 +79,7 @@ static bool g16_drm_zls_valid(struct g16_drm_vm *vm, const struct drm_asahi_zls_
 		g16_drm_vm_range(vm, z->base, ((u64)(z->stride >> 14) + 1) << 14, false);
 }
 
-/* Bindings stay pinned under the file lock through job completion. Build
+/* Async jobs retain independent binding pins through completion. Build
  * the union of cached CPU mappings once, so RO/RW GPU aliases do not repeat
  * cache maintenance. Imported and writeback ranges still get full coverage.
  */
@@ -434,6 +434,8 @@ static int g16_drm_job_reservations(struct g16_drm_job *job)
 	return 0;
 }
 
+#include "g16_drm_async.h"
+
 static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_file *file)
 {
 	struct drm_asahi_submit *args = data;
@@ -445,6 +447,7 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	struct g16_target_fence *fence;
 	struct g16_drm_job *job;
 	unsigned long dependency_deadline;
+	bool queue_slot = false, enqueue_locked = false;
 	u32 i, count, delay;
 	u64 sequence;
 	u64 prepare_start;
@@ -533,12 +536,24 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 		ret = drm_syncobj_find_fence(file, syncs[i].handle, syncs[i].timeline_value, 0, &dependency);
 		if (ret)
 			goto free;
+		if (render_async_submit) {
+			ret = g16_drm_job_add_dependency(job, dependency);
+			if (ret)
+				goto free;
+			continue;
+		}
 		remaining = dependency_deadline - jiffies;
 		waited = dma_fence_wait_timeout(dependency, true, max(remaining, 0L));
 		ret = waited < 0 ? waited : !waited ? -ETIMEDOUT : dma_fence_get_status(dependency);
 		dma_fence_put(dependency);
 		if (ret < 0)
 			goto free;
+	}
+	if (render_async_submit) {
+		ret = down_interruptible(&g16_drm_queue_slots);
+		if (ret)
+			goto free;
+		queue_slot = true;
 	}
 	mutex_lock(&priv->lock);
 	if (!args->queue_id || args->queue_id != priv->queue_id) {
@@ -549,10 +564,12 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	 * bounded worker instead of reporting a transient collision as loss
 	 * of the Vulkan device. No worker path acquires another file's lock.
 	 */
-	ret = mutex_lock_interruptible(&g16_render_service_mutex);
+	ret = mutex_lock_interruptible(render_async_submit ?
+		&g16_drm_enqueue_mutex : &g16_render_service_mutex);
 	if (ret) {
 		goto unlock;
 	}
+	enqueue_locked = render_async_submit;
 	job->vm = priv->vm;
 	prepare_start = ktime_get_ns();
 	ret = g16_drm_job_prepare(job);
@@ -573,12 +590,48 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	dma_fence_init(&fence->base, &g16_target_fence_ops, &fence->lock,
 		dma_fence_context_alloc(1), 1);
 	job->fence = &fence->base;
-	ret = g16_drm_job_reservations(job);
+	if (render_async_submit) {
+		struct g16_drm_vm *snapshot = g16_drm_vm_pin_snapshot(job->vm);
+
+		if (IS_ERR(snapshot)) {
+			ret = PTR_ERR(snapshot);
+			goto service_unlock;
+		}
+		job->vm = snapshot;
+		job->owns_vm = true;
+		ret = g16_drm_job_async_reservations(job);
+	} else {
+		ret = g16_drm_job_reservations(job);
+	}
 	if (ret)
 		goto service_unlock;
 	if (!((g16_render_service_completed + 1) & 127))
 		pr_info("g16_lab: DRM submit CPU preparation pid=%d elapsed-us=%llu\n",
 			task_pid_nr(current), (ktime_get_ns() - prepare_start) / 1000);
+	if (render_async_submit) {
+		if (!smp_load_acquire(&g16_render_service_ready) ||
+		    READ_ONCE(g16_render_service_stop_requested)) {
+			ret = -ESHUTDOWN;
+			goto service_unlock;
+		}
+		for (i = args->in_sync_count; i < count; i++) {
+			if (chains[i]) {
+				drm_syncobj_add_point(outputs[i], chains[i], job->fence, syncs[i].timeline_value);
+				chains[i] = NULL;
+			} else {
+				drm_syncobj_replace_fence(outputs[i], job->fence);
+			}
+		}
+		INIT_WORK(&job->work, g16_drm_submit_work);
+		atomic_inc(&g16_drm_queued_jobs);
+		atomic64_inc(&g16_drm_queued_total);
+		queue_work(g16_drm_submit_wq, &job->work);
+		/* The worker owns the job, its fence and all GEM/vmap pins now. */
+		job = NULL;
+		queue_slot = false;
+		ret = 0;
+		goto service_unlock;
+	}
 	delay = READ_ONCE(render_submit_delay_us);
 	if (delay)
 		usleep_range(delay, delay + 50);
@@ -602,16 +655,19 @@ static int g16_drm_submit_ioctl(struct drm_device *dev, void *data, struct drm_f
 	spin_unlock(&g16_render_service_state_lock);
 	wake_up(&g16_render_service_work);
 	/* Once published, even a killed client must wait for retirement/teardown.
-	 * The worker bounds each hardware wait and its complete service lifetime.
+	 * The worker bounds each hardware wait.
 	 */
 	wait_for_completion(&job->done);
 	ret = job->result;
 service_unlock:
-	if (job->fence && !dma_fence_is_signaled(job->fence)) {
+	if (job && job->fence && !dma_fence_is_signaled(job->fence)) {
 		dma_fence_set_error(job->fence, ret ?: -ECANCELED);
 		dma_fence_signal(job->fence);
 	}
-	mutex_unlock(&g16_render_service_mutex);
+	if (enqueue_locked)
+		mutex_unlock(&g16_drm_enqueue_mutex);
+	else
+		mutex_unlock(&g16_render_service_mutex);
 unlock:
 	mutex_unlock(&priv->lock);
 free:
@@ -624,10 +680,10 @@ free:
 		if (chains[i])
 			dma_fence_chain_free(chains[i]);
 	}
-	dma_fence_put(job->fence);
-	g16_render_uat_free(&job->uat);
-	kvfree(job->cache_ranges);
-	kfree(job);
+	if (job)
+		g16_drm_job_free(job);
+	if (queue_slot)
+		up(&g16_drm_queue_slots);
 	return ret;
 }
 #endif

@@ -2693,6 +2693,9 @@ MODULE_PARM_DESC(render_xy, "Diagnostic 256x256 fragment-coordinate color gradie
 static bool render_triangle;
 module_param(render_triangle, bool, 0444);
 MODULE_PARM_DESC(render_triangle, "RGB coordinate-colored triangle (requires render_xy)");
+static bool render_async_submit;
+module_param(render_async_submit, bool, 0444);
+MODULE_PARM_DESC(render_async_submit, "Queue independently pinned DRM jobs and return before GPU completion");
 static unsigned int render_frames = 1;
 module_param(render_frames, uint, 0444);
 MODULE_PARM_DESC(render_frames, "Number of fixture frames; ignored by continuous DRM service");

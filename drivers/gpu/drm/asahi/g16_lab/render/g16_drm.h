@@ -362,9 +362,22 @@ static int g16_drm_start(void)
 		g16_drm_device = NULL;
 		goto parent;
 	}
+	if (render_async_submit) {
+		sema_init(&g16_drm_queue_slots, 64);
+		g16_drm_submit_wq = alloc_ordered_workqueue("g16-submit", WQ_MEM_RECLAIM);
+		if (!g16_drm_submit_wq) {
+			ret = -ENOMEM;
+			goto put;
+		}
+	}
 	ret = drm_dev_register(g16_drm_device, 0);
 	if (!ret)
 		return 0;
+	if (g16_drm_submit_wq) {
+		destroy_workqueue(g16_drm_submit_wq);
+		g16_drm_submit_wq = NULL;
+	}
+put:
 	drm_dev_put(g16_drm_device);
 	g16_drm_device = NULL;
 parent:
@@ -377,6 +390,10 @@ static void g16_drm_stop(void)
 {
 	if (g16_drm_device) {
 		drm_dev_unregister(g16_drm_device);
+		if (g16_drm_submit_wq) {
+			destroy_workqueue(g16_drm_submit_wq);
+			g16_drm_submit_wq = NULL;
+		}
 		drm_dev_put(g16_drm_device);
 		g16_drm_device = NULL;
 	}
