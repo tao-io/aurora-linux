@@ -154,3 +154,13 @@ use the incoming remote bit, rather than always selecting the remote half as
 in the imported handler. J713 TEXT 0x1d7760..0x1d7778 independently emits D599
 with null pointers and zero sizes. The bounded startup client now acknowledges
 only that exact callback shape; other callbacks still stop the test.
+
+With the corrected buffer selection, D599 was acknowledged and A401 advanced
+to D108 (no input, four output bytes), on boot
+`1e3eed1f-043e-4168-ab60-826d484806a1`. The client stopped at the unknown
+callback and preserved `20260908-bridge-start-fixed` before watchdog recovery.
+Offline M4 call sites qualify D108/D109/D110/D111 as PROV/PROD/PMUS/IOMF service
+creation, respectively (0x265e20, 0x2700b0, 0x260c74, 0x26d708). Each reads a
+boolean from byte zero of a four-byte reply. These IDs differ from H17P.
+The startup client answers those exact shapes and uses the M4 A390 flag query
+(0x272d3c, no input/four output bytes) for the D100 nested handshake.

@@ -53,6 +53,14 @@ def startup_callback(dcp, tag, data, output_size):
     # This is the first callback observed from A401 on the inherited display.
     if tag == 'D599' and not data and output_size == 0:
         return b''
+    # M4 wrappers 0x265e20, 0x2700b0, 0x260c74, 0x26d708:
+    # create PROV/PROD/PMUS/IOMF services; a four-byte slot with boolean byte 0.
+    if tag in ('D108', 'D109', 'D110', 'D111') and not data and output_size == 4:
+        return b'\x01\0\0\0'
+    if tag == 'D100' and not data and output_size == 0:
+        # 0x272d3c is a no-input, four-byte-output flag query on this firmware.
+        dcp.call('A390', output_size=4, nested=True)
+        return b''
     raise RuntimeError(f'unhandled startup callback {tag}, {len(data)}/{output_size} bytes')
 
 try:
