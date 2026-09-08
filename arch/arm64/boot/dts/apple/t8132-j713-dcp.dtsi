@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0+ OR MIT
 /*
  * J713 internal display resources from its live T8132 ADT.
- * Keep every consumer/provider disabled until native firmware takeover and
- * inherited DART mappings are qualified. These nodes do not enable scanout.
+ * Enable the DCP transport for explicit RTKit bring-up. Scanout and its DART
+ * remain disabled. T8132 does not match the imported H17P display driver.
  */
 
 / {
@@ -27,7 +27,7 @@
 				  "recv-empty", "recv-not-empty";
 		power-domains = <&ps_disp_cpu>;
 		#mbox-cells = <0>;
-		status = "disabled";
+		status = "okay";
 	};
 
 	dcp: dcp@30ae00000 {
@@ -45,7 +45,7 @@
 		      <0x3 0x82800000 0x0 0xbc000>,
 		      <0x3 0x0a850000 0x0 0x4000>;
 		power-domains = <&ps_disp_cpu>;
-		status = "disabled";
+		status = "okay";
 
 		disp0_piodma: piodma {
 			iommus = <&disp0_dart 16>;
@@ -65,7 +65,9 @@
 		interrupt-parent = <&aic>;
 		interrupts = <AIC_IRQ 678 IRQ_TYPE_LEVEL_HIGH>;
 		#iommu-cells = <1>;
-		status = "disabled";
+		/* DCP firmware uses the 1 TiB alias of the locked 36-bit aperture. */
+		apple,dma-range = <0x100 0x0 0x10 0x0>;
+		status = "okay";
 	};
 
 	disp0_dart: iommu@30a300000 {
