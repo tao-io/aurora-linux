@@ -172,3 +172,35 @@ The PMP identifiers do not establish sensor placement or a dedicated GPU sensor.
 CPU thermal throttling remains enabled; GPU thermal throttling is not implemented.
 Do not raise GPU clocks under this limitation. The earlier runs above predate
 this monitor and must not be presented as temperature-qualified stress tests.
+
+### Faster submission and allocation cache transfer
+
+The monitored 3 ms delay control `20260908T153146Z-render-ta` passed 25,789 jobs
+and 54 independent health checks; its hottest recorded channel reached 69.25 C.
+`20260908T154020Z-render-ta` removed that delay after entering the level and
+passed 35,347 jobs and 69 checks, with warm 35–44 FPS windows and a 72.25 C peak.
+That intermittent fault therefore cannot be explained by the table snapshot
+alone; these passes do not erase the earlier cold-start failures.
+
+The lab's direct physical UAT mappings bypass the DMA API's initial cache
+transfer. ARM64 shmem helpers can therefore leave dirty page-initialization
+data in the cached linear alias before exposing a WC mapping. Native WC GEM
+creation now pins its pages and cleans/invalidates that alias once, before
+publishing the handle. The pin survives until object destruction. No new
+per-submission cache sweep is added.
+
+Cold-start run `20260908T154928Z-render-ta` used that fix with no diagnostic
+delay from startup. It passed 34,524 jobs, 63 independent pixel checks, a
+240-second game session, clean module removal and watchdog disarm. Module
+SHA-256: `02ce57e0fd181e23e55210ec11a1e4cd7c13085a33ff237105f2241796e0d3bf`.
+Warm windows reached roughly 40–44 FPS; the hottest individual reading was
+68.5 C. This is a bounded regression pass, not a 60 FPS result or indefinite
+stability proof.
+
+Routine successful stage/event/statistics messages now stop after the first
+eight frames unless `render_trace_submissions=1`; failures, recovery events and
+128-job timing summaries remain. Validation uses `client_jobs_completed` from
+the stopped worker, while `client_vm_publications` only counts retained log
+lines. Mesa's routine VDM logs require `HK_G17P_LAUNCH_TRACE=1`. An indexed Ioto
+decoder retains all prefix/ambiguity checks and passed 177,308 host checks;
+the combined hardware performance comparison follows these changes.
