@@ -2806,6 +2806,21 @@ static int g16_rtkit_power_transition(void __iomem *asc, u32 request_type,
 static int g16_rtkit_start_endpoint(void __iomem *asc, u32 endpoint);
 static void g16_lab_dcache_invalidate(void *address, size_t size);
 
+/* Read-only checkpoints for the J713 native-display/GPU integration test. */
+static void g16_lab_trace_dcp(const char *phase)
+{
+	void __iomem *cpu;
+
+	if (!render_queue_probe || !of_machine_is_compatible("apple,j713"))
+		return;
+	cpu = ioremap(0x30ae00000ULL, SZ_16K);
+	if (!cpu)
+		return;
+	pr_info("g16_lab: DCP checkpoint %s control=%#x status=%#x\n",
+		phase, readl(cpu + 0x44), readl(cpu + 0x48));
+	iounmap(cpu);
+}
+
 static int g16_lab_verify_pmp_mapping(u32 expected_id,
 				       unsigned int expected_record,
 				       const char *expected_name)
@@ -2983,6 +2998,7 @@ static int g16_lab_export_adt(void)
 	unsigned int copies = 0;
 	int ret;
 
+	g16_lab_trace_dcp("before-gfx-power");
 	ret = g16_lab_identity();
 	if (ret)
 		return ret;
@@ -3608,6 +3624,7 @@ static int g16_lab_pmgr_chain_state(void)
 	if (ret)
 		return ret;
 
+	g16_lab_trace_dcp("after-gfx-tvm");
 	pmgr = ioremap(J713_PMGR_BASE, J713_PMGR_SIZE);
 	if (!pmgr)
 		return -ENOMEM;
@@ -4547,7 +4564,9 @@ static int g16_lab_pmp_rtkit_hello(bool retain_votes)
 	}
 
 	if (!(control & ASC_CPU_CONTROL_START))
-		writel(control | ASC_CPU_CONTROL_START, asc + ASC_CPU_CONTROL);
+		g16_lab_trace_dcp("before-gfx-asc-start");
+	writel(control | ASC_CPU_CONTROL_START, asc + ASC_CPU_CONTROL);
+	g16_lab_trace_dcp("after-gfx-asc-start");
 	message = FIELD_PREP(RTKIT_MGMT_TYPE, RTKIT_MGMT_IOP_PWR_STATE) |
 		  FIELD_PREP(RTKIT_MGMT_PWR_STATE, RTKIT_POWER_INIT);
 	ret = g16_asc_send(asc, message, 0);
@@ -18320,6 +18339,7 @@ static int g16_lab_rtkit_hello(void)
 		goto out_stop;
 	}
 	pr_info("g16_lab: GFX RTKit IOP reached POWER_ON\n");
+	g16_lab_trace_dcp("gfx-iop-on");
 
 	ret = g16_rtkit_power_transition(asc, RTKIT_MGMT_AP_PWR_STATE,
 					 RTKIT_MGMT_AP_PWR_STATE,
@@ -18327,6 +18347,7 @@ static int g16_lab_rtkit_hello(void)
 	if (ret)
 		goto out_stop;
 	pr_info("g16_lab: GFX RTKit AP reached POWER_ON\n");
+	g16_lab_trace_dcp("gfx-ap-on");
 	if (!strcmp(stage, "rtkit-app-start") ||
 	    !strcmp(stage, "rtkit-initdata-first-log") ||
 	    !strcmp(stage, "rtkit-initdata-boot-logs") ||
@@ -19095,6 +19116,7 @@ static int g16_lab_registers(bool allow_power)
 	}
 	if (!strcmp(stage, "gfx-retention-test")) {
 		ret = g16_lab_apply_gfx_retention(pmgr);
+		g16_lab_trace_dcp("after-gfx-retention");
 		if (ret) {
 			if (keep_power)
 				g16_lab_restore_power();
@@ -19114,6 +19136,7 @@ static int g16_lab_registers(bool allow_power)
 		g16_lab_restore_gfx_tvm();
 		return -ENOMEM;
 	}
+	g16_lab_trace_dcp("after-gfx-power-and-pmp");
 	WRITE_ONCE(g16_live_sgx_secondary, sgx);
 
 	state = readl_relaxed(pmgr + J713_PMGR_GFX_STATE);
