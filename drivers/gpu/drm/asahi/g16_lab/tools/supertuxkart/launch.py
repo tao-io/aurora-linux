@@ -89,6 +89,9 @@ def main():
                     'size={800,450},center=true,opacity="1 1"})'], env=ctl_env, check=True)
     command = ['systemd-run', '--unit=' + GAME_UNIT, '--collect', '--uid=' + account.pw_name,
                '--property=RuntimeMaxSec=' + str(args.seconds), '--property=TimeoutStopSec=3',
+               # Bound CPU-heavy shader warmup on this passively cooled test machine.
+               # The desktop thermal guard remains authoritative for stopping work.
+               '--property=CPUQuota=150%',
                '--property=BindsTo=' + UNIT, '--property=After=' + UNIT]
     for key, value in env.items():
         command += ['-E', key + '=' + value]

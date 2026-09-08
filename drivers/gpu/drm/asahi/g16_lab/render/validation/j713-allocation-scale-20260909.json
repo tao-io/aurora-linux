@@ -1,0 +1,48 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "module_sha256": "ea629dbc34a0b74928a2a51a1e0005d85980a3ffd66102d49da80eb267a0fda3",
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": false,
+    "disarmed_after_evidence_collection": true
+  },
+  "parameters": [
+    "stage=drm-frontend",
+    "render_drm_submit=1"
+  ],
+  "test_returncode": 0,
+  "test": {
+    "passed": true,
+    "live_objects": 8195,
+    "large_object_bytes": 1140850688,
+    "sparse_leaf_tables": 96,
+    "mapped_alias_bytes": 1140850688,
+    "gpu_submitted": false
+  },
+  "rmmod_returncode": 0,
+  "render_node_removed": true,
+  "new_kernel_fault": false,
+  "passed": true,
+  "thermals": {
+    "startup_limit_mc": 65000,
+    "stop_limit_mc": 75000,
+    "interval_seconds": 0.5,
+    "samples": 1,
+    "sync_interval_seconds": 5,
+    "peak_temperatures_mc": {
+      "PMP aggregate die hotspot": 51500,
+      "Ta000m": 51000,
+      "Te000m": 50000,
+      "Te001m": 48000,
+      "Tp000m": 51500,
+      "Tp001m": 47500
+    },
+    "failure": null,
+    "dedicated_gpu_sensor_verified": false,
+    "log": "temperatures.jsonl"
+  }
+}

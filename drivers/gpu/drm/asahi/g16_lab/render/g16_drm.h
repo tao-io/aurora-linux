@@ -84,10 +84,14 @@ static int g16_drm_gem_open(struct drm_gem_object *obj, struct drm_file *file)
 			goto out;
 		}
 	}
-	/* Sprite-heavy clients need many small texture/shader allocations. Keep
-	 * the byte budget independent of the number of live objects. */
-	if (priv->objects_live >= (render_drm_submit ? 8192 : 64) ||
-	    obj->size > (render_drm_submit ? SZ_1G : SZ_256M) - priv->bytes_live) {
+	/* DRM clients are limited by allocation failure and representable accounting,
+	 * not fixture-sized object/byte budgets. Retain fixture test bounds. */
+	if (priv->objects_live == U32_MAX || obj->size > U64_MAX - priv->bytes_live) {
+		ret = -EOVERFLOW;
+		goto out;
+	}
+	if (!render_drm_submit && (priv->objects_live >= 64 ||
+	    obj->size > SZ_256M - priv->bytes_live)) {
 		pr_info("g16_lab: GEM budget exhausted: objects=%u bytes=%llu requested=%zu\n",
 			priv->objects_live, priv->bytes_live, obj->size);
 		ret = -ENOSPC;
@@ -156,7 +160,8 @@ static int g16_drm_gem_create_ioctl(struct drm_device *dev, void *data,
 	if (args->pad || args->flags & ~(G16_GEM_WRITEBACK | G16_GEM_VM_PRIVATE) ||
 	    (!(args->flags & G16_GEM_VM_PRIVATE) && args->vm_id) ||
 	    ((args->flags & G16_GEM_VM_PRIVATE) && !args->vm_id) ||
-	    !args->size || args->size > SZ_64M)
+	    !args->size || args->size > SIZE_MAX - (PAGE_SIZE - 1) ||
+	    (!render_drm_submit && args->size > SZ_64M))
 		return -EINVAL;
 	size = PAGE_ALIGN(args->size);
 	mutex_lock(&priv->lock);

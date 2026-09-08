@@ -16,7 +16,8 @@ import time
 
 def stop_workload():
     Path('/run/m4-hyprland-stop').touch()
-    subprocess.run(['systemctl', '--no-block', 'stop', 'm4-supertux.service'],
+    subprocess.run(['systemctl', '--no-block', 'stop', 'm4-supertux.service',
+                    'm4-supertuxkart.service'],
                    timeout=2, check=False)
     # The service accepts this only for the DRM frontend. Bound the write:
     # a wedged job must still be recovered by the independently armed watchdog.

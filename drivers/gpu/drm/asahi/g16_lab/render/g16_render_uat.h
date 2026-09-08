@@ -3,9 +3,9 @@
 #define G16_RENDER_UAT_H
 
 /* Private, unpublished 42-bit / 16 KiB UAT trees. Own every intermediate page. */
-#define G16_RENDER_UAT_TABLE_LIMIT 64
 struct g16_render_uat {
-	struct page *tables[G16_RENDER_UAT_TABLE_LIMIT];
+	struct page **tables;
+	unsigned int capacity;
 	unsigned int count;
 	unsigned int leaves;
 };
@@ -14,6 +14,7 @@ static void g16_render_uat_free(struct g16_render_uat *u)
 {
 	while (u->count)
 		__free_page(u->tables[--u->count]);
+	kfree(u->tables);
 	memset(u, 0, sizeof(*u));
 }
 
@@ -21,8 +22,18 @@ static u64 *g16_render_uat_new_table(struct g16_render_uat *u)
 {
 	struct page *p;
 
-	if (u->count == G16_RENDER_UAT_TABLE_LIMIT)
-		return NULL;
+	if (u->count == u->capacity) {
+		unsigned int capacity = u->capacity ? u->capacity * 2 : 16;
+		struct page **tables;
+
+		if (capacity < u->capacity)
+			return NULL;
+		tables = krealloc_array(u->tables, capacity, sizeof(*tables), GFP_KERNEL);
+		if (!tables)
+			return NULL;
+		u->tables = tables;
+		u->capacity = capacity;
+	}
 	p = alloc_page(GFP_KERNEL | __GFP_ZERO);
 	if (!p)
 		return NULL;
@@ -85,7 +96,7 @@ static int g16_render_uat_clone(struct g16_render_uat *dst,
 	unsigned int i;
 	int ret;
 
-	if (dst->count || src->count > G16_RENDER_UAT_TABLE_LIMIT)
+	if (dst->count)
 		return -EINVAL;
 	if (!src->count)
 		return 0;

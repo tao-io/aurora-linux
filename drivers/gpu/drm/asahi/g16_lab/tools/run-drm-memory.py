@@ -10,6 +10,7 @@ from pathlib import Path
 import subprocess
 import time
 from experiment_watchdog import ExperimentWatchdog
+from experiment_thermals import ExperimentThermals
 
 
 def main():
@@ -17,6 +18,8 @@ def main():
     parser.add_argument('--module', required=True, type=Path)
     parser.add_argument('--test', required=True, type=Path)
     parser.add_argument('--results', required=True, type=Path)
+    parser.add_argument('--render-allocations', action='store_true',
+                        help='test DRM allocation policy without starting GPU firmware')
     args = parser.parse_args()
     if os.geteuid() or Path('/sys/module/g16_lab').exists():
         parser.error('requires root and an unloaded g16_lab')
@@ -30,8 +33,14 @@ def main():
     metadata = {'kernel': os.uname().release, 'module_sha256': hashlib.sha256(args.module.read_bytes()).hexdigest()}
     watchdog = ExperimentWatchdog()
     metadata['watchdog'] = watchdog.arm()
+    thermals = ExperimentThermals(result)
+    thermals.start()
     (result / 'manifest.json').write_text(json.dumps(metadata, indent=2) + '\n')
-    subprocess.run(['insmod', str(args.module), 'stage=drm-frontend'], check=True)
+    parameters = ['stage=drm-frontend']
+    if args.render_allocations:
+        parameters += ['render_drm_submit=1']
+    metadata['parameters'] = parameters
+    subprocess.run(['insmod', str(args.module), *parameters], check=True)
     for _ in range(100):
         nodes = set(Path('/dev/dri').glob('renderD*')) - before
         if len(nodes) == 1:
@@ -40,7 +49,8 @@ def main():
     if len(nodes) != 1:
         raise RuntimeError('expected exactly one new render node')
     node = nodes.pop()
-    run = subprocess.run([str(args.test), str(node)], capture_output=True, text=True)
+    run = subprocess.run([str(args.test), str(node)], capture_output=True, text=True, timeout=45)
+    thermals.check()
     (result / 'test.stdout').write_text(run.stdout)
     (result / 'test.stderr').write_text(run.stderr)
     metadata['test_returncode'] = run.returncode
@@ -58,6 +68,9 @@ def main():
                                         ('WARNING:', 'BUG:', 'Oops:', 'Unable to handle kernel'))
     metadata['passed'] = (run.returncode == 0 and unload.returncode == 0 and
                           metadata['render_node_removed'] and not metadata['new_kernel_fault'])
+    thermals.check()
+    thermals.close()
+    metadata['thermals'] = thermals.summary()
     (result / 'manifest.json').write_text(json.dumps(metadata, indent=2) + '\n')
     os.sync()
     if unload.returncode:
