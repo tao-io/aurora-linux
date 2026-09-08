@@ -197,6 +197,15 @@ int main(int argc, char **argv)
       CHECK(close(fd) == 0 && destroy_sync(display, incoming) && destroy_sync(display, sync));
       glReadPixels(0, 0, SIDE, SIDE, GL_RGBA, GL_UNSIGNED_BYTE, readback);
       CHECK(glGetError() == GL_NO_ERROR);
+      const char *directory = getenv("M4_RENDER_OUTPUT");
+      if (directory) {
+         char path[4096];
+         int length = snprintf(path, sizeof(path), "%s/composite-frame-%02u.rgba", directory, frame);
+         CHECK(length > 0 && (size_t)length < sizeof(path));
+         FILE *image = fopen(path, "wb");
+         CHECK(image && fwrite(readback, 1, sizeof(readback), image) == sizeof(readback));
+         CHECK(fclose(image) == 0);
+      }
       for (unsigned y = 0; y < SIDE; ++y) {
          for (unsigned x = 0; x < SIDE; ++x) {
             unsigned texel = (y >= 16) * 2 + (x >= 16);

@@ -124,8 +124,21 @@ static int g16_drm_job_prepare(struct g16_drm_job *job)
 	/* Start with the qualified geometry and register allocation. Commands
 	 * select their own streams/programs; no fixture bytes are copied here.
 	 */
-	if (memcmp(r, &supported, sizeof(*r)))
+	if (memcmp(r, &supported, sizeof(*r))) {
+		unsigned int offset, differences = 0;
+
+		for (offset = 0; offset < sizeof(*r) && differences < 12; offset += 4) {
+			u32 actual = get_unaligned((u32 *)((u8 *)r + offset));
+			u32 wanted = get_unaligned((u32 *)((u8 *)&supported + offset));
+
+			if (actual != wanted) {
+				pr_info("g16_lab: render packet unsupported +%#x: actual=%#x supported=%#x\n",
+					offset, actual, wanted);
+				differences++;
+			}
+		}
 		return -EOPNOTSUPP;
+	}
 	if ((r->vdm_ctrl_stream_base & 3) ||
 	    r->vdm_ctrl_stream_base < G16_RENDER_COMPACT_BASE + PAGE_SIZE ||
 	    r->vdm_ctrl_stream_base >= G16_RENDER_COMPACT_BASE + BIT_ULL(32) ||

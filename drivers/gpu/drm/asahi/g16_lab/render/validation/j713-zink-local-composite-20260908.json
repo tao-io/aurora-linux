@@ -1,0 +1,132 @@
+{
+  "kernel": "7.1.9-dirtyroom-gpu1+",
+  "boot_id": "a618a126-ccd5-4ece-83da-48b3702b2c9e",
+  "module_sha256": "57d8cc54849f6d7e52e0ed8b823a8a9034aec320bfb24d1b1af4ba4217048325",
+  "drm_submit_test_sha256": "29d48ce91d0a0919338299f45c019925fe2cedca4b007b7d8515ee00f1ce20bf",
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": false,
+    "disarmed_after_evidence_collection": true
+  },
+  "drm_submit": {
+    "passed": true,
+    "scope": "M4",
+    "renderer": "zink Vulkan 1.4(Apple M4 (G16G B1) (MESA_HONEYKRISP))",
+    "frames": 8,
+    "pixels_verified": 8192,
+    "max_channel_error": 1,
+    "nearest_and_linear_sampling": true,
+    "premultiplied_alpha": true,
+    "scissor_damage": true,
+    "texture_reuse": true,
+    "native_fences": 8,
+    "egl_dma_buf_roundtrip": false,
+    "native_fence_import_wait": true
+  },
+  "firmware_ktrace": {
+    "platform": "J713/T8132/G16G",
+    "firmware_build": "25G83",
+    "record_size": 72,
+    "record_count": 4229,
+    "sha256": "6021330c97d57877595416f5e5903d9f0e673b3e9056f0a00480e33e8919bf0c",
+    "firmware_reported_lost_records": 0,
+    "event_counts": {
+      "EventNotify": 9,
+      "Finish3D": 8,
+      "FinishCompute": 1,
+      "FinishTA": 8,
+      "StampUpdate3D": 7,
+      "StampUpdateCompute": 1,
+      "StampUpdateTA": 8,
+      "Start3D": 8,
+      "StartCompute": 1,
+      "StartTA": 8,
+      "event_000005": 8,
+      "event_00000f": 2,
+      "event_000017": 8,
+      "event_00002c": 1,
+      "event_00004d": 8,
+      "event_00004f": 8,
+      "event_000054": 17,
+      "event_000056": 35,
+      "event_000100": 793,
+      "event_000101": 793,
+      "event_000102": 67,
+      "event_000103": 67,
+      "event_000105": 11,
+      "event_000106": 11,
+      "event_000109": 17,
+      "event_00010a": 17,
+      "event_00010c": 2,
+      "event_000111": 19,
+      "event_000112": 2282,
+      "event_00013c": 2,
+      "event_00013e": 2
+    },
+    "host_dropped_records": 0,
+    "drain_result": 0
+  },
+  "client_vm_publications": 8,
+  "render_service": {
+    "idle_verified": true,
+    "invalid_requests_rejected": 4,
+    "events": [],
+    "final_status": {
+      "ready": 0,
+      "pending": 0,
+      "completed": 8,
+      "result": 0,
+      "stopped": 1
+    }
+  },
+  "rmmod_rc": 0,
+  "new_kernel_fault": false,
+  "render_node_removed": true,
+  "passed": true,
+  "platform": "J713/T8132/G16G B1",
+  "firmware": "25G83",
+  "run": "20260908T004735Z-render-ta",
+  "scope": "Native Zink local-texture compositing: eight pixel-checked frames, sampling/blending/scissor and native fence export/import. Host-image-copy upload/readback. No shared-image or Hyprland claim.",
+  "gallium_sha256": "4ec1d847afd54d33b898729be8aa6b0884691ee9bd72dd988efbbec5ed4c7783",
+  "icd_sha256": "8e34b42ce21a1439eb2c9c5b807eed0fb31c42c872e819d0dea48ff808d26178",
+  "gles_version_override": "3.0",
+  "shader_cache_disabled": true,
+  "images": [
+    {
+      "file": "composite-frame-00.rgba",
+      "sha256": "a20a34c5d9b181bb8bba7e79e09e5ffc2b89421aa86327c30ad1bf46deea27a9"
+    },
+    {
+      "file": "composite-frame-01.rgba",
+      "sha256": "284d3ff6e9224e37c47faaac27ce7845683569a7610cf8bd878c18b1b9ec474a"
+    },
+    {
+      "file": "composite-frame-02.rgba",
+      "sha256": "a20a34c5d9b181bb8bba7e79e09e5ffc2b89421aa86327c30ad1bf46deea27a9"
+    },
+    {
+      "file": "composite-frame-03.rgba",
+      "sha256": "284d3ff6e9224e37c47faaac27ce7845683569a7610cf8bd878c18b1b9ec474a"
+    },
+    {
+      "file": "composite-frame-04.rgba",
+      "sha256": "a20a34c5d9b181bb8bba7e79e09e5ffc2b89421aa86327c30ad1bf46deea27a9"
+    },
+    {
+      "file": "composite-frame-05.rgba",
+      "sha256": "284d3ff6e9224e37c47faaac27ce7845683569a7610cf8bd878c18b1b9ec474a"
+    },
+    {
+      "file": "composite-frame-06.rgba",
+      "sha256": "a20a34c5d9b181bb8bba7e79e09e5ffc2b89421aa86327c30ad1bf46deea27a9"
+    },
+    {
+      "file": "composite-frame-07.rgba",
+      "sha256": "284d3ff6e9224e37c47faaac27ce7845683569a7610cf8bd878c18b1b9ec474a"
+    }
+  ]
+}
