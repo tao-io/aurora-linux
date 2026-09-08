@@ -4,6 +4,7 @@
 
 #include <linux/device.h>
 #include <linux/platform_device.h>
+#include <linux/user_namespace.h>
 #include <drm/drm_drv.h>
 #include <drm/drm_file.h>
 #include <drm/drm_gem_shmem_helper.h>
@@ -39,7 +40,13 @@ static int g16_drm_open(struct drm_device *dev, struct drm_file *file)
 {
 	struct g16_drm_file *priv;
 
-	if (!capable(CAP_SYS_ADMIN))
+	/* This lab still assumes trusted clients. Opt in one host desktop UID
+	 * without giving its compositor or applications process capabilities.
+	 * Primary-node and debugfs controls remain privileged. */
+	if (!capable(CAP_SYS_ADMIN) &&
+	    !(render_drm_submit && render_trusted_uid &&
+	      drm_is_render_client(file) &&
+	      uid_eq(current_euid(), make_kuid(&init_user_ns, render_trusted_uid))))
 		return -EPERM;
 	priv = kzalloc(sizeof(*priv), GFP_KERNEL);
 	if (!priv)

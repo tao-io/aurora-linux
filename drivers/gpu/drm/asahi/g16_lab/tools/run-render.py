@@ -10,6 +10,7 @@ import hashlib
 import json
 import os
 import re
+import pwd
 from pathlib import Path
 import struct
 import subprocess
@@ -135,6 +136,7 @@ def main():
                         help='Asahi command submissions using client-created GEM resources')
     parser.add_argument('--interactive-seconds', type=int, default=0,
                         help='30..3600 seconds of interactive Hyprland with GPU-verified watchdog progress')
+    parser.add_argument('--desktop-user', help='explicit trusted local user for the supervised physical desktop')
     parser.add_argument('--drm-frame-budget', type=int, choices=range(8, 129), default=8)
     parser.add_argument('--drm-client-mode', choices=('legacy', 'composite', 'local-composite'), default='legacy')
     parser.add_argument('--drm-submit-test', type=Path, default=Path('/root/g16submittest'))
@@ -154,6 +156,11 @@ def main():
     parser.add_argument('--render-varying-rhw', action='store_true',
                         help='interpolate reciprocal W to isolate coefficient setup')
     args = parser.parse_args()
+    desktop_account = None
+    if args.desktop_user:
+        desktop_account = pwd.getpwnam(args.desktop_user)
+        if not args.interactive_seconds or not desktop_account.pw_uid:
+            parser.error('--desktop-user requires an interactive session and a non-root account')
     if args.interactive_seconds:
         if not 30 <= args.interactive_seconds <= 3600 or not args.render_drm_submit or args.drm_client_mode != 'composite' or args.firmware_ktrace:
             parser.error('interactive mode requires DRM composite, 30..3600 seconds, and KTrace disabled')
@@ -219,6 +226,8 @@ def main():
         params += ['render_drm_target=1']
     if args.render_drm_submit:
         params += ['render_drm_submit=1']
+    if desktop_account:
+        params += [f'render_trusted_uid={desktop_account.pw_uid}']
     if args.render_mesa_fragment:
         params += ['render_mesa_fragment=1']
     if args.render_mesa_vertex:
@@ -350,6 +359,8 @@ def main():
             nodes = list(Path('/dev/dri').glob('renderD*'))
             if len(nodes) != 1:
                 raise RuntimeError('expected one lab render node')
+            if desktop_account:
+                subprocess.run(['setfacl', '-m', f'u:{desktop_account.pw_uid}:rw', str(nodes[0])], check=True)
             client = [str(args.drm_submit_test)]
             if args.drm_client_mode == 'legacy':
                 client += [str(nodes[0]), str(debug / 'g16_lab_render'), str(result)]
@@ -357,6 +368,8 @@ def main():
                 client += ['--local-textures']
             client_env = {**os.environ, 'M4_RENDER_OUTPUT': str(result),
                           'M4_HYPR_INTERACTIVE_SECONDS': str(args.interactive_seconds)}
+            if desktop_account:
+                client_env['M4_HYPR_USER'] = desktop_account.pw_name
             if args.interactive_seconds:
                 target = run_interactive_client(client, client_env, result, watchdog, args.interactive_seconds)
                 metadata['watchdog']['progress_verified_keepalives'] = json.loads(target.stdout)['verified_watchdog_keepalives']

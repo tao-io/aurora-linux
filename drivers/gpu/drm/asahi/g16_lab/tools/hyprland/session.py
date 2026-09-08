@@ -7,6 +7,7 @@ import hashlib
 import mmap
 import struct
 import os
+import pwd
 from pathlib import Path
 import signal
 import subprocess
@@ -51,12 +52,21 @@ def main():
     height = int(os.environ.get('M4_HYPR_HEIGHT', '256'))
     if not (1 <= width <= 2560 and 1 <= height <= 1600):
         raise ValueError('Probe size exceeds the J713 panel bounds')
-    runtime = Path('/run/m4h')
-    runtime.mkdir(mode=0o700, exist_ok=True)
+    account = pwd.getpwnam(os.environ['M4_HYPR_USER']) if os.environ.get('M4_HYPR_USER') else None
+    runtime = Path(f'/run/user/{account.pw_uid}') if account else Path('/run/m4h')
+    if not account:
+        runtime.mkdir(mode=0o700, exist_ok=True)
     env = {**os.environ, 'XDG_RUNTIME_DIR': str(runtime),
            'AQ_HEADLESS_RENDER_NODE': '/dev/dri/renderD128',
            'HYPRLAND_NO_SD_NOTIFY': '1', 'AQ_TRACE': '1',
-           'GBM_BACKENDS_PATH': '/root/m4mesa/lib/gbm'}
+           'GBM_BACKENDS_PATH': os.environ.get('GBM_BACKENDS_PATH', '/root/m4mesa/lib/gbm')}
+    user_command = ['runuser', '-u', account.pw_name, '--'] if account else []
+    if account:
+        env.update({'M4_HYPR_UID': str(account.pw_uid),
+                    'DBUS_SESSION_BUS_ADDRESS': f'unix:path={runtime}/bus',
+                    'OMARCHY_PATH': '/usr/share/omarchy',
+                    'LIBGL_ALWAYS_SOFTWARE': '0', 'QT_OPENGL': 'es2',
+                    'QSG_RHI_BACKEND': 'opengl'})
     physical = os.environ.get('M4_HYPR_PHYSICAL') == '1'
     output_name = 'Unknown-1' if physical else 'HEADLESS-1'
     env['M4_HYPR_OUTPUT'] = output_name
@@ -67,8 +77,10 @@ def main():
     env.pop('WAYLAND_DISPLAY', None)
     env.pop('DISPLAY', None)
     env.pop('HYPRLAND_INSTANCE_SIGNATURE', None)
-    config = Path(__file__).with_name('minimal.lua')
-    command = ['Hyprland', '--i-am-really-stupid', '--config', str(config)]
+    config = Path('/opt/m4-hyprland/omarchy.lua') if account else Path(__file__).with_name('minimal.lua')
+    command = ['Hyprland', *([] if account else ['--i-am-really-stupid']), '--config', str(config)]
+    if account:
+        command = ['python3', str(Path(__file__).with_name('seat-user.py')), account.pw_name, *command]
     if physical:
         command = ['seatd-launch', '--', *command]
     child = None
@@ -77,6 +89,10 @@ def main():
         try:
             if physical:
                 subprocess.run(['systemctl', 'stop', 'sddm'], check=True, timeout=5)
+            if account:
+                subprocess.run(['systemctl', 'start', f'user@{account.pw_uid}.service'], check=True, timeout=5)
+                if runtime.stat().st_uid != account.pw_uid:
+                    raise RuntimeError('Desktop runtime directory has the wrong owner')
             child = subprocess.Popen(command, env=env, stdout=log, stderr=log,
                                      start_new_session=True)
             deadline = time.monotonic() + 7
@@ -100,7 +116,7 @@ def main():
             if not any(m.get('name') == output_name and m.get('width') == width
                        and m.get('height') == height for m in outputs):
                 raise RuntimeError(f'Expected active {width}x{height} {output_name} output')
-            terminal = subprocess.Popen(['foot', '--app-id=m4-gpu-check',
+            terminal = subprocess.Popen([*user_command, 'foot', '--app-id=m4-gpu-check',
                 '-o', 'colors.background=ff0000', '-o', 'font=monospace:size=10',
                 '/bin/sh', '-c', 'printf "M4 GPU compositing\n"; ' + ('exec /bin/bash' if live_seconds else 'sleep 8')],
                 env=env, stdout=log, stderr=log, start_new_session=True)
@@ -144,12 +160,17 @@ def main():
                        'scanout_red_pixels_verified': scanout_red,
                        'red_pixels_verified': red, 'screenshot': pixels.name}
             if live_seconds:
-                stop_file = Path('/run/m4-hyprland-stop')
+                stop_file = runtime / 'm4-hyprland-stop' if account else Path('/run/m4-hyprland-stop')
                 stop_file.unlink(missing_ok=True)
+                if account:
+                    # The red surface has served its validation purpose.
+                    # Close it so Omarchy's actual shell and wallpaper show.
+                    subprocess.run(['hyprctl', 'dispatch', 'closewindow', 'class:^(m4-gpu-check)$'],
+                                   env=env, check=True, stdout=log, stderr=log, timeout=2)
                 print(json.dumps({'event': 'ready', 'result': summary}), flush=True)
                 deadline = time.monotonic() + live_seconds
                 checks = 0
-                while time.monotonic() < deadline and not stop_file.exists():
+                while time.monotonic() < deadline and not stop_file.exists() and not Path('/run/m4-hyprland-stop').exists():
                     with (result / 'health-shaders.stderr').open('a') as diagnostics:
                         check = subprocess.run(['/root/g16-submit-test/mesa-submit'],
                                                env=env, stdout=subprocess.PIPE, stderr=diagnostics,
@@ -190,6 +211,11 @@ def main():
                     pass
                 process.wait(timeout=2)
             if physical:
+                if account:
+                    # Omarchy starts user services outside the compositor's
+                    # process group. Stop them and discard its imported private
+                    # graphics environment before restoring ordinary login.
+                    subprocess.run(['systemctl', 'stop', f'user@{account.pw_uid}.service'], check=True, timeout=8)
                 subprocess.run(['systemctl', 'start', 'sddm'], check=True, timeout=5)
 
 

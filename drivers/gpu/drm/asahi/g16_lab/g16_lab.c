@@ -2684,6 +2684,9 @@ MODULE_PARM_DESC(render_drm_target, "Export the userspace-paced render target as
 static bool render_drm_submit;
 module_param(render_drm_submit, bool, 0444);
 MODULE_PARM_DESC(render_drm_submit, "Accept bounded Asahi render submissions from root-owned GEM VMs");
+static unsigned int render_trusted_uid;
+module_param(render_trusted_uid, uint, 0444);
+MODULE_PARM_DESC(render_trusted_uid, "Explicit trusted desktop UID for supervised render-node experiments; zero keeps root-only access");
 
 /* Sampled in the existing, powered identity-probe window, never by an ioctl. */
 static u32 g16_drm_id_version, g16_drm_id_counts, g16_drm_core_mask;
@@ -19253,6 +19256,10 @@ static int g16_lab_ocean_thread_fn(void *unused)
 static int __init g16_lab_init(void)
 {
 	int ret;
+
+	if (render_trusted_uid && (!render_drm_submit ||
+	    !uid_valid(make_kuid(&init_user_ns, render_trusted_uid))))
+		return -EINVAL;
 
 	if (!strcmp(stage, "drm-frontend"))
 		return g16_drm_start();
