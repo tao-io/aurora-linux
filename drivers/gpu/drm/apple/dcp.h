@@ -35,7 +35,7 @@ int dcp_set_crc(struct drm_crtc *crtc, bool enabled);
 int dcp_crtc_atomic_check(struct drm_crtc *crtc, struct drm_atomic_state *state);
 int dcp_get_connector_type(struct platform_device *pdev);
 bool dcp_fw_compat_is_12_x(struct platform_device *pdev);
-unsigned long* dcp_get_iomfb_surfaces(struct platform_device *pdev);
+const u32 *dcp_get_iomfb_surfaces(struct platform_device *pdev, u32 *count);
 void dcp_link(struct platform_device *pdev, struct apple_crtc *apple,
 	      struct apple_connector *connector);
 int dcp_start(struct platform_device *pdev);
@@ -54,6 +54,7 @@ bool dcp_crtc_mode_fixup(struct drm_crtc *crtc,
 			 struct drm_display_mode *adjusted_mode);
 void dcp_set_dimensions(struct apple_dcp *dcp);
 void dcp_send_message(struct apple_dcp *dcp, u8 endpoint, u64 message);
+int dcp_start_rtkit_endpoint(struct apple_dcp *dcp, u8 endpoint);
 
 int dcp_dptx_connect_oob(struct platform_device *pdev, u32 port);
 int dcp_dptx_disconnect_oob(struct platform_device *pdev, u32 port);

@@ -14,13 +14,16 @@
 #include <linux/scatterlist.h>
 #include <linux/usb/typec_mux.h>
 
+#include "dcp-link.h"
 #include "dptxep.h"
 #include "iomfb.h"
+#include "iomfb_h17p.h"
 #include "iomfb_v12_3.h"
 #include "iomfb_v13_3.h"
+#include "iomfb-surface.h"
 #include "epic/dpavservep.h"
 
-#define DCP_MAX_PLANES 4
+#define DCP_MAX_PLANES APPLE_DCP_MAX_SURFACES
 
 struct apple_dcp;
 struct apple_dcp_afkep;
@@ -31,6 +34,7 @@ enum dcp_firmware_version {
 	DCP_FIRMWARE_UNKNOWN,
 	DCP_FIRMWARE_V_12_3,
 	DCP_FIRMWARE_V_13_5,
+	DCP_FIRMWARE_H17P,
 };
 
 enum {
@@ -73,6 +77,8 @@ struct dcp_channel {
 	void *cookies[DCP_MAX_CALL_DEPTH];
 	void *output[DCP_MAX_CALL_DEPTH];
 	u16 end[DCP_MAX_CALL_DEPTH];
+	u64 link_message[DCP_MAX_CALL_DEPTH];
+	u32 link_size[DCP_MAX_CALL_DEPTH];
 
 	/* Current depth of the call stack. Less than DCP_MAX_CALL_DEPTH */
 	u8 depth;
@@ -111,6 +117,7 @@ struct dcp_panel {
 
 struct apple_dcp_hw_data {
 	u32 num_dptx_ports;
+	bool adopt_running_coprocessor;
 };
 
 /* TODO: move IOMFB members to its own struct */
@@ -129,11 +136,16 @@ struct apple_dcp {
 
 	/* Coprocessor control register */
 	void __iomem *coproc_reg;
+	/* Locked firmware entry point supplied by iBoot. */
+	void __iomem *iop_vbar_reg;
+	bool fresh_boot_cpu_started;
+	bool adopted_session;
 
 	/* DCP has crashed */
 	bool crashed;
-
-	DECLARE_BITMAP(iomfb_surfaces, DCP_MAX_PLANES);
+	/* Ignore inherited application-endpoint traffic while quiescing RTKit. */
+	bool adopting_session;
+	struct apple_dcp_surface_order iomfb_surfaces;
 
 	/************* IOMFB **************************************************
 	 * everything below is mostly used inside IOMFB but it could make     *
@@ -142,9 +154,17 @@ struct apple_dcp {
 
 	/* clock rate request by dcp in */
 	struct clk *clk;
+	struct clk *clk_194;
 
 	/* DCP shared memory */
 	void *shmem;
+	dma_addr_t shmem_iova;
+	bool shmem_inherited;
+	u32 link_top[2][APPLE_DCP_LINK_STREAMS_PER_SIDE];
+	u16 link_version;
+	u32 link_firmware_hash;
+	enum apple_dcp_link_state link_state;
+	bool link_endpoint_started;
 
 	/* Display registers mappable to the DCP */
 	struct resource *disp_registers[MAX_DISP_REGISTERS];
@@ -178,6 +198,7 @@ struct apple_dcp {
 	union {
 		struct dcp_swap_submit_req_v12_3 v12_3;
 		struct dcp_swap_submit_req_v13_3 v13_3;
+		struct dcp_swap_submit_req_h17p h17p;
 	} swap;
 
 	/* swap id of the last completed swap */

@@ -15,6 +15,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
+#include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
@@ -37,14 +38,24 @@
 #include "av.h"
 #include "dcp.h"
 #include "dcp-internal.h"
+#include "dcp-lifecycle.h"
 #include "iomfb.h"
 #include "parser.h"
 #include "trace.h"
 
 #define APPLE_DCP_COPROC_CPU_CONTROL	 0x44
-#define APPLE_DCP_COPROC_CPU_CONTROL_RUN BIT(4)
+#define APPLE_DCP_COPROC_CPU_STATUS	 0x48
+#define APPLE_DCP_RTKIT_HANDOFF_PROPERTY "apple,dcp-rtkit-quiesced"
+#define APPLE_DCP_RTKIT_IDLE_PROPERTY	 "apple,dcp-rtkit-idle"
+#define APPLE_DCP_ASC_STOPPED_PROPERTY	 "apple,dcp-asc-stopped"
 
 #define DCP_BOOT_TIMEOUT msecs_to_jiffies(1000)
+
+#define APPLE_DCP_RTKIT_MGMT_TYPE GENMASK_ULL(59, 52)
+#define APPLE_DCP_RTKIT_MGMT_STARTEP 5
+#define APPLE_DCP_RTKIT_MGMT_STARTEP_EP GENMASK_ULL(39, 32)
+#define APPLE_DCP_RTKIT_MGMT_STARTEP_FLAG BIT_ULL(1)
+#define APPLE_DCP_RTKIT_EP_MGMT 0
 
 static bool show_notch;
 module_param(show_notch, bool, 0644);
@@ -224,6 +235,8 @@ static void dcp_recv_msg(void *cookie, u8 endpoint, u64 message)
 	struct apple_dcp *dcp = cookie;
 
 	trace_dcp_recv_msg(dcp, endpoint, message);
+	if (dcp->adopting_session)
+		return;
 
 	switch (endpoint) {
 	case IOMFB_ENDPOINT:
@@ -235,6 +248,12 @@ static void dcp_recv_msg(void *cookie, u8 endpoint, u64 message)
 		afk_receive_message(dcp->systemep, message);
 		return;
 	case DISP0_ENDPOINT:
+		if (!dcp->ibootep) {
+			dev_warn_ratelimited(dcp->dev,
+				"dropping inherited iBoot endpoint message %#llx\n",
+				message);
+			return;
+		}
 		afk_receive_message(dcp->ibootep, message);
 		return;
 	case DPAVSERV_ENDPOINT:
@@ -325,6 +344,24 @@ void dcp_send_message(struct apple_dcp *dcp, u8 endpoint, u64 message)
 	trace_dcp_send_msg(dcp, endpoint, message);
 	apple_rtkit_send_message(dcp->rtk, endpoint, message, NULL,
 				 true);
+}
+
+int dcp_start_rtkit_endpoint(struct apple_dcp *dcp, u8 endpoint)
+{
+	u64 message;
+
+	if (!dcp->adopted_session)
+		return apple_rtkit_start_ep(dcp->rtk, endpoint);
+
+	/* The inherited EPMAP was acknowledged by Stage 2. Restart the known
+	 * DCP endpoint without asking the live firmware to repeat discovery.
+	 */
+	message = FIELD_PREP(APPLE_DCP_RTKIT_MGMT_TYPE,
+			     APPLE_DCP_RTKIT_MGMT_STARTEP) |
+		  FIELD_PREP(APPLE_DCP_RTKIT_MGMT_STARTEP_EP, endpoint) |
+		  APPLE_DCP_RTKIT_MGMT_STARTEP_FLAG;
+	return apple_rtkit_send_message(dcp->rtk, APPLE_DCP_RTKIT_EP_MGMT,
+					message, NULL, false);
 }
 
 int dcp_crtc_atomic_check(struct drm_crtc *crtc, struct drm_atomic_state *state)
@@ -493,11 +530,12 @@ bool dcp_fw_compat_is_12_x(struct platform_device *pdev)
 	return dcp->fw_compat == DCP_FIRMWARE_V_12_3;
 }
 
-unsigned long* dcp_get_iomfb_surfaces(struct platform_device *pdev)
+const u32 *dcp_get_iomfb_surfaces(struct platform_device *pdev, u32 *count)
 {
 	struct apple_dcp *dcp = platform_get_drvdata(pdev);
 
-	return dcp->iomfb_surfaces;
+	*count = dcp->iomfb_surfaces.count;
+	return dcp->iomfb_surfaces.id;
 }
 
 int dcp_start(struct platform_device *pdev)
@@ -581,6 +619,9 @@ static void _dcp_poweroff(struct apple_dcp *dcp)
 	case DCP_FIRMWARE_V_13_5:
 		iomfb_poweroff_v13_3(dcp);
 		break;
+	case DCP_FIRMWARE_H17P:
+		iomfb_poweroff_h17p(dcp);
+		break;
 	default:
 		WARN_ONCE(true, "Unexpected firmware version: %u\n", dcp->fw_compat);
 		break;
@@ -640,6 +681,9 @@ static void __maybe_unused dcp_sleep(struct apple_dcp *dcp)
 	case DCP_FIRMWARE_V_13_5:
 		iomfb_sleep_v13_3(dcp);
 		break;
+	case DCP_FIRMWARE_H17P:
+		iomfb_sleep_h17p(dcp);
+		break;
 	default:
 		WARN_ONCE(true, "Unexpected firmware version: %u\n", dcp->fw_compat);
 		break;
@@ -664,6 +708,9 @@ void dcp_poweron(struct platform_device *pdev)
 		break;
 	case DCP_FIRMWARE_V_13_5:
 		iomfb_poweron_v13_3(dcp);
+		break;
+	case DCP_FIRMWARE_H17P:
+		iomfb_poweron_h17p(dcp);
 		break;
 	default:
 		WARN_ONCE(true, "Unexpected firmware version: %u\n", dcp->fw_compat);
@@ -759,7 +806,19 @@ static int dcp_create_piodma_iommu_dev(struct apple_dcp *dcp)
 	return 0;
 err_destroy_pdev:
 	of_platform_device_destroy(&dcp->piodma->dev, NULL);
+	dcp->piodma = NULL;
+	dcp->iommu_dom = NULL;
 	return ret;
+}
+
+static void dcp_destroy_piodma_iommu_dev(struct apple_dcp *dcp)
+{
+	if (!dcp->piodma)
+		return;
+
+	dcp->iommu_dom = NULL;
+	of_platform_device_destroy(&dcp->piodma->dev, NULL);
+	dcp->piodma = NULL;
 }
 
 static int dcp_get_bw_scratch_reg(struct apple_dcp *dcp, u32 expected)
@@ -862,16 +921,21 @@ err_of_node_put:
 static int dcp_get_disp_regs(struct apple_dcp *dcp)
 {
 	struct platform_device *pdev = to_platform_device(dcp->dev);
-	int count = pdev->num_resources - 1;
+	char name[sizeof("disp-0")];
+	int count = 0;
 	int i, ret;
 
-	if (count <= 0 || count > MAX_DISP_REGISTERS)
-		return -EINVAL;
-
-	for (i = 0; i < count; ++i) {
+	for (i = 0; i < MAX_DISP_REGISTERS; ++i) {
+		snprintf(name, sizeof(name), "disp-%d", i);
 		dcp->disp_registers[i] =
-			platform_get_resource(pdev, IORESOURCE_MEM, 1 + i);
+			platform_get_resource_byname(pdev, IORESOURCE_MEM, name);
+		if (!dcp->disp_registers[i])
+			break;
+		count++;
 	}
+
+	if (!count)
+		return -EINVAL;
 
 	/* load pmgr bandwidth scratch resource and offset */
 	ret = dcp_get_bw_scratch_reg(dcp, count);
@@ -941,6 +1005,9 @@ static enum dcp_firmware_version dcp_check_firmware_version(struct device *dev)
 	char fw_str[DCP_FW_VERSION_STR_LEN];
 	int ret;
 
+	if (of_device_is_compatible(dev->of_node, "apple,t8140-dcp"))
+		return DCP_FIRMWARE_H17P;
+
 	/* firmware version is just informative */
 	dcp_read_fw_version(dev, "apple,firmware-version", fw_str);
 
@@ -971,12 +1038,44 @@ static enum dcp_firmware_version dcp_check_firmware_version(struct device *dev)
 	return DCP_FIRMWARE_UNKNOWN;
 }
 
+static void apple_dcp_stop_fresh_boot_cpu(struct apple_dcp *dcp)
+{
+	u32 control;
+
+	if (!dcp->fresh_boot_cpu_started)
+		return;
+
+	/* AppleASCWrapV6::_runCPU(false): clear RUN, reread, clear bit 5. */
+	control = readl(dcp->coproc_reg + APPLE_DCP_COPROC_CPU_CONTROL);
+	writel(apple_dcp_coprocessor_stop_first(control),
+	       dcp->coproc_reg + APPLE_DCP_COPROC_CPU_CONTROL);
+	control = readl(dcp->coproc_reg + APPLE_DCP_COPROC_CPU_CONTROL);
+	writel(apple_dcp_coprocessor_stop_second(control),
+	       dcp->coproc_reg + APPLE_DCP_COPROC_CPU_CONTROL);
+	control = readl(dcp->coproc_reg + APPLE_DCP_COPROC_CPU_CONTROL);
+	dcp->fresh_boot_cpu_started = false;
+	dcp->adopted_session = false;
+
+	dev_info(dcp->dev, "DCP takeover: display CPU stopped control=%#x\n",
+		 control);
+}
+
 static int dcp_comp_bind(struct device *dev, struct device *main, void *data)
 {
 	struct device_node *panel_np;
 	struct apple_dcp *dcp = dev_get_drvdata(dev);
-	u32 cpu_ctrl;
+	enum apple_dcp_coprocessor_start start_mode;
+	enum apple_dcp_loader_handoff loader_handoff;
+	struct iommu_domain *coproc_iommu_dom;
+	phys_addr_t iop_vbar_phys;
+	u64 iop_vbar;
+	u32 cpu_ctrl, cpu_status;
+	u32 quiesced_state = 0, idle_state = 0, stopped_state = 0;
+	bool loader_quiesced, loader_idle, loader_stopped;
+	bool is_t8140;
 	int ret;
+
+	dcp->fresh_boot_cpu_started = false;
 
 	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(42));
 	if (ret)
@@ -985,6 +1084,47 @@ static int dcp_comp_bind(struct device *dev, struct device *main, void *data)
 	dcp->coproc_reg = devm_platform_ioremap_resource_byname(to_platform_device(dev), "coproc");
 	if (IS_ERR(dcp->coproc_reg))
 		return PTR_ERR(dcp->coproc_reg);
+	is_t8140 = of_device_is_compatible(dev->of_node, "apple,t8140-dcp");
+	if (is_t8140) {
+		dcp->iop_vbar_reg = devm_platform_ioremap_resource_byname(
+			to_platform_device(dev), "iop-vbar");
+		if (IS_ERR(dcp->iop_vbar_reg))
+			return PTR_ERR(dcp->iop_vbar_reg);
+	}
+
+	cpu_ctrl = readl_relaxed(dcp->coproc_reg +
+				 APPLE_DCP_COPROC_CPU_CONTROL);
+	cpu_status = readl_relaxed(dcp->coproc_reg +
+				   APPLE_DCP_COPROC_CPU_STATUS);
+	if (of_chosen) {
+		of_property_read_u32(of_chosen,
+				     APPLE_DCP_RTKIT_HANDOFF_PROPERTY,
+				     &quiesced_state);
+		of_property_read_u32(of_chosen, APPLE_DCP_RTKIT_IDLE_PROPERTY,
+				     &idle_state);
+		of_property_read_u32(of_chosen, APPLE_DCP_ASC_STOPPED_PROPERTY,
+				     &stopped_state);
+	}
+	loader_quiesced = quiesced_state == 1;
+	loader_idle = idle_state == 1;
+	loader_stopped = stopped_state == 1;
+	if (loader_quiesced + loader_idle + loader_stopped > 1)
+		dev_warn(dev, "multiple DCP loader states; using the lowest-level state\n");
+	if (loader_stopped)
+		loader_handoff = APPLE_DCP_LOADER_HANDOFF_ASC_STOPPED;
+	else if (loader_idle)
+		loader_handoff = APPLE_DCP_LOADER_HANDOFF_RTKIT_IDLE;
+	else if (loader_quiesced)
+		loader_handoff = APPLE_DCP_LOADER_HANDOFF_RTKIT_QUIESCED;
+	else
+		loader_handoff = APPLE_DCP_LOADER_HANDOFF_NONE;
+	start_mode = apple_dcp_coprocessor_start_mode(
+		loader_handoff, dcp->hw.adopt_running_coprocessor,
+		cpu_ctrl, cpu_status);
+	if (loader_stopped)
+		dev_info(dev,
+			 "DCP takeover: loader-stopped handoff detected (control=%#x status=%#x)\n",
+			 cpu_ctrl, cpu_status);
 
 	of_property_read_u32(dev->of_node, "apple,dcp-index",
 					   &dcp->index);
@@ -1043,6 +1183,20 @@ static int dcp_comp_bind(struct device *dev, struct device *main, void *data)
 	else
 		dcp->connector_type = DRM_MODE_CONNECTOR_Unknown;
 
+	if (is_t8140 && apple_dcp_needs_fresh_boot(start_mode)) {
+		iop_vbar = readq_relaxed(dcp->iop_vbar_reg);
+		coproc_iommu_dom = iommu_get_domain_for_dev(dev);
+		iop_vbar_phys = coproc_iommu_dom ?
+			iommu_iova_to_phys(coproc_iommu_dom, iop_vbar & ~1ULL) : 0;
+		dev_info(dev,
+			 "DCP takeover: IORVBAR=%#llx locked=%u maps-to=%pa\n",
+			 iop_vbar, !!(iop_vbar & 1), &iop_vbar_phys);
+		if (!(iop_vbar & 1) || !iop_vbar_phys)
+			return dev_err_probe(dev, -EIO,
+					     "DCP firmware entry point is not mapped\n");
+
+	}
+
 	ret = dcp_create_piodma_iommu_dev(dcp);
 	if (ret || !dcp->iommu_dom)
 		return dev_err_probe(dev, ret,
@@ -1051,13 +1205,21 @@ static int dcp_comp_bind(struct device *dev, struct device *main, void *data)
 	ret = dcp_get_disp_regs(dcp);
 	if (ret) {
 		dev_err(dev, "failed to find display registers\n");
-		return ret;
+		goto err_destroy_piodma;
 	}
 
 	dcp->clk = devm_clk_get(dev, NULL);
-	if (IS_ERR(dcp->clk))
-		return dev_err_probe(dev, PTR_ERR(dcp->clk),
-				     "Unable to find clock\n");
+	if (IS_ERR(dcp->clk)) {
+		ret = dev_err_probe(dev, PTR_ERR(dcp->clk),
+				    "Unable to find clock\n");
+		goto err_destroy_piodma;
+	}
+	dcp->clk_194 = devm_clk_get_optional(dev, "clock-194");
+	if (IS_ERR(dcp->clk_194)) {
+		ret = dev_err_probe(dev, PTR_ERR(dcp->clk_194),
+				    "Unable to find clock 0x194\n");
+		goto err_destroy_piodma;
+	}
 
 	bitmap_zero(dcp->memdesc_map, DCP_MAX_MAPPINGS);
 	// TDOD: mem_desc IDs start at 1, for simplicity just skip '0' entry
@@ -1068,20 +1230,83 @@ static int dcp_comp_bind(struct device *dev, struct device *main, void *data)
 	dcp->swapped_out_fbs =
 		(struct list_head)LIST_HEAD_INIT(dcp->swapped_out_fbs);
 
-	cpu_ctrl =
-		readl_relaxed(dcp->coproc_reg + APPLE_DCP_COPROC_CPU_CONTROL);
-	writel_relaxed(cpu_ctrl | APPLE_DCP_COPROC_CPU_CONTROL_RUN,
-		       dcp->coproc_reg + APPLE_DCP_COPROC_CPU_CONTROL);
+	if (apple_dcp_needs_adoption(start_mode)) {
+		dev_info(dev,
+			 "adopting live inherited DCP session (control=%#x status=%#x)\n",
+			 cpu_ctrl, cpu_status);
+		dcp->adopting_session = true;
+		dcp->rtk = devm_apple_rtkit_init_adopted(dev, dcp, "mbox", 0,
+							  &rtkit_ops);
+		if (IS_ERR(dcp->rtk)) {
+			dcp->adopting_session = false;
+			ret = dev_err_probe(dev, PTR_ERR(dcp->rtk),
+					    "Failed to adopt RTKit\n");
+			dcp->rtk = NULL;
+			goto err_destroy_piodma;
+		}
 
-	dcp->rtk = devm_apple_rtkit_init(dev, dcp, "mbox", 0, &rtkit_ops);
-	if (IS_ERR(dcp->rtk))
-		return dev_err_probe(dev, PTR_ERR(dcp->rtk),
-				     "Failed to initialize RTKit\n");
+		dcp->adopting_session = false;
+		dcp->adopted_session = true;
+	} else {
+		if (start_mode == APPLE_DCP_COPROCESSOR_QUIESCED_RESTART)
+			dev_info(dev, "restarting loader-quiesced DCP session\n");
+		else if (start_mode == APPLE_DCP_COPROCESSOR_IDLE_RESTART)
+			dev_info(dev, "restarting loader-idled DCP session\n");
+		else if (apple_dcp_needs_fresh_boot(start_mode))
+			dev_info(dev,
+				 "DCP takeover: starting stopped display CPU with a fresh RTKit session\n");
+		dcp->rtk = devm_apple_rtkit_init(dev, dcp, "mbox", 0,
+						   &rtkit_ops);
+		if (IS_ERR(dcp->rtk)) {
+			ret = dev_err_probe(dev, PTR_ERR(dcp->rtk),
+					    "Failed to initialize RTKit\n");
+			dcp->rtk = NULL;
+			goto err_destroy_piodma;
+		}
+	}
+
+	if (dcp->adopted_session) {
+		dev_info(dev, "live inherited RTKit session adopted\n");
+		return 0;
+	}
+
+	/* RTKit initialization starts the mailbox and enables the outbox first. */
+	cpu_ctrl = readl(dcp->coproc_reg + APPLE_DCP_COPROC_CPU_CONTROL);
+	cpu_ctrl |= APPLE_DCP_COPROC_CPU_CONTROL_RUN;
+	writel(cpu_ctrl, dcp->coproc_reg + APPLE_DCP_COPROC_CPU_CONTROL);
+	if (apple_dcp_needs_fresh_boot(start_mode))
+		dcp->fresh_boot_cpu_started = true;
+	cpu_ctrl = readl(dcp->coproc_reg + APPLE_DCP_COPROC_CPU_CONTROL);
+	if (apple_dcp_needs_fresh_boot(start_mode))
+		dev_info(dev,
+			 "DCP takeover: display CPU start control=%#x status=%#x\n",
+			 cpu_ctrl,
+			 readl_relaxed(dcp->coproc_reg +
+				       APPLE_DCP_COPROC_CPU_STATUS));
 
 	ret = apple_rtkit_wake(dcp->rtk);
-	if (ret)
-		return dev_err_probe(dev, ret,
-				     "Failed to boot RTKit: %d\n", ret);
+	if (ret) {
+		if (apple_dcp_needs_fresh_boot(start_mode))
+			dev_err(dev,
+				"DCP takeover: RTKit boot stopped at control=%#x status=%#x\n",
+				readl_relaxed(dcp->coproc_reg +
+					      APPLE_DCP_COPROC_CPU_CONTROL),
+				readl_relaxed(dcp->coproc_reg +
+					      APPLE_DCP_COPROC_CPU_STATUS));
+		ret = dev_err_probe(dev, ret,
+				    "Failed to boot RTKit: %d\n", ret);
+		goto err_stop_cpu;
+	}
+	if (apple_dcp_needs_fresh_boot(start_mode))
+		dev_info(dev, "DCP takeover: fresh RTKit boot complete\n");
+	return ret;
+
+err_stop_cpu:
+	apple_dcp_stop_fresh_boot_cpu(dcp);
+	devm_apple_rtkit_free(dev, dcp->rtk);
+	dcp->rtk = NULL;
+err_destroy_piodma:
+	dcp_destroy_piodma_iommu_dev(dcp);
 	return ret;
 }
 
@@ -1130,11 +1355,13 @@ static void dcp_comp_unbind(struct device *dev, struct device *main, void *data)
 	if (dcp->shmem)
 		iomfb_shutdown(dcp);
 
-	if (dcp->piodma) {
-		dcp->iommu_dom = NULL;
-		of_platform_device_destroy(&dcp->piodma->dev, NULL);
-		dcp->piodma = NULL;
+	apple_dcp_stop_fresh_boot_cpu(dcp);
+	if (dcp->rtk) {
+		devm_apple_rtkit_free(dev, dcp->rtk);
+		dcp->rtk = NULL;
 	}
+
+	dcp_destroy_piodma_iommu_dev(dcp);
 
 	if (dcp->connector_type == DRM_MODE_CONNECTOR_eDP) {
 		cancel_work_sync(&dcp->bl_register_wq);
@@ -1144,6 +1371,9 @@ static void dcp_comp_unbind(struct device *dev, struct device *main, void *data)
 
 	devm_clk_put(dev, dcp->clk);
 	dcp->clk = NULL;
+	if (dcp->clk_194)
+		devm_clk_put(dev, dcp->clk_194);
+	dcp->clk_194 = NULL;
 }
 
 static const struct component_ops dcp_comp_ops = {
@@ -1156,9 +1386,10 @@ static int dcp_platform_probe(struct platform_device *pdev)
 	enum dcp_firmware_version fw_compat;
 	struct device *dev = &pdev->dev;
 	struct apple_dcp *dcp;
-	int surf, num_surfs;
-	u32 surf_en;
+	int num_surfaces;
+	u32 surface_ids[DCP_MAX_PLANES];
 	u32 mux_index;
+	int ret;
 
 	fw_compat = dcp_check_firmware_version(dev);
 	if (fw_compat == DCP_FIRMWARE_UNKNOWN)
@@ -1180,6 +1411,28 @@ static int dcp_platform_probe(struct platform_device *pdev)
 	dcp->dev = dev;
 	dcp->hw = *(struct apple_dcp_hw_data *)of_device_get_match_data(dev);
 
+	if (!of_property_present(dev->of_node, "apple,iomfb-surfaces")) {
+		ret = apple_dcp_surface_order_init(&dcp->iomfb_surfaces, NULL, 0);
+	} else {
+		num_surfaces = of_property_count_u32_elems(dev->of_node,
+							  "apple,iomfb-surfaces");
+		if (num_surfaces <= 0 || num_surfaces > DCP_MAX_PLANES)
+			return dev_err_probe(dev,
+				num_surfaces < 0 ? num_surfaces : -EINVAL,
+				"invalid apple,iomfb-surfaces length %d\n",
+				num_surfaces);
+		ret = of_property_read_u32_array(dev->of_node,
+						 "apple,iomfb-surfaces",
+						 surface_ids, num_surfaces);
+		if (!ret)
+			ret = apple_dcp_surface_order_init(&dcp->iomfb_surfaces,
+							   surface_ids,
+							   num_surfaces);
+	}
+	if (ret)
+		return dev_err_probe(dev, ret,
+				     "invalid apple,iomfb-surfaces order\n");
+
 	platform_set_drvdata(pdev, dcp);
 
 	dcp->phy = devm_phy_optional_get(dev, "dp-phy");
@@ -1187,29 +1440,6 @@ static int dcp_platform_probe(struct platform_device *pdev)
 		dev_err(dev, "Failed to get dp-phy: %ld\n", PTR_ERR(dcp->phy));
 		return PTR_ERR(dcp->phy);
 	}
-
-	bitmap_zero(dcp->iomfb_surfaces, DCP_MAX_PLANES);
-	num_surfs = of_property_count_elems_of_size(dev->of_node,
-						    "apple,iomfb-surfaces",
-						    sizeof(u32));
-	if (num_surfs == -ENODATA) {
-		set_bit(0, dcp->iomfb_surfaces);
-		set_bit(1, dcp->iomfb_surfaces);
-	} else if (num_surfs < 0) {
-		return num_surfs;
-	} else if (num_surfs > DCP_MAX_PLANES) {
-		dev_err(dev, "Number of iomfb-surfaces (%d) exceeds DCP_MAX_PLANES\n",
-			num_surfs);
-		return -EINVAL;
-	}
-
-	surf = 0;
-	of_property_for_each_u32(dev->of_node, "apple,iomfb-surfaces", surf_en) {
-		if (surf_en)
-			set_bit(surf, dcp->iomfb_surfaces);
-		surf++;
-	}
-
 	if (dcp->phy) {
 		int ret;
 		/*
@@ -1347,6 +1577,11 @@ static const struct apple_dcp_hw_data apple_dcp_hw_t8112 = {
 	.num_dptx_ports = 2,
 };
 
+static const struct apple_dcp_hw_data apple_dcp_hw_t8140 = {
+	.num_dptx_ports = 0,
+	.adopt_running_coprocessor = true,
+};
+
 static const struct apple_dcp_hw_data apple_dcp_hw_dcp = {
 	.num_dptx_ports = 0,
 };
@@ -1358,6 +1593,7 @@ static const struct apple_dcp_hw_data apple_dcp_hw_dcpext = {
 static const struct of_device_id of_match[] = {
 	{ .compatible = "apple,t6020-dcp", .data = &apple_dcp_hw_t6020,  },
 	{ .compatible = "apple,t8112-dcp", .data = &apple_dcp_hw_t8112,  },
+	{ .compatible = "apple,t8140-dcp", .data = &apple_dcp_hw_t8140,  },
 	{ .compatible = "apple,dcp",       .data = &apple_dcp_hw_dcp,    },
 	{ .compatible = "apple,dcpext",    .data = &apple_dcp_hw_dcpext, },
 	{}

@@ -918,7 +918,7 @@ void DCP_FW_NAME(iomfb_poweroff)(struct apple_dcp *dcp)
 	for (int l = 0; l < SWAP_SURFACES; l++)
 		swap->surf_null[l] = true;
 #if DCP_FW_VER >= DCP_FW_VERSION(13, 2, 0)
-	for (int l = 0; l < 5; l++)
+	for (int l = 0; l < ARRAY_SIZE(swap->surf2_null); l++)
 		swap->surf2_null[l] = true;
 	swap->unkU32Ptr_null = true;
 	swap->unkU32out_null = true;
@@ -1293,7 +1293,7 @@ void DCP_FW_NAME(iomfb_flush)(struct apple_dcp *dcp, struct drm_crtc *crtc, stru
 	for (l = 0; l < SWAP_SURFACES; l++)
 		req->surf_null[l] = true;
 #if DCP_FW_VER >= DCP_FW_VERSION(13, 2, 0)
-	for (l = 0; l < 5; l++)
+	for (l = 0; l < ARRAY_SIZE(req->surf2_null); l++)
 		req->surf2_null[l] = true;
 	req->unkU32Ptr_null = true;
 	req->unkU32out_null = true;
@@ -1311,13 +1311,13 @@ void DCP_FW_NAME(iomfb_flush)(struct apple_dcp *dcp, struct drm_crtc *crtc, stru
 
 	for_each_oldnew_plane_in_state(state, plane, old_state, new_state, plane_idx) {
 		struct apple_plane_state *apple_state = to_apple_plane_state(new_state);
-		struct apple_plane *apl_plane = to_apple_plane(plane);
+		struct apple_plane *apple_plane = to_apple_plane(plane);
 
 		/* skip planes not for this crtc */
 		if (old_state->crtc != crtc && new_state->crtc != crtc)
 			continue;
 
-		l = apl_plane->iomfb_surf;
+		l = apple_plane->iomfb_surface;
 		req->swap.swap_enabled |= BIT(l);
 
 		if (old_state->fb && new_state->fb != old_state->fb) {
@@ -1424,6 +1424,8 @@ static void res_is_main_display(struct apple_dcp *dcp, void *out, void *cookie)
 	dev_info(dcp->dev, "DCP is_main_display: %d\n", result);
 
 	dcp->main_display = result != 0;
+	dev_info(dcp->dev, "DCP services ready: main display %d, modes %u\n",
+		 dcp->main_display, dcp->nr_modes);
 
 	connector = dcp->connector;
 	if (connector) {

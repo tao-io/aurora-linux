@@ -58,7 +58,7 @@ static int apple_drm_gem_dumb_create(struct drm_file *file_priv,
                             struct drm_device *drm,
                             struct drm_mode_create_dumb *args)
 {
-        args->pitch = ALIGN(DIV_ROUND_UP(args->width * args->bpp, 8), 64);
+	args->pitch = apple_dcp_linear_pitch(args->width, args->bpp);
         args->size = round_up(args->pitch * args->height, DART_PAGE_SIZE);
 
 	return drm_gem_dma_dumb_create_internal(file_priv, drm, args);
@@ -273,25 +273,23 @@ static int apple_probe_per_dcp(struct device *dev,
 	struct apple_connector *connector;
 	struct apple_encoder *enc;
 	struct drm_plane *planes[DCP_MAX_PLANES];
-	unsigned long *iomfb_surfaces = dcp_get_iomfb_surfaces(dcp);
-	int ret;
-	u32 surf;
-	int zpos = 0;
+	const u32 *iomfb_surfaces;
+	enum drm_plane_type type;
+	u32 num_surfaces;
+	int ret, zpos;
 	bool supports_l10r = !dcp_fw_compat_is_12_x(dcp);
-	enum drm_plane_type plane_type;
 
-	for_each_set_bit(surf, iomfb_surfaces, DCP_MAX_PLANES) {
-		plane_type = (zpos == 0) ? DRM_PLANE_TYPE_PRIMARY : DRM_PLANE_TYPE_OVERLAY;
-		planes[zpos] = apple_plane_init(drm, 1U << num, surf,
-						supports_l10r, plane_type);
+	iomfb_surfaces = dcp_get_iomfb_surfaces(dcp, &num_surfaces);
+	for (zpos = 0; zpos < num_surfaces; zpos++) {
+		type = zpos ? DRM_PLANE_TYPE_OVERLAY : DRM_PLANE_TYPE_PRIMARY;
+		planes[zpos] = apple_plane_init(drm, 1U << num,
+						 iomfb_surfaces[zpos],
+						 supports_l10r, type);
 		if (IS_ERR(planes[zpos]))
 			return PTR_ERR(planes[zpos]);
-
 		ret = drm_plane_create_zpos_immutable_property(planes[zpos], zpos);
 		if (ret)
 			return ret;
-
-		zpos++;
 	}
 
 	/*
@@ -464,9 +462,11 @@ static int apple_drm_init(struct device *dev)
 
 	dev_set_drvdata(dev, apple);
 
+	dev_info(dev, "DCP takeover: component bind begin\n");
 	ret = component_bind_all(dev, apple);
 	if (ret)
 		return ret;
+	dev_info(dev, "DCP takeover: component bind complete\n");
 
 	ret = drmm_mode_config_init(&apple->drm);
 	if (ret)
@@ -495,6 +495,7 @@ static int apple_drm_init(struct device *dev)
 	ret = apple_drm_init_dcp(dev);
 	if (ret)
 		goto err_unbind;
+	dev_info(dev, "DCP takeover: services ready for modeset\n");
 
 	drm_mode_config_reset(&apple->drm);
 
@@ -509,6 +510,7 @@ static int apple_drm_init(struct device *dev)
 	ret = drm_dev_register(&apple->drm, 0);
 	if (ret)
 		goto err_unbind;
+	dev_info(dev, "DCP takeover: DRM modeset ready\n");
 
 	drm_client_setup_with_fourcc(&apple->drm, DRM_FORMAT_XRGB8888);
 
