@@ -357,9 +357,10 @@ static int g16_drm_job_enter(struct g16_drm_job *job)
 	}
 	g16_render_clean_tree(&job->uat);
 	dma_wmb();
-	pr_info("g16_lab: DRM submit: publishing %u client mappings, %llu bytes, %u UAT leaves; CPU cache maintenance %llu bytes in %u ranges\n",
-		job->vm->mapping_count, job->vm->mapping_bytes, job->uat.leaves,
-		job->cache_bytes, job->cache_range_count);
+	if (g16_render_log_submissions())
+		pr_info("g16_lab: DRM submit: publishing %u client mappings, %llu bytes, %u UAT leaves; CPU cache maintenance %llu bytes in %u ranges\n",
+			job->vm->mapping_count, job->vm->mapping_bytes, job->uat.leaves,
+			job->cache_bytes, job->cache_range_count);
 	return g16_drm_job_switch_root(job, true);
 }
 

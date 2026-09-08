@@ -157,8 +157,9 @@ static int g16_render_build_ta(void)
 		g16_render_put((u8 *)notifier + 0x24, 6, 4);
 		g16_render_put((u8 *)notifier + 0xb8, 0x16000001, 4);
 	}
-	pr_info("g16_lab: render: built experimental %ux%u TA registers=%d VDM=%#llx PB=128 pages TPC=%llu bytes\n",
-		g16_render_width(), g16_render_height(), count, g16_render_vdm_base(), geometry.tpc_bytes);
+	if (g16_render_log_submissions())
+		pr_info("g16_lab: render: built experimental %ux%u TA registers=%d VDM=%#llx PB=128 pages TPC=%llu bytes\n",
+			g16_render_width(), g16_render_height(), count, g16_render_vdm_base(), geometry.tpc_bytes);
 #undef GPU
 #undef TILER
 #undef D
@@ -257,7 +258,8 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 		if (!sgx)
 			return -ENOMEM;
 	}
-	pr_info("g16_lab: render: kicking TA, direct MMIO observer=%u\n", render_fault_observe);
+	if (g16_render_log_submissions())
+		pr_info("g16_lab: render: kicking TA, direct MMIO observer=%u\n", render_fault_observe);
 	ret = g16_asc_send(asc, J713_PIPE_KICK_TA_GROUP0, 0x21);
 	if (ret) {
 		if (sgx)
@@ -268,7 +270,8 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 		g16_render_observe_launch(sgx);
 		iounmap(sgx);
 	}
-	pr_info("g16_lab: render: submitted InitPB + captured vertex/TA job; awaiting GPU-written tiling data\n");
+	if (g16_render_log_submissions())
+		pr_info("g16_lab: render: submitted InitPB + captured vertex/TA job; awaiting GPU-written tiling data\n");
 	deadline = jiffies + msecs_to_jiffies(1500);
 	do {
 		ret = g16_lab_drain_statistics_ring();
@@ -290,7 +293,8 @@ static int g16_render_test_ta(void __iomem *asc, u64 crashlog_iova,
 		    !g16_render_get(queue + J713_QUEUE_BUSY_OFFSET, 4)) {
 			unsigned int i;
 
-			pr_info("g16_lab: render: TA completion stamp=%#x ring=%u busy=0; snapshotting issued state\n", stamp, end);
+			if (g16_render_log_submissions())
+				pr_info("g16_lab: render: TA completion stamp=%#x ring=%u busy=0; snapshotting issued state\n", stamp, end);
 			if (g16_drm_active_job)
 				return 0;
 			g16_lab_dump_gpu_engine_issue_registers();

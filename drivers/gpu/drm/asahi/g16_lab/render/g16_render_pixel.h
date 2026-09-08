@@ -146,8 +146,9 @@ static int g16_render_build_fragment(void)
 	g16_render_put(work + 0xc46, g16_initdata_live_barrier_va + 0xe00, 8);
 	g16_render_put(work + 0xc57, base + 0x60100, 8);
 	g16_render_put(work + 0x9d8, mode, 8);
-	pr_info("g16_lab: render: built %ux%u fragment diagnostic registers=%d mode=%#llx; pixel output not yet verified\n",
-		g16_render_width(), g16_render_height(), count, mode);
+	if (g16_render_log_submissions())
+		pr_info("g16_lab: render: built %ux%u fragment diagnostic registers=%d mode=%#llx; pixel output not yet verified\n",
+			g16_render_width(), g16_render_height(), count, mode);
 #undef GPU
 #undef D
 out:
@@ -279,7 +280,8 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 	ret = g16_asc_send(asc, J713_PIPE_KICK_TA_GROUP0 | 1, 0x21);
 	if (ret)
 		return ret;
-	pr_info("g16_lab: render: submitted fragment diagnostic after retired TA\n");
+	if (g16_render_log_submissions())
+		pr_info("g16_lab: render: submitted fragment diagnostic after retired TA\n");
 	deadline = jiffies + msecs_to_jiffies(1500);
 	do {
 		ret = g16_lab_drain_statistics_ring();
@@ -297,7 +299,8 @@ static int g16_render_test_fragment(void __iomem *asc, u64 crashlog_iova,
 		    g16_render_get(state + J713_QUEUE_RING_GPU_DONEPTR_OFFSET, 4) == end &&
 		    g16_render_get(work + 0xc808, 4) == stamp &&
 		    !g16_render_get(queue + J713_QUEUE_BUSY_OFFSET, 4)) {
-			pr_info("g16_lab: render: fragment diagnostic retired stamp=%#x ring=%u; pixel verification still required\n", stamp, end);
+			if (g16_render_log_submissions())
+				pr_info("g16_lab: render: fragment diagnostic retired stamp=%#x ring=%u; pixel verification still required\n", stamp, end);
 			/* Client commands are checked by their application. Never compare
 			 * arbitrary draws against the lab's canned RGB image. */
 			return g16_drm_active_job ? 0 : g16_render_verify_pixels();

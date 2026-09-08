@@ -2722,6 +2722,15 @@ MODULE_PARM_DESC(render_drm_target, "Export the userspace-paced render target as
 static bool render_drm_submit;
 module_param(render_drm_submit, bool, 0444);
 MODULE_PARM_DESC(render_drm_submit, "Accept bounded Asahi render submissions from root-owned GEM VMs");
+static bool render_trace_submissions;
+module_param(render_trace_submissions, bool, 0644);
+MODULE_PARM_DESC(render_trace_submissions, "Log every successful DRM render stage instead of only the initial eight frames and timing summaries");
+
+static bool g16_render_log_submissions(void)
+{
+	return !render_drm_submit || READ_ONCE(render_trace_submissions) || g16_render_frame < 8;
+}
+
 static unsigned int render_trusted_uid;
 module_param(render_trusted_uid, uint, 0444);
 MODULE_PARM_DESC(render_trusted_uid, "Explicit trusted desktop UID for supervised render-node experiments; zero keeps root-only access");
@@ -6743,10 +6752,11 @@ static int g16_lab_drain_firmware_event_ring(void)
 				       record.flag.unknown_14, consumer, producer);
 				return -EPROTO;
 			}
-			pr_info("g16_lab: received exact G16 firmware flag event firing=%#010x/%#010x/%#010x/%#010x unknown_14=%#06x\n",
-				record.flag.firing[0], record.flag.firing[1],
-				record.flag.firing[2], record.flag.firing[3],
-				record.flag.unknown_14);
+			if (g16_render_log_submissions())
+				pr_info("g16_lab: received exact G16 firmware flag event firing=%#010x/%#010x/%#010x/%#010x unknown_14=%#06x\n",
+					record.flag.firing[0], record.flag.firing[1],
+					record.flag.firing[2], record.flag.firing[3],
+					record.flag.unknown_14);
 			break;
 		case J713_FW_EVENT_RECOVERY_TYPE:
 			g16_firmware_recovery_generation =
@@ -6776,7 +6786,7 @@ static int g16_lab_drain_firmware_event_ring(void)
 		drained++;
 	}
 
-	if (drained)
+	if (drained && g16_render_log_submissions())
 		pr_info("g16_lab: drained firmware-event records=%u consumer=%u producer=%u first-type=%#x last-type=%#x\n",
 			drained, consumer, producer, first_type, last_type);
 	return g16_lab_service_firmware_recovery();
@@ -6863,7 +6873,7 @@ static int g16_lab_drain_statistics_ring(void)
 		drained++;
 	}
 
-	if (drained)
+	if (drained && g16_render_log_submissions())
 		pr_info("g16_lab: drained statistics records=%u consumer=%u producer=%u first-type=%#x last-type=%#x\n",
 			drained, consumer, producer, first_type, last_type);
 	return g16_lab_drain_firmware_event_ring();

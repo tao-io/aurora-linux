@@ -658,9 +658,13 @@ def main():
         if args.render_drm_submit:
             metadata['vertex_fragment_pixels_verified'] = metadata.get('drm_submit', {}).get('passed', False)
             metadata['client_vm_publications'] = current_log.count('DRM submit: publishing ')
+            # Successful publication logs are sampled during long sessions.
+            # The stopped worker's completion counter is the job authority.
+            metadata['client_jobs_completed'] = metadata['render_service']['final_status']['completed']
             passed = (passed and metadata['vertex_fragment_pixels_verified']
-                      and (metadata['client_vm_publications'] == 8 if args.drm_frame_budget == 8
-                           else 0 < metadata['client_vm_publications'] <= args.drm_frame_budget)
+                      and (metadata['client_jobs_completed'] == 8 if args.drm_frame_budget == 8
+                           else 0 < metadata['client_jobs_completed'] <= args.drm_frame_budget)
+                      and metadata['render_service']['final_status']['result'] == 0
                       and metadata['fragment_job_retired'])
         passed = passed and metadata['render_queues_passed']
     if passed:
