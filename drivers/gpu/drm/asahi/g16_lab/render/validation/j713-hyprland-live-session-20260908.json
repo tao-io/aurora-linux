@@ -1,0 +1,34 @@
+{
+  "checked_at": "2026-09-08T07:09:04.385381+00:00",
+  "boot_id": "3e1514ce-7a9e-4051-a6c7-0ecd2383033b",
+  "run": "20260908T070728Z-render-ta",
+  "unit": "active",
+  "service": "ready=1 pending=0 completed=455 result=0 stopped=0",
+  "last_health": {
+    "event": "gpu-progress",
+    "check": {
+      "passed": true,
+      "device_id": 33074,
+      "physical_device_initialized": true,
+      "logical_device_initialized": true,
+      "graphics_commands_recorded": true,
+      "shader_submitted": true,
+      "pixels_checked": true,
+      "frames": 8,
+      "pixels_verified": 524288,
+      "vulkan": true,
+      "compositor_responsive": true
+    }
+  },
+  "health_records": 18,
+  "config_errors": "",
+  "scanout": {
+    "address": "0x103e1c8c000",
+    "bytes": 16384000,
+    "format": "x2r10g10b10",
+    "red_pixels": 4064153,
+    "sha256": "8da17b7a8ff41cb76296e43e37f585d72a490d36b986e4de2017ad64aed40c60"
+  },
+  "duration_limit_seconds": 3600,
+  "root_session": true
+}
