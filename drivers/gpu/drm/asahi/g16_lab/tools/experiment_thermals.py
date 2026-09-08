@@ -32,6 +32,7 @@ class ExperimentThermals:
     startup_limit_mc = 65000
     stop_limit_mc = 75000
     interval_seconds = 0.5
+    sync_interval_seconds = 5
     stale_seconds = 2
 
     def __init__(self, result, sysfs=Path('/sys'), on_trip=stop_workload):
@@ -42,6 +43,7 @@ class ExperimentThermals:
         self.peaks = {}
         self.samples = 0
         self.last_sample = None
+        self.last_sync = None
         self.failure = None
         self.stop_event = threading.Event()
         self.thread = None
@@ -77,7 +79,9 @@ class ExperimentThermals:
         with (self.result / 'temperatures.jsonl').open('a') as log:
             log.write(json.dumps(record) + '\n')
             log.flush()
-            os.fsync(log.fileno())
+            if self.last_sync is None or time.monotonic() - self.last_sync >= self.sync_interval_seconds:
+                os.fdatasync(log.fileno())
+                self.last_sync = time.monotonic()
         self.samples += 1
         self.last_sample = record['monotonic_seconds']
         if max(readings.values()) >= self.stop_limit_mc:
@@ -87,6 +91,7 @@ class ExperimentThermals:
     def summary(self):
         return {'startup_limit_mc': self.startup_limit_mc, 'stop_limit_mc': self.stop_limit_mc,
                 'interval_seconds': self.interval_seconds, 'samples': self.samples,
+                'sync_interval_seconds': self.sync_interval_seconds,
                 'peak_temperatures_mc': dict(self.peaks), 'failure': self.failure,
                 'dedicated_gpu_sensor_verified': False, 'log': 'temperatures.jsonl'}
 
@@ -95,13 +100,13 @@ class ExperimentThermals:
         self.failure = repr(error)
         print('Thermal experiment stop: ' + self.failure, flush=True)
         try:
+            # Stop first: slow or failed storage must not delay this request.
+            self.on_trip()
+        finally:
             with (self.result / 'thermal-stop.json').open('w') as log:
                 json.dump(self.summary(), log, indent=2)
                 log.flush()
                 os.fsync(log.fileno())
-        finally:
-            # Even a full evidence filesystem must not suppress the stop.
-            self.on_trip()
 
     def monitor(self):
         while not self.stop_event.wait(self.interval_seconds):
@@ -131,3 +136,7 @@ class ExperimentThermals:
         self.stop_event.set()
         if self.thread:
             self.thread.join(timeout=2)
+        path = self.result / 'temperatures.jsonl'
+        if path.exists():
+            with path.open('rb') as log:
+                os.fdatasync(log.fileno())
