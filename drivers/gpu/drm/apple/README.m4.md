@@ -395,3 +395,13 @@ requested D582, 2560x1664, 8/4 bytes. Its M4 caller at 0x1d0268 explicitly
 handles false by logging allocation failure and releasing the optional default
 surface, then returning to startup. Add `--decline-default-surface` to exercise
 that path without pretending that a native default scanout surface exists.
+
+`20260908-nodfb-start` (boot `034e0c9f-01e8-4e2e-a799-792f327d2315`,
+54.25 C peak) reached the end of A401 startup, published display timings and
+attributes, answered D123/D006 and returned `01000000`. The test incorrectly
+expected a status word of zero and therefore remained armed for recovery.
+**Correction:** A401's M4 wrapper at 0x1e33bc..0x1e33c4 converts its internal
+status to a boolean: zero internal status produces output byte 1. Startup
+success must be checked against `01000000`, not `00000000`. Repeat with the
+correct assertion before using the session for swaps. Declining the optional
+surface does not abort firmware startup; no default framebuffer was allocated.
