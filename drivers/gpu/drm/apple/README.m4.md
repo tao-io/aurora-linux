@@ -77,5 +77,14 @@ the OS-usable boot-args range. The captured boot log gives usable RAM as
 0x10002770000..0x103dd1dc000, while firmware occupies reserved physical DRAM
 on either side. m1n1 759676a checks ADT physical DRAM bounds instead and adds a
 host regression test that rejects the original bug. The corrected release
-bundle is built; installation and hardware boot validation are pending recovery.
+bundle is built; its installation and hardware boot validation remain pending.
 All native DCP/display/DART nodes remain disabled in that DT.
+
+Recovery on 2026-09-08 restored the previously working stage2 bundle, SHA-256
+`f037440477898f8e91d8aa5095009e84b5867ce41dab9c4a7d8ffa1cc46928fc`, through
+macOS on the verified J713 host. The EFI partition UUID was checked against
+`1920ef80-74de-4f1c-a635-80be34cda073` before replacement. Omarchy was blessed
+and rebooted successfully: Linux boot ID `0cb07a76-0729-4850-a556-ab2ac806d9c0`,
+kernel `7.1.9-dirtyroom-gpu1+` build #9, graphical target active, no failed
+systemd units. The kernel and restored bundle hashes matched the pre-experiment
+versions. This confirms recovery, not the corrected native handoff or DCP flips.
