@@ -47,9 +47,9 @@ static int g16_render_build_fragment(void)
 		D(0x580, (u64)g16_drm_active_job->rsrc_hi[2] << 32 | r->bg.rsrc_spec, 8);
 		D(0x6d8, (u64)g16_drm_active_job->rsrc_hi[0] << 32 | r->eot.rsrc_spec, 8);
 		D(0x5b0, (u64)g16_drm_active_job->rsrc_hi[3] << 32 | r->partial_bg.rsrc_spec, 8);
-		D(0x5b8, r->partial_bg.usc, 8);
+		D(0x5b8, 0x10000000000ULL + (r->partial_bg.usc & ~63U), 8);
 		D(0x6f8, (u64)g16_drm_active_job->rsrc_hi[1] << 32 | r->partial_eot.rsrc_spec, 8);
-		D(0x700, r->partial_eot.usc, 8);
+		D(0x700, 0x10000000000ULL + (r->partial_eot.usc & ~63U), 8);
 		D(0x428, r->isp_dbias_base, 8);
 		D(0x430, r->isp_scissor_base, 8);
 		D(0x438, r->isp_oclqry_base, 8);
