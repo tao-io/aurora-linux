@@ -134,7 +134,7 @@ int main(int argc, char **argv)
          target = resource;
    }
    CHECK(closedir(directory) == 0 && count == 34 && vertices && target && target->size == 0x44000);
-   struct drm_prime_handle prime = {.handle = target->handle, .flags = DRM_CLOEXEC, .fd = -1};
+   struct drm_prime_handle prime = {.handle = target->handle, .flags = DRM_CLOEXEC | DRM_RDWR, .fd = -1};
    CHECK(ioctl(drm, DRM_IOCTL_PRIME_HANDLE_TO_FD, &prime) == 0 && prime.fd >= 0);
    /* Keep the readback VMA independent of the DRM file for the close test. */
    CHECK(munmap(target->cpu, target->size) == 0);
