@@ -29,6 +29,7 @@ use crate::{
     file,
     g15_boot,
     g16_firmware,
+    g16_device,
     g16_resources,
     g17_boot,
     g17_drm,
@@ -387,28 +388,33 @@ fn probe_t8140_runtime(
 /// Identify an AGX3 target as far as read-only evidence allows, then refuse.
 ///
 /// This logs the statically decoded identity, performs the read-only SGX
-/// identification (ID block + core-enable masks; no DMA mask, no ASC start,
-/// no MMIO write), cross-checks the two, and stops at the generation-specific
-/// firmware boundary.
+/// identification (ID block + core-enable masks), cross-checks the two, and
+/// stops at the generation-specific firmware boundary. J713 first acquires
+/// its validated power dependencies; no path here starts ASC or registers DRM.
 fn refuse_agx3_probe(pdev: &platform::Device<Core>, soc: &'static hw::agx3::SocConfig) -> Error {
     if soc.chip_id == 0x8132 {
         // Validate the normal device resources before touching SGX registers.
         // The private lab /chosen export is deliberately not a fallback.
         match g16_resources::from_device(pdev)
             .and_then(|resources| g16_firmware::identify_loaded(pdev, resources)) {
-            Ok(firmware) => dev_info!(
-                pdev.as_ref(),
-                "G16G: loaded {} text hash matches J713 evidence, PA={:#x} VA={:#x}; owned startup still required\n",
-                firmware.version(), firmware.resources.regions[4].base,
-                firmware.resources.firmware_vas[0]
-            ),
+            Ok(firmware) => {
+                dev_info!(
+                    pdev.as_ref(),
+                    "G16G: loaded {} text hash matches J713 evidence, PA={:#x} VA={:#x}; owned startup still required\n",
+                    firmware.version(), firmware.resources.regions[4].base,
+                    firmware.resources.firmware_vas[0]
+                );
+                match g16_device::Device::new(pdev, firmware) {
+                    Ok(_device) => dev_info!(pdev.as_ref(), "G16G: owned power and identity complete; UAT/runtime startup next\n"),
+                    Err(error) => return error,
+                }
+            },
             Err(error) => {
                 dev_err!(pdev.as_ref(), "G16G: missing J713 resources or unsupported loaded firmware: {:?}\n", error);
                 return error;
             }
         }
-        // SGX can still be powered off. Do not perform even ID reads until
-        // the runtime owns and enables its power dependencies.
+        // Power has been released. UAT/RTKit and the DRM frontend are next.
         return ENODEV;
     }
 

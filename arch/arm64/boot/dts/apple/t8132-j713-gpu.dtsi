@@ -34,6 +34,7 @@
 		reg-names = "asc", "sgx";
 		mboxes = <&agx_mbox>;
 		power-domains = <&ps_gfx>;
+		apple,pmp = <&pmp>;
 		memory-region = <&gpu_ttbs>, <&gpu_pagetables>, <&gpu_handoff>,
 				<&gpu_shared_l2>, <&gpu_fw_text>, <&gpu_fw_data>;
 		memory-region-names = "ttbs", "pagetables", "handoff",

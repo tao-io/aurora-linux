@@ -402,7 +402,7 @@ unsafe impl Sync for PmpData {}
 /// # Safety
 /// `data` must point to the live PmpData registered by PmpDriver.
 #[export]
-pub unsafe extern "C" fn apple_pmp_lab_send_command(
+pub unsafe extern "C" fn apple_pmp_send_power_command(
     data: *const core::ffi::c_void,
     command: u8,
     device_id: u16,
@@ -491,7 +491,7 @@ struct PmpDriver(Arc<PmpData>);
 impl Drop for PmpDriver {
     fn drop(&mut self) {
         // SAFETY: The Arc remains live until unregister has joined any caller.
-        unsafe { bindings::apple_pmp_lab_unregister(Arc::as_ptr(&self.0).cast()) };
+        unsafe { bindings::apple_pmp_unregister(Arc::as_ptr(&self.0).cast()) };
     }
 }
 
@@ -535,7 +535,7 @@ impl platform::Driver for PmpDriver {
         data.start()?;
         dev_info!(dev, "PMP firmware and endpoint ready");
         // SAFETY: PmpDriver retains this Arc and unregisters it before dropping it.
-        let ret = unsafe { bindings::apple_pmp_lab_register(Arc::as_ptr(&data).cast()) };
+        let ret = unsafe { bindings::apple_pmp_register(dev.as_raw(), Arc::as_ptr(&data).cast()) };
         if ret != 0 {
             return Err(Error::from_errno(ret));
         }

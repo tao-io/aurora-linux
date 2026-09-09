@@ -19,6 +19,12 @@ description: |
   apple,g16-handoff-version is written only after all regions are published.
 
 properties:
+  apple,pmp:
+    $ref: /schemas/types.yaml#/definitions/phandle
+    description:
+      Power Management Processor serving the inner AGX device-power requests,
+      after the outer PMGR GFX domain is active.
+
   compatible:
     const: apple,agx-t8132
 
