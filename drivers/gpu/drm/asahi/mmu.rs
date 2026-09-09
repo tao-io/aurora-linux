@@ -338,6 +338,9 @@ pub(crate) enum HandoffMode {
     /// The AGX2-proven protocol: firmware publishes `magic_fw`, participates
     /// in the Dekker lock, and ACKs flush requests (state 1 -> 2).
     FirmwareDekker,
+    /// Identified J713/25G83 firmware initializes its PPL handoff lazily.
+    /// Publish the exact host state before ASC starts, without a magic wait.
+    LazyFirmwareT8132,
     /// T8140-verified stand-in: the firmware never participates in the
     /// handoff region. The AP publishes its own half and clears the flush
     /// slots, but never waits for `magic_fw` (hardware fact: it never
@@ -541,6 +544,8 @@ impl UatConfig {
             oas: cfg.uat_oas,
         }
     }
+
+    const T8132: Self = Self { chip_id: 0x8132, ias: 42, oas: 42 };
 
     const T8140: Self = Self {
         chip_id: 0x8140,
@@ -1835,8 +1840,18 @@ impl Handoff {
     /// publishes its own state and proceeds without a peer.
     fn init(&self, mode: HandoffMode) -> Result {
         self.magic_ap.store(PPL_MAGIC, Ordering::Relaxed);
-        self.cur_slot.store(0, Ordering::Relaxed);
+        self.cur_slot.store(if mode == HandoffMode::LazyFirmwareT8132 { 0xffff } else { 0 }, Ordering::Relaxed);
         self.unk3.store(0, Ordering::Relaxed);
+        if mode == HandoffMode::LazyFirmwareT8132 {
+            // This mode is constructed only with ASC stopped. Preserve the
+            // firmware magic but initialize the AP producer's lock/flush state.
+            self.lock_ap.store(0, Ordering::Relaxed);
+            self.lock_fw.store(0, Ordering::Relaxed);
+            self.turn.store(0, Ordering::Relaxed);
+            if self.magic_fw.load(Ordering::Relaxed) != PPL_MAGIC {
+                self.unk2.store(1, Ordering::Relaxed);
+            }
+        }
         fence(Ordering::SeqCst);
 
         if mode == HandoffMode::FirmwareDekker {
@@ -1933,7 +1948,7 @@ impl HandoffFlush {
         // state to 2. In the T8140 absent-handoff stand-in nothing consumes
         // it, so the state legitimately remains where begin_flush left it.
         let expected = match self.1 {
-            HandoffMode::FirmwareDekker => 2,
+            HandoffMode::FirmwareDekker | HandoffMode::LazyFirmwareT8132 => 2,
             HandoffMode::AbsentStandinT8140 => 1,
         };
         if state != expected {
@@ -1969,7 +1984,21 @@ impl Vm {
         let iova_kern_range = iova_kern_range(cfg)?;
 
         let page_table = if let Some(ttb) = ttb {
-            UatPageTable::new_with_ttb(ttb, iova_kern_range.clone(), cfg.ias, cfg.oas)?
+            if cfg == UatConfig::T8132 {
+                let node = dev.as_ref().of_node().ok_or(ENODEV)?;
+                let mut resources = KVec::new();
+                for name in [c_str!("pagetables"), c_str!("shared-l2")] {
+                    resources.push(node.reserved_mem_region_to_resource_byname(name)?, GFP_KERNEL)?;
+                }
+                // SAFETY: The M4 constructor admits these reservations and
+                // requires ASC stopped during handoff/table initialization.
+                let tables = unsafe { crate::pgtable_memory::ReservedTables::new(resources) }?;
+                unsafe { UatPageTable::new_with_reserved_ttb(ttb, iova_kern_range.clone(), cfg.ias, cfg.oas, tables) }?
+            } else {
+                UatPageTable::new_with_ttb(ttb, iova_kern_range.clone(), cfg.ias, cfg.oas)?
+            }
+        } else if cfg == UatConfig::T8132 {
+            UatPageTable::new_noncoherent(cfg.ias, cfg.oas)?
         } else {
             UatPageTable::new(cfg.ias, cfg.oas)?
         };
@@ -4571,8 +4600,9 @@ impl Uat {
     /// Creates the reference-counted inner data for a new `Uat` instance.
     #[inline(never)]
     fn make_inner(dev: &driver::AsahiDevice, handoff_mode: HandoffMode) -> Result<Arc<UatInner>> {
-        let handoff_rgn = Self::map_region(dev.as_ref(), c_str!("handoff"), HANDOFF_SIZE, true)?;
-        let ttbs_rgn = Self::map_region(dev.as_ref(), c_str!("ttbs"), SLOTS_SIZE, true)?;
+        let cached = handoff_mode != HandoffMode::LazyFirmwareT8132;
+        let handoff_rgn = Self::map_region(dev.as_ref(), c_str!("handoff"), HANDOFF_SIZE, cached)?;
+        let ttbs_rgn = Self::map_region(dev.as_ref(), c_str!("ttbs"), SLOTS_SIZE, cached)?;
 
         // SAFETY: The Handoff struct layout matches the firmware's view of memory at this address,
         // and the region is at least large enough per the size specified above.
@@ -4606,6 +4636,22 @@ impl Uat {
             }),
             GFP_KERNEL,
         )
+    }
+
+    /// Construct the admitted J713 firmware's common UAT manager.
+    ///
+    /// # Safety
+    /// The caller owns GPU power and ASC control. ASC must be stopped during
+    /// construction; all firmware/GPU access must be quiesced before Drop.
+    /// All jobs must retain their VM and GEM owners through hardware retirement.
+    pub(crate) unsafe fn new_t8132(dev: &driver::AsahiDevice, firmware: &crate::g16_firmware::Firmware) -> Result<Self> {
+        let node = dev.as_ref().of_node().ok_or(ENODEV)?;
+        for (index, name) in [(0, c_str!("ttbs")), (1, c_str!("pagetables")), (2, c_str!("handoff")), (3, c_str!("shared-l2"))] {
+            let resource = node.reserved_mem_region_to_resource_byname(name)?;
+            if resource.start() != firmware.resources.regions[index].base
+                || resource.size() != firmware.resources.regions[index].size { return Err(EINVAL); }
+        }
+        Self::new_with_config(dev, UatConfig::T8132, false, HandoffMode::LazyFirmwareT8132)
     }
 
     /// Creates a new `Uat` instance given the relevant hardware config, using
@@ -4810,6 +4856,8 @@ impl Uat {
         map_kernel_to_user: bool,
         handoff_mode: HandoffMode,
     ) -> Result<Self> {
+        // M4 requires the stopped-ASC contract of its unsafe constructor.
+        if handoff_mode == HandoffMode::LazyFirmwareT8132 { return Err(EINVAL); }
         Self::new_with_config(
             dev,
             UatConfig::from_hw(cfg),
@@ -4837,6 +4885,9 @@ impl Uat {
         // T8140.
         let kernel_range = iova_kern_range(cfg)?;
         match handoff_mode {
+            HandoffMode::LazyFirmwareT8132 => {
+                if cfg != UatConfig::T8132 { return Err(ENODEV); }
+            }
             HandoffMode::FirmwareDekker => {
                 if cfg.ias != 39 && !AGX3_FIRMWARE_HANDOFF_VALIDATED {
                     dev_err!(
@@ -4989,6 +5040,19 @@ impl Uat {
 
 impl Drop for Uat {
     fn drop(&mut self) {
+        if self.cfg == UatConfig::T8132 {
+            self.inner.firmware_cache_flush_ready.store(false, Ordering::Release);
+            let inner = self.inner.lock();
+            let _guard = match inner.lock_handoff() {
+                Ok(guard) => guard,
+                Err(_) => return, // Faulted VM owners retain their backing.
+            };
+            for slot in inner.ttbs() {
+                slot.ttb0.store(0, Ordering::Release);
+                slot.ttb1.store(0, Ordering::Release);
+            }
+        }
+
         // Make sure we flush the TLBs
         fence(Ordering::SeqCst);
         mem::tlbi_all();

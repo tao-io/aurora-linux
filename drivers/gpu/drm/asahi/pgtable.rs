@@ -309,6 +309,7 @@ pub(crate) struct UatPageTable {
     ttb: PhysicalAddr,
     ttb_owned: bool,
     quarantined: bool,
+    noncoherent: bool,
     reserved_tables: Option<ReservedTables>,
     va_range: Range<u64>,
     geometry: UatGeometry,
@@ -325,11 +326,20 @@ impl UatPageTable {
             ttb,
             ttb_owned: true,
             quarantined: false,
+            noncoherent: false,
             reserved_tables: None,
             va_range: 0..geometry.root_size(),
             geometry,
             oas_mask: (1u64 << oas) - 1,
         })
+    }
+
+    /// Allocate a normal owned root with explicit table publication to PoC.
+    pub(crate) fn new_noncoherent(ias: u8, oas: u32) -> Result<Self> {
+        let mut table = Self::new(ias, oas)?;
+        table.noncoherent = true;
+        table.with_table(table.ttb, 0, UAT_NPTE, true, |_| Ok(()))?;
+        Ok(table)
     }
 
     /// Resolve one mapped IOVA through this page table without touching the
@@ -386,6 +396,7 @@ impl UatPageTable {
             ttb,
             ttb_owned: false,
             quarantined: false,
+            noncoherent: false,
             reserved_tables: None,
             va_range,
             geometry,
@@ -417,6 +428,7 @@ impl UatPageTable {
             ttb,
             ttb_owned: false,
             quarantined: false,
+            noncoherent: true,
             reserved_tables: Some(reserved_tables),
             va_range,
             geometry,
@@ -442,7 +454,7 @@ impl UatPageTable {
         let access = |entries: &[Pte]| {
             let entries = &entries[index..index + count];
             let result = cb(entries);
-            if write && self.reserved_tables.is_some() {
+            if write && self.noncoherent {
                 // Publish only changed table spans, never a whole VM at each
                 // submission. Also publish partial writes on a callback error.
                 Self::publish_table(entries);
@@ -581,7 +593,7 @@ impl UatPageTable {
                             if upte_val == 0 && alloc {
                                 let pt_page = Page::alloc_page(GFP_KERNEL | __GFP_ZERO)?;
                                 mod_pr_debug!("UATPageTable::with_pages: alloc PT at {:#x}\n", pt_page.phys());
-                                if self.reserved_tables.is_some() {
+                                if self.noncoherent {
                                     pt_page.with_pointer_into_page(0, UAT_PGSZ, |pointer| {
                                         // SAFETY: Fresh zeroed page, still owned here.
                                         Self::publish_table(unsafe { core::slice::from_raw_parts(pointer.cast::<Pte>(), UAT_NPTE) });
