@@ -79,6 +79,26 @@ Neither the new bootloader nor kernel has been installed on the J713.
 
 ## Runtime integration boundary
 
+The outer power hierarchy is now represented as GFX TVM -> PMGR GFX, with
+both nodes disabled pending guarded integration tests. The TVM provider owns
+only bit 0 of `0x380760800`. The GFX PMGR provider requires that parent and
+enables automatic gating after reaching the active state. PMP's inner AGX
+power request is a separate firmware operation, after the outer domain is on.
+
+PMP requests now wait for the serialized device-state reply instead of treating
+mailbox enqueue as completion. The J713 coexistence log at
+`_provenance/omarchy-m4-display/20260909-gfx-coexist/dmesg.log` records
+`0x0020f50100000000` and `0x0020f50000000000` requests both acknowledged by
+`0x0021000000000000`. A timeout or unexpected reply prevents further requests
+in that session: the wire protocol has no request ID to distinguish a late
+reply. Three host protocol tests and the ARM64 object build pass; this new
+request implementation has not yet been executed on the J713.
+
+That same log records `magic_fw == 0` at the old driver's pre-submit boundary,
+with the protected handoff export pointing to the correct host magic. M4 must
+therefore implement its lazy handoff initialization, not wait unconditionally
+for the older AGX2 magic acknowledgement or assume Neo's absent-peer policy.
+
 Use `drm_gpu::DrmGpu`, the common DRM file/GEM/syncobj layer and queue contract
 for the M4 backend. The Neo backend supplies useful implementations and
 evidence, but its firmware layout, dual-ASC lifecycle and generation-specific

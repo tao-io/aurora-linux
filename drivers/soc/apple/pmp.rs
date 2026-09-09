@@ -7,6 +7,9 @@
 
 use core::mem;
 
+mod pmp_power;
+use pmp_power::Command;
+
 use kernel::{
     bindings,
     device::{
@@ -25,7 +28,7 @@ use kernel::{
     iosys_map::IoSysMapRef,
     kvec,
     module_platform_driver,
-    new_mutex,
+    new_condvar, new_mutex,
     of,
     platform,
     prelude::*,
@@ -34,6 +37,7 @@ use kernel::{
     sync::{
         aref::ARef,
         Arc,
+        CondVar, CondVarTimeoutResult,
         Mutex, //
     },
     transmute::{
@@ -50,8 +54,8 @@ const BOOTARGS_SIZE: usize = 0x230;
 const CPU_CONTROL: usize = 0x44;
 const CPU_RUN: u32 = 0x1 << 4;
 const PMP_ENDPOINT: u8 = 0x20;
-const PM_COMMAND_MARKER: u64 = 1 << 53;
-const PM_COMMAND_SHIFT: u32 = 44;
+const PM_COMMAND_MARKER: u64 = pmp_power::MARKER;
+const PM_COMMAND_SHIFT: u32 = pmp_power::SHIFT;
 const OPC_GET_IOVA_TABLE: u64 = 0x10;
 const OPC_MALLOC: u64 = 0x12;
 const OPC_FREE: u64 = 0x14;
@@ -129,6 +133,10 @@ struct PmpData {
     rtkit: Mutex<Option<rtkit::RtKit<PmpData>>>,
     #[pin]
     state: Mutex<PmpState>,
+    #[pin]
+    power_command: Mutex<Command>,
+    #[pin]
+    power_reply: CondVar,
 }
 
 impl PmpData {
@@ -144,7 +152,9 @@ impl PmpData {
                     pmp_mmio,
                     asc_mmio,
                     rtkit <- new_mutex!(None),
-                    state <- new_mutex!(PmpState::new()?)
+                    state <- new_mutex!(PmpState::new()?),
+                    power_command <- new_mutex!(Command::Idle),
+                    power_reply <- new_condvar!(),
                 }
             ),
             GFP_KERNEL,
@@ -352,7 +362,12 @@ impl PmpData {
     fn recv_message(&self, msg: u64) -> Result<()> {
         let pm_command = (msg >> PM_COMMAND_SHIFT) & 0xff;
         if msg & PM_COMMAND_MARKER != 0 && (pm_command == 0x0f || pm_command == 0x10) {
-            dev_info!(self.dev, "PMP device-state reply raw={:#018x}", msg);
+            let mut state = self.power_command.lock();
+            state.reply(msg);
+            if *state == Command::Failed {
+                dev_err!(self.dev, "Unexpected PMP device-state reply {:#018x}; power commands disabled", msg);
+            }
+            self.power_reply.notify_all();
             return Ok(());
         }
         let opc = (msg >> OPC_SHIFT) & 0xFF;
@@ -381,7 +396,8 @@ impl PmpData {
 unsafe impl Send for PmpData {}
 unsafe impl Sync for PmpData {}
 
-/// Send a lab power request while the C bridge holds the driver-lifetime mutex.
+/// Send a power request while the C bridge serializes the untagged reply stream.
+/// A lost reply disables further requests until the PMP session is recreated.
 ///
 /// # Safety
 /// `data` must point to the live PmpData registered by PmpDriver.
@@ -398,17 +414,46 @@ pub unsafe extern "C" fn apple_pmp_lab_send_command(
         | ((command as u64) << PM_COMMAND_SHIFT)
         | ((device_id as u64) << 40)
         | ((enabled as u64) << 32);
-    let mut guard = data.rtkit.lock();
-    let Some(rtk) = guard.as_mut().as_pin_mut() else {
-        return ENODEV.to_errno();
-    };
-    match rtk.send_message(PMP_ENDPOINT, message) {
-        Ok(()) => {
-            dev_info!(data.dev, "PMP lab device={} enabled={} raw={:#018x}", device_id, enabled, message);
-            0
+    {
+        let mut state = data.power_command.lock();
+        if !state.begin(command) {
+            return EIO.to_errno();
         }
-        Err(error) => error.to_errno(),
     }
+    let sent = {
+        let mut guard = data.rtkit.lock();
+        match guard.as_mut().as_pin_mut() {
+            Some(rtk) => rtk.send_message(PMP_ENDPOINT, message),
+            None => Err(ENODEV),
+        }
+    };
+    let mut state = data.power_command.lock();
+    if let Err(error) = sent {
+        *state = Command::Failed;
+        return error.to_errno();
+    }
+    let mut remaining = kernel::time::msecs_to_jiffies(1000);
+    while matches!(*state, Command::Pending(_)) {
+        match data.power_reply.wait_interruptible_timeout(&mut state, remaining) {
+            CondVarTimeoutResult::Woken { jiffies } => remaining = jiffies,
+            CondVarTimeoutResult::Timeout | CondVarTimeoutResult::Signal { .. } => {
+                // A reply may have arrived while the waiter reacquired its
+                // mutex. Consume it if complete; otherwise never reuse the
+                // untagged stream after an ambiguous wait.
+                if *state != Command::Complete {
+                    *state = Command::Failed;
+                    dev_err!(data.dev, "PMP device-power request {:#018x} did not complete", message);
+                    return ETIMEDOUT.to_errno();
+                }
+            }
+        }
+    }
+    if *state != Command::Complete {
+        return EIO.to_errno();
+    }
+    *state = Command::Idle;
+    dev_dbg!(data.dev, "PMP device={} enabled={} acknowledged", device_id, enabled);
+    0
 }
 
 struct NoBuffer;
@@ -434,6 +479,8 @@ impl rtkit::Operations for PmpData {
     }
 
     fn crashed(data: <Self::Data as ForeignOwnable>::Borrowed<'_>, _crashlog: Option<&[u8]>) {
+        *data.power_command.lock() = Command::Failed;
+        data.power_reply.notify_all();
         dev_err!(data.dev, "PMP firmware crashed");
     }
 }
