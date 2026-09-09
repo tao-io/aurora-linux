@@ -9,8 +9,8 @@ use core::ops::Range;
 use kernel::{device::Core, drm, new_mutex, platform, prelude::*, sync::{Arc, Mutex}, uapi};
 use crate::{alloc, driver, drm_gpu::{DrmGpu, DrmGpuParams}, gem, gpu, hw, mmu, queue};
 
-type Shared = Arc<Mutex<Option<crate::g16_runtime::Runtime>>>;
-const USER_TOP: u64 = (1u64 << 42) - 2 * mmu::UAT_PGSZ as u64;
+pub(crate) type Shared = Arc<Mutex<Option<crate::g16_runtime::Runtime>>>;
+pub(crate) const USER_TOP: u64 = (1u64 << 42) - 2 * mmu::UAT_PGSZ as u64;
 
 pub(crate) struct Registered {
     registration: Pin<KBox<Mutex<Option<drm::driver::Registration<driver::AsahiDriver>>>>>,
@@ -33,8 +33,10 @@ impl Registered {
         // Install the teardown owner before publishing the backend. On any
         // later construction failure Drop breaks the runtime -> DRM cycle.
         let owner = Self { registration: KBox::pin_init(new_mutex!(None), GFP_KERNEL)?, shared: shared.clone() };
+        let scheduler = Arc::new(drm::sched::Scheduler::new(drm.as_ref(), 4, 1, 0,
+            3000, kernel::c_str!("asahi_m4_sched"))?, GFP_KERNEL)?;
         let backend: Arc<dyn DrmGpu> = Arc::new(Backend {
-            shared, ids: gpu::SequenceIDs::default(), core_mask: mask,
+            shared, scheduler, ids: gpu::SequenceIDs::default(), core_mask: mask,
         }, GFP_KERNEL)?;
         if !drm.gpu.populate(backend) { return Err(EBUSY); }
         *owner.registration.lock() = Some(drm::driver::Registration::new(&drm, 0)?);
@@ -62,6 +64,7 @@ impl Drop for Registered {
 
 struct Backend {
     shared: Shared,
+    scheduler: Arc<drm::sched::Scheduler<crate::g16_submit::Job>>,
     ids: gpu::SequenceIDs,
     core_mask: u32,
 }
@@ -73,6 +76,16 @@ impl DrmGpu for Backend {
         !self.shared.lock().as_ref().is_some_and(|runtime| runtime.healthy())
     }
     fn update_globals(&self) {}
+    fn supports_vm_status(&self) -> bool { true }
+    fn submission_error(&self) -> i32 { if self.is_crashed() { EIO.to_errno() } else { 0 } }
+    fn service_g16_jobs(&self) {
+        loop {
+            let pending = Option::as_mut(&mut *self.shared.lock())
+                .is_some_and(|runtime| runtime.service_job());
+            if !pending { break; }
+            kernel::time::delay::fsleep(kernel::time::Delta::from_micros(100));
+        }
+    }
     fn params(&self) -> Result<DrmGpuParams> {
         let mut masks = [0; uapi::DRM_ASAHI_MAX_CLUSTERS as usize];
         masks[0] = self.core_mask;
@@ -95,14 +108,14 @@ impl DrmGpu for Backend {
     fn new_vm(&self, range: Range<u64>) -> Result<mmu::Vm> {
         Option::as_mut(&mut *self.shared.lock()).ok_or(ENODEV)?.new_user_vm(self.ids.vm.next(), range)
     }
-    fn new_queue(&self, _vm: mmu::Vm, _ualloc: Arc<Mutex<alloc::DefaultAllocator>>,
-        _ualloc_priv: Arc<Mutex<alloc::DefaultAllocator>>, _priority: u32,
-        _usc_exec_base: u64) -> Result<KBox<dyn queue::Queue>> {
-        // Userspace jobs are admitted only after the M4 command translator
-        // and ownership/fence path are installed. The probe shader is separate.
-        Err(ENOTSUPP)
+    fn new_queue(&self, vm: mmu::Vm, _ualloc: Arc<Mutex<alloc::DefaultAllocator>>,
+        _ualloc_priv: Arc<Mutex<alloc::DefaultAllocator>>, priority: u32,
+        usc_exec_base: u64) -> Result<KBox<dyn queue::Queue>> {
+        let drm = self.shared.lock().as_ref().ok_or(ENODEV)?.drm();
+        Ok(KBox::new(crate::g16_submit::Queue::new(self.shared.clone(),
+            self.scheduler.clone(), drm, vm, priority, usc_exec_base)?, GFP_KERNEL)?)
     }
-    fn map_timestamp_buffer(&self, _bo: gem::ObjectRef, _range: Range<usize>) -> Result<mmu::KernelMapping> {
-        Err(ENOTSUPP)
+    fn map_timestamp_buffer(&self, bo: gem::ObjectRef, range: Range<usize>) -> Result<mmu::KernelMapping> {
+        self.shared.lock().as_ref().ok_or(ENODEV)?.map_timestamp(bo, range)
     }
 }

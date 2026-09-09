@@ -478,3 +478,31 @@ Verified 60-second watchdog, six-channel thermal peak 51.25 C, no sensor failure
 run it only inside the watchdog/thermal wrapper. Queue creation and timestamp
 mapping are still refused pending their owned userspace submission path.
 This does not establish Vulkan or desktop rendering.
+
+## Userspace compute through the shared Asahi UAPI
+
+`user-compute-2`, boot 77e14891-ac11-4d51-97eb-c5c7853f92b9, passed eight
+GPU stores from two independent DRM clients. Both mapped their own shader,
+ESL, CDM and output at identical user VAs, alternating hardware ASIDs 2/3.
+Every syncobj wait returned verified output 0x44a72000 after resetting that
+client's output to 0xdeadbeef. Queue reuse and subsequent open-file platform
+unbind/module unload passed. Watchdog 60 seconds; thermal peak 51.25 C.
+Evidence: `_provenance/asahi-pivot-20260909/hardware/user-compute-{1,2}/`.
+
+The first attempt exposed firmware retaining a job-local notifier after engine
+retirement (PC 0x23cd8, FAR at the old threshold). Notification storage now
+belongs to the persistent firmware queue and its threshold advances only when
+DRM schedules runnable work. Command allocations remain private to each job.
+
+DRM entities share an initial one-credit device scheduler. Submission returns
+before execution completes; a workqueue polls exact engine/firmware retirement
+and signals the hardware fence. Accepted packets retain the common VM job guard,
+and unproven retirement quarantines DMA backing until reboot. Timestamps map
+through common GEM and convert the 24 MHz clock to UAPI nanoseconds, but user
+timestamp delivery and scheduler dependency combinations are not yet tested.
+
+Render, sampler/helper state and nonzero compute flags are explicitly refused.
+This is a direct UAPI diagnostic using a generated known shader, not Vulkan.
+The current per-command 32 MiB private pool is conservative allocation policy;
+its reuse, adaptive sizing and growth remain work. Ring wrap is implemented but
+the hardware test covered eight user entries, not a complete wrap.

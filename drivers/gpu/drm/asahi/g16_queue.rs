@@ -7,6 +7,10 @@ use kernel::prelude::*;
 use crate::{driver, g16_memory::{self, Buffer}, mmu};
 
 pub(crate) struct Queue {
+    capacity: u32,
+    notification: Buffer,
+    threshold: Buffer,
+    submitted: u64,
     info: Buffer,
     ring_state: Buffer,
     ring: Buffer,
@@ -22,6 +26,10 @@ impl Queue {
         // mask; capacity is supplied by the queue policy rather than a lab cap.
         if !capacity.is_power_of_two() || !(2..=65536).contains(&capacity) { return Err(EINVAL); }
         let mut queue = Self {
+            capacity,
+            notification: Buffer::new(dev, vm, 0x200)?,
+            threshold: Buffer::new(dev, vm, 8)?,
+            submitted: 0,
             info: Buffer::new(dev, vm, 0x24c0)?,
             ring_state: Buffer::new(dev, vm, 0x60)?,
             ring: Buffer::new(dev, vm, capacity as usize * 8)?,
@@ -30,6 +38,11 @@ impl Queue {
             command: Buffer::new(dev, vm, 0x40)?,
             stamp: Buffer::new(dev, vm, 8)?,
         };
+        queue.notification.u64(0, queue.threshold.va())?;
+        queue.notification.u32(8, 1)?;
+        queue.notification.u32(0x10, 0x50)?;
+        queue.notification.write(0xa8, &[255; 8])?;
+        queue.notification.u32(0x114, 1)?;
         queue.info.u64(0, queue.ring_state.va())?;
         queue.info.u64(8, queue.ring.va())?;
         queue.info.u64(0x10, queue.notifier.va())?;
@@ -54,6 +67,15 @@ impl Queue {
         Ok(queue)
     }
 
+    pub(crate) fn notification(&self) -> crate::g16_compute::Notification {
+        crate::g16_compute::Notification { address: self.notification.va(), threshold: self.threshold.va() }
+    }
+    pub(crate) fn advance_threshold(&mut self) -> Result {
+        self.submitted = self.submitted.checked_add(1).ok_or(EOVERFLOW)?;
+        self.threshold.u64(0, self.submitted)?;
+        Ok(())
+    }
+
     pub(crate) fn prepare_barrier(&mut self) -> Result<u64> {
         if self.ring_state.read_u32(0x40)? != 0 { return Err(EBUSY); }
         self.ring.u64(0, self.command.va())?;
@@ -72,6 +94,21 @@ impl Queue {
         self.ring_state.u32(0x40, 1)?;
         g16_memory::publish();
         Ok(self.info.va())
+    }
+
+    /// Append after exact retirement of the previous entry. The initial
+    /// scheduler uses one hardware credit; indices wrap at the real ring size.
+    pub(crate) fn append_idle(&mut self, command: u64) -> Result<(u64, u32)> {
+        if command & 7 != 0 { return Err(EINVAL); }
+        let status = self.status()?;
+        let write = status[4];
+        if status != [write, write, write, write, write, 0] { return Err(EBUSY); }
+        self.ring.u64(write as usize * 8, command)?;
+        g16_memory::publish();
+        let next = (write + 1) & (self.capacity - 1);
+        self.ring_state.u32(0x40, next)?;
+        g16_memory::publish();
+        Ok((self.info.va(), next))
     }
 
     pub(crate) fn status(&mut self) -> Result<[u32; 6]> {

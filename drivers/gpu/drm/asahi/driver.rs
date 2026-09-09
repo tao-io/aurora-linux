@@ -52,6 +52,8 @@ pub(crate) struct AsahiData {
     pub(crate) gpu: SetOnce<Arc<dyn drm_gpu::DrmGpu>>,
     pub(crate) pdev: ARef<platform::Device>,
     pub(crate) resources: Option<regs::Resources>,
+    #[pin]
+    g16_completion_work: Work<AsahiDevice, 3>,
     g17_runtime: SetOnce<g17_drm::G17PRuntimeRef>,
     #[pin]
     g17_event_work: Work<AsahiDevice, 1>,
@@ -67,6 +69,7 @@ impl AsahiData {
             pdev,
             resources,
             g17_runtime: SetOnce::new(),
+            g16_completion_work <- new_work!("AsahiData::g16_completion_work"),
             g17_event_work <- new_work!("AsahiData::g17_event_work"),
             g17_recovery_work <- new_work!("AsahiData::g17_recovery_work"),
         })
@@ -83,8 +86,19 @@ unsafe impl Send for AsahiData {}
 unsafe impl Sync for AsahiData {}
 
 impl_has_work! {
+    impl HasWork<AsahiDevice, 3> for AsahiData { self.g16_completion_work }
     impl HasWork<AsahiDevice, 1> for AsahiData { self.g17_event_work }
     impl HasWork<AsahiDevice, 2> for AsahiData { self.g17_recovery_work }
+}
+
+impl WorkItem<3> for AsahiData {
+    type Pointer = ARef<AsahiDevice>;
+    fn run(dev: ARef<AsahiDevice>) {
+        if let Ok(gpu) = dev.gpu() { gpu.service_g16_jobs(); }
+    }
+}
+pub(crate) fn queue_g16_completion_worker(dev: ARef<AsahiDevice>) {
+    let _ = workqueue::system_highpri().enqueue::<ARef<AsahiDevice>, 3>(dev);
 }
 
 impl WorkItem<1> for AsahiData {
@@ -149,7 +163,6 @@ enum AsahiRuntime {
 }
 
 pub(crate) struct AsahiDriver {
-    #[expect(unused)]
     runtime: AsahiRuntime,
 }
 

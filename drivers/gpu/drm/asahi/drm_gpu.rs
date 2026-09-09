@@ -42,6 +42,7 @@ pub(crate) trait DrmGpu: Send + Sync {
     /// Permanent submission-domain failure; querying must not reset firmware.
     fn submission_error(&self) -> i32 { 0 }
     fn update_globals(&self);
+    fn service_g16_jobs(&self) {}
     fn params(&self) -> Result<DrmGpuParams>;
     fn user_range(&self) -> Result<Range<u64>>;
     fn unknown_page(&self) -> Result<u64>;

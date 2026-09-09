@@ -32,7 +32,12 @@ const PRIVATE_PAGES: usize = PRIVATE_BYTES / 0x1000;
 impl Compute {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, config: &mut crate::g16_config::Config) -> Result<Self> {
         let vm = uat.new_vm(0x81320020, 0x70_0000_0000..0x80_0000_0000)?;
-        let uma_client = config.bind_uma_table(&vm)?;
+        Self::in_vm(dev, uat, config, &vm, None, None, 1)
+    }
+    pub(crate) fn in_vm(dev: &driver::AsahiDevice, uat: &mmu::Uat,
+        config: &mut crate::g16_config::Config, vm: &mmu::Vm,
+        control: Option<g16_compute::Control>, notification: Option<g16_compute::Notification>, generation: u8) -> Result<Self> {
+        let uma_client = config.bind_uma_table(vm)?;
         let gpu = |size| Buffer::new_gpu(dev, uat.kernel_vm(), &vm, size);
         // The engine fetches the register list in bootstrap context zero, then
         // switches to the client ASID. Retain exactly this command GEM in both
@@ -62,7 +67,7 @@ impl Compute {
             binding: uat.bind(&vm)?,
         };
         let mut bytes = KBox::new([0; g16_compute::SIZE], GFP_KERNEL)?;
-        g16_compute::encode(&mut bytes[..], Addresses {
+        let addresses = Addresses {
             command: job.command.va(), command_gpu: job.command.gpu_va()?,
             cdm_gpu: job.cdm.gpu_va()?,
             preemption_gpu: job.preemption.gpu_va()?, metrics: job.metrics.va(),
@@ -70,8 +75,15 @@ impl Compute {
             slot_state: job.slot_state.va(), context_store_gpu: job.context_store.gpu_va()?,
             pool_state_gpu: job.pool_state.gpu_va()?, page_list_gpu: job.page_list.gpu_va()?,
             counter: job.counter.va(),
-            context: job.binding.slot(), generation: 1,
-        }, 0x4000, PRIVATE_PAGES as u32).map_err(|_| EINVAL)?;
+            context: job.binding.slot(), generation,
+        };
+        if let Some(control) = control {
+            g16_compute::encode_dispatch(&mut bytes[..], addresses, 0x4000,
+                PRIVATE_PAGES as u32, control, notification).map_err(|_| EINVAL)?;
+        } else {
+            g16_compute::encode(&mut bytes[..], addresses, 0x4000,
+                PRIVATE_PAGES as u32).map_err(|_| EINVAL)?;
+        }
         let private_base = job.private_memory.gpu_va()?;
         for page in 0..PRIVATE_PAGES {
             job.pool_state.u64(page * 8, private_base + page as u64 * 0x1000)?;
@@ -85,12 +97,13 @@ impl Compute {
         job.cdm.write(0, &g16_dispatch::cdm(job.esl.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.output.u32(0, g16_dispatch::SENTINEL)?;
         g16_memory::publish();
+        job.log_context(dev)?;
         Ok(job)
     }
     pub(crate) fn log_context(&self, dev: &driver::AsahiDevice) -> Result {
         let mut roots = [(0, 0); 2];
         self.binding.vm().context_roots(&mut roots)?;
-        dev_info!(dev.as_ref(), "G16G: owned compute user context={} generation=1 roots={:x?}\n", self.binding.slot(), roots);
+        dev_info!(dev.as_ref(), "G16G: owned compute user context={} roots={:x?}\n", self.binding.slot(), roots);
         Ok(())
     }
     pub(crate) fn log_progress(&mut self, dev: &driver::AsahiDevice) -> Result {

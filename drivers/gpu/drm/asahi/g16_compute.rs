@@ -24,18 +24,42 @@ pub(crate) const SIZE: usize = 0x1000;
 pub(crate) const SLOT: u8 = 15;
 pub(crate) const STAMP: u32 = 0x100;
 
+/// Userspace supplies a complete CDM byte range; its terminating word is
+/// exclusive-end minus four. USC addresses remain in the client's 4 GiB window.
+#[derive(Clone, Copy)]
+pub(crate) struct Notification {
+    pub address: u64,
+    pub threshold: u64,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Control {
+    pub base: u64,
+    pub end: u64,
+    pub usc_base: u64,
+}
+
 /// Encode an owned-context dispatch with initialized USC private memory.
 /// The backing owner provides at least 0x20000 bytes of context storage,
 /// a pool-state array of `pool_qwords`, and a page-list allocation. The
 /// qualification shader does not request spills; no captured pool is copied.
 pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32, pages: u32) -> Result<(), ()> {
-    if out.len() < SIZE || a.command < 0xffff_fc00_0000_0000
+    encode_dispatch(out, a, pool_qwords, pages,
+        Control { base: a.cdm_gpu, end: a.cdm_gpu + 0x30, usc_base: 0 }, None)
+}
+
+pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
+    pages: u32, control: Control, notification: Option<Notification>) -> Result<(), ()> {
+    if control.base == 0 || control.base & 3 != 0 || control.end & 3 != 0
+        || control.end <= control.base || control.end >= (1 << 42)
+        || control.usc_base & 0xffff_ffff != 0 || control.usc_base >= (1 << 42)
+        || out.len() < SIZE || a.command < 0xffff_fc00_0000_0000
         || a.command.checked_add(SIZE as u64).is_none()
         || a.context >= 64 || (a.context != 0 && a.generation == 0)
         || a.command & 0x3fff != 0 || a.slot_state & 7 != 0
         || a.counter & 7 != 0 || pool_qwords == 0
         || pages > pool_qwords || pages % 512 != 0
-        || [a.command_gpu, a.cdm_gpu, a.auxiliary_gpu, a.preemption_gpu, a.context_store_gpu, a.pool_state_gpu, a.page_list_gpu]
+        || [a.command_gpu, a.auxiliary_gpu, a.preemption_gpu, a.context_store_gpu, a.pool_state_gpu, a.page_list_gpu]
             .iter().any(|va| *va == 0 || *va & 0x3fff != 0 || *va >= (1 << 42) - 0x20000)
         || a.metrics < 0xffff_fc00_0000_0000 || a.metrics & 7 != 0
         || a.slot_state < 0xffff_fc00_0000_0000 || a.counter < 0xffff_fc00_0000_0000 {
@@ -45,16 +69,16 @@ pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32, pages: u32)
     let c = a.command;
     let g = a.command_gpu;
     let sku = c + 0x900;
-    let threshold = c + 0xf00;
+    let threshold = notification.map_or(c + 0xf00, |n| n.threshold);
     let uma = c + 0xe00;
     let u32_at = |b: &mut [u8], off, value: u32| b[off..off + 4].copy_from_slice(&value.to_le_bytes());
     let u64_at = |b: &mut [u8], off, value: u64| b[off..off + 8].copy_from_slice(&value.to_le_bytes());
     u32_at(out, 0, 3);
-    u64_at(out, 0x10, c + 0xc00);
+    u64_at(out, 0x10, notification.map_or(c + 0xc00, |n| n.address));
     u32_at(out, 0xc, a.context);
     out[0x88b] = a.generation;
     let registers: &[(u32, u64)] = &[
-        (0x1a510, a.preemption_gpu), (0x1a420, a.cdm_gpu),
+        (0x1a510, a.preemption_gpu), (0x1a420, control.base),
         (0x1a4d0, a.preemption_gpu + 0x1480), (0x1a4d8, a.preemption_gpu + 0x1488),
         (0x1a4e0, a.preemption_gpu + 0x1490), (0x1a4e8, a.preemption_gpu + 0x1498),
         (0x1a440, 0x154024201), (0x1a458, 0x10c08860),
@@ -68,12 +92,18 @@ pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32, pages: u32)
         u32_at(out, 0x20 + i * 12, *register);
         u64_at(out, 0x24 + i * 12, *value);
     }
+    let mut count = registers.len() as u32;
+    if control.usc_base != 0 {
+        u32_at(out, 0x20 + count as usize * 12, 0x10071);
+        u64_at(out, 0x24 + count as usize * 12, control.usc_base);
+        count += 1;
+    }
     u64_at(out, 0x720, g + 0x20);
-    u32_at(out, 0x728, 24 | ((24 * 12) << 16));
+    u32_at(out, 0x728, count | ((count * 12) << 16));
     u64_at(out, 0x760, sku);
     u32_at(out, 0x768, 0x300);
     u64_at(out, 0x798, a.preemption_gpu);
-    u64_at(out, 0x7a0, a.cdm_gpu + 0x2c);
+    u64_at(out, 0x7a0, control.end - 4);
     u64_at(out, 0x7c8, 0x154024201);
     u32_at(out, 0x7e8, u32::MAX);
     u64_at(out, 0x800, c + 0xee4);
