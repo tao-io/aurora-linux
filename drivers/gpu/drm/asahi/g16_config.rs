@@ -192,6 +192,42 @@ impl Config {
         Ok(())
     }
 
+    /// Serialized device-control producer. Ring geometry is a firmware ABI
+    /// constraint; no queue or allocation count is limited by a lab pool.
+    pub(crate) fn enqueue_control(&mut self, opcode: u32, payload: u32,
+        generation: &mut u32, device: &crate::g16_device::Device) -> Result<u32> {
+        if !matches!(opcode, 0x1a | 0x34 | 0x0a) { return Err(EINVAL); }
+        let [read, cfi, write] = self.control_indices()?;
+        if read != write || cfi != write { return Err(EBUSY); }
+        let mut entry = [0; 0x40];
+        entry[..4].copy_from_slice(&opcode.to_le_bytes());
+        entry[4..8].copy_from_slice(&payload.to_le_bytes());
+        self.object(Object::DevctrlRing).write(write as usize * 0x40, &entry)?;
+        // All three admitted opcodes require a power assertion in the M4 ABI.
+        *generation = generation.wrapping_add(1);
+        device.set_power_generation(*generation)?;
+        g16_memory::publish();
+        let next = (write + 1) % 256;
+        self.object(Object::DevctrlState).u32(0x20, next)?;
+        g16_memory::publish();
+        Ok(next)
+    }
+    pub(crate) fn control_indices(&mut self) -> Result<[u32; 3]> {
+        let state = self.object(Object::DevctrlState);
+        let indices = [state.read_u32(0)?, state.read_u32(0x10)?, state.read_u32(0x20)?];
+        if indices.iter().any(|index| *index >= 256) { return Err(EIO); }
+        Ok(indices)
+    }
+    pub(crate) fn consumed_generation(&mut self) -> Result<u32> {
+        self.object(Object::FirmwareData).read_u32(0xeae8)
+    }
+    pub(crate) fn rearm_scheduler(&mut self) -> Result {
+        if self.object(Object::FirmwareData).read_u32(0x4fd4)? != 0 { return Err(EBUSY); }
+        self.object(Object::FirmwareData).u32(0x4fd4, 1)?;
+        g16_memory::publish();
+        Ok(())
+    }
+
     pub(crate) fn root(&self) -> u64 { self.va(Object::Root) }
     pub(crate) fn ready(&mut self) -> Result<bool> { Ok(self.object(Object::Control).read_u32(0x14)? == 1) }
 

@@ -286,3 +286,16 @@ M4 kernel-VM construction now adopts that same table before creating GEM
 mappings. A conflicting root or detached nonempty table is rejected. This
 preserves the common walker and allocator while honoring the firmware's boot
 translation contract. Hardware acceptance after this correction is pending.
+
+`relocated-initdata-2`, boot `1dac1462-919b-42f2-ad77-e1551d01d332`,
+passed after adopting shared-L2. Firmware printed its G16G cold-boot messages
+through the relocated GEM log channel and set control-ready=1. No GPU command
+was queued. ASC stopped and common mappings cleaned up without errors.
+Watchdog 60 seconds, all six thermal channels, peak 51.75 C.
+
+Device-control testing now uses the three-index firmware ring and an explicit
+Fender SRAM power-assertion generation. The startup no-op is published before
+initdata, with subsequent commands using the rescan notification. Completion
+requires consumer/CFI/producer agreement, the matching firmware-consumed power
+generation, ready state and 50 ms stability. The GPC state is checked against
+the low boot-state cap. This stage still queues no GPU work.

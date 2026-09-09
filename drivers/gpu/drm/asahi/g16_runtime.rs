@@ -16,6 +16,7 @@ struct Inner {
     uat: mmu::Uat,
     drm: driver::AsahiDevRef,
     device: Device,
+    generation: u32,
 }
 
 pub(crate) struct Runtime {
@@ -33,7 +34,7 @@ impl Runtime {
         let config = crate::g16_config::Config::new(pdev, &drm, uat.kernel_vm(), device.firmware())?;
         let state = g16_rtkit::State::new(pdev, device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, config, uat, drm, device }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, config, uat, drm, device, generation: 0 }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {
@@ -51,10 +52,17 @@ impl Runtime {
         let mut roots = [(0, 0); 1];
         self.inner.uat.kernel_vm().context_roots(&mut roots)?;
         dev_info!(pdev.as_ref(), "G16G: RTKit IOP/AP running with owned common UAT, context0=[{:#x},{:#x}]; application endpoints started, no initdata sent\n", roots[0].0, roots[0].1);
+        self.inner.device.check_boot_pstate()?;
+        self.inner.device.set_power_generation(0)?;
+        {
+            let inner = &mut *self.inner;
+            inner.config.enqueue_control(0x1a, 0, &mut inner.generation, &inner.device)?;
+        }
         self.inner.config.publish_loader()?;
         let root = self.inner.config.root();
         dev_info!(pdev.as_ref(), "G16G: sending relocated GEM initdata root={:#x}\n", root);
         Pin::new(&mut self.inner.transport).send_message(0x20, 0x0081000000000000 | (root & ((1u64 << 44) - 1)))?;
+        Pin::new(&mut self.inner.transport).send_message(0x21, 0x0083000000000011)?;
         let start = kernel::time::Instant::<kernel::time::Monotonic>::now();
         loop {
             let inner = &mut *self.inner;
@@ -62,9 +70,50 @@ impl Runtime {
             if !inner.state.healthy() { return Err(EIO); }
             if inner.config.ready()? {
                 dev_info!(pdev.as_ref(), "G16G: firmware accepted relocated GEM initdata, control-ready=1; no GPU work queued\n");
-                return Ok(());
+                break;
             }
             if start.elapsed() >= Delta::from_secs(5) { return Err(ETIMEDOUT); }
+            fsleep(Delta::from_millis(10));
+        }
+        self.wait_control(1)?;
+        self.send_control(0x34)?;
+        self.inner.config.rearm_scheduler()?;
+        self.send_control(0x0a)?;
+        Pin::new(&mut self.inner.transport).send_message(0x21, 0x0083000000000010)?;
+        fsleep(Delta::from_millis(100));
+        let inner = &mut *self.inner;
+        inner.config.drain(&inner.drm)?;
+        inner.device.check_boot_pstate()?;
+        if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
+        dev_info!(pdev.as_ref(), "G16G: device-control NOP, RIARTT and idle-power policy consumed; firmware ready, boot pstate retained\n");
+        Ok(())
+    }
+
+    fn send_control(&mut self, opcode: u32) -> Result {
+        let inner = &mut *self.inner;
+        let next = inner.config.enqueue_control(opcode, 0, &mut inner.generation, &inner.device)?;
+        Pin::new(&mut inner.transport).send_message(0x21, 0x0084000000000011)?;
+        self.wait_control(next)
+    }
+
+    fn wait_control(&mut self, next: u32) -> Result {
+        let start = kernel::time::Instant::<kernel::time::Monotonic>::now();
+        let mut completed = None;
+        loop {
+            let inner = &mut *self.inner;
+            inner.config.drain(&inner.drm)?;
+            inner.device.check_boot_pstate()?;
+            if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
+            let indices = inner.config.control_indices()?;
+            if indices == [next; 3] && inner.config.consumed_generation()? == inner.generation {
+                let completion = completed.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
+                if completion.elapsed() >= Delta::from_millis(50) { return Ok(()); }
+            } else if completed.is_some() { return Err(EIO); }
+            if start.elapsed() >= Delta::from_secs(2) {
+                dev_err!(inner.drm.as_ref(), "G16G: device-control timeout indices={:?} expected={} power-generation={}/{}\n",
+                    indices, next, inner.config.consumed_generation()?, inner.generation);
+                return Err(ETIMEDOUT);
+            }
             fsleep(Delta::from_millis(10));
         }
     }

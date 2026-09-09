@@ -233,6 +233,24 @@ impl Device {
         Ok(())
     }
 
+    /// Host-owned power assertion generation in Fender SRAM. The caller
+    /// serializes device-control publication and initializes it before initdata.
+    pub(crate) fn set_power_generation(&self, generation: u32) -> Result {
+        let registers = self.sgx.try_access().ok_or(ENODEV)?;
+        registers.try_write32(generation, 0xd60000)?;
+        if registers.try_read32(0xd60000)? != generation { return Err(EIO); }
+        Ok(())
+    }
+
+    pub(crate) fn check_boot_pstate(&self) -> Result {
+        let value = self.sgx.try_access().ok_or(ENODEV)?.try_read32(0xe01000)?;
+        if value & 0xf > 1 {
+            dev_err!(self.dev.as_ref(), "G16G: unexpected performance state {:#x} exceeds boot test cap\n", value);
+            return Err(ERANGE);
+        }
+        Ok(())
+    }
+
     pub(crate) fn firmware(&self) -> &Firmware { &self.firmware }
 
     pub(crate) fn require_stopped(&self, pdev: &platform::Device<Core>) -> Result {
