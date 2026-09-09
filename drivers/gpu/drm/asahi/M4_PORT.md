@@ -614,3 +614,32 @@ minutes and renews the 60-second watchdog only on verified progress with a
 live thermal monitor. Mesa's `tests/m4-desktop` contains the qualification
 launcher, guard and read-only context logger. Full firmware recovery, GPU
 thermal throttling and broader Vulkan conformance remain future work.
+
+### SuperTuxKart parameter-buffer pressure
+
+`stk-demo-17` reproduces a first-scene tiling stall after 8,274 retired jobs.
+The M4 firmware emits FinishTA followed by trace `0x12`, but neither final
+tiling stamp is written. There is no selected-bank MMU fault. The previous
+runtime only published fragments after final TA retirement, so a pass needing
+a partial fragment to reclaim parameter pages could not make progress.
+
+The runtime now publishes InitPB/TA and a dependent fragment together. The
+M4 type-4 barrier names the TA event slot and target stamp; firmware owns the
+stage dependency and partial-render scheduling. Both command graphs, their
+GPUVM binding and shared heap remain retained until both stages retire.
+The initial heap remains 4 MiB and the stage timeout remains two seconds.
+
+The barrier layout is cross-checked against the local matching 25G83 producer
+`AGXChannel::setupBarrierCommand` at `fffffe000896b734` and firmware consumer
+`agx_drain_work_queue_commands` at `0x1cd20`. These are dirtyroom references;
+no executable firmware payload is modified or included by this change.
+Five standalone host checks pass, including the exact dependency record and
+rejection before output mutation for invalid fields.
+
+`parameter-pressure-1` qualifies this change on J713, boot
+`838b6e1f-206e-4134-af5a-b05c4681748c`. Four ordinary attribute/uniform draws
+and four pressure draws each verify 4,096 exact pixels through Zink/Honeykrisp.
+Each pressure draw submits 65,536 six-vertex instances. Firmware trace `0x12`
+records both the pause and resume, followed by final TA and fragment stamps.
+Peak observed PMP temperature is 52 C; the 60-second watchdog and six-sensor
+thermal guard cover the test. The full SuperTuxKart race is still pending.
