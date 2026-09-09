@@ -643,3 +643,25 @@ Each pressure draw submits 65,536 six-vertex instances. Firmware trace `0x12`
 records both the pause and resume, followed by final TA and fragment stamps.
 Peak observed PMP temperature is 52 C; the 60-second watchdog and six-sensor
 thermal guard cover the test. The full SuperTuxKart race is still pending.
+
+## Retain the compute UMA owner across context switches
+
+0 A.D. release 28 exposed a private-memory lifetime bug during its first
+196608-byte index-buffer update. In `0ad-map-7` the current compute pool was
+`0x7102098000`, but the latched GPU fault addressed `0x7104924b00`, inside the
+preceding compositor compute pool at `0x7104920000`. The hardware UMA slot
+still encoded that preceding pool. Reusing the canonical command/UMA
+address after completion allowed firmware's cached descriptor to outlive
+its backing when the client ASID changed.
+
+Retain the completed compute owner until a distinct replacement retires,
+mirroring the existing render parameter-manager lifetime. Box the compute
+work/retired owner to avoid growing the runtime object on the kernel stack.
+The first by-value retention experiment reset during startup twice; no
+persisted panic established the exact reset cause. The boxed version booted
+and passed the previously failing upload alongside Hyprland (`0ad-map-10`).
+The game then reached a separate compiler refusal for an FMA with absolute
+value and immediate operands. No GPU device loss occurred in that run.
+Peak monitored PMP temperature was 53.75 C; the 60-second watchdog and all
+thermal checks remained mandatory. Full kernel modules built successfully.
+Evidence: workspace `_provenance/asahi-0ad-20260909/`.

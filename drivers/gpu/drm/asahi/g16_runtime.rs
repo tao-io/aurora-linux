@@ -17,6 +17,7 @@ struct Inner {
     fragment_queue: crate::g16_queue::Queue,
     fragment_registered: bool,
     retired_render: Option<crate::g16_render_job::Render>,
+    retired_compute: Option<KBox<crate::g16_job::Compute>>,
     compute: crate::g16_job::Compute,
     config: crate::g16_config::Config,
     uat: mmu::Uat,
@@ -30,7 +31,7 @@ struct Inner {
 }
 
 enum Work {
-    Compute(crate::g16_job::Compute),
+    Compute(KBox<crate::g16_job::Compute>),
     Render(crate::g16_render_job::Render),
 }
 impl Work {
@@ -133,9 +134,9 @@ impl Runtime {
         let payload = packet.commands.get(index).ok_or(EINVAL)?.payload;
         let generation = inner.user_generation.wrapping_add(1).max(1);
         let work = match payload {
-            crate::g16_submit::Payload::Compute(control) => Work::Compute(crate::g16_job::Compute::in_vm(
+            crate::g16_submit::Payload::Compute(control) => Work::Compute(KBox::new(crate::g16_job::Compute::in_vm(
                 &inner.drm,&inner.uat,&mut inner.config,&packet.vm,Some(control),
-                Some(inner.compute_queue.notification()),generation)?),
+                Some(inner.compute_queue.notification()),generation)?, GFP_KERNEL)?),
             crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
                 &inner.drm,&inner.uat,&packet.vm,command,usc,generation,
                 [inner.queue.address(),inner.fragment_queue.address()],
@@ -220,10 +221,20 @@ impl Runtime {
             let index = active.index + 1;
             // Exact firmware/engine retirement permits releasing command,
             // private-memory pool and ASID lease before the next command.
-            if let Work::Render(render) = active.work {
-                // Firmware caches the parameter manager slot. The replacement
-                // has now retired, so its predecessor may finally be freed.
-                inner.retired_render = Some(render);
+            match active.work {
+                Work::Render(render) => {
+                    // Firmware caches the parameter manager slot. The replacement
+                    // has now retired, so its predecessor may finally be freed.
+                    inner.retired_render = Some(render);
+                }
+                Work::Compute(compute) => {
+                    // Firmware caches the UMA descriptor by its canonical VA.
+                    // Reusing a freed command at that VA can retain the prior
+                    // client's pool address after the ASID changes. Keep its
+                    // descriptor and backing until a distinct replacement has
+                    // retired, just as for the render parameter manager.
+                    inner.retired_compute = Some(compute);
+                }
             }
             if index == packet.commands.len() {
                 dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands)\n", packet.id, index);
@@ -264,7 +275,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config)?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, fragment_registered:false, retired_render:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, active: None }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, active: None }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {
