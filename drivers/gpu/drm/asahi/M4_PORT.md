@@ -196,3 +196,21 @@ Hardware experiments must keep the workspace's verified 60-second watchdog,
 all six PMP temperature channels, enabled CPU thermal policy and conservative
 test clock caps. Do not bind Asahi while the lab owns the GPU. The integration kernel has booted and completed power and management tests;
 no shader or DRM client has executed through the new runtime yet.
+
+## Reserved table ownership check
+
+The common `UatPageTable` now supports retained CPU mappings for inherited
+no-map table reservations. Initial parent links are validated against those
+reservations before adoption. Driver-allocated descendants are detached before
+being freed; reserved pages are never returned to the page allocator. The
+noncoherent path publishes modified PTE spans and freshly allocated tables,
+not a complete page-table copy at each submission.
+
+Guarded J713 test `hardware/reserved-tables-1/`, boot
+`edb9c5a0-b906-4dad-95db-c7ce8095fef0`, passed two map/protect/unmap/drop cycles,
+including a leaf-table boundary and the end of the kernel VA window. It checked
+translations, RO/RW permissions, occupied-map rejection and complete restoration
+of all inherited table bytes. The four occupied-map log messages are deliberate
+negative checks. All TTBAT entries remained disabled and ASC was stopped during
+the test. RTKit discovery then passed again. Peak temperature was 53.25 C.
+This is CPU page-table/lifetime validation, not a GPU translation or shader test.
