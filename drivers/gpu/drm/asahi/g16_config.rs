@@ -53,6 +53,7 @@ pub(crate) struct Config {
     pipes: KVec<Buffer>,
     iomaps: KVec<mmu::KernelMapping>,
     loader: Mem,
+    trace_seen: [u32; 2],
     iomap_bytes: KBox<[u8; 42 * 0x28]>,
 }
 
@@ -70,7 +71,7 @@ impl Config {
         // descriptor table at data+0x1332f0 is host-owned until initdata is sent.
         let loader = unsafe { Mem::try_new(resource, MemFlag::WC.into()) }?;
         let mut config = Self { objects: KVec::new(), pipes: KVec::new(), iomaps: KVec::new(),
-            loader, iomap_bytes: KBox::new([0; 42 * 0x28], GFP_KERNEL)? };
+            loader, trace_seen: [0; 2], iomap_bytes: KBox::new([0; 42 * 0x28], GFP_KERNEL)? };
         for (index, size) in SIZES.iter().enumerate() {
             config.objects.push(if index == Object::UmaTable as usize {
                 Buffer::new_gpu(dev, vm, gpu_vm, *size)?
@@ -169,6 +170,14 @@ impl Config {
         self.object(FirmwareData).u32(0x4fd4, 1)?;
         self.object(Globals).u32(0x78, 1)?;
         self.object(Globals).u32(0xe28, 3)?;
+        // 25G83 host Globals: progress intervals and idle/context timers in
+        // milliseconds. These match the common Asahi constructor roles and
+        // the J713 producer. A zero-filled timer is not a disabled timer.
+        for (offset, value) in [(0x24, 3000), (0x998, 40), (0x99c, 10),
+            (0x9a0, 250), (0x9b8, 2), (0x9bc, 40), (0x9c0, 5),
+            (0x9c8, 40), (0x9cc, 50)] {
+            self.object(Globals).u32(offset, value)?;
+        }
         self.ptr(PowerPerformance, 0x3b50, Temperature, 0)?;
         self.object(PowerPerformance).u32(4, 200000)?;
         self.object(PowerPerformance).u32(8, 200000)?;
@@ -192,7 +201,7 @@ impl Config {
         for (offset, value) in [(4, 4), (8, 6), (12, 3), (16, 7), (20, 7), (40, 8), (48, 1)] {
             self.object(Main).u32(0x2540 + offset, value)?;
         }
-        self.object(Control).u32(0, 1)?;
+        self.object(Control).u32(0, 0x11)?;
         Ok(())
     }
 
@@ -215,7 +224,7 @@ impl Config {
     /// are diagnostics; neither a cached snapshot nor a stamp proves DMA done.
     pub(crate) fn log_firmware_state(&mut self, dev: &driver::AsahiDevice) -> Result {
         for (address, count) in [(0x68158usize, 1usize), (0x128d60, 8),
-            (0x129b20, 4), (0x147368, 6), (0x192900, 5), (0x1935a0, 1)] {
+            (0x129b20, 4), (0x129bc8, 8), (0x129d00, 8), (0x147368, 6), (0x192900, 5), (0x1935a0, 1)] {
             let map = self.loader.iosys_map(address.checked_sub(0x60000).ok_or(EINVAL)?, count * 8)?;
             let mut words = [0u64; 8];
             for (index, word) in words[..count].iter_mut().enumerate() {
@@ -341,7 +350,16 @@ impl Config {
                     for (i, arg) in args.iter_mut().enumerate() {
                         *arg = u64::from_le_bytes(record[12 + i * 8..20 + i * 8].try_into().unwrap());
                     }
-                    dev_info!(dev.as_ref(), "G16G trace thread={} id={:#x} phase={} args={:x?}\n", tag >> 24, tag & 0xffffff, phase, args);
+                    // Keep both power and engine evidence without flooding
+                    // printk during retries. Drain and validate every record.
+                    let class = usize::from((tag & 0xffffff) >= 0x400);
+                    let seen = &mut self.trace_seen[class];
+                    *seen = seen.saturating_add(1);
+                    if *seen <= 192 {
+                        dev_info!(dev.as_ref(), "G16G trace thread={} id={:#x} phase={} args={:x?}\n", tag >> 24, tag & 0xffffff, phase, args);
+                    } else if *seen == 193 {
+                        dev_info!(dev.as_ref(), "G16G trace class={} subsequent records counted without printk\n", class);
+                    }
                     if tag & 0xffffff == 0x11c { return Err(EOVERFLOW); }
                 } else if matches!(state, EventState) {
                     dev_info!(dev.as_ref(), "G16G event: {:02x?}\n", record);

@@ -414,3 +414,10 @@ same retry persisted. Both guarded runs saved evidence and rebooted normally;
 peak PMP readings stayed below 53 C. This is GPU activity, not shader success.
 The minimal-store body originates in the public M3 decoder fixture; only its
 encoding, not that particular M4 hardware execution, was independently checked.
+
+`compute-store-5` added power KTrace and bounded printk independently for power
+and engine records. Firmware requests reason-5 preemption on all three engine
+classes, including before shader publication; 0x407 carries [1,1], [0,1], [2,1].
+`compute-store-6` initialized the named J713 progress, idle, wake, context-switch
+and kill timers with producer/common-Asahi defaults. It did not resolve retry.
+Both runs saved evidence and rebooted normally. The trace is diagnostic only.
