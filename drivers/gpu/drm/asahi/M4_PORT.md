@@ -597,3 +597,20 @@ runtime mutex. Its DRM reference is disconnected by the existing unbind
 ownership path. Idle firmware errors quarantine all backing until reboot.
 The native-5 run builds and tests this notification path; a continuous kernel
 log preserves completion evidence independently of ring-buffer wrap.
+
+`hyprland-live-1` subsequently reaches correct visible SuperTux gameplay in
+Welcome to Antarctica on the actual Omarchy desktop, using this GPU driver
+and Mesa Zink/Honeykrisp. The active game context confirms Apple M4 G16G B0.
+The observed floating-window HUD is 32/33/34 FPS min/average/max; this is not
+a sustained benchmark or a 60 FPS claim. The intro is input-driven, and a
+held space press after setup enters gameplay.
+
+The sustained guard has passed 48 consecutive fresh GPU/compositor checks
+at the evidence snapshot, with DCP reporting 1405 completed imported swaps
+and zero failures. All 32 compute output values are verified on each check.
+Peak observed PMP temperature was 54.5 C, with no sensor failure, CPU policy
+preserved and GPU at the 338 MHz boot state. The session is bounded to 30
+minutes and renews the 60-second watchdog only on verified progress with a
+live thermal monitor. Mesa's `tests/m4-desktop` contains the qualification
+launcher, guard and read-only context logger. Full firmware recovery, GPU
+thermal throttling and broader Vulkan conformance remain future work.
