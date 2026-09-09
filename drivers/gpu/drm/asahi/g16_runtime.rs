@@ -161,7 +161,17 @@ impl Runtime {
     /// Poll one completion snapshot. The worker drops the runtime mutex between
     /// snapshots, so queued ioctls and device removal can make progress.
     pub(crate) fn service_job(&mut self) -> bool {
-        if self.inner.failed || self.inner.active.is_none() { return false; }
+        if self.inner.failed { return false; }
+        if self.inner.active.is_none() {
+            let inner = &mut *self.inner;
+            if let Err(error) = inner.config.drain(&inner.drm) {
+                inner.failed = true;
+                inner.gpu_pending = true;
+                let _ = inner.device.log_engine_state();
+                dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven after idle firmware error {:?}; retaining DMA owners\n", error);
+            }
+            return false;
+        }
         let id = self.inner.active.as_ref().unwrap().packet.id;
         match self.poll_job() {
             Ok(pending) => pending,
@@ -240,7 +250,7 @@ impl Runtime {
         let compute_queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
         let fragment_queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config)?;
-        let state = g16_rtkit::State::new(pdev, device.firmware().resources.regions[5])?;
+        let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
         Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, fragment_registered:false, retired_render:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, active: None }) })
     }

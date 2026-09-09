@@ -18,6 +18,7 @@ use kernel::{
 
 pub(crate) struct State {
     dev: ARef<platform::Device>,
+    drm: crate::driver::AsahiDevRef,
     data: Region,
     crashed: AtomicBool,
     mapped: AtomicBool,
@@ -25,10 +26,11 @@ pub(crate) struct State {
 }
 
 impl State {
-    pub(crate) fn new(dev: &platform::Device<Core>, data: Region) -> Result<Arc<Self>> {
+    pub(crate) fn new(dev: &platform::Device<Core>, drm: crate::driver::AsahiDevRef, data: Region) -> Result<Arc<Self>> {
         Ok(Arc::new(
             Self {
                 dev: dev.into(),
+                drm,
                 data,
                 crashed: AtomicBool::new(false),
                 mapped: AtomicBool::new(false),
@@ -130,7 +132,14 @@ impl rtkit::Operations for Operations {
     }
 
     fn recv_message(state: ArcBorrow<'_, State>, endpoint: u8, message: u64) {
-        dev_info!(
+        // Firmware retries its event notification until the shared rings are
+        // drained, including after the final userspace job. Never take the
+        // runtime mutex in the RTKit callback: enqueue the serialized worker.
+        if endpoint == 0x20 && message == 0x0042_0000_0000_0000 {
+            crate::driver::queue_g16_completion_worker(state.drm.clone());
+            return;
+        }
+        dev_warn!(
             state.dev.as_ref(),
             "G16G: RTKit application ep={:#x} message={:#018x}\n",
             endpoint,

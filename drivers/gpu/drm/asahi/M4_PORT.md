@@ -521,7 +521,7 @@ Both comparisons pass, including full-panel and odd-size geometry, 16/32-pixel
 utiles, relocated addresses, nonzero resource high words and depth/stencil state.
 This establishes encoding parity, not new-driver hardware rendering.
 
-## Owned render submission (awaiting hardware qualification)
+## Owned render submission
 
 The M4 DRM scheduler can now translate the one-layer, one-sample render UAPI
 into owned TA and fragment commands. Each pass owns its parameter memory,
@@ -578,3 +578,22 @@ host-copy renders verified every pixel, checksum `a513efed37c25325`. The GPU
 image-to-buffer copy completed but returned an incorrect green channel; this
 is not yet graphics/desktop parity. Peak observed PMP temperature was 53.5 C
 with the verified 60-second watchdog and thermal guard.
+
+### Desktop qualification and idle firmware notifications
+
+`hyprland-native-5` passes the full shared-buffer Zink compositing check and
+starts the actual Omarchy Hyprland configuration on the 2560x1664 panel. The
+screencopy and imported native DCP scanout each contain 3,922,542 expected
+red test-terminal pixels. The panel/background then appear with SuperTux;
+its active OpenGL context identifies M4 Zink/Honeykrisp. The game menu was
+visually verified in native-3; native-5 screenshots show the level intro,
+not yet gameplay. Peak observed temperature 53.5 C, watchdog verified 60 s.
+
+RTKit event notifications now enqueue the existing serialized completion
+worker, which drains firmware channels even when no userspace job is active.
+Previously notifications after the last job were only logged; firmware
+retried them and overwhelmed the kernel log. The callback never takes the
+runtime mutex. Its DRM reference is disconnected by the existing unbind
+ownership path. Idle firmware errors quarantine all backing until reboot.
+The native-5 run builds and tests this notification path; a continuous kernel
+log preserves completion evidence independently of ring-buffer wrap.
