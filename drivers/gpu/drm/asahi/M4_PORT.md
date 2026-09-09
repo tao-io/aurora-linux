@@ -70,6 +70,15 @@ uses Rust 1.98.0, LLVM 22.1.8, and local version `-dirtyroom-asahi1` in a separa
 output directory. Build the complete Image/modules to catch RTKit and mailbox
 link dependencies in addition to compiling the driver object.
 
+The initial complete ARM64 `Image modules` build passed on 2026-09-09,
+including `asahi.ko`, with release `7.1.9-dirtyroom-asahi1+`. Relative to the
+previous J713 config, only Asahi, its required DRM/Rust dependencies and the
+local version changed. The build output is `build/linux-asahi-j713` relative
+to the collection root, and its full log is `build/asahi-kernel-build.log`.
+The companion fresh Mesa AArch64 Vulkan/Zink build also passed. See its
+`docs/m4-asahi-port.rst` for the outstanding upstream compiler test failures;
+successful compilation does not establish runtime support.
+
 The pure M4 encoder tests require no kernel or GPU:
 
 ```
