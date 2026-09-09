@@ -15,13 +15,13 @@ enum Object {
     PowerPerformance, Timer, Activity254, Activity25c, Activity264, Activity26c,
     LogState, LogEntries, LogData, Fwctl, DevctrlState, DevctrlRing,
     KtraceState, KtraceData, StatisticsState, StatisticsData, Temperature,
-    EventState, EventData, Retention,
+    EventState, EventData, Retention, UmaTable,
 }
 const SIZES: &[usize] = &[
     0xc8, 0x4000, 0x4b8, 0xe48, 0x20, 0xeaf0, 0x670, 0x4000, 0x2658,
     0x6578, 0x88, 0xc18, 0x1248, 0xe10, 0x60,
     0x1b0, 0x28800, 0x79800, 0x4000, 0x30, 0x4000,
-    0x30, 0x9000, 0x30, 0x4800, 4, 0x30, 0x4800, 0x4000,
+    0x30, 0x9000, 0x30, 0x4800, 4, 0x30, 0x4800, 0x4000, 0x4000,
 ];
 
 // (slot, physical register range, mapped/requested length, relative tag, mode).
@@ -58,7 +58,7 @@ pub(crate) struct Config {
 
 impl Config {
     pub(crate) fn new(pdev: &platform::Device<Core>, dev: &driver::AsahiDevice,
-        vm: &mmu::Vm, firmware: &Firmware) -> Result<Self> {
+        vm: &mmu::Vm, gpu_vm: &mmu::Vm, firmware: &Firmware) -> Result<Self> {
         let resource = pdev.as_ref().of_node().ok_or(ENODEV)?
             .reserved_mem_region_to_resource_byname(c_str!("fw-data"))?;
         let data = firmware.resources.regions[5];
@@ -71,7 +71,11 @@ impl Config {
         let loader = unsafe { Mem::try_new(resource, MemFlag::WC.into()) }?;
         let mut config = Self { objects: KVec::new(), pipes: KVec::new(), iomaps: KVec::new(),
             loader, iomap_bytes: KBox::new([0; 42 * 0x28], GFP_KERNEL)? };
-        for size in SIZES { config.objects.push(Buffer::new(dev, vm, *size)?, GFP_KERNEL)?; }
+        for (index, size) in SIZES.iter().enumerate() {
+            config.objects.push(if index == Object::UmaTable as usize {
+                Buffer::new_gpu(dev, vm, gpu_vm, *size)?
+            } else { Buffer::new(dev, vm, *size)? }, GFP_KERNEL)?;
+        }
         // Twelve firmware submission channels: TA/3D/compute at four priorities.
         // Empty independent rings avoid aliasing producer/consumer state.
         for _ in 0..12 {
@@ -137,6 +141,9 @@ impl Config {
         self.object(Runtime).u64(0x18, scratch)?;
         self.object(Runtime).u32(0x250, 1)?;
         self.object(Runtime).u32(0x2f8, 4)?;
+        let uma_gpu = self.object(UmaTable).gpu_va()?;
+        self.object(Runtime).u64(0x2e0, uma_gpu)?;
+        self.ptr(Runtime, 0x2e8, UmaTable, 0)?;
         self.object(Activity25c).u32(0xc18, u32::MAX)?;
         self.object(Activity25c).u32(0xc30, u32::MAX)?;
         for pipe in 0..12 {
@@ -233,8 +240,8 @@ impl Config {
         Ok(())
     }
 
-    pub(crate) fn publish_queue(&mut self, pipe: usize, queue: u64, wptr: u16, new: bool) -> Result<u32> {
-        if pipe >= 12 || queue & 7 != 0 { return Err(EINVAL); }
+    pub(crate) fn publish_queue(&mut self, pipe: usize, queue: u64, wptr: u16, slot: u8, new: bool) -> Result<u32> {
+        if pipe >= 12 || slot >= 128 || queue & 7 != 0 { return Err(EINVAL); }
         let state = &mut self.pipes[pipe * 2];
         let consumer = state.read_u32(0)?;
         let cfi = state.read_u32(0x10)?;
@@ -250,7 +257,7 @@ impl Config {
         entry[8..16].copy_from_slice(&queue.to_le_bytes());
         entry[16..20].copy_from_slice(&((pipe % 3) as u32).to_le_bytes());
         entry[20..22].copy_from_slice(&wptr.to_le_bytes());
-        entry[22] = 0; // firmware assigns scheduler slot for the new queue
+        entry[22] = slot; // must match command metadata scheduler slot
         entry[23] = u8::from(new);
         self.pipes[pipe * 2 + 1].write(producer as usize * 0x18, &entry)?;
         g16_memory::publish();
@@ -301,6 +308,12 @@ impl Config {
                     dev_dbg!(dev.as_ref(), "G16G KTrace: {:02x?}\n", record);
                 } else if matches!(state, EventState) {
                     dev_info!(dev.as_ref(), "G16G event: {:02x?}\n", record);
+                    if u32::from_le_bytes(record[..4].try_into().unwrap()) != 1 {
+                        return Err(EIO);
+                    }
+                } else if u32::from_le_bytes(record[..4].try_into().unwrap()) == 0x16 {
+                    dev_err!(dev.as_ref(), "G16G recovery statistics: {:02x?}\n", record);
+                    return Err(EIO);
                 }
                 consumer = (consumer + 1) % count;
             }

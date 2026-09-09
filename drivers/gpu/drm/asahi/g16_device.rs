@@ -251,6 +251,20 @@ impl Device {
         Ok(())
     }
 
+    /// Read-only snapshot. Do not select or acknowledge fault banks here;
+    /// the firmware owns those registers until recovery is ported.
+    pub(crate) fn log_engine_state(&self) -> Result {
+        let sgx = self.sgx.try_access().ok_or(ENODEV)?;
+        let mut mmu = [0u32; 13];
+        for (i, word) in mmu.iter_mut().enumerate() { *word = sgx.try_read32(0xd08000 + i * 4)?; }
+        dev_info!(self.dev.as_ref(), "G16G: GPU MMU configuration={:x?}\n", mmu);
+        for offset in [0xc040, 0xc048, 0xc050, 0xc058, 0xd8c0, 0xd8c8] {
+            dev_info!(self.dev.as_ref(), "G16G: SGX +{:#x}={:#018x}\n", offset, sgx.try_read64(offset)?);
+        }
+        Ok(())
+
+    }
+
     pub(crate) fn firmware(&self) -> &Firmware { &self.firmware }
 
     pub(crate) fn require_stopped(&self, pdev: &platform::Device<Core>) -> Result {

@@ -330,3 +330,19 @@ rings retired at 1/1/1; the queue returned idle and its context registered.
 Firmware stayed ready through 50 ms stability, low pstate was retained, and
 ASC/VM teardown completed. Verified 60-second watchdog, peak 52.5 C across
 six monitored channels. This is a firmware barrier, not a GPU engine shader.
+
+### Owned compute-engine qualification
+
+The next startup check encodes a CDM terminate and its 25G83 firmware
+microsequence. Command, stamps, context storage, empty private-pool metadata,
+and global UMA table use common GEM allocations with independent canonical
+firmware and allocator-selected lower-half GPU mappings. Kernel context zero
+is only the initial engine qualification target; user submissions must retain
+their own common VM bindings. No shader or Vulkan claim follows from terminate.
+
+Retirement requires both independently produced completion stamps, ordered
+nonzero timestamps, queue idle, and 50 ms stability. A recovery event, crash
+or timeout leaves the entire runtime, GEM backing, mappings, PMP vote and
+module code retained until reboot; merely halting ASC cannot retire GPU DMA.
+The watchdog wrapper recognizes this retained-fault state and reboots after
+saving evidence. A real reset/recovery implementation remains required.

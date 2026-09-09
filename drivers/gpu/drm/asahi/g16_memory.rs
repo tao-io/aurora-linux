@@ -11,6 +11,7 @@ pub(crate) const KERNEL_RANGE: core::ops::Range<u64> =
 pub(crate) struct Buffer {
     // Unmap before releasing our GEM/vmap references.
     mapping: mmu::KernelMapping,
+    gpu_mapping: Option<mmu::KernelMapping>,
     object: gem::ObjectRef,
     size: usize,
 }
@@ -22,9 +23,28 @@ impl Buffer {
         object.vmap()?.memset(0);
         let mapping = object.map_into_range(vm, KERNEL_RANGE, mmu::UAT_PGSZ as u64,
             prot::PROT_FW_SHARED_RW, true)?;
-        Ok(Self { mapping, object, size })
+        Ok(Self { mapping, gpu_mapping: None, object, size })
     }
 
+    /// Independent lower-half mapping of the same GEM backing. Firmware CPU
+    /// retains the canonical mapping; engine addresses come from this VM's
+    /// allocator, never from masking a firmware address or a captured VA.
+    pub(crate) fn new_gpu(dev: &driver::AsahiDevice, firmware_vm: &mmu::Vm,
+        gpu_vm: &mmu::Vm, size: usize) -> Result<Self> {
+        let mut buffer = Self::new(dev, firmware_vm, size)?;
+        buffer.gpu_mapping = Some(buffer.object.map_into_range(gpu_vm,
+            0x70_0000_0000..0x80_0000_0000, mmu::UAT_PGSZ as u64,
+            prot::PROT_GPU_SHARED_RW, true)?);
+        Ok(buffer)
+    }
+    pub(crate) fn gpu_va(&self) -> Result<u64> {
+        self.gpu_mapping.as_ref().map(|mapping| mapping.iova()).ok_or(EINVAL)
+    }
+    pub(crate) fn read_u64(&mut self, offset: usize) -> Result<u64> {
+        let mut bytes = [0; 8];
+        self.read(offset, &mut bytes)?;
+        Ok(u64::from_le_bytes(bytes))
+    }
     pub(crate) fn va(&self) -> u64 { self.mapping.iova() }
     pub(crate) fn write(&mut self, offset: usize, bytes: &[u8]) -> Result {
         if offset.checked_add(bytes.len()).ok_or(EOVERFLOW)? > self.size { return Err(ERANGE); }

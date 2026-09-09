@@ -13,11 +13,14 @@ struct Inner {
     transport: rtkit::RtKit<g16_rtkit::Operations>,
     state: Arc<g16_rtkit::State>,
     queue: crate::g16_queue::Queue,
+    compute_queue: crate::g16_queue::Queue,
+    compute: crate::g16_job::Compute,
     config: crate::g16_config::Config,
     uat: mmu::Uat,
     drm: driver::AsahiDevRef,
     device: Device,
     generation: u32,
+    gpu_pending: bool,
 }
 
 pub(crate) struct Runtime {
@@ -32,11 +35,13 @@ impl Runtime {
         // SAFETY: Device exclusively owns ASC control and power. Construction
         // is stopped, and Runtime::drop stops ASC before dropping this UAT.
         let uat = unsafe { mmu::Uat::new_t8132(&drm, device.firmware()) }?;
-        let config = crate::g16_config::Config::new(pdev, &drm, uat.kernel_vm(), device.firmware())?;
+        let config = crate::g16_config::Config::new(pdev, &drm, uat.kernel_vm(), uat.kernel_lower_vm(), device.firmware())?;
         let queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
+        let compute_queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
+        let compute = crate::g16_job::Compute::new(&drm, &uat)?;
         let state = g16_rtkit::State::new(pdev, device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, config, uat, drm, device, generation: 0 }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, compute, config, uat, drm, device, generation: 0, gpu_pending: false }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {
@@ -88,13 +93,14 @@ impl Runtime {
         inner.device.check_boot_pstate()?;
         if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
         dev_info!(pdev.as_ref(), "G16G: device-control NOP, RIARTT and idle-power policy consumed; firmware ready, boot pstate retained\n");
-        self.check_barrier()
+        self.check_barrier()?;
+        self.check_compute()
     }
 
     fn check_barrier(&mut self) -> Result {
         let inner = &mut *self.inner;
         let queue = inner.queue.prepare_barrier()?;
-        let next = inner.config.publish_queue(0, queue, 1, true)?;
+        let next = inner.config.publish_queue(0, queue, 1, 0, true)?;
         Pin::new(&mut inner.transport).send_message(0x21, 0x0083000000000000)?;
         let start = kernel::time::Instant::<kernel::time::Monotonic>::now();
         let mut completed = None;
@@ -117,6 +123,52 @@ impl Runtime {
                 return Err(ETIMEDOUT);
             }
             fsleep(Delta::from_millis(10));
+        }
+    }
+
+    fn check_compute(&mut self) -> Result {
+        use crate::g16_compute::{SLOT, STAMP};
+        let inner = &mut *self.inner;
+        inner.device.check_boot_pstate()?;
+        inner.device.log_engine_state()?;
+        // Mark before the first queue publication. Even an unsuccessful
+        // mailbox send can have delivered its doorbell to firmware.
+        inner.gpu_pending = true;
+        let queue = inner.compute_queue.prepare_command(inner.compute.address())?;
+        let next = inner.config.publish_queue(2, queue, 1, SLOT, true)?;
+        Pin::new(&mut inner.transport).send_message(0x21, 0x0083000000000002)?;
+        let start = kernel::time::Instant::<kernel::time::Monotonic>::now();
+        let mut completed = None;
+        loop {
+            let inner = &mut *self.inner;
+            let status = inner.compute.status()?;
+            let pipe = inner.config.pipe_indices(2)?;
+            let queue = inner.compute_queue.status()?;
+            if let Err(error) = inner.config.drain(&inner.drm) {
+                dev_err!(inner.drm.as_ref(), "G16G: compute firmware error pipe={:?} queue={:?} status={:x?}\n", pipe, queue, status);
+                return Err(error);
+            }
+            if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
+            inner.device.check_boot_pstate()?;
+            // The two firmware stores have different producers: notifier
+            // completion and in-order engine-node retirement. Require both,
+            // valid timestamp order, queue idle, and a stability interval.
+            if pipe == [next; 3] && queue == [1, 1, 1, 1, 1, 0]
+                && status[0] == STAMP as u64 && status[1] == STAMP as u64
+                && status[2] != 0 && status[3] > status[2] {
+                let completion = completed.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
+                if completion.elapsed() >= Delta::from_millis(50) {
+                    inner.gpu_pending = false;
+                    dev_info!(inner.drm.as_ref(), "G16G: owned compute terminate retired, stamps/timestamps={:x?} queue={:?}, firmware ready\n", status, queue);
+                    return Ok(());
+                }
+            } else if completed.is_some() { return Err(EIO); }
+            if start.elapsed() >= Delta::from_secs(2) {
+                dev_err!(inner.drm.as_ref(), "G16G: compute timeout pipe={:?} queue={:?} status={:x?}\n", pipe, queue, status);
+                inner.device.log_engine_state()?;
+                return Err(ETIMEDOUT);
+            }
+            fsleep(Delta::from_micros(100));
         }
     }
 
@@ -159,13 +211,27 @@ impl Runtime {
 
 impl Drop for Runtime {
     fn drop(&mut self) {
+        if self.inner.gpu_pending {
+            // Stopping ASC alone does not stop GPU DMA. Keep the complete
+            // transport, mappings, GEM objects and PMP vote until reboot.
+            // The leaked callback graph must pin the module's code too.
+            // SAFETY: We are executing within this live module; the reference
+            // is intentionally retained with Inner until system reset.
+            unsafe { kernel::bindings::__module_get(crate::THIS_MODULE.as_ptr()) };
+            let _ = self.inner.device.log_engine_state();
+            let _ = self.inner.device.stop_asc();
+            dev_err!(self.inner.drm.as_ref(), "G16G: GPU retirement unproven; retaining runtime until reboot\n");
+            return;
+        }
         if let Err(error) = self.inner.device.stop_asc() {
+            // SAFETY: same retained callback/code lifetime as the DMA case.
+            unsafe { kernel::bindings::__module_get(crate::THIS_MODULE.as_ptr()) };
             dev_err!(self.inner.drm.as_ref(), "G16G: ASC failed to stop; retaining runtime backing ({:?})\n", error);
             return;
         }
         dev_info!(self.inner.drm.as_ref(), "G16G: ASC stopped before RTKit transport cleanup\n");
-        // SAFETY: ASC is stopped and no GPU work has been submitted by this
-        // startup stage. Callbacks drain before UAT and power are released.
+        // SAFETY: ASC is stopped and any submitted engine work retired.
+        // Incomplete or failed jobs retain Inner above. Callbacks drain before UAT and power are released.
         unsafe { ManuallyDrop::drop(&mut self.inner) };
     }
 }

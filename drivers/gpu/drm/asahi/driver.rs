@@ -396,7 +396,7 @@ fn probe_t8140_runtime(
 /// identification (ID block + core-enable masks), cross-checks the two, and
 /// stops at the generation-specific firmware boundary. J713 first acquires
 /// its validated power dependencies and tests common UAT/RTKit startup.
-/// No path here registers DRM or submits GPU work.
+/// M4 performs a bounded queue/compute startup check; DRM remains unregistered.
 fn refuse_agx3_probe(pdev: &platform::Device<Core>, soc: &'static hw::agx3::SocConfig) -> Error {
     if soc.chip_id == 0x8132 {
         // Validate the normal device resources before touching SGX registers.

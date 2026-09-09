@@ -63,6 +63,17 @@ impl Queue {
         Ok(self.info.va())
     }
 
+    /// Publish into a fresh queue. The caller must retain command backing
+    /// across every failure after this point, until engine retirement/reset.
+    pub(crate) fn prepare_command(&mut self, command: u64) -> Result<u64> {
+        if command & 7 != 0 || self.ring_state.read_u32(0x40)? != 0 { return Err(EINVAL); }
+        self.ring.u64(0, command)?;
+        g16_memory::publish();
+        self.ring_state.u32(0x40, 1)?;
+        g16_memory::publish();
+        Ok(self.info.va())
+    }
+
     pub(crate) fn status(&mut self) -> Result<[u32; 6]> {
         Ok([self.info.read_u32(0x20)?, self.info.read_u32(0x24)?, self.info.read_u32(0x28)?,
             self.ring_state.read_u32(0x30)?, self.ring_state.read_u32(0x40)?,
