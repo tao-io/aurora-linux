@@ -12,6 +12,7 @@ struct Inner {
     // before UAT mappings are reclaimed, and Device releases power last.
     transport: rtkit::RtKit<g16_rtkit::Operations>,
     state: Arc<g16_rtkit::State>,
+    queue: crate::g16_queue::Queue,
     config: crate::g16_config::Config,
     uat: mmu::Uat,
     drm: driver::AsahiDevRef,
@@ -32,9 +33,10 @@ impl Runtime {
         // is stopped, and Runtime::drop stops ASC before dropping this UAT.
         let uat = unsafe { mmu::Uat::new_t8132(&drm, device.firmware()) }?;
         let config = crate::g16_config::Config::new(pdev, &drm, uat.kernel_vm(), device.firmware())?;
+        let queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
         let state = g16_rtkit::State::new(pdev, device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, config, uat, drm, device, generation: 0 }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, config, uat, drm, device, generation: 0 }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {
@@ -86,7 +88,36 @@ impl Runtime {
         inner.device.check_boot_pstate()?;
         if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
         dev_info!(pdev.as_ref(), "G16G: device-control NOP, RIARTT and idle-power policy consumed; firmware ready, boot pstate retained\n");
-        Ok(())
+        self.check_barrier()
+    }
+
+    fn check_barrier(&mut self) -> Result {
+        let inner = &mut *self.inner;
+        let queue = inner.queue.prepare_barrier()?;
+        let next = inner.config.publish_queue(0, queue, 1, true)?;
+        Pin::new(&mut inner.transport).send_message(0x21, 0x0083000000000000)?;
+        let start = kernel::time::Instant::<kernel::time::Monotonic>::now();
+        let mut completed = None;
+        loop {
+            let inner = &mut *self.inner;
+            inner.config.drain(&inner.drm)?;
+            if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
+            inner.device.check_boot_pstate()?;
+            let pipe = inner.config.pipe_indices(0)?;
+            let queue = inner.queue.status()?;
+            if pipe == [next; 3] && queue == [1, 1, 1, 1, 1, 0] && inner.queue.context_registered()? {
+                let completion = completed.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
+                if completion.elapsed() >= Delta::from_millis(50) {
+                    dev_info!(inner.drm.as_ref(), "G16G: owned GEM queue barrier retired, pipe={:?} queue={:?}, context registered, firmware ready\n", pipe, queue);
+                    return Ok(());
+                }
+            } else if completed.is_some() { return Err(EIO); }
+            if start.elapsed() >= Delta::from_secs(2) {
+                dev_err!(inner.drm.as_ref(), "G16G: queue barrier timeout pipe={:?} queue={:?}\n", pipe, queue);
+                return Err(ETIMEDOUT);
+            }
+            fsleep(Delta::from_millis(10));
+        }
     }
 
     fn send_control(&mut self, opcode: u32) -> Result {

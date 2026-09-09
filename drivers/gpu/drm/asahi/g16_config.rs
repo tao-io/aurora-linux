@@ -228,6 +228,37 @@ impl Config {
         Ok(())
     }
 
+    pub(crate) fn publish_queue(&mut self, pipe: usize, queue: u64, wptr: u16, new: bool) -> Result<u32> {
+        if pipe >= 12 || queue & 7 != 0 { return Err(EINVAL); }
+        let state = &mut self.pipes[pipe * 2];
+        let consumer = state.read_u32(0)?;
+        let cfi = state.read_u32(0x10)?;
+        let producer = state.read_u32(0x20)?;
+        if consumer >= 256 || cfi >= 256 || producer >= 256 { return Err(EIO); }
+        let next = (producer + 1) % 256;
+        if next == consumer || next == cfi { return Err(EBUSY); }
+        let timestamp: u64;
+        // SAFETY: architectural counter is readable at EL1.
+        unsafe { core::arch::asm!("mrs {t}, cntpct_el0", t = out(reg) timestamp, options(nomem, nostack, preserves_flags)) };
+        let mut entry = [0; 0x18];
+        entry[..8].copy_from_slice(&timestamp.to_le_bytes());
+        entry[8..16].copy_from_slice(&queue.to_le_bytes());
+        entry[16..20].copy_from_slice(&((pipe % 3) as u32).to_le_bytes());
+        entry[20..22].copy_from_slice(&wptr.to_le_bytes());
+        entry[22] = 0; // firmware assigns scheduler slot for the new queue
+        entry[23] = u8::from(new);
+        self.pipes[pipe * 2 + 1].write(producer as usize * 0x18, &entry)?;
+        g16_memory::publish();
+        self.pipes[pipe * 2].u32(0x20, next)?;
+        g16_memory::publish();
+        Ok(next)
+    }
+    pub(crate) fn pipe_indices(&mut self, pipe: usize) -> Result<[u32; 3]> {
+        if pipe >= 12 { return Err(EINVAL); }
+        let state = &mut self.pipes[pipe * 2];
+        Ok([state.read_u32(0)?, state.read_u32(0x10)?, state.read_u32(0x20)?])
+    }
+
     pub(crate) fn root(&self) -> u64 { self.va(Object::Root) }
     pub(crate) fn ready(&mut self) -> Result<bool> { Ok(self.object(Object::Control).read_u32(0x14)? == 1) }
 

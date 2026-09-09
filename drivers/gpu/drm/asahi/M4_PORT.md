@@ -304,3 +304,9 @@ on an incorrect host-side power-generation equality check. The old successful
 fenced-noop evidence shows host/consumed pairs 1/0, 2/1, 3/2: the initial NOP
 does not increment the latter. Power accounting is now logged separately from
 the ring-retirement test. Firmware did not crash; Linux remained responsive.
+
+`device-control-2` passed all three device-control retirements, including
+50 ms stability at each step, with host/consumed generation pairs 1/0, 2/1,
+3/2 matching the old M4 evidence. CRE save/restore diagnostics were readable
+through the GEM log channel. Firmware stayed ready, the low GPC state was
+retained, and ASC/VM teardown completed cleanly. No GPU command was submitted.
