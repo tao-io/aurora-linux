@@ -187,7 +187,14 @@ impl<const SIZE: usize> ExclusiveIoMem<SIZE> {
         let size = resource.size();
         let name = resource.name().unwrap_or_default();
 
-        let region = resource
+        // Reserve against the global MMIO tree, as request_mem_region() does.
+        // An OF platform resource can be a detached descriptor rather than a
+        // node in that tree. Requesting a child of that descriptor neither
+        // excludes other devices nor pairs with Region's release_mem_region().
+        // SAFETY: iomem_resource is the permanent global MMIO resource root;
+        // request_region serializes mutations through the C resource lock.
+        let root = unsafe { Resource::from_raw(&raw mut bindings::iomem_resource) };
+        let region = root
             .request_region(
                 start,
                 size,
