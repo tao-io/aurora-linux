@@ -50,7 +50,7 @@ board and single mailbox topology, unique phandles, nonoverlapping aligned
 42-bit memory ranges and the declared segment order. It accepts relocated
 physical addresses. The private `/chosen/g16-lab-*` properties are not used.
 The mailbox aperture and interrupt descriptions come from the J713 ADT;
-interrupt delivery through this newly described provider is not yet tested.
+interrupt delivery through this provider passed the guarded discovery test below.
 
 `g16_firmware.rs` maps only the reserved loaded text, hashes a private copy
 with the kernel SHA-256 implementation, and identifies the lab's firmware ABI
@@ -80,7 +80,7 @@ firmware bytes are added to Git by this port. This selects a known firmware
 ABI; it does not replace iBoot signature verification or establish Linux
 ownership of the firmware's state. The new probe acquires power and reads SGX
 identity after matching firmware, then releases power and returns ENODEV.
-It does not yet start ASC or register DRM.
+It then performs bounded ASC management discovery; it does not register DRM.
 
 Validation: full ARM64 Image/modules and m1n1 stage-2 builds pass. The binding
 passes dt-doc-validate, and both the source DTB and generated handoff DTB pass
@@ -110,6 +110,14 @@ then stops ASC before releasing RTKit and the PMP vote. It does not start
 crashlog or application endpoints, allocate firmware-visible host memory, or
 send initdata. A firmware session must not be retried without a reboot yet.
 
+Discovery passed on boot `04d0137e-c9a0-4b4b-89da-e86de7b40ad1`: HELLO
+`0x00100000000c000c`, protocol 12/12, endpoints 0, 1, 0x20 and 0x21.
+The normal mailbox provider delivered three receive interrupts. ASC stopped
+before releasing the transport and power. No INIT power message was needed
+for this passive exchange. Peak monitored temperature was 51 C; watchdog
+was verified at 60 seconds. Evidence: `hardware/discovery-1/` under the
+pivot provenance directory.
+
 ## Runtime integration boundary
 
 The outer power hierarchy is now represented as GFX TVM -> PMGR GFX, with
@@ -124,8 +132,7 @@ mailbox enqueue as completion. The J713 coexistence log at
 `0x0020f50100000000` and `0x0020f50000000000` requests both acknowledged by
 `0x0021000000000000`. A timeout or unexpected reply prevents further requests
 in that session: the wire protocol has no request ID to distinguish a late
-reply. Three host protocol tests and the ARM64 object build pass; this new
-request implementation has not yet been executed on the J713.
+reply. Three host protocol tests and the ARM64 object build pass; this request implementation passed repeated J713 power acquire/release tests.
 
 That same log records `magic_fw == 0` at the old driver's pre-submit boundary,
 with the protected handoff export pointing to the correct host magic. M4 must
@@ -187,5 +194,5 @@ rustc --edition 2021 --test drivers/gpu/drm/asahi/g16_render.rs -o /tmp/g16-rend
 
 Hardware experiments must keep the workspace's verified 60-second watchdog,
 all six PMP temperature channels, enabled CPU thermal policy and conservative
-test clock caps. Do not bind Asahi while the lab owns the GPU. No new runtime
-has been loaded or booted as part of this initial source integration.
+test clock caps. Do not bind Asahi while the lab owns the GPU. The integration kernel has booted and completed power and management tests;
+no shader or DRM client has executed through the new runtime yet.
