@@ -253,6 +253,25 @@ impl Config {
         self.log_firmware_state(dev)
     }
     pub(crate) fn log_firmware_state(&mut self, dev: &driver::AsahiDevice) -> Result {
+        // Normal draining counts late trace records without printk. Preserve
+        // the most recent records on failure, even after thousands of jobs.
+        // This snapshot neither moves the consumer nor acknowledges events.
+        let producer = self.object(Object::KtraceState).read_u32(0x20)?;
+        if producer >= 512 { return Err(EIO); }
+        for age in (1..=16).rev() {
+            let index = (producer + 512 - age) % 512;
+            let mut record = [0u8; 0x48];
+            self.object(Object::KtraceData).read(index as usize * 0x48, &mut record)?;
+            if u32::from_le_bytes(record[..4].try_into().unwrap()) != 5 { continue; }
+            let tag = u32::from_le_bytes(record[44..48].try_into().unwrap());
+            let phase = u32::from_le_bytes(record[48..52].try_into().unwrap());
+            let mut args = [0u64; 4];
+            for (i, arg) in args.iter_mut().enumerate() {
+                *arg = u64::from_le_bytes(record[12+i*8..20+i*8].try_into().unwrap());
+            }
+            dev_info!(dev.as_ref(), "G16G: recent trace index={} thread={} id={:#x} phase={} args={:x?}\n",
+                index, tag >> 24, tag & 0xffffff, phase, args);
+        }
         for (address, count) in [(0x68158usize, 1usize), (0x128d60, 8),
             (0x129b20, 4), (0x129bc8, 8), (0x129d00, 8), (0x147368, 6), (0x192900, 5), (0x1929d0, 8), (0x1935a0, 1)] {
             let map = self.loader.iosys_map(address.checked_sub(0x60000).ok_or(EINVAL)?, count * 8)?;

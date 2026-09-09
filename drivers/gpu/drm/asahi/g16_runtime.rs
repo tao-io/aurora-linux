@@ -232,7 +232,11 @@ impl Runtime {
             dev_err!(inner.drm.as_ref(), "G16G: userspace GPU timeout job={} status={:x?} queue={:?} pipe={:?}\n",
                 active.packet.id, status, queue, pipe);
             inner.device.log_engine_state()?;
-            if let Work::Compute(c) = &mut active.work { c.log_progress(&inner.drm)?; }
+            match &mut active.work {
+                Work::Compute(c) => c.log_progress(&inner.drm)?,
+                Work::Render(r) => r.log_progress(&inner.drm)?,
+            }
+            inner.config.log_firmware_state(&inner.drm)?;
             return Err(ETIMEDOUT);
         }
         Ok(true)

@@ -153,6 +153,30 @@ impl Render {
     pub(crate) fn init_address(&self) -> u64 { self.metadata.va()+0x300 }
     pub(crate) fn descriptor(&self) -> &[u8;16] { &self.descriptor }
     pub(crate) fn context(&self) -> u32 { self.binding.slot() }
+    /// Snapshot retained firmware/GPU state without acknowledging faults or
+    /// changing the in-flight pass. Keep diagnostics off the submission path.
+    pub(crate) fn log_progress(&mut self, dev: &driver::AsahiDevice) -> Result {
+        dev_info!(dev.as_ref(), "G16G: stalled render stage={:?} context={}\n",
+            self.stage, self.context());
+        for (name, buffer, start, length) in [
+            ("parameter-manager", &mut self.manager, 0, 0xc0),
+            ("parameter-ring", &mut self.block_ring, 0, 8),
+            ("scene", &mut self.metadata, 0, 0x80),
+            ("scene-statistics", &mut self.scratch, 0, 0x80),
+            ("uma", &mut self.uma, 0, 0xa0),
+        ] {
+            for offset in (start..start+length).step_by(32) {
+                let count = (start+length-offset).min(32)/8;
+                let mut words = [0u64; 4];
+                for (index, word) in words[..count].iter_mut().enumerate() {
+                    *word = buffer.read_u64(offset+index*8)?;
+                }
+                dev_info!(dev.as_ref(), "G16G: render {} +{:#x}={:x?}\n",
+                    name, offset, &words[..count]);
+            }
+        }
+        Ok(())
+    }
     pub(crate) fn status(&mut self) -> Result<[u64;4]> {
         let i = self.index();
         Ok([self.metadata.read_u32(0x400+i*16)? as u64,self.metadata.read_u32(0x408+i*16)? as u64,
