@@ -168,9 +168,14 @@ impl Config {
         self.object(Main).u32(0xfc0, 10)?;
         self.object(Main).u32(0xfc4, 9)?;
         self.object(Main).u32(0x259c, 1)?;
-        // Retention storage exists, but autonomous Fender PM stays disabled
-        // until its transition protocol is ported and GPU retirement is proven.
+        // Fender initialization also constructs scheduler accounting buckets:
+        // 25G83 imports ea0/ee0 to globals 193b48/193b7c, and its 3b614
+        // path initializes the buckets only with both enabled. Disabling ee0
+        // while ea0 is enabled makes the first queue submission assert.
+        // Retain its save area; device-control separately disables idle power
+        // off, and the runtime verifies that the low boot pstate is retained.
         self.ptr(Main, 0xe88, Retention, 0)?;
+        self.object(Main).u32(0xee0, 1)?;
         for (offset, value) in [(4, 4), (8, 6), (12, 3), (16, 7), (20, 7), (40, 8), (48, 1)] {
             self.object(Main).u32(0x2540 + offset, value)?;
         }

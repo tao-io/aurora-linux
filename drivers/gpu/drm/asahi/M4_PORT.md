@@ -310,3 +310,23 @@ the ring-retirement test. Firmware did not crash; Linux remained responsive.
 3/2 matching the old M4 evidence. CRE save/restore diagnostics were readable
 through the GEM log channel. Firmware stayed ready, the low GPC state was
 retained, and ASC/VM teardown completed cleanly. No GPU command was submitted.
+
+`queue-barrier-1`, boot `b511c365-4afe-4f52-a181-ad75b91d3506`,
+entered the firmware scheduler but asserted with `Bucket overflow` and zero
+accounting buckets. Linux remained responsive; ASC stopped and evidence was
+saved before a guarded normal reboot. No GPU engine job was submitted.
+
+The 25G83 import at firmware +0x31800 uses base 0x192db0 (not 0x192000).
+Main +0xea0 therefore populates 0x193b48, and +0xee0 populates 0x193b7c.
+The former enables queue accounting; the latter gates bucket initialization
+at +0x3b614. Restore the paired configuration used by the successful old M4
+fenced-noop path, retaining its own GEM save area. Idle-power-off remains
+disabled through device-control, with low-pstate checks. This does not enable
+a higher DVFS state or establish GPU thermal throttling.
+
+`queue-barrier-2`, boot `987a6af4-b2cf-4c85-84d8-eb2cb4d79637`,
+passed with the paired initialization. Independent GEM-backed pipe and queue
+rings retired at 1/1/1; the queue returned idle and its context registered.
+Firmware stayed ready through 50 ms stability, low pstate was retained, and
+ASC/VM teardown completed. Verified 60-second watchdog, peak 52.5 C across
+six monitored channels. This is a firmware barrier, not a GPU engine shader.
