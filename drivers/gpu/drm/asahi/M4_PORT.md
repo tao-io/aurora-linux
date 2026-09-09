@@ -31,6 +31,48 @@ without partial writes. They establish encoder parity, not execution through
 the new driver. The two Mesa reciprocal/select fixes are carried separately
 without the lab device initialization path.
 
+## Normal resources and firmware identity
+
+J713 now has a disabled `apple,agx-t8132` node and a disabled mailbox provider
+in `t8132-j713-gpu.dtsi`. Its named regions are `ttbs`, `pagetables`, `handoff`,
+`shared-l2`, `fw-text` and `fw-data`. The paired `m1n1/m1n1-asahi` worktree,
+also on `m4-asahi-port`, fills these from the current ADT, marks them no-map,
+and reserves them through intermediate boot stages. It converts segment
+metadata to FDT byte order and publishes the version marker last. It does
+not power or start the GPU and leaves the device status unchanged.
+
+`g16_resources.rs` consumes this normal device contract. It requires the J713
+board and single mailbox topology, unique phandles, nonoverlapping aligned
+42-bit memory ranges and the declared segment order. It accepts relocated
+physical addresses. The private `/chosen/g16-lab-*` properties are not used.
+The mailbox aperture and interrupt descriptions come from the J713 ADT;
+interrupt delivery through this newly described provider is not yet tested.
+
+`g16_firmware.rs` maps only the reserved loaded text, hashes it with the
+kernel SHA-256 implementation, and identifies the lab's firmware ABI by
+exact text contents and segment geometry. The mapping is released before
+returning the identity. It performs no firmware patch or GPU register access.
+The currently pinned evidence is:
+
+- Source: `/home/council/dev/ESP32KeySim_m4/boot-attempts/g16-resterring/g16g-fw.bin`.
+- Text size: `0x60000`; data size: `0x13c000`.
+- Text/data VAs: `0xfffffc0000000000` / `0xfffffc0000060000`.
+- Embedded string: `RTKit-3255.160.4.release`, text offset `0x5a2b0`.
+- Text SHA-256: `704f1b4cd74c036ea85bdc191bdbe766185b5b1cfa8d4af591b065890d1ec42c`.
+
+The local text hash and embedded string were checked on 2026-09-09. No Apple
+firmware bytes are added to Git by this port. This selects a known firmware
+ABI; it does not replace iBoot signature verification or establish Linux
+ownership of the firmware's state. The new probe still returns ENODEV before
+SGX ID reads, ASC start or DRM registration.
+
+Validation: full ARM64 Image/modules and m1n1 stage-2 builds pass. The binding
+passes dt-doc-validate, and both the source DTB and generated handoff DTB pass
+the T8132 binding check. The actual m1n1 FDT producer passes 13 host cases;
+the generated result passes the Rust resource validator. Firmware identity
+tests cover physical relocation, unknown digests and incompatible geometry.
+Neither the new bootloader nor kernel has been installed on the J713.
+
 ## Runtime integration boundary
 
 Use `drm_gpu::DrmGpu`, the common DRM file/GEM/syncobj layer and queue contract

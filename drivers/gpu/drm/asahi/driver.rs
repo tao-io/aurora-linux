@@ -28,6 +28,7 @@ use crate::{
     drm_gpu,
     file,
     g15_boot,
+    g16_firmware,
     g16_resources,
     g17_boot,
     g17_drm,
@@ -393,14 +394,16 @@ fn refuse_agx3_probe(pdev: &platform::Device<Core>, soc: &'static hw::agx3::SocC
     if soc.chip_id == 0x8132 {
         // Validate the normal device resources before touching SGX registers.
         // The private lab /chosen export is deliberately not a fallback.
-        match g16_resources::from_device(pdev) {
-            Ok(resources) => dev_info!(
+        match g16_resources::from_device(pdev)
+            .and_then(|resources| g16_firmware::identify_loaded(pdev, resources)) {
+            Ok(firmware) => dev_info!(
                 pdev.as_ref(),
-                "G16G: J713 memory resources decoded, text PA={:#x} VA={:#x}; firmware ABI and owned startup still required\n",
-                resources.regions[4].base, resources.firmware_vas[0]
+                "G16G: loaded {} text hash matches J713 evidence, PA={:#x} VA={:#x}; owned startup still required\n",
+                firmware.version(), firmware.resources.regions[4].base,
+                firmware.resources.firmware_vas[0]
             ),
             Err(error) => {
-                dev_err!(pdev.as_ref(), "G16G: missing or invalid J713 resource handoff: {:?}\n", error);
+                dev_err!(pdev.as_ref(), "G16G: missing J713 resources or unsupported loaded firmware: {:?}\n", error);
                 return error;
             }
         }
