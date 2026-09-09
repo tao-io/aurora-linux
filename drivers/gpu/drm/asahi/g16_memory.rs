@@ -35,13 +35,29 @@ impl Buffer {
     /// allocator, never from masking a firmware address or a captured VA.
     pub(crate) fn new_gpu(dev: &driver::AsahiDevice, firmware_vm: &mmu::Vm,
         gpu_vm: &mmu::Vm, size: usize) -> Result<Self> {
+        Self::new_gpu_protected(dev, firmware_vm, gpu_vm, size, prot::PROT_GPU_SHARED_RW)
+    }
+    /// Instruction/control streams are immutable to the GPU (AP=2, UXN=0),
+    /// while writable command state uses the distinct data permission.
+    pub(crate) fn new_gpu_readonly(dev: &driver::AsahiDevice, firmware_vm: &mmu::Vm,
+        gpu_vm: &mmu::Vm, size: usize) -> Result<Self> {
+        Self::new_gpu_protected(dev, firmware_vm, gpu_vm, size, prot::PROT_GPU_SHARED_RO)
+    }
+    fn new_gpu_protected(dev: &driver::AsahiDevice, firmware_vm: &mmu::Vm,
+        gpu_vm: &mmu::Vm, size: usize, protection: prot::Prot) -> Result<Self> {
         // Firmware-generated engine state can retain canonical aliases.
         // Match the shared firmware/GPU access of the qualified M4 objects.
         let mut buffer = Self::allocate(dev, firmware_vm, size, prot::PROT_GPU_FW_SHARED_RW)?;
         buffer.gpu_mapping = Some(buffer.object.map_into_range(gpu_vm,
             0x70_0000_0000..0x80_0000_0000, mmu::UAT_PGSZ as u64,
-            prot::PROT_GPU_SHARED_RW, true)?);
+            protection, true)?);
         Ok(buffer)
+    }
+    /// Retain one explicit command-buffer view across the bootstrap and client
+    /// contexts. The engine fetches its register list before switching ASID.
+    pub(crate) fn map_gpu_view(&mut self, vm: &mmu::Vm) -> Result<mmu::KernelMapping> {
+        let address = self.gpu_va()?;
+        self.object.map_at(vm, address, prot::PROT_GPU_SHARED_RW, true)
     }
     pub(crate) fn gpu_va(&self) -> Result<u64> {
         self.gpu_mapping.as_ref().map(|mapping| mapping.iova()).ok_or(EINVAL)

@@ -7,27 +7,31 @@
 pub(crate) struct Addresses {
     pub command: u64,
     pub command_gpu: u64,
+    pub cdm_gpu: u64,
     pub slot_state: u64,
     pub context_store_gpu: u64,
     pub pool_state_gpu: u64,
     pub page_list_gpu: u64,
     pub counter: u64,
+    pub context: u32,
+    pub generation: u8,
 }
 
 pub(crate) const SIZE: usize = 0x1000;
 pub(crate) const SLOT: u8 = 15;
 pub(crate) const STAMP: u32 = 0x100;
 
-/// Encode a context-0 terminate with an empty USC private-memory pool.
+/// Encode an owned-context terminate with an empty USC private-memory pool.
 /// The backing owner provides at least 0x20000 bytes of context storage,
 /// a pool-state array of `pool_qwords`, and a page-list allocation. A terminate
 /// does not grow or use private memory; no captured pool contents are copied.
 pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32) -> Result<(), ()> {
     if out.len() < SIZE || a.command < 0xffff_fc00_0000_0000
         || a.command.checked_add(SIZE as u64).is_none()
+        || a.context >= 64 || (a.context != 0 && a.generation == 0)
         || a.command & 0x3fff != 0 || a.slot_state & 7 != 0
         || a.counter & 7 != 0 || pool_qwords == 0
-        || [a.command_gpu, a.context_store_gpu, a.pool_state_gpu, a.page_list_gpu]
+        || [a.command_gpu, a.cdm_gpu, a.context_store_gpu, a.pool_state_gpu, a.page_list_gpu]
             .iter().any(|va| *va == 0 || *va & 0x3fff != 0 || *va >= (1 << 42) - 0x20000)
         || a.slot_state < 0xffff_fc00_0000_0000 || a.counter < 0xffff_fc00_0000_0000 {
         return Err(());
@@ -42,9 +46,10 @@ pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32) -> Result<(
     let u64_at = |b: &mut [u8], off, value: u64| b[off..off + 8].copy_from_slice(&value.to_le_bytes());
     u32_at(out, 0, 3);
     u64_at(out, 0x10, c + 0xc00);
-    // Context zero is resident and its active generation is zero.
+    u32_at(out, 0xc, a.context);
+    out[0x88b] = a.generation;
     let registers: &[(u32, u64)] = &[
-        (0x1a510, g + 0xf00), (0x1a420, g + 0xf80),
+        (0x1a510, g + 0xf00), (0x1a420, a.cdm_gpu),
         (0x1a4d0, g + 0xf00), (0x1a4d8, g + 0xf00),
         (0x1a4e0, g + 0xf00), (0x1a4e8, g + 0xf00),
         (0x1a440, 0x154024201), (0x1a458, 0x10c08860),
@@ -63,7 +68,7 @@ pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32) -> Result<(
     u64_at(out, 0x760, sku);
     u32_at(out, 0x768, 0x300);
     u64_at(out, 0x798, g + 0xf00);
-    u64_at(out, 0x7a0, g + 0xf80);
+    u64_at(out, 0x7a0, a.cdm_gpu);
     u64_at(out, 0x7c8, 0x154024201);
     u32_at(out, 0x7e8, u32::MAX);
     u64_at(out, 0x800, c + 0xee4);
@@ -83,6 +88,8 @@ pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32) -> Result<(
         (0x44, c + 0x76c), (0x160, uma), (0x1a8, c + 0x8ac)] {
         u64_at(out, 0x900 + offset, value);
     }
+    u32_at(out, 0x92c, a.context);
+    u32_at(out, 0x930, a.generation as u32);
     u32_at(out, 0x950, 1);
     for (i, delta) in [0, 0xf400, 0x1e800, 0x1f000].iter().enumerate() {
         u64_at(out, 0xa88 + i * 8, a.context_store_gpu + delta);
@@ -102,6 +109,7 @@ pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32) -> Result<(
         (0x69, c + 0x8ac), (0x71, c + 0x88c)] {
         u64_at(out, 0xb58 + off, value);
     }
+    u32_at(out, 0xb6c, a.context);
     u32_at(out, 0xb8c, STAMP);
     u32_at(out, 0xbbc, (-0x258i32) as u32);
     u32_at(out, 0xbd4, 0x40000002);
@@ -114,7 +122,6 @@ pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32) -> Result<(
     u32_at(out, 0xee0, u32::MAX);
     u32_at(out, 0xee4, u32::MAX);
     u64_at(out, 0xf00, 1);
-    u32_at(out, 0xf80, 0x40000000); // CDM terminate
     // Firmware-owned descriptor; its counter stays canonical for CPU access.
     u64_at(out, 0xe00, 1);
     for (off, value) in [(8, 1), (12, 1), (16, 2), (0x1c, pool_qwords),
@@ -131,16 +138,21 @@ pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32) -> Result<(
 mod tests {
     use super::*;
     fn addresses() -> Addresses {
-        Addresses { command: 0xfffffc2000014000, command_gpu: 0x7000100000,
+        Addresses { command: 0xfffffc2000014000, command_gpu: 0x7000100000, cdm_gpu: 0x7000500000,
             slot_state: 0xfffffc2000030000, context_store_gpu: 0x7000800000,
             pool_state_gpu: 0x7000200000, page_list_gpu: 0x7000300000,
-            counter: 0xfffffc2000040000 }
+            counter: 0xfffffc2000040000, context: 1, generation: 1 }
     }
     #[test]
     fn packed_abi_roles_and_end_record() {
         let mut bytes = [0; SIZE];
         encode(&mut bytes, addresses(), 16384).unwrap();
         let u64_at = |off| u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
+        assert_eq!(&bytes[0xc..0x10], &[1, 0, 0, 0]);
+        assert_eq!(bytes[0x88b], 1);
+        assert_eq!(&bytes[0x92c..0x934], &[1, 0, 0, 0, 1, 0, 0, 0]);
+        assert_eq!(u64_at(0x7a0), 0x7000500000);
+        assert_eq!(u64_at(0x30), 0x7000500000);
         assert_eq!(u64_at(0x720), 0x7000100020);
         assert_eq!(u64_at(0x914), 0xfffffc2000014020);
         assert_eq!(&bytes[0x728..0x72c], &[24, 0, 0x20, 1]);

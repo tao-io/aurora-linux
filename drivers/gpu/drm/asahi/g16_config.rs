@@ -204,6 +204,30 @@ impl Config {
         Ok(())
     }
 
+    /// Snapshot only admitted firmware-data RAM, never a GPU register bank.
+    /// These 25G83 globals describe engine issue and power accounting. Values
+    /// are diagnostics; neither a cached snapshot nor a stamp proves DMA done.
+    pub(crate) fn log_firmware_state(&mut self, dev: &driver::AsahiDevice) -> Result {
+        for (address, count) in [(0x68158usize, 1usize), (0x128d60, 8),
+            (0x129b20, 4), (0x147368, 6), (0x192900, 5), (0x1935a0, 1)] {
+            let map = self.loader.iosys_map(address.checked_sub(0x60000).ok_or(EINVAL)?, count * 8)?;
+            let mut words = [0u64; 8];
+            for (index, word) in words[..count].iter_mut().enumerate() {
+                let mut bytes = [0u8; 8];
+                for (j, byte) in bytes.iter_mut().enumerate() {
+                    // SAFETY: checked retained firmware data mapping, byte access
+                    // avoids assuming atomicity of packed firmware fields.
+                    *byte = unsafe { map.as_ptr().add(index * 8 + j).read_volatile() };
+                }
+                *word = u64::from_le_bytes(bytes);
+            }
+            dev_info!(dev.as_ref(), "G16G: firmware RAM +{:#x}={:x?}\n", address, &words[..count]);
+        }
+        let power = self.object(Object::PowerPerformance).read_u32(0x38)?;
+        dev_info!(dev.as_ref(), "G16G: firmware GPU power state={:#x}\n", power);
+        Ok(())
+    }
+
     /// Serialized device-control producer. Ring geometry is a firmware ABI
     /// constraint; no queue or allocation count is limited by a lab pool.
     pub(crate) fn enqueue_control(&mut self, opcode: u32, payload: u32,

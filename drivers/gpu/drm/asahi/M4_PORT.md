@@ -370,3 +370,24 @@ This matches the qualified old M4 object permissions but did not resolve the
 zero timestamps. The firmware timestamp opcode reads engine timestamps then
 writes CPU-visible cells; a firmware completion stamp alone remains inadequate.
 Evidence is under `_provenance/asahi-pivot-20260909/hardware/` in the collection.
+
+`compute-terminate-5` separates read-only GPU CDM backing from writable state;
+the host wire tests pass, but hardware still returns zero timestamps and the
+guard performs a normal reboot. Run 6 enabled scheduler KTrace and attempted
+post-retirement Fender status reads. It stopped responding near the timeout
+path and recovered to boot `f1765614-4559-4d4e-91ad-d906cf001c68` after several
+minutes. The host saved about 6500 trace lines; only startup/one thermal sample
+survived on disk. The precise last instruction is not established. Remove
+those direct reads and restore basic KTrace; further snapshots use firmware
+RAM. Neither experiment demonstrates GPU execution.
+
+`compute-terminate-7` safely snapshots firmware RAM: the engine builder emitted
+34 register entries, with valid owned low/canonical register-list aliases.
+Timestamps remain zero. `compute-user-1` then bound an independent common VM
+(slot 1, initial generation 1). This activated the GPU at the guarded low
+pstate 1 and enabled its MMU, but faulted on a read of VA zero in bootstrap
+context 0 (unit 0xd0, raw 0x800c01a111). The old qualified M4 code explicitly
+maps the command register-list page into context 0 because hardware fetches
+that list before switching to the client ASID. The next fix retains only that
+owned command GEM in both VMs at its allocator-selected address, preserving
+the separate context-0 UMA table. This is not a GPU execution success yet.

@@ -135,6 +135,8 @@ impl Runtime {
         let mut roots = [(0, 0); 1];
         inner.uat.kernel_vm().context_roots(&mut roots)?;
         dev_info!(inner.drm.as_ref(), "G16G: pre-compute context0 roots={:x?}\n", roots);
+        inner.config.log_firmware_state(&inner.drm)?;
+        inner.compute.log_context(&inner.drm)?;
         // Mark before the first queue publication. Even an unsuccessful
         // mailbox send can have delivered its doorbell to firmware.
         inner.gpu_pending = true;
@@ -169,7 +171,7 @@ impl Runtime {
             } else if completed.is_some() { return Err(EIO); }
             if start.elapsed() >= Delta::from_secs(2) {
                 dev_err!(inner.drm.as_ref(), "G16G: compute timeout pipe={:?} queue={:?} status={:x?}\n", pipe, queue, status);
-                inner.device.log_engine_state()?;
+                inner.config.log_firmware_state(&inner.drm)?;
                 return Err(ETIMEDOUT);
             }
             fsleep(Delta::from_micros(100));
