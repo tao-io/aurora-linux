@@ -19,6 +19,7 @@ mod float;
 mod fw;
 mod g15_boot;
 mod g15_initdata;
+mod g16_render;
 mod g17_adt_j700;
 mod g17_asc_bringup;
 mod g17_boot;
