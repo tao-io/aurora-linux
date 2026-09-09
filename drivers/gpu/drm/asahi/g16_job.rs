@@ -8,7 +8,7 @@ use crate::{driver, g16_dispatch, g16_compute::{self, Addresses}, g16_memory::{s
 
 pub(crate) struct Compute {
     _command_client: mmu::KernelMapping,
-    _uma_client: mmu::KernelMapping,
+    _uma_client: Option<mmu::KernelMapping>,
     command: Buffer,
     cdm: Buffer,
     shader: Buffer,
@@ -37,7 +37,7 @@ impl Compute {
     pub(crate) fn in_vm(dev: &driver::AsahiDevice, uat: &mmu::Uat,
         config: &mut crate::g16_config::Config, vm: &mmu::Vm,
         control: Option<g16_compute::Control>, notification: Option<g16_compute::Notification>, generation: u8) -> Result<Self> {
-        let uma_client = config.bind_uma_table(vm)?;
+        let uma_client = if control.is_none() { Some(config.bind_uma_table(vm)?) } else { None };
         let gpu = |size| Buffer::new_gpu(dev, uat.kernel_vm(), &vm, size);
         // The engine fetches the register list in bootstrap context zero, then
         // switches to the client ASID. Retain exactly this command GEM in both

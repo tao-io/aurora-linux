@@ -70,6 +70,10 @@ impl Queue {
     pub(crate) fn notification(&self) -> crate::g16_compute::Notification {
         crate::g16_compute::Notification { address: self.notification.va(), threshold: self.threshold.va() }
     }
+    pub(crate) fn set_render_context(&mut self, context: u32) -> Result {
+        if context >= 64 { return Err(EINVAL); }
+        self.notification.u32(0x24, context)
+    }
     pub(crate) fn advance_threshold(&mut self) -> Result {
         self.submitted = self.submitted.checked_add(1).ok_or(EOVERFLOW)?;
         self.threshold.u64(0, self.submitted)?;
@@ -99,13 +103,23 @@ impl Queue {
     /// Append after exact retirement of the previous entry. The initial
     /// scheduler uses one hardware credit; indices wrap at the real ring size.
     pub(crate) fn append_idle(&mut self, command: u64) -> Result<(u64, u32)> {
-        if command & 7 != 0 { return Err(EINVAL); }
+        self.append_batch_idle(&[command])
+    }
+    pub(crate) fn address(&self) -> u64 { self.info.va() }
+    /// InitPB is consumed together with the following TA; publish them as one
+    /// batch rather than waiting for a completion the init packet never emits.
+    pub(crate) fn append_batch_idle(&mut self, commands: &[u64]) -> Result<(u64, u32)> {
+        if commands.is_empty() || commands.len() >= self.capacity as usize
+            || commands.iter().any(|p| *p & 7 != 0) { return Err(EINVAL); }
         let status = self.status()?;
         let write = status[4];
         if status != [write, write, write, write, write, 0] { return Err(EBUSY); }
-        self.ring.u64(write as usize * 8, command)?;
+        let mut next = write;
+        for command in commands {
+            self.ring.u64(next as usize * 8, *command)?;
+            next = (next + 1) & (self.capacity - 1);
+        }
         g16_memory::publish();
-        let next = (write + 1) & (self.capacity - 1);
         self.ring_state.u32(0x40, next)?;
         g16_memory::publish();
         Ok((self.info.va(), next))

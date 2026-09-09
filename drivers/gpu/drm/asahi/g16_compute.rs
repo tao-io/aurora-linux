@@ -159,17 +159,7 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     u32_at(out, 0xee0, u32::MAX);
     u32_at(out, 0xee4, u32::MAX);
     u64_at(out, 0xf00, 1);
-    // Firmware-owned descriptor; its counter stays canonical for CPU access.
-    u64_at(out, 0xe00, 1);
-    for (off, value) in [(8, 1), (12, u32::from(pages == 0)), (16, 2), (0x1c, pool_qwords),
-        (0x24, pages), (0x28, u32::from(pages == 0)), (0x2c, pages),
-        (0x40, 4), (0x48, pages / 512 * 8), (0x5c, u32::from(pages != 0)),
-        (0x84, u32::from(pages != 0)), (0x94, 2)] {
-        u32_at(out, 0xe00 + off, value);
-    }
-    u64_at(out, 0xe14, a.pool_state_gpu);
-    u64_at(out, 0xe30, a.page_list_gpu);
-    u64_at(out, 0xe4c, a.counter);
+    encode_uma(&mut out[0xe00..0xea0], a.pool_state_gpu, pool_qwords, pages, a.page_list_gpu, a.counter)?;
     Ok(())
 }
 
@@ -214,4 +204,27 @@ mod tests {
         assert!(bytes.iter().all(|byte| *byte == 0x55));
         assert!(encode(&mut bytes[..SIZE - 1], addresses(), 16384, 512).is_err());
     }
+}
+
+/// Shared M4 USC private-memory descriptor used by compute and render engines.
+pub(crate) fn encode_uma(out: &mut [u8], pool: u64, pool_qwords: u32,
+    pages: u32, list: u64, counter: u64) -> Result<(), ()> {
+    if out.len() < 0xa0 || pool_qwords == 0 || pages > pool_qwords || pages % 512 != 0
+        || [pool,list].iter().any(|p| *p == 0 || *p & 0x3fff != 0 || *p >= 1<<42)
+        || counter < 0xfffffc0000000000 || counter & 7 != 0 { return Err(()); }
+    out[..0xa0].fill(0);
+    let u32_at = |b: &mut [u8], off, value: u32| b[off..off + 4].copy_from_slice(&value.to_le_bytes());
+    let u64_at = |b: &mut [u8], off, value: u64| b[off..off + 8].copy_from_slice(&value.to_le_bytes());
+    // Firmware-owned descriptor; its counter stays canonical for CPU access.
+    u64_at(out, 0, 1);
+    for (off, value) in [(8, 1), (12, u32::from(pages == 0)), (16, 2), (0x1c, pool_qwords),
+        (0x24, pages), (0x28, u32::from(pages == 0)), (0x2c, pages),
+        (0x40, 4), (0x48, pages / 512 * 8), (0x5c, u32::from(pages != 0)),
+        (0x84, u32::from(pages != 0)), (0x94, 2)] {
+        u32_at(out, off, value);
+    }
+    u64_at(out, 0x14, pool);
+    u64_at(out, 0x30, list);
+    u64_at(out, 0x4c, counter);
+    Ok(())
 }

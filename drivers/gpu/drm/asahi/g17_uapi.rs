@@ -597,7 +597,7 @@ impl QueueUscWindow {
         Ok(())
     }
 
-    fn full_program<A: GpuAddressSpace>(
+    pub(crate) fn full_program<A: GpuAddressSpace>(
         self,
         address_space: &A,
         tagged_offset: u32,
@@ -645,7 +645,7 @@ fn validate_sampler<A: GpuAddressSpace>(
     Ok(())
 }
 
-fn validate_attachments<A: GpuAddressSpace>(
+pub(crate) fn validate_attachments<A: GpuAddressSpace>(
     address_space: &A,
     attachments: &UapiAttachmentList,
 ) -> Result<(), UapiTranslateError> {
@@ -676,7 +676,7 @@ pub(crate) struct TranslatedRenderCommand {
     pub(crate) fragment_timestamps: UapiTimestamps,
 }
 
-fn validate_zls<A: GpuAddressSpace>(
+pub(crate) fn validate_zls<A: GpuAddressSpace>(
     address_space: &A,
     value: UapiZlsBuffer,
     layers: u16,

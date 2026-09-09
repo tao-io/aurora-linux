@@ -520,3 +520,23 @@ compare complete byte streams against the previously executed M4 C encoders.
 Both comparisons pass, including full-panel and odd-size geometry, 16/32-pixel
 utiles, relocated addresses, nonzero resource high words and depth/stencil state.
 This establishes encoding parity, not new-driver hardware rendering.
+
+## Owned render submission (awaiting hardware qualification)
+
+The M4 DRM scheduler can now translate the one-layer, one-sample render UAPI
+into owned TA and fragment commands. Each pass owns its parameter memory,
+geometry-sized tilemap/TPC, USC pool, context-save storage, command state and
+firmware aliases. InitPB and TA publish atomically as a batch; fragment follows
+exact TA retirement. Failed work retains all DMA backing until reboot.
+
+The initial one-credit scheduler uses one parameter slot. Its last retired
+owner stays alive until a replacement pass retires, as firmware caches this
+slot. Shared hardware tables and the architectural M4 compact context-save
+range are reserved in each common GPUVM. Mesa does not own that scratch page.
+Render timestamps, sampler/helper state, compressed Z/S and multisampling are
+explicitly rejected until their wire paths are ported. This is not yet a claim
+of Vulkan rendering or desktop parity.
+
+The render-table/mapping prerequisites preserved the real Vulkan compute
+result in `render-prereqs-compute-1`: 32 expected outputs, safe open-file
+teardown, maximum observed PMP temperature 51.75 C, watchdog verified at 60 s.

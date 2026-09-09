@@ -15,13 +15,13 @@ enum Object {
     PowerPerformance, Timer, Activity254, Activity25c, Activity264, Activity26c,
     LogState, LogEntries, LogData, Fwctl, DevctrlState, DevctrlRing,
     KtraceState, KtraceData, StatisticsState, StatisticsData, Temperature,
-    EventState, EventData, Retention, UmaTable,
+    EventState, EventData, Retention, UmaTable, ParameterTable,
 }
 const SIZES: &[usize] = &[
     0xc8, 0x4000, 0x4b8, 0xe48, 0x20, 0xeaf0, 0x670, 0x4000, 0x2658,
     0x6578, 0x88, 0xc18, 0x1248, 0xe10, 0x60,
     0x1b0, 0x28800, 0x79800, 0x4000, 0x30, 0x4000,
-    0x30, 0x9000, 0x30, 0x4800, 4, 0x30, 0x4800, 0x4000, 0x4000,
+    0x30, 0x9000, 0x30, 0x4800, 4, 0x30, 0x4800, 0x4000, 0x4000, 0x4000,
 ];
 
 // (slot, physical register range, mapped/requested length, relative tag, mode).
@@ -78,7 +78,7 @@ impl Config {
         let mut config = Self { objects: KVec::new(), pipes: KVec::new(), iomaps: KVec::new(),
             loader, trace_seen: [0; 2], iomap_bytes: KBox::new([0; 42 * 0x28], GFP_KERNEL)? };
         for (index, size) in SIZES.iter().enumerate() {
-            config.objects.push(if index == Object::UmaTable as usize {
+            config.objects.push(if index == Object::UmaTable as usize || index == Object::ParameterTable as usize {
                 Buffer::new_gpu(dev, vm, gpu_vm, *size)?
             } else { Buffer::new(dev, vm, *size)? }, GFP_KERNEL)?;
         }
@@ -128,6 +128,14 @@ impl Config {
     pub(crate) fn bind_uma_table(&mut self, vm: &mmu::Vm) -> Result<mmu::KernelMapping> {
         self.object(Object::UmaTable).map_gpu_view(vm)
     }
+    pub(crate) fn bind_parameter_table(&mut self, vm: &mmu::Vm) -> Result<mmu::KernelMapping> {
+        self.object(Object::ParameterTable).map_gpu_view(vm)
+    }
+    // One hardware scheduler credit owns slot zero. Keep its previous owner
+    // until a replacement pass retires, mirroring common PB slot ownership.
+    pub(crate) fn parameter_descriptor(&mut self, bytes: &[u8; 16]) -> Result {
+        self.object(Object::ParameterTable).write(0, bytes)
+    }
     fn va(&self, object: Object) -> u64 { self.objects[object as usize].va() }
     fn object(&mut self, object: Object) -> &mut Buffer { &mut self.objects[object as usize] }
     fn ptr(&mut self, owner: Object, offset: usize, target: Object, delta: u64) -> Result {
@@ -153,6 +161,9 @@ impl Config {
         self.object(Runtime).u64(0x18, scratch)?;
         self.object(Runtime).u32(0x250, 1)?;
         self.object(Runtime).u32(0x2f8, 4)?;
+        let pb_gpu = self.object(ParameterTable).gpu_va()?;
+        self.object(Runtime).u64(0x2d0, pb_gpu)?;
+        self.ptr(Runtime, 0x2d8, ParameterTable, 0)?;
         let uma_gpu = self.object(UmaTable).gpu_va()?;
         self.object(Runtime).u64(0x2e0, uma_gpu)?;
         self.ptr(Runtime, 0x2e8, UmaTable, 0)?;

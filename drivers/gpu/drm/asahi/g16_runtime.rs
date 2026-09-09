@@ -14,6 +14,9 @@ struct Inner {
     state: Arc<g16_rtkit::State>,
     queue: crate::g16_queue::Queue,
     compute_queue: crate::g16_queue::Queue,
+    fragment_queue: crate::g16_queue::Queue,
+    fragment_registered: bool,
+    retired_render: Option<crate::g16_render_job::Render>,
     compute: crate::g16_job::Compute,
     config: crate::g16_config::Config,
     uat: mmu::Uat,
@@ -26,9 +29,46 @@ struct Inner {
     active: Option<Active>,
 }
 
+enum Work {
+    Compute(crate::g16_job::Compute),
+    Render(crate::g16_render_job::Render),
+}
+impl Work {
+    fn pipe(&self) -> usize { match self { Self::Compute(_) => 2, Self::Render(r) => r.index() } }
+    fn slot(&self) -> u8 { match self { Self::Compute(_) => crate::g16_compute::SLOT,
+        Self::Render(r) => crate::g16_render_job::SLOTS[r.index()] } }
+    fn status(&mut self) -> Result<[u64; 4]> {
+        match self { Self::Compute(c) => { let s=c.status()?; Ok([s[0],s[1],s[2],s[3]]) }, Self::Render(r)=>r.status() }
+    }
+}
+impl Inner {
+    fn publish_active(&mut self) -> Result {
+        let active = self.active.as_mut().ok_or(EIO)?;
+        let pipe = active.work.pipe();
+        let slot = active.work.slot();
+        let queue = match pipe { 0=>&mut self.queue, 1=>&mut self.fragment_queue, _=>&mut self.compute_queue };
+        queue.advance_threshold()?;
+        let (address,next) = match &active.work {
+            Work::Compute(c) => queue.append_idle(c.address())?,
+            Work::Render(r) => {
+                queue.set_render_context(r.context())?;
+                if pipe==0 {
+                    self.config.parameter_descriptor(r.descriptor())?;
+                    queue.append_batch_idle(&[r.init_address(),r.address()])?
+                } else { queue.append_idle(r.address())? }
+            }
+        };
+        active.queue_next = next;
+        active.pipe_next = self.config.publish_queue(pipe,address,next.try_into()?,slot,
+            pipe==1 && !self.fragment_registered)?;
+        Pin::new(&mut self.transport).send_message(0x21,0x0083000000000000 | pipe as u64)?;
+        if pipe==1 { self.fragment_registered=true; }
+        Ok(())
+    }
+}
 struct Active {
     packet: Arc<crate::g16_submit::Packet>,
-    compute: crate::g16_job::Compute,
+    work: Work,
     index: usize,
     queue_next: u32,
     pipe_next: u32,
@@ -50,7 +90,19 @@ impl Runtime {
         let vm = self.inner.uat.new_vm(id, range)?;
         let mut reserved = KVec::new();
         reserved.push(driver_range, GFP_KERNEL)?;
-        vm.install_driver_mappings(KVec::new(), reserved)?;
+        let mut mappings = KVec::new();
+        mappings.push(self.inner.config.bind_uma_table(&vm)?, GFP_KERNEL)?;
+        mappings.push(self.inner.config.bind_parameter_table(&vm)?, GFP_KERNEL)?;
+        // M4 TA writes context save state at the architectural compact base
+        // (normal VA 0x1000000000), including for a zero active selector.
+        // Own and reserve this per-VM backing in the driver, not in Mesa.
+        let scratch_range = 0x10_0000_0000..0x10_0001_0000;
+        if vm.driver_range_overlaps(scratch_range.clone()) { return Err(EINVAL); }
+        let mut scratch = crate::gem::new_kernel_object_wc(&self.inner.drm, 0x10000)?;
+        scratch.vmap()?.memset(0);
+        mappings.push(scratch.map_at(&vm, scratch_range.start, mmu::PROT_GPU_SHARED_RW, true)?, GFP_KERNEL)?;
+        reserved.push(scratch_range, GFP_KERNEL)?;
+        vm.install_driver_mappings(mappings, reserved)?;
         Ok(vm)
     }
 
@@ -69,28 +121,25 @@ impl Runtime {
 
     fn start_command(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usize) -> Result {
         let inner = &mut *self.inner;
-        let control = packet.commands.get(index).ok_or(EINVAL)?.control;
+        let payload = packet.commands.get(index).ok_or(EINVAL)?.payload;
         let generation = inner.user_generation.wrapping_add(1).max(1);
-        let compute = crate::g16_job::Compute::in_vm(&inner.drm, &inner.uat,
-            &mut inner.config, &packet.vm, Some(control), Some(inner.compute_queue.notification()), generation)?;
+        let work = match payload {
+            crate::g16_submit::Payload::Compute(control) => Work::Compute(crate::g16_job::Compute::in_vm(
+                &inner.drm,&inner.uat,&mut inner.config,&packet.vm,Some(control),
+                Some(inner.compute_queue.notification()),generation)?),
+            crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
+                &inner.drm,&inner.uat,&packet.vm,command,usc,generation,
+                [inner.queue.address(),inner.fragment_queue.address()],
+                [inner.queue.notification().address,inner.fragment_queue.notification().address])?),
+        };
         inner.user_generation = generation;
         inner.device.check_boot_pstate()?;
-        let command = compute.address();
-        // From this point errors retain every reachable allocation. The runtime
-        // owns the packet before publishing even the first shared queue word.
-        inner.active = Some(Active { packet, compute, index, queue_next: 0, pipe_next: 0,
-            started: kernel::time::Instant::<kernel::time::Monotonic>::now() });
+        // Retain all DMA backing before the first shared publication, including
+        // failure paths that cannot prove whether a mailbox doorbell arrived.
+        inner.active = Some(Active { packet, work, index, queue_next:0,pipe_next:0,
+            started:kernel::time::Instant::<kernel::time::Monotonic>::now() });
         inner.gpu_pending = true;
-        let publish = (|| -> Result {
-            inner.compute_queue.advance_threshold()?;
-            let (queue, next) = inner.compute_queue.append_idle(command)?;
-            let active = inner.active.as_mut().ok_or(EIO)?;
-            active.queue_next = next;
-            active.pipe_next = inner.config.publish_queue(2, queue, next.try_into()?,
-                crate::g16_compute::SLOT, false)?;
-            Pin::new(&mut inner.transport).send_message(0x21, 0x0083000000000002)?;
-            Ok(())
-        })();
+        let publish = inner.publish_active();
         if let Err(error) = publish {
             inner.failed = true;
             dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven after userspace publication error {:?}\n", error);
@@ -125,25 +174,38 @@ impl Runtime {
         if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
         inner.device.check_boot_pstate()?;
         let active = inner.active.as_mut().ok_or(EIO)?;
-        let status = active.compute.status()?;
-        let queue = inner.compute_queue.status()?;
-        let pipe = inner.config.pipe_indices(2)?;
+        let status = active.work.status()?;
+        let pipe_index = active.work.pipe();
+        let queue = match pipe_index { 0=>inner.queue.status()?,1=>inner.fragment_queue.status()?,_=>inner.compute_queue.status()? };
+        let pipe = inner.config.pipe_indices(pipe_index)?;
         let next = active.queue_next;
         if status[0] == crate::g16_compute::STAMP as u64
             && status[1] == crate::g16_compute::STAMP as u64
-            && status[2] != 0 && status[3] > status[2]
+            && (pipe_index != 2 || (status[2] != 0 && status[3] > status[2]))
             && queue == [next, next, next, next, next, 0]
             && pipe == [active.pipe_next; 3] {
-            active.packet.commands[active.index].completed([status[2], status[3]])?;
+            if let Work::Render(render) = &mut active.work {
+                dev_info!(inner.drm.as_ref(),"G16G: userspace render stage {:?} retired stamps={:x?} queue={:?}\n",render.stage,status,queue);
+                if render.stage == crate::g16_render::Stage::Tiling {
+                    render.stage = crate::g16_render::Stage::Fragment;
+                    active.started = kernel::time::Instant::<kernel::time::Monotonic>::now();
+                    inner.publish_active()?;
+                    return Ok(true);
+                }
+            } else { active.packet.commands[active.index].completed([status[2], status[3]])?; }
             let active = inner.active.take().ok_or(EIO)?;
             inner.gpu_pending = false;
             let packet = active.packet.clone();
             let index = active.index + 1;
             // Exact firmware/engine retirement permits releasing command,
             // private-memory pool and ASID lease before the next command.
-            drop(active);
+            if let Work::Render(render) = active.work {
+                // Firmware caches the parameter manager slot. The replacement
+                // has now retired, so its predecessor may finally be freed.
+                inner.retired_render = Some(render);
+            }
             if index == packet.commands.len() {
-                dev_info!(inner.drm.as_ref(), "G16G: userspace compute job {} retired ({} commands)\n", packet.id, index);
+                dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands)\n", packet.id, index);
                 packet.finish(Ok(()));
                 return Ok(false);
             }
@@ -154,10 +216,10 @@ impl Runtime {
             return Ok(true);
         }
         if active.started.elapsed() >= Delta::from_secs(2) {
-            dev_err!(inner.drm.as_ref(), "G16G: userspace compute timeout job={} status={:x?} queue={:?} pipe={:?}\n",
+            dev_err!(inner.drm.as_ref(), "G16G: userspace GPU timeout job={} status={:x?} queue={:?} pipe={:?}\n",
                 active.packet.id, status, queue, pipe);
             inner.device.log_engine_state()?;
-            active.compute.log_progress(&inner.drm)?;
+            if let Work::Compute(c) = &mut active.work { c.log_progress(&inner.drm)?; }
             return Err(ETIMEDOUT);
         }
         Ok(true)
@@ -173,10 +235,11 @@ impl Runtime {
         let mut config = crate::g16_config::Config::new(pdev, &drm, uat.kernel_vm(), uat.kernel_lower_vm(), device.firmware())?;
         let queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
         let compute_queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
+        let fragment_queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config)?;
         let state = g16_rtkit::State::new(pdev, device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, active: None }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, fragment_registered:false, retired_render:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, active: None }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

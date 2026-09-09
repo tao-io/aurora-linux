@@ -9,7 +9,7 @@ pub(crate) struct Completion;
 #[vtable]
 impl FenceOps for Completion {
     fn get_driver_name<'a>(self: &'a FenceObject<Self>) -> &'a CStr { c_str!("asahi") }
-    fn get_timeline_name<'a>(self: &'a FenceObject<Self>) -> &'a CStr { c_str!("m4-compute") }
+    fn get_timeline_name<'a>(self: &'a FenceObject<Self>) -> &'a CStr { c_str!("m4-gpu") }
 }
 
 pub(crate) struct Destination { mapping: Arc<mmu::KernelMapping>, offset: usize }
@@ -39,8 +39,13 @@ impl Destination {
         })
     }
 }
+#[derive(Clone, Copy)]
+pub(crate) enum Payload {
+    Compute(crate::g16_compute::Control),
+    Render { command: g17_uapi::UapiRenderCommand, usc: u64 },
+}
 pub(crate) struct Command {
-    pub(crate) control: crate::g16_compute::Control,
+    pub(crate) payload: Payload,
     timestamps: [Option<Destination>; 2],
 }
 impl Command {
@@ -148,8 +153,16 @@ impl queue::Queue for Queue {
         let mut parser = g17_uapi::UapiCommandParser::new(raw);
         let mut commands = KVec::new();
         while let Some(command) = parser.next_hardware().map_err(|_| EINVAL)? {
+            if let g17_uapi::ParsedHardwareCommand::Render { payload, vertex_attachments, fragment_attachments, .. } = command {
+                validate_render(payload, self.usc, &AddressSpace(&self.vm))?;
+                g17_uapi::validate_attachments(&AddressSpace(&self.vm), &vertex_attachments).map_err(|_| EINVAL)?;
+                g17_uapi::validate_attachments(&AddressSpace(&self.vm), &fragment_attachments).map_err(|_| EINVAL)?;
+                commands.push(Command { payload: Payload::Render { command:payload, usc:self.usc },
+                    timestamps:[None,None] }, GFP_KERNEL)?;
+                continue;
+            }
             let g17_uapi::ParsedHardwareCommand::Compute { payload, attachments, .. } = command
-                else { return Err(ENOTSUPP); };
+                else { return Err(EINVAL); };
             // Native sampler/helper programming is a separate M4 wire path.
             // Reject it explicitly until translated; never silently discard it.
             if payload.flags != 0 || payload.sampler_count != 0 || payload.sampler_heap != 0 {
@@ -160,8 +173,8 @@ impl queue::Queue for Queue {
                     user_end: crate::g16_drm::USER_TOP }, &AddressSpace(&self.vm))
                 .map_err(|_| EINVAL)?;
             commands.push(Command {
-                control: crate::g16_compute::Control { base: cmd.control_stream_base,
-                    end: cmd.control_stream_end, usc_base: self.usc },
+                payload: Payload::Compute(crate::g16_compute::Control { base: cmd.control_stream_base,
+                    end: cmd.control_stream_end, usc_base: self.usc }),
                 timestamps: [Destination::resolve(objects, cmd.timestamps.start)?,
                     Destination::resolve(objects, cmd.timestamps.end)?],
             }, GFP_KERNEL)?;
@@ -183,4 +196,41 @@ impl queue::Queue for Queue {
         }
         Ok(())
     }
+}
+
+fn validate_render(r: g17_uapi::UapiRenderCommand, usc: u64, space: &AddressSpace<'_>) -> Result {
+    use g17_uapi::{GpuAddressSpace, GpuAccess};
+    let empty = g17_uapi::UapiHelperProgram { binary:0, config:0, data:0 };
+    if r.flags & !(2|16) != 0 || r.layers != 1 || r.samples != 1
+        || r.sampler_count != 0 || r.sampler_heap != 0
+        || r.vertex_helper != empty || r.fragment_helper != empty
+        || r.depth.compression_base != 0 || r.stencil.compression_base != 0
+        || r.depth.compression_stride != 0 || r.stencil.compression_stride != 0
+        || r.ppp_control & !0x203 != 0 { return Err(ENOTSUPP); }
+    // The initial render SKU has no timestamp opcodes. Reject requests until
+    // the genuine GPU timestamp sequence is ported; never substitute CPU time.
+    for t in [r.vertex_timestamps.start,r.vertex_timestamps.end,
+        r.fragment_timestamps.start,r.fragment_timestamps.end] {
+        if t.handle != 0 { return Err(ENOTSUPP); }
+    }
+    if r.width == 0 || r.height == 0 || r.width > 16384 || r.height > 16384
+        || !matches!(r.utile_width,16|32) || !matches!(r.utile_height,16|32)
+        || r.sample_size == 0 || u32::from(r.sample_size)*u32::from(r.utile_width)*u32::from(r.utile_height)>32768 {
+        return Err(EINVAL);
+    }
+    crate::g16_render_state::compact(r.vdm_base).map_err(|_| EINVAL)?;
+    if r.vdm_base & 3 != 0 || !space.covers(r.vdm_base,4,GpuAccess::Read)
+        || r.scissor_base == 0 || r.scissor_base & 7 != 0 || !space.covers(r.scissor_base,8,GpuAccess::Read) {
+        return Err(EINVAL);
+    }
+    for (p,access) in [(r.depth_bias_base,GpuAccess::Read),(r.occlusion_query_base,GpuAccess::Write)] {
+        if p != 0 && (p & 7 != 0 || !space.covers(p,8,access)) { return Err(EINVAL); }
+    }
+    for zls in [r.depth,r.stencil] { g17_uapi::validate_zls(space,zls,1).map_err(|_| EINVAL)?; }
+    let window = g17_uapi::QueueUscWindow { base:usc,user_start:0x4000,user_end:crate::g16_drm::USER_TOP };
+    for p in [r.background,r.end_of_tile,r.partial_background,r.partial_end_of_tile] {
+        window.full_program(space,p.usc).map_err(|_| EINVAL)?;
+        if !space.covers(usc+u64::from(p.usc & !63),64,GpuAccess::Read) { return Err(EINVAL); }
+    }
+    Ok(())
 }

@@ -53,6 +53,14 @@ impl Buffer {
             protection, true)?);
         Ok(buffer)
     }
+    pub(crate) fn new_gpu_aligned(dev: &driver::AsahiDevice, firmware_vm: &mmu::Vm,
+        gpu_vm: &mmu::Vm, size: usize, alignment: u64) -> Result<Self> {
+        if alignment < mmu::UAT_PGSZ as u64 || !alignment.is_power_of_two() { return Err(EINVAL); }
+        let mut buffer = Self::allocate(dev, firmware_vm, size, prot::PROT_GPU_FW_SHARED_RW)?;
+        buffer.gpu_mapping = Some(buffer.object.map_into_range(gpu_vm,
+            0x70_0000_0000..0x80_0000_0000, alignment, prot::PROT_GPU_SHARED_RW, true)?);
+        Ok(buffer)
+    }
     /// Retain one explicit command-buffer view across the bootstrap and client
     /// contexts. The engine fetches its register list before switching ASID.
     pub(crate) fn map_gpu_view(&mut self, vm: &mmu::Vm) -> Result<mmu::KernelMapping> {
