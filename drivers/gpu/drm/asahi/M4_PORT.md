@@ -4,6 +4,11 @@ The completion target is parity with the old driver: correctly rendered,
 GPU-accelerated Hyprland and SuperTux through Asahi and Mesa Vulkan/Zink.
 A first verified Vulkan program is an intermediate milestone, not completion.
 
+Current result: the owned Asahi startup diagnostic executed its one-thread GPU
+store in `compute-store-8`. Userspace submission, Vulkan, Hyprland and SuperTux
+through this new runtime are still pending. The sections below retain the
+chronological bring-up record; earlier failure boundaries are not current claims.
+
 The `m4-asahi-port` branch imports the complete Asahi driver and UAPI from
 Aurora `drm-agx3`, commit `4ac2664258f370cf7b03327da742b5885f91ca0b`.
 The source import is `ebac9112f313`; `ab731d9f3dfb` adds the fourteen upstream
@@ -17,7 +22,7 @@ The parallel Mesa worktree starts from Aurora `agx3`
 `e58d46899eb1f351863bccab4b6e8c87ed32b95e`. The previous lab kernel branch
 ends at `33f5bc310610`, and the lab Mesa checkpoint is `c2cb7a5934b`.
 `g16_lab/` remains available as evidence and does not participate in the
-`CONFIG_DRM_ASAHI` build. M4 execution remains disabled in the imported driver.
+`CONFIG_DRM_ASAHI` build. M4 userspace execution remains disabled; only the guarded startup diagnostic runs.
 
 ## First transferred implementation
 
@@ -430,3 +435,26 @@ the completed iadd path. The LDSHDR address scatter agrees with Aurora Mesa;
 the old lab subtract-0xaa decoder misleadingly labels +0x3c0 as +0x380.
 The generated image/loader host checks pass. Hardware still preempts/retries
 with output unchanged; this container correction alone is not execution proof.
+
+## First owned GPU shader result
+
+`compute-esl-fault-1` deliberately addressed the ESL guard page and produced
+MMU read fault VA 0x7000024000, context 1, raw 0x8069020211. This established
+that the GPU reaches the owned CDM loader mapping. `compute-shader-fault-1`
+then displaced only LDSHDR into the shader guard while keeping the helper
+address valid; it retained the retry without a shader fault. Both temporary
+fault injections were removed and are not present in the committed source.
+
+`compute-store-8` increased the initial fresh private-memory allocation from
+2 MiB to 32 MiB (16 generated 2 MiB runs, 8192 pages) with matching descriptor
+counts. Metadata still has room to grow; these are startup allocation choices,
+not UAPI limits. The exact minimum/occupancy sizing and runtime growth protocol
+remain to be derived. This change produced verified output 0x44a72000, both
+retirement stamps 0x100, and GPU timestamps 0xff60cc38 / 0xff60ccd9. Queue idle
+and 50 ms stability passed, ASC stopped, and the module unloaded successfully.
+No captured pool contents, GPU pointers or CPU-computed output were used.
+
+Boot: `1bdcb220-ba9a-45a5-96fc-1ee187fd2b29`. Watchdog: verified 60 seconds without heartbeat.
+Six-channel thermal peak: 51 C; no monitor failure.
+Evidence: `_provenance/asahi-pivot-20260909/hardware/compute-store-8/`.
+This is a kernel qualification shader, not a Vulkan or desktop success.

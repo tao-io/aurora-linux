@@ -26,6 +26,9 @@ pub(crate) struct Compute {
     binding: mmu::VmBind,
 }
 
+const PRIVATE_BYTES: usize = 0x2000000;
+const PRIVATE_PAGES: usize = PRIVATE_BYTES / 0x1000;
+
 impl Compute {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, config: &mut crate::g16_config::Config) -> Result<Self> {
         let vm = uat.new_vm(0x81320020, 0x70_0000_0000..0x80_0000_0000)?;
@@ -49,10 +52,10 @@ impl Compute {
             auxiliary: gpu(0x4000)?,
             slot_state: gpu(0x4000)?,
             context_store: gpu(0x40000)?,
-            // One fresh 2 MiB block for the single-thread qualification job.
+            // Initial 32 MiB pool for qualification across the resident cores.
             // Metadata capacity is an initial allocation policy, not a driver
             // submission or lifetime limit. No captured block is retained.
-            private_memory: gpu(0x200000)?,
+            private_memory: gpu(PRIVATE_BYTES)?,
             pool_state: gpu(0x20000)?,
             page_list: gpu(0x4000)?,
             counter: gpu(8)?,
@@ -68,12 +71,14 @@ impl Compute {
             pool_state_gpu: job.pool_state.gpu_va()?, page_list_gpu: job.page_list.gpu_va()?,
             counter: job.counter.va(),
             context: job.binding.slot(), generation: 1,
-        }, 0x4000, 512).map_err(|_| EINVAL)?;
+        }, 0x4000, PRIVATE_PAGES as u32).map_err(|_| EINVAL)?;
         let private_base = job.private_memory.gpu_va()?;
-        for page in 0..512 {
+        for page in 0..PRIVATE_PAGES {
             job.pool_state.u64(page * 8, private_base + page as u64 * 0x1000)?;
         }
-        job.page_list.u64(0, (1u64 << 61) | private_base)?;
+        for block in 0..PRIVATE_BYTES / 0x200000 {
+            job.page_list.u64(block * 64, (1u64 << 61) | (private_base + block as u64 * 0x200000))?;
+        }
         job.command.write(0, &bytes[..])?;
         job.shader.write(0, &g16_dispatch::image(job.output.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.esl.write(0, &g16_dispatch::esl(job.shader.gpu_va()?).map_err(|_| EINVAL)?)?;
@@ -86,6 +91,14 @@ impl Compute {
         let mut roots = [(0, 0); 2];
         self.binding.vm().context_roots(&mut roots)?;
         dev_info!(dev.as_ref(), "G16G: owned compute user context={} generation=1 roots={:x?}\n", self.binding.slot(), roots);
+        Ok(())
+    }
+    pub(crate) fn log_progress(&mut self, dev: &driver::AsahiDevice) -> Result {
+        let mut cells = [0u64; 4];
+        for (index, cell) in cells.iter_mut().enumerate() {
+            *cell = self.preemption.read_u64(0x1480 + index * 8)?;
+        }
+        dev_info!(dev.as_ref(), "G16G: compute preemption progress={:x?} private-pages={}\n", cells, PRIVATE_PAGES);
         Ok(())
     }
     pub(crate) fn address(&self) -> u64 { self.command.va() }

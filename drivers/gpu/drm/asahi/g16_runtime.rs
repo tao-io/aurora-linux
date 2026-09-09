@@ -173,6 +173,7 @@ impl Runtime {
             if start.elapsed() >= Delta::from_secs(2) {
                 dev_err!(inner.drm.as_ref(), "G16G: compute timeout pipe={:?} queue={:?} status={:x?}\n", pipe, queue, status);
                 inner.config.log_firmware_state(&inner.drm)?;
+                inner.compute.log_progress(&inner.drm)?;
                 return Err(ETIMEDOUT);
             }
             fsleep(Delta::from_micros(100));

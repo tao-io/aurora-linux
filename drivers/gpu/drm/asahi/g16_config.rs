@@ -238,6 +238,11 @@ impl Config {
             }
             dev_info!(dev.as_ref(), "G16G: firmware RAM +{:#x}={:x?}\n", address, &words[..count]);
         }
+        let mut uma = [0u64; 4];
+        for (index, word) in uma.iter_mut().enumerate() {
+            *word = self.object(Object::UmaTable).read_u64(32 + index * 8)?;
+        }
+        dev_info!(dev.as_ref(), "G16G: hardware UMA slot1={:x?}\n", uma);
         let power = self.object(Object::PowerPerformance).read_u32(0x38)?;
         dev_info!(dev.as_ref(), "G16G: firmware GPU power state={:#x}\n", power);
         Ok(())
