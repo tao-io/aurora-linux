@@ -540,3 +540,18 @@ of Vulkan rendering or desktop parity.
 The render-table/mapping prerequisites preserved the real Vulkan compute
 result in `render-prereqs-compute-1`: 32 expected outputs, safe open-file
 teardown, maximum observed PMP temperature 51.75 C, watchdog verified at 60 s.
+
+### First verified Vulkan graphics result
+
+`vulkan-render-3` rendered a 32x32 RGBA8 triangle through real G16G Honeykrisp
+and this common DRM path. Both TA and fragment retired with both stamps 0x100;
+the Vulkan test verified every pixel (checksum `a513efed37c25325`). Readback
+used VK_EXT_host_image_copy to isolate rendering from the later GPU copy test.
+Open-file unbind and module unload passed. Maximum observed PMP temperature
+was 53.75 C; watchdog was verified at 60 s with no unconditional heartbeat.
+
+Before testing repeated renders, bootstrap command VAs were separated from
+client backing within the reserved driver arena. Otherwise a retained previous
+pass could occupy the next command VA selected independently in context zero.
+This follows the lifetime requirement for firmware-cached parameter managers;
+it does not change any client VA or render-size limit.

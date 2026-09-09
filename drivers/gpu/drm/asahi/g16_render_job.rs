@@ -46,8 +46,8 @@ impl Render {
         let gpu = |size| Buffer::new_gpu(dev,uat.kernel_vm(),vm,size);
         let fw = |size| Buffer::new(dev,uat.kernel_vm(),size);
         let mut commands = [
-            Buffer::new_gpu(dev,uat.kernel_vm(),uat.kernel_lower_vm(),Stage::Tiling.command_size())?,
-            Buffer::new_gpu(dev,uat.kernel_vm(),uat.kernel_lower_vm(),Stage::Fragment.command_size())?];
+            Buffer::new_command(dev,uat.kernel_vm(),uat.kernel_lower_vm(),Stage::Tiling.command_size())?,
+            Buffer::new_command(dev,uat.kernel_vm(),uat.kernel_lower_vm(),Stage::Fragment.command_size())?];
         let mut views = KVec::new();
         for command in &mut commands { views.push(command.map_gpu_view(vm)?,GFP_KERNEL)?; }
         // Initial allocation follows pass geometry, rounded to PB blocks. The

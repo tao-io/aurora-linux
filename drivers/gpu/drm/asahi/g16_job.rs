@@ -42,7 +42,7 @@ impl Compute {
         // The engine fetches the register list in bootstrap context zero, then
         // switches to the client ASID. Retain exactly this command GEM in both
         // contexts; no user mappings or unrelated bootstrap pages are mirrored.
-        let mut command = Buffer::new_gpu(dev, uat.kernel_vm(), uat.kernel_lower_vm(), g16_compute::SIZE)?;
+        let mut command = Buffer::new_command(dev, uat.kernel_vm(), uat.kernel_lower_vm(), g16_compute::SIZE)?;
         let command_client = command.map_gpu_view(&vm)?;
         let mut job = Self {
             _command_client: command_client,

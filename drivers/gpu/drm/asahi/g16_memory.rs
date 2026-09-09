@@ -49,8 +49,18 @@ impl Buffer {
         // Match the shared firmware/GPU access of the qualified M4 objects.
         let mut buffer = Self::allocate(dev, firmware_vm, size, prot::PROT_GPU_FW_SHARED_RW)?;
         buffer.gpu_mapping = Some(buffer.object.map_into_range(gpu_vm,
-            0x70_0000_0000..0x80_0000_0000, mmu::UAT_PGSZ as u64,
+            0x71_0000_0000..0x80_0000_0000, mmu::UAT_PGSZ as u64,
             protection, true)?);
+        Ok(buffer)
+    }
+    /// The bootstrap engine fetches command registers before switching ASID.
+    /// Give mirrored command VAs their own interval, disjoint from client
+    /// backing. A retained prior pass must not collide with the next command.
+    pub(crate) fn new_command(dev: &driver::AsahiDevice, firmware_vm: &mmu::Vm,
+        bootstrap_vm: &mmu::Vm, size: usize) -> Result<Self> {
+        let mut buffer = Self::allocate(dev, firmware_vm, size, prot::PROT_GPU_FW_SHARED_RW)?;
+        buffer.gpu_mapping = Some(buffer.object.map_into_range(bootstrap_vm,
+            0x70_0000_0000..0x71_0000_0000, mmu::UAT_PGSZ as u64, prot::PROT_GPU_SHARED_RW, true)?);
         Ok(buffer)
     }
     pub(crate) fn new_gpu_aligned(dev: &driver::AsahiDevice, firmware_vm: &mmu::Vm,
@@ -58,7 +68,7 @@ impl Buffer {
         if alignment < mmu::UAT_PGSZ as u64 || !alignment.is_power_of_two() { return Err(EINVAL); }
         let mut buffer = Self::allocate(dev, firmware_vm, size, prot::PROT_GPU_FW_SHARED_RW)?;
         buffer.gpu_mapping = Some(buffer.object.map_into_range(gpu_vm,
-            0x70_0000_0000..0x80_0000_0000, alignment, prot::PROT_GPU_SHARED_RW, true)?);
+            0x71_0000_0000..0x80_0000_0000, alignment, prot::PROT_GPU_SHARED_RW, true)?);
         Ok(buffer)
     }
     /// Retain one explicit command-buffer view across the bootstrap and client
