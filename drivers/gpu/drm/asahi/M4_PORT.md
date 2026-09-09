@@ -265,3 +265,11 @@ then released mappings, slots and roots. The following raw-table check found
 all contexts disabled and preserved inherited tables. RTKit boot then passed.
 Peak monitored temperature was 52 C. This establishes CPU-side VM construction,
 translation and retirement; no GPU page walk or shader has executed yet.
+
+### Owned runtime, live common UAT (2026-09-09)
+
+`owned-runtime-1` on boot `4b2682ec-e393-4e6f-b7af-d0dbcb09f694`
+started RTKit with common UAT/context 0 still installed. Application endpoints
+started and ASC stopped before transport/UAT/power cleanup. The 60-second
+watchdog was verified; all six thermal channels were monitored, peak 52 C.
+No initdata or GPU commands were sent in that test.

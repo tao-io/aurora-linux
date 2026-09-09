@@ -2837,9 +2837,20 @@ impl Vm {
         size: usize,
         prot: Prot,
     ) -> Result<KernelMapping> {
-        let mut inner = self.inner.exec_lock(None, false)?;
+        self.map_io_internal(Some(iova), 0..0, phys, size, prot)
+    }
 
-        if (iova as usize | phys | size) & UAT_PGMSK != 0 {
+    /// Allocate a firmware MMIO VA through the same DRM range allocator as GEM.
+    pub(crate) fn map_io_in_range(&self, range: Range<u64>, phys: usize,
+        size: usize, prot: Prot) -> Result<KernelMapping> {
+        self.map_io_internal(None, range, phys, size, prot)
+    }
+
+    fn map_io_internal(&self, fixed: Option<u64>, range: Range<u64>, phys: usize,
+        size: usize, prot: Prot) -> Result<KernelMapping> {
+        let mut inner = self.inner.exec_lock(None, false)?;
+        let iova = fixed.unwrap_or(0);
+        if size == 0 || (iova as usize | phys | size) & UAT_PGMSK != 0 {
             dev_err!(
                 inner.dev.as_ref(),
                 "MMU: KernelMapping {:#x}:{:#x} -> {:#x} is not page-aligned\n",
@@ -2850,29 +2861,18 @@ impl Vm {
             return Err(EINVAL);
         }
 
-        dev_info!(
-            inner.dev.as_ref(),
-            "MMU: IO map: {:#x}:{:#x} -> {:#x}\n",
-            phys,
-            size,
-            iova
-        );
-
-        let uat_inner = inner.uat_inner.clone();
-        let node = inner.mm.reserve_node(
-            KernelMappingInner {
-                owner: self.inner.clone(),
-                uat_inner,
-                prot,
-                bo: None,
-                _gem: None,
-                offset: 0,
-                mapped_size: size,
-            },
-            iova,
-            size as u64,
-            0,
-        )?;
+        let payload = KernelMappingInner {
+            owner: self.inner.clone(), uat_inner: inner.uat_inner.clone(), prot,
+            bo: None, _gem: None, offset: 0, mapped_size: size,
+        };
+        let node = if let Some(iova) = fixed {
+            inner.mm.reserve_node(payload, iova, size as u64, 0)?
+        } else {
+            inner.mm.insert_node_in_range(payload, size as u64, UAT_PGSZ as u64,
+                0, range.start, range.end, mm::InsertMode::Best)?
+        };
+        let iova = node.start();
+        dev_info!(inner.dev.as_ref(), "MMU: IO map: {:#x}:{:#x} -> {:#x}\n", phys, size, iova);
 
         let prepared = inner
             .page_table
