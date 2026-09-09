@@ -1,0 +1,52 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/* J713 resources observed in its ADT. m1n1 fills the inherited RAM ranges. */
+/ {
+	aliases {
+		gpu = &gpu;
+	};
+
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+
+		gpu_ttbs: uat-ttbs { reg = <0 0 0 0>; no-map; status = "disabled"; };
+		gpu_pagetables: uat-pagetables { reg = <0 0 0 0>; no-map; status = "disabled"; };
+		gpu_handoff: uat-handoff { reg = <0 0 0 0>; no-map; status = "disabled"; };
+		gpu_shared_l2: uat-shared-l2 { reg = <0 0 0 0>; no-map; status = "disabled"; };
+		gpu_fw_text: gpu-fw-text { reg = <0 0 0 0>; no-map; status = "disabled"; };
+		gpu_fw_data: gpu-fw-data { reg = <0 0 0 0>; no-map; status = "disabled"; };
+	};
+};
+
+&soc {
+	gpu: gpu@302600000 {
+		compatible = "apple,agx-t8132";
+		reg = <0x3 0x02600000 0 0x4000>,
+		      <0x3 0x00000000 0 0x4000000>;
+		reg-names = "asc", "sgx";
+		mboxes = <&agx_mbox>;
+		power-domains = <&ps_gfx>;
+		memory-region = <&gpu_ttbs>, <&gpu_pagetables>, <&gpu_handoff>,
+				<&gpu_shared_l2>, <&gpu_fw_text>, <&gpu_fw_data>;
+		memory-region-names = "ttbs", "pagetables", "handoff",
+				      "shared-l2", "fw-text", "fw-data";
+		/* No firmware-layout assertion until m1n1 has populated every range. */
+		status = "disabled";
+	};
+
+	agx_mbox: mailbox@302608000 {
+		/* ASCWrap v6 contains the same mailbox aperture used by ASC v4. */
+		compatible = "apple,t8132-asc-mailbox", "apple,asc-mailbox-v4";
+		reg = <0x3 0x02608000 0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 993 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 994 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 995 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 996 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "send-empty", "send-not-empty",
+				  "recv-empty", "recv-not-empty";
+		#mbox-cells = <0>;
+		status = "disabled";
+	};
+};
