@@ -214,3 +214,27 @@ of all inherited table bytes. The four occupied-map log messages are deliberate
 negative checks. All TTBAT entries remained disabled and ASC was stopped during
 the test. RTKit discovery then passed again. Peak temperature was 53.25 C.
 This is CPU page-table/lifetime validation, not a GPU translation or shader test.
+
+## RTKit boot and initialized DRM data
+
+`hardware/rtkit-boot-1/` records successful common RTKit startup on boot
+`072a56a6-1a0b-44d8-b22b-b460bfb9f97c`: firmware crash storage at physical
+`0x10001e80000`, size `0x8000`, is bounded inside the admitted firmware-data
+reservation and retained through transport cleanup. Its AP mapping is uncached.
+Both IOP/AP running states and application endpoints 0x20/0x21 completed.
+ASC stopped before RTKit freed its callback data and CPU mapping. Peak 52.25 C.
+This uses the ordinary RTKit path, not Neo's crash-DVA echo behavior. No initdata
+or GPU command was sent.
+
+The imported DRM initializer previously returned success with uninitialized
+`AsahiData` and disabled all Rust DRM data destruction to tolerate it. GPU and
+Neo runtime slots now start as empty `SetOnce` values; the complete data and
+work items exist before GEM construction. DRM callbacks return ENODEV until
+the backend is published. Normal DRM data destruction has been restored.
+This removes uninitialized-data access and constructor-unwind leaks; it does
+not by itself resolve persistent runtime reference cycles or qualify Neo unbind.
+
+`hardware/drm-init-1/`, boot `83de9a23-97b1-4c2d-96be-a75485e0cda5`, passed
+two unregistered DRM/GEM allocation/cleanup cycles, both reserved-table cycles,
+and another full RTKit/application-endpoint startup. Peak 51.75 C. The DRM
+backend remains absent; there is still no new-driver Vulkan execution.

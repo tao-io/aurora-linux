@@ -25,25 +25,6 @@ use crate::g16_firmware::Firmware;
 const ASC_CPU_CONTROL: usize = 0x44;
 const ASC_CPU_RUN: u32 = 1 << 4;
 
-struct Management;
-enum NoBuffer {}
-
-impl rtkit::Buffer for NoBuffer {
-    fn iova(&self) -> Result<usize> {
-        match *self {}
-    }
-
-    fn buf(&mut self) -> Result<kernel::iosys_map::IoSysMapRef<'_, u8>> {
-        match *self {}
-    }
-}
-
-#[kernel::macros::vtable]
-impl rtkit::Operations for Management {
-    type Data = ();
-    type Buffer = NoBuffer;
-}
-
 pub(crate) struct Device {
     dev: ARef<platform::Device>,
     asc: Pin<KBox<Devres<ExclusiveIoMem<0x4000>>>>,
@@ -112,6 +93,8 @@ impl Device {
         use kernel::dma::{Device as _, DmaMask};
         // SAFETY: This is the admitted T8132's 42-bit physical DMA capability.
         unsafe { pdev.dma_set_mask_and_coherent(DmaMask::try_new(42)?)? };
+        crate::mmu::check_handoff_guard()?;
+        dev_info!(pdev.as_ref(), "G16G: private-memory handoff guard passed success and both timeout paths\n");
         for _ in 0..2 {
             let drm: ARef<crate::driver::AsahiDevice> = kernel::drm::Device::new(
                 pdev.as_ref(), crate::driver::AsahiData::new(pdev, None))?;
@@ -236,47 +219,7 @@ impl Device {
         result
     }
 
-    /// Exercise the normal interrupt-driven RTKit management transport before
-    /// giving firmware any host allocations or starting application endpoints.
-    /// The caller must reboot before attempting another firmware session.
-    pub(crate) fn discover(&self, pdev: &platform::Device<Core>) -> Result {
-        let mut rtkit = core::pin::pin!(rtkit::RtKit::<Management>::new_epmap_only(
-            pdev.as_ref(),
-            None,
-            0,
-            ()
-        )?);
-        let asc = self.asc.access(pdev.as_ref())?;
-        let control = asc.read32(ASC_CPU_CONTROL);
-        if control & ASC_CPU_RUN != 0 {
-            return Err(EBUSY);
-        }
-        asc.write32(control | ASC_CPU_RUN, ASC_CPU_CONTROL);
-        let result = rtkit.as_mut().discover_epmap();
 
-        // Stop first, while the transport and all firmware reservations remain
-        // alive. Only then may RTKit drain callbacks and release its mailbox.
-        asc.write32(asc.read32(ASC_CPU_CONTROL) & !ASC_CPU_RUN, ASC_CPU_CONTROL);
-        let start = Instant::<Monotonic>::now();
-        while asc.read32(ASC_CPU_CONTROL) & ASC_CPU_RUN != 0 {
-            if start.elapsed() >= Delta::from_millis(100) {
-                dev_err!(pdev.as_ref(), "G16G: ASC failed to stop after discovery\n");
-                return Err(ETIMEDOUT);
-            }
-            fsleep(Delta::from_micros(10));
-        }
-        let snapshot = result?;
-        dev_info!(pdev.as_ref(), "G16G: RTKit management discovery HELLO={:#018x} versions={}/{} endpoints={:016x?}; ASC stopped\n",
-            snapshot.raw_hello, snapshot.hello_min_version, snapshot.hello_max_version,
-            snapshot.endpoints);
-        if snapshot.hello_min_version != 12
-            || snapshot.hello_max_version != 12
-            || snapshot.endpoints != [0x0000_0003_0000_0003, 0, 0, 0]
-        {
-            return Err(EIO);
-        }
-        Ok(())
-    }
 }
 
 impl Drop for Device {
@@ -284,7 +227,7 @@ impl Drop for Device {
         if !self.power_vote {
             return;
         }
-        // Discovery stops ASC before its RTKit client is released. Require
+        // Transport checks stop ASC before the RTKit client is released. Require
         // that proof before relinquishing the inner power vote.
         match self.asc.try_access() {
             Some(asc) if asc.read32(ASC_CPU_CONTROL) & ASC_CPU_RUN == 0 => {}

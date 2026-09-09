@@ -44,10 +44,19 @@ impl State {
 }
 
 pub(crate) struct FirmwareBuffer {
+    state: Arc<State>,
     mapping: Mem,
     physical: usize,
     offset: usize,
     size: usize,
+}
+
+impl Drop for FirmwareBuffer {
+    fn drop(&mut self) {
+        // Includes allocation failure in RTKit's wrapper after shmem_map
+        // returned: readiness must not survive loss of the actual mapping.
+        self.state.mapped.store(false, Ordering::Release);
+    }
 }
 
 impl rtkit::Buffer for FirmwareBuffer {
@@ -112,6 +121,7 @@ impl rtkit::Operations for Operations {
         );
         state.mapped.store(true, Ordering::Release);
         Ok(FirmwareBuffer {
+            state: state.into(),
             mapping,
             physical,
             offset,
