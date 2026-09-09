@@ -144,8 +144,8 @@ impl Render {
         g16_memory::publish();
         dev_info!(dev.as_ref(), "G16G: render USC freelist={:#x} capacity={} populated={}\n",
             job.pool_state.gpu_va()?,PRIVATE_QWORDS,PRIVATE_PAGES);
-        dev_info!(dev.as_ref(),"G16G: owned render {}x{} ASID={} PB={} pages tilemap={:#x} TPC={:#x}\n",
-            r.width,r.height,job.binding.slot(),page_count,job.tilemap.gpu_va()?,job.tpc.gpu_va()?);
+        dev_info!(dev.as_ref(),"G16G: owned render {}x{} ASID={} PB={} pages tilemap={:#x} TPC={:#x} VDM={:#x}\n",
+            r.width,r.height,job.binding.slot(),page_count,job.tilemap.gpu_va()?,job.tpc.gpu_va()?,r.vdm_base);
         Ok(job)
     }
     pub(crate) fn index(&self) -> usize { usize::from(self.stage == Stage::Fragment) }
