@@ -19,6 +19,7 @@ pub(crate) struct Compute {
     auxiliary: Buffer,
     slot_state: Buffer,
     context_store: Buffer,
+    private_memory: Buffer,
     pool_state: Buffer,
     page_list: Buffer,
     counter: Buffer,
@@ -48,8 +49,10 @@ impl Compute {
             auxiliary: gpu(0x4000)?,
             slot_state: gpu(0x4000)?,
             context_store: gpu(0x40000)?,
-            // Empty pool for this no-spill diagnostic. Size the metadata for a 64 MiB
-            // pool rather than populating a captured private-memory graph.
+            // One fresh 2 MiB block for the single-thread qualification job.
+            // Metadata capacity is an initial allocation policy, not a driver
+            // submission or lifetime limit. No captured block is retained.
+            private_memory: gpu(0x200000)?,
             pool_state: gpu(0x20000)?,
             page_list: gpu(0x4000)?,
             counter: gpu(8)?,
@@ -65,7 +68,12 @@ impl Compute {
             pool_state_gpu: job.pool_state.gpu_va()?, page_list_gpu: job.page_list.gpu_va()?,
             counter: job.counter.va(),
             context: job.binding.slot(), generation: 1,
-        }, 0x4000).map_err(|_| EINVAL)?;
+        }, 0x4000, 512).map_err(|_| EINVAL)?;
+        let private_base = job.private_memory.gpu_va()?;
+        for page in 0..512 {
+            job.pool_state.u64(page * 8, private_base + page as u64 * 0x1000)?;
+        }
+        job.page_list.u64(0, (1u64 << 61) | private_base)?;
         job.command.write(0, &bytes[..])?;
         job.shader.write(0, &g16_dispatch::shader(job.output.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.esl.write(0, &g16_dispatch::esl(job.shader.gpu_va()?).map_err(|_| EINVAL)?)?;

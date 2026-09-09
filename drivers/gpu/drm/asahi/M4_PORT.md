@@ -403,3 +403,14 @@ added in run 2 did not resolve that fault. Firmware +0x2b21c independently
 shows SKU binding +0x18 (SKU +0x178) supplies a GPU-read auxiliary address;
 zero currently emits register 0x14070=1. The next test allocates that missing
 auxiliary backing, with no captured contents or addresses.
+
+`compute-store-3` supplied owned auxiliary backing and cleared the gUPM fault.
+It produced nonzero engine timestamps, but firmware repeatedly preempted and
+retried the command (KTrace 0x35, reason 5); output stayed 0xdeadbeef and neither
+stamp retired. Reason 5 is not yet decoded as a private-memory grow request.
+`compute-store-4` populated one fresh 2 MiB private-memory block with generated
+4 KiB page entries, a page-list record and matching descriptor counts. The
+same retry persisted. Both guarded runs saved evidence and rebooted normally;
+peak PMP readings stayed below 53 C. This is GPU activity, not shader success.
+The minimal-store body originates in the public M3 decoder fixture; only its
+encoding, not that particular M4 hardware execution, was independently checked.

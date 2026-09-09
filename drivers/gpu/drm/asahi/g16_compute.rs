@@ -24,16 +24,17 @@ pub(crate) const SIZE: usize = 0x1000;
 pub(crate) const SLOT: u8 = 15;
 pub(crate) const STAMP: u32 = 0x100;
 
-/// Encode an owned-context dispatch with an empty USC private-memory pool.
+/// Encode an owned-context dispatch with initialized USC private memory.
 /// The backing owner provides at least 0x20000 bytes of context storage,
 /// a pool-state array of `pool_qwords`, and a page-list allocation. The
 /// qualification shader does not request spills; no captured pool is copied.
-pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32) -> Result<(), ()> {
+pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32, pages: u32) -> Result<(), ()> {
     if out.len() < SIZE || a.command < 0xffff_fc00_0000_0000
         || a.command.checked_add(SIZE as u64).is_none()
         || a.context >= 64 || (a.context != 0 && a.generation == 0)
         || a.command & 0x3fff != 0 || a.slot_state & 7 != 0
         || a.counter & 7 != 0 || pool_qwords == 0
+        || pages > pool_qwords || pages % 512 != 0
         || [a.command_gpu, a.cdm_gpu, a.auxiliary_gpu, a.preemption_gpu, a.context_store_gpu, a.pool_state_gpu, a.page_list_gpu]
             .iter().any(|va| *va == 0 || *va & 0x3fff != 0 || *va >= (1 << 42) - 0x20000)
         || a.metrics < 0xffff_fc00_0000_0000 || a.metrics & 7 != 0
@@ -130,8 +131,10 @@ pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32) -> Result<(
     u64_at(out, 0xf00, 1);
     // Firmware-owned descriptor; its counter stays canonical for CPU access.
     u64_at(out, 0xe00, 1);
-    for (off, value) in [(8, 1), (12, 1), (16, 2), (0x1c, pool_qwords),
-        (0x28, 1), (0x40, 4), (0x94, 2)] {
+    for (off, value) in [(8, 1), (12, u32::from(pages == 0)), (16, 2), (0x1c, pool_qwords),
+        (0x24, pages), (0x28, u32::from(pages == 0)), (0x2c, pages),
+        (0x40, 4), (0x48, pages / 512 * 8), (0x5c, u32::from(pages != 0)),
+        (0x84, u32::from(pages != 0)), (0x94, 2)] {
         u32_at(out, 0xe00 + off, value);
     }
     u64_at(out, 0xe14, a.pool_state_gpu);
@@ -152,7 +155,7 @@ mod tests {
     #[test]
     fn packed_abi_roles_and_end_record() {
         let mut bytes = [0; SIZE];
-        encode(&mut bytes, addresses(), 16384).unwrap();
+        encode(&mut bytes, addresses(), 16384, 512).unwrap();
         let u64_at = |off| u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
         assert_eq!(&bytes[0xc..0x10], &[1, 0, 0, 0]);
         assert_eq!(bytes[0x88b], 1);
@@ -177,8 +180,8 @@ mod tests {
     fn invalid_address_is_transactional() {
         let mut bytes = [0x55; SIZE];
         let mut a = addresses(); a.command_gpu |= 1;
-        assert!(encode(&mut bytes, a, 16384).is_err());
+        assert!(encode(&mut bytes, a, 16384, 512).is_err());
         assert!(bytes.iter().all(|byte| *byte == 0x55));
-        assert!(encode(&mut bytes[..SIZE - 1], addresses(), 16384).is_err());
+        assert!(encode(&mut bytes[..SIZE - 1], addresses(), 16384, 512).is_err());
     }
 }
