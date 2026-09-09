@@ -255,6 +255,12 @@ impl Device {
     /// the firmware owns those registers until recovery is ported.
     pub(crate) fn log_engine_state(&self) -> Result {
         let sgx = self.sgx.try_access().ok_or(ENODEV)?;
+        let pstate = sgx.try_read32(0xe01000)? & 0xf;
+        if pstate == 0 {
+            dev_info!(self.dev.as_ref(), "G16G: GPU is powered down; skipping engine/MMU register snapshot\n");
+            return Ok(());
+        }
+        dev_info!(self.dev.as_ref(), "G16G: reading engine/MMU snapshot at pstate={}\n", pstate);
         let mut mmu = [0u32; 13];
         for (i, word) in mmu.iter_mut().enumerate() { *word = sgx.try_read32(0xd08000 + i * 4)?; }
         dev_info!(self.dev.as_ref(), "G16G: GPU MMU configuration={:x?}\n", mmu);

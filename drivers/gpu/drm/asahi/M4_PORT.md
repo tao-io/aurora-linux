@@ -346,3 +346,11 @@ or timeout leaves the entire runtime, GEM backing, mappings, PMP vote and
 module code retained until reboot; merely halting ASC cannot retire GPU DMA.
 The watchdog wrapper recognizes this retained-fault state and reboots after
 saving evidence. A real reset/recovery implementation remains required.
+
+`compute-terminate-1`, boot `11a9c3a2-a42d-40da-9fe6-cd902b5ae8b4`,
+stopped responding and rebooted with the watchdog armed. Only startup and
+one thermal sample (peak 51.5 C) survived; the journal has no module output.
+The precise failing stage is unproven. The next run streams kernel evidence
+back to the host while probing. Engine/MMU diagnostic registers are skipped
+when GPC reports pstate zero: the working old compute path explicitly reports
+the GPU powered down at that point and takes those snapshots after issue.
