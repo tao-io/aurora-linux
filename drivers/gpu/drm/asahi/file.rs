@@ -441,7 +441,10 @@ impl File {
         if gpu.independent_queue_limits().is_some() {
             params.features |= crate::g17_queue_limits::FEATURE_INDEPENDENT_QUEUES;
         }
-        if *module_parameters::fault_control.value() == 0xb {
+        // The owned M4 runtime does not apply the legacy InitData fault_control
+        // parameter. Do not invite speculative invalid accesses until its
+        // firmware/MMU soft-fault configuration is implemented and qualified.
+        if facts.chip_id != 0x8132 && *module_parameters::fault_control.value() == 0xb {
             params.features |= uapi::drm_asahi_feature_DRM_ASAHI_FEATURE_SOFT_FAULTS as u64;
         }
 
