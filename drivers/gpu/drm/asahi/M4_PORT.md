@@ -296,6 +296,11 @@ Watchdog 60 seconds, all six thermal channels, peak 51.75 C.
 Device-control testing now uses the three-index firmware ring and an explicit
 Fender SRAM power-assertion generation. The startup no-op is published before
 initdata, with subsequent commands using the rescan notification. Completion
-requires consumer/CFI/producer agreement, the matching firmware-consumed power
-generation, ready state and 50 ms stability. The GPC state is checked against
+requires consumer/CFI/producer agreement, ready state and 50 ms stability. The GPC state is checked against
 the low boot-state cap. This stage still queues no GPU work.
+
+`device-control-1` retired the startup NOP at indices 1/1/1 but timed out
+on an incorrect host-side power-generation equality check. The old successful
+fenced-noop evidence shows host/consumed pairs 1/0, 2/1, 3/2: the initial NOP
+does not increment the latter. Power accounting is now logged separately from
+the ring-retirement test. Firmware did not crash; Linux remained responsive.

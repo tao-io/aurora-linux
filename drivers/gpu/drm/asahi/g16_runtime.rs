@@ -105,9 +105,16 @@ impl Runtime {
             inner.device.check_boot_pstate()?;
             if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
             let indices = inner.config.control_indices()?;
-            if indices == [next; 3] && inner.config.consumed_generation()? == inner.generation {
+            // The startup NOP is retired without incrementing fw-data+0xeae8;
+            // established M4 runs show 1/0, 2/1, 3/2 host/consumed. That
+            // counter is power accounting, not a command-completion fence.
+            if indices == [next; 3] {
                 let completion = completed.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
-                if completion.elapsed() >= Delta::from_millis(50) { return Ok(()); }
+                if completion.elapsed() >= Delta::from_millis(50) {
+                    dev_info!(inner.drm.as_ref(), "G16G: device-control retired index={} power-generation={}/{}\n",
+                        next, inner.config.consumed_generation()?, inner.generation);
+                    return Ok(());
+                }
             } else if completed.is_some() { return Err(EIO); }
             if start.elapsed() >= Delta::from_secs(2) {
                 dev_err!(inner.drm.as_ref(), "G16G: device-control timeout indices={:?} expected={} power-generation={}/{}\n",
