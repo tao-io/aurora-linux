@@ -12,10 +12,29 @@ use crate::g16_resources;
 
 const TEXT_SIZE: u64 = 0x60000;
 const DATA_SIZE: u64 = 0x13c000;
+// The image includes a boot-argument TLV table in __TEXT. STKG and PACE
+// contain per-boot entropy rather than instructions. Hash with only these
+// two 8-byte values replaced by zero, keeping their keys and lengths intact.
 pub(crate) const TEXT_SHA256: [u8; 32] = [
-    0x70, 0x4f, 0x1b, 0x4c, 0xd7, 0x4c, 0x03, 0x6e, 0xa8, 0x5b, 0xdc, 0x19, 0x1b, 0xdb, 0xe7, 0x66,
-    0x18, 0x5b, 0x5b, 0x1c, 0xfa, 0x8d, 0x4a, 0xf5, 0x91, 0xb0, 0x65, 0x89, 0x0d, 0x1e, 0xc4, 0x2c,
+    0x5f, 0x65, 0xf6, 0x14, 0x58, 0x72, 0x54, 0x70, 0xb4, 0xb0, 0xc0, 0x20, 0x28, 0x47, 0x7b, 0xf2,
+    0xea, 0x57, 0x3a, 0xfb, 0x4e, 0x0c, 0x49, 0x6e, 0xf9, 0x95, 0xe9, 0x6a, 0xff, 0xb0, 0xd8, 0x6c,
 ];
+
+fn normalize_boot_entropy(text: &mut [u8]) -> bool {
+    const FIELDS: [(usize, &[u8; 4]); 2] = [(0x5c8df, b"GKTS"), (0x5c9c2, b"ECAP")];
+    if text.len() != TEXT_SIZE as usize
+        || text[0x22c..0x234] != [0xdf, 0xc8, 5, 0, 0x31, 2, 0, 0]
+        || FIELDS.iter().any(|(offset, key)| {
+            text[*offset..*offset + 4] != **key || text[*offset + 4..*offset + 8] != [8, 0, 0, 0]
+        })
+    {
+        return false;
+    }
+    for (offset, _) in FIELDS {
+        text[offset + 8..offset + 16].fill(0);
+    }
+    true
+}
 
 #[derive(Debug)]
 pub(crate) struct Firmware {
@@ -68,15 +87,21 @@ pub(crate) fn identify_loaded(
     // used only for hashing here and is dropped before returning. No mutable
     // reference, firmware patch, MMIO write or DMA is exposed by this function.
     let mapping = unsafe { Mem::try_new(text, MemFlag::WB.into()) }?;
+    // SAFETY: the mapping covers the complete readable reserved __TEXT.
+    let bytes = unsafe { core::slice::from_raw_parts(mapping.ptr(), mapping.size()) };
+    let mut canonical = KVec::new();
+    canonical.extend_from_slice(bytes, GFP_KERNEL)?;
+    if !normalize_boot_entropy(&mut canonical) {
+        return Err(ENODEV);
+    }
     let mut digest = [0u8; 32];
-    // SAFETY: the live mapping covers mapping.size() readable bytes and
-    // digest is a distinct SHA256_DIGEST_SIZE-byte writable array. The kernel
-    // SHA-256 implementation consumes the input synchronously.
-    unsafe { bindings::sha256(mapping.ptr(), mapping.size(), digest.as_mut_ptr()) };
+    // SAFETY: the initialized private copy and distinct digest live for the
+    // synchronous SHA-256 call. Normalization never writes loaded firmware.
+    unsafe { bindings::sha256(canonical.as_ptr(), canonical.len(), digest.as_mut_ptr()) };
     if digest != TEXT_SHA256 {
         dev_err!(
             pdev.as_ref(),
-            "G16G: unsupported loaded firmware SHA-256 {:02x?}\n",
+            "G16G: unsupported normalized firmware SHA-256 {:02x?}\n",
             digest
         );
     }
@@ -107,6 +132,42 @@ mod tests {
             [1, 0],
         )
         .unwrap()
+    }
+
+    fn image_fixture() -> Vec<u8> {
+        let mut bytes = vec![0xa5; TEXT_SIZE as usize];
+        bytes[0x22c..0x234].copy_from_slice(&[0xdf, 0xc8, 5, 0, 0x31, 2, 0, 0]);
+        for (offset, key) in [(0x5c8df, b"GKTS"), (0x5c9c2, b"ECAP")] {
+            bytes[offset..offset + 4].copy_from_slice(key);
+            bytes[offset + 4..offset + 8].copy_from_slice(&[8, 0, 0, 0]);
+        }
+        bytes
+    }
+
+    #[test]
+    fn only_boot_entropy_is_normalized() {
+        let mut a = image_fixture();
+        let mut b = a.clone();
+        b[0x5c8e7..0x5c8ef].fill(1);
+        b[0x5c9ca..0x5c9d2].fill(2);
+        assert!(normalize_boot_entropy(&mut a));
+        assert!(normalize_boot_entropy(&mut b));
+        assert_eq!(a, b);
+        b[0x4000] ^= 1;
+        assert!(normalize_boot_entropy(&mut b));
+        assert_ne!(a, b, "instruction changes must remain covered by the hash");
+    }
+
+    #[test]
+    fn malformed_bootarg_headers_reject_without_mutation() {
+        for offset in [0x22c, 0x230, 0x5c8df, 0x5c8e3, 0x5c9c2, 0x5c9c6] {
+            let mut bytes = image_fixture();
+            bytes[offset] ^= 1;
+            let original = bytes.clone();
+            assert!(!normalize_boot_entropy(&mut bytes));
+            assert_eq!(bytes, original);
+        }
+        assert!(!normalize_boot_entropy(&mut [0; 64]));
     }
 
     #[test]

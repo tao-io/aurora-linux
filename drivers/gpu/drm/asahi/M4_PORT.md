@@ -52,9 +52,9 @@ physical addresses. The private `/chosen/g16-lab-*` properties are not used.
 The mailbox aperture and interrupt descriptions come from the J713 ADT;
 interrupt delivery through this newly described provider is not yet tested.
 
-`g16_firmware.rs` maps only the reserved loaded text, hashes it with the
-kernel SHA-256 implementation, and identifies the lab's firmware ABI by
-exact text contents and segment geometry. The mapping is released before
+`g16_firmware.rs` maps only the reserved loaded text, hashes a private copy
+with the kernel SHA-256 implementation, and identifies the lab's firmware ABI
+by text contents and segment geometry. The mapping is released before
 returning the identity. It performs no firmware patch or GPU register access.
 The currently pinned evidence is:
 
@@ -63,19 +63,36 @@ The currently pinned evidence is:
 - Text/data VAs: `0xfffffc0000000000` / `0xfffffc0000060000`.
 - Embedded string: `RTKit-3255.160.4.release`, text offset `0x5a2b0`.
 - Text SHA-256: `704f1b4cd74c036ea85bdc191bdbe766185b5b1cfa8d4af591b065890d1ec42c`.
+- Normalized SHA-256: `5f65f61458725470b4b0c02028477bf2ea573afb4e0c496ef995e96affb0d86c`.
 
-The local text hash and embedded string were checked on 2026-09-09. No Apple
+The first integration boot (`d25b18d9-7aaf-4c2d-9980-3ee4a1412830`) showed
+why the complete loaded text hash is not a stable firmware identity. Its text
+differs from that reference in exactly 16 bytes, the 8-byte STKG and PACE
+boot-argument values. The code and every other byte match. The verifier now
+checks the boot-argument table offset/size and those two key/length headers,
+zeros only those two values in its private copy, and hashes the result.
+Instruction bytes and the other boot arguments remain covered. Seven host
+tests pass, including malformed headers and preservation of instruction
+changes; the normalized reference and live captures have identical hashes.
+
+The reference text hash and embedded string were checked on 2026-09-09. No Apple
 firmware bytes are added to Git by this port. This selects a known firmware
 ABI; it does not replace iBoot signature verification or establish Linux
-ownership of the firmware's state. The new probe still returns ENODEV before
-SGX ID reads, ASC start or DRM registration.
+ownership of the firmware's state. The new probe acquires power and reads SGX
+identity after matching firmware, then releases power and returns ENODEV.
+It does not yet start ASC or register DRM.
 
 Validation: full ARM64 Image/modules and m1n1 stage-2 builds pass. The binding
 passes dt-doc-validate, and both the source DTB and generated handoff DTB pass
 the T8132 binding check. The actual m1n1 FDT producer passes 13 host cases;
 the generated result passes the Rust resource validator. Firmware identity
 tests cover physical relocation, unknown digests and incompatible geometry.
-Neither the new bootloader nor kernel has been installed on the J713.
+The new bootloader and kernel have now booted on J713. The initial guarded
+probe correctly refused the unnormalized identity. The firmware comparison
+was collected separately; that capture helper's unbounded-size MTD read hit
+an alignment fault, so the read was changed to an explicit aligned size and
+a clean reboot is required before continuing GPU experiments. No shader has
+executed through the new runtime yet.
 
 ## Runtime integration boundary
 
