@@ -1,5 +1,9 @@
 # M4 integration into Asahi
 
+The completion target is parity with the old driver: correctly rendered,
+GPU-accelerated Hyprland and SuperTux through Asahi and Mesa Vulkan/Zink.
+A first verified Vulkan program is an intermediate milestone, not completion.
+
 The `m4-asahi-port` branch imports the complete Asahi driver and UAPI from
 Aurora `drm-agx3`, commit `4ac2664258f370cf7b03327da742b5885f91ca0b`.
 The source import is `ebac9112f313`; `ab731d9f3dfb` adds the fourteen upstream

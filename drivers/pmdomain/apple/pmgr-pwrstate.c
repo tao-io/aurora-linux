@@ -272,7 +272,7 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 	struct of_phandle_iterator it;
 	int ret;
 	const char *name;
-	bool active, t8132;
+	bool active, t8132, gfx;
 	u32 offset;
 
 	/*
@@ -283,9 +283,22 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 	 */
 	t8132 = of_device_is_compatible(node,
 					"apple,t8132-pmgr-pwrstate");
+	gfx = t8132 && of_machine_is_compatible("apple,j713") &&
+		!of_property_read_u32(node, "reg", &offset) && offset == 0x250;
+	if (gfx) {
+		struct device_node *parent = of_parse_phandle(node, "power-domains", 0);
+		bool has_tvm = parent && of_device_is_compatible(parent,
+						"apple,t8132-gfx-tvm");
+
+		of_node_put(parent);
+		/* GFX requires the TVM gate before the outer PMGR domain. */
+		if (!has_tvm)
+			return -EINVAL;
+	}
 	if (t8132 &&
 	    (of_property_read_u32(node, "reg", &offset) ||
 	     (offset != 0x188 && offset != 0x190 &&
+	      !gfx &&
 	      offset != 0x278 && /* fpwm1 */
 	      offset != 0x2d8 && /* uart_p */
 	      offset != 0x3d8 && /* uart0 */
@@ -313,7 +326,7 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 		APPLE_PMGR_RESET_TIME;
 	ps->needs_reset_idle_wait = t8132;
 	/* m1n1 leaves automatic power gating disabled on T8132 domains. */
-	ps->no_auto_enable = t8132;
+	ps->no_auto_enable = t8132 && !gfx;
 	ps->inherited_on = of_property_read_bool(node, "apple,inherited-on");
 
 	ret = of_property_read_string(node, "label", &name);
