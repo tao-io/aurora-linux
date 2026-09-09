@@ -35,10 +35,10 @@ impl Runtime {
         // SAFETY: Device exclusively owns ASC control and power. Construction
         // is stopped, and Runtime::drop stops ASC before dropping this UAT.
         let uat = unsafe { mmu::Uat::new_t8132(&drm, device.firmware()) }?;
-        let config = crate::g16_config::Config::new(pdev, &drm, uat.kernel_vm(), uat.kernel_lower_vm(), device.firmware())?;
+        let mut config = crate::g16_config::Config::new(pdev, &drm, uat.kernel_vm(), uat.kernel_lower_vm(), device.firmware())?;
         let queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
         let compute_queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
-        let compute = crate::g16_job::Compute::new(&drm, &uat)?;
+        let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config)?;
         let state = g16_rtkit::State::new(pdev, device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
         Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, compute, config, uat, drm, device, generation: 0, gpu_pending: false }) })
@@ -161,11 +161,12 @@ impl Runtime {
             // valid timestamp order, queue idle, and a stability interval.
             if pipe == [next; 3] && queue == [1, 1, 1, 1, 1, 0]
                 && status[0] == STAMP as u64 && status[1] == STAMP as u64
-                && status[2] != 0 && status[3] > status[2] {
+                && status[2] != 0 && status[3] > status[2]
+                && status[9] == crate::g16_dispatch::VALUE as u64 {
                 let completion = completed.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
                 if completion.elapsed() >= Delta::from_millis(50) {
                     inner.gpu_pending = false;
-                    dev_info!(inner.drm.as_ref(), "G16G: owned compute terminate retired, stamps/timestamps={:x?} queue={:?}, firmware ready\n", status, queue);
+                    dev_info!(inner.drm.as_ref(), "G16G: owned compute store retired, stamps/timestamps={:x?} queue={:?}, firmware ready\n", status, queue);
                     return Ok(());
                 }
             } else if completed.is_some() { return Err(EIO); }

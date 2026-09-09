@@ -116,6 +116,12 @@ impl Config {
         Ok(config)
     }
 
+    /// The global hardware UMA descriptor table is consumed after the engine
+    /// switches to a client ASID. Reserve its one owned GEM view in that VM
+    /// before client resources are allocated; preserve the bootstrap mapping.
+    pub(crate) fn bind_uma_table(&mut self, vm: &mmu::Vm) -> Result<mmu::KernelMapping> {
+        self.object(Object::UmaTable).map_gpu_view(vm)
+    }
     fn va(&self, object: Object) -> u64 { self.objects[object as usize].va() }
     fn object(&mut self, object: Object) -> &mut Buffer { &mut self.objects[object as usize] }
     fn ptr(&mut self, owner: Object, offset: usize, target: Object, delta: u64) -> Result {

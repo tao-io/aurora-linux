@@ -391,3 +391,15 @@ maps the command register-list page into context 0 because hardware fetches
 that list before switching to the client ASID. The next fix retains only that
 owned command GEM in both VMs at its allocator-selected address, preserving
 the separate context-0 UMA table. This is not a GPU execution success yet.
+
+The one-thread store diagnostic uses dynamically encoded MOV immediates,
+HAL200 load-shader state and a Gen6 CDM direct token. Host tests compare its
+bytes to the independently decoded old M4 fixture. Preemption state, metrics,
+shader, ESL and output all have their own owned GEM allocations. Output starts
+at 0xdeadbeef; success additionally requires 0x44a72000 and the full retirement
+checks. `compute-store-1` and `-2` did not write it: both faulted at VA zero,
+client context 1, unit 0xd9 (gUPM), raw 0x806a03b311. The client UMA-table view
+added in run 2 did not resolve that fault. Firmware +0x2b21c independently
+shows SKU binding +0x18 (SKU +0x178) supplies a GPU-read auxiliary address;
+zero currently emits register 0x14070=1. The next test allocates that missing
+auxiliary backing, with no captured contents or addresses.

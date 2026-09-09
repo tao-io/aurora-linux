@@ -28,6 +28,7 @@ mod g16_memory;
 mod g16_config;
 mod g16_queue;
 mod g16_compute;
+mod g16_dispatch;
 mod g16_job;
 mod g16_render;
 mod g16_resources;
