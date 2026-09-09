@@ -441,6 +441,29 @@ impl UatPageTable {
         })
     }
 
+    /// Adopt the loader-designated shared middle table before ASC starts.
+    /// Firmware installs this same link when it switches translation regimes;
+    /// allocating another table here would leave the host's mappings detached.
+    pub(crate) fn install_reserved_middle(&mut self, iova: u64, physical: PhysicalAddr) -> Result {
+        if !self.va_range.contains(&iova) || !self.is_reserved_table(physical) || physical == self.ttb {
+            return Err(EINVAL);
+        }
+        let index = self.geometry.root_index(iova);
+        let old = self.with_table(self.ttb, index, 1, false, |entries| Ok(entries[0].load(Ordering::Acquire)))?;
+        if old != 0 {
+            return if old & (self.oas_mask & !(UAT_PGMSK as u64)) == physical && old & 3 == 3 {
+                Ok(())
+            } else { Err(EBUSY) };
+        }
+        self.with_table(physical, 0, UAT_NPTE, false, |entries| {
+            if entries.iter().any(|entry| entry.load(Ordering::Acquire) != 0) { Err(EBUSY) } else { Ok(()) }
+        })?;
+        self.with_table(self.ttb, index, 1, true, |entries| {
+            entries[0].store(physical | PTE_TYPE_LEAF_TABLE, Ordering::Release);
+            Ok(())
+        })
+    }
+
     fn is_reserved_table(&self, physical: PhysicalAddr) -> bool {
         self.reserved_tables.as_ref().is_some_and(|tables| tables.contains(physical))
     }

@@ -1993,7 +1993,10 @@ impl Vm {
                 // SAFETY: The M4 constructor admits these reservations and
                 // requires ASC stopped during handoff/table initialization.
                 let tables = unsafe { crate::pgtable_memory::ReservedTables::new(resources) }?;
-                unsafe { UatPageTable::new_with_reserved_ttb(ttb, iova_kern_range.clone(), cfg.ias, cfg.oas, tables) }?
+                let mut table = unsafe { UatPageTable::new_with_reserved_ttb(ttb, iova_kern_range.clone(), cfg.ias, cfg.oas, tables) }?;
+                let shared = node.reserved_mem_region_to_resource_byname(c_str!("shared-l2"))?;
+                table.install_reserved_middle(iova_kern_range.start, shared.start())?;
+                table
             } else {
                 UatPageTable::new_with_ttb(ttb, iova_kern_range.clone(), cfg.ias, cfg.oas)?
             }

@@ -64,13 +64,11 @@ impl UatGeometry {
     }
 
     /// Shift of the top-level page-table index.
-    #[cfg(test)]
     pub(crate) const fn root_shift(self) -> usize {
         UAT_PGBIT + (UAT_LEVELS - 1) * UAT_LVBIT
     }
 
     /// Top-level page-table index for a virtual address after TTBR selection.
-    #[cfg(test)]
     pub(crate) const fn root_index(self, addr: u64) -> usize {
         ((addr & self.root_mask()) >> self.root_shift()) as usize
     }

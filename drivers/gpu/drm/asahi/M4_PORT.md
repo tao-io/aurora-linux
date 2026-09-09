@@ -273,3 +273,16 @@ started RTKit with common UAT/context 0 still installed. Application endpoints
 started and ASC stopped before transport/UAT/power cleanup. The 60-second
 watchdog was verified; all six thermal channels were monitored, peak 52 C.
 No initdata or GPU commands were sent in that test.
+
+The first relocated-initdata run (`relocated-initdata-1`, boot
+`d5bec735-fc7c-46f8-a42e-e7884ce34a5b`) reached the initdata receive routine,
+then firmware faulted at PC +0x31748, FAR 0xfffffc2000000000, ESR 0x96000006.
+Common RTKit decoded the crash log; Linux remained responsive, peak 51.75 C.
+No GPU command was queued. Unmap detected the missing root mapping and faulted
+the UAT session rather than recycling its backing. The machine was rebooted.
+
+The loader installs the designated reserved shared-L2 link during RTKit startup.
+M4 kernel-VM construction now adopts that same table before creating GEM
+mappings. A conflicting root or detached nonempty table is rejected. This
+preserves the common walker and allocator while honoring the firmware's boot
+translation contract. Hardware acceptance after this correction is pending.
