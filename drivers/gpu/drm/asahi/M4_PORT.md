@@ -2,8 +2,11 @@
 
 The `m4-asahi-port` branch imports the complete Asahi driver and UAPI from
 Aurora `drm-agx3`, commit `4ac2664258f370cf7b03327da742b5885f91ca0b`.
-The unmodified import is `ebac9112f313`; transport dependency integration is
-`60e61fd5fdf7`. RTKit retains the existing CoreAnalytics support and initializes
+The source import is `ebac9112f313`; `ab731d9f3dfb` adds the fourteen upstream
+binary fixtures hidden by the inherited ignore rule. All 151 upstream driver
+and UAPI files match their original Git content hashes and modes across these
+two commits. Transport dependency integration is `60e61fd5fdf7`.
+RTKit retains the existing CoreAnalytics support and initializes
 adopted sessions before receive interrupts, alongside the new Neo transport.
 
 The parallel Mesa worktree starts from Aurora `agx3`
