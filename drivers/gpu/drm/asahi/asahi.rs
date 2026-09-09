@@ -22,6 +22,7 @@ mod g15_initdata;
 mod g16_firmware;
 mod g16_device;
 mod g16_rtkit;
+mod g16_runtime;
 mod g16_render;
 mod g16_resources;
 mod g17_adt_j700;

@@ -395,8 +395,8 @@ fn probe_t8140_runtime(
 /// This logs the statically decoded identity, performs the read-only SGX
 /// identification (ID block + core-enable masks), cross-checks the two, and
 /// stops at the generation-specific firmware boundary. J713 first acquires
-/// its validated power dependencies and performs bounded management discovery.
-/// No path here registers DRM or starts application endpoints.
+/// its validated power dependencies and tests common UAT/RTKit startup.
+/// No path here registers DRM or submits GPU work.
 fn refuse_agx3_probe(pdev: &platform::Device<Core>, soc: &'static hw::agx3::SocConfig) -> Error {
     if soc.chip_id == 0x8132 {
         // Validate the normal device resources before touching SGX registers.
@@ -412,9 +412,12 @@ fn refuse_agx3_probe(pdev: &platform::Device<Core>, soc: &'static hw::agx3::SocC
                 );
                 match g16_device::Device::new(pdev, firmware) {
                     Ok(device) => {
-                        dev_info!(pdev.as_ref(), "G16G: owned power and identity complete; discovering management endpoints\n");
-                        if let Err(error) = device.check_drm(pdev).and_then(|()| device.check_mmu(pdev)).and_then(|()| device.check_tables(pdev)).and_then(|()| device.boot_transport(pdev)) {
-                            dev_err!(pdev.as_ref(), "G16G: management discovery failed: {:?}\n", error);
+                        dev_info!(pdev.as_ref(), "G16G: owned power and identity complete; testing common memory and RTKit startup\n");
+                        if let Err(error) = device.check_drm(pdev).and_then(|()| device.check_mmu(pdev)).and_then(|()| device.check_tables(pdev)).and_then(|()| {
+                            let mut runtime = crate::g16_runtime::Runtime::new(pdev, device)?;
+                            runtime.boot(pdev)
+                        }) {
+                            dev_err!(pdev.as_ref(), "G16G: startup checks failed: {:?}\n", error);
                             return error;
                         }
                     },
@@ -426,7 +429,7 @@ fn refuse_agx3_probe(pdev: &platform::Device<Core>, soc: &'static hw::agx3::SocC
                 return error;
             }
         }
-        // Power has been released. UAT/RTKit and the DRM frontend are next.
+        // Runtime has stopped and released power. Initdata, jobs and DRM registration follow.
         return ENODEV;
     }
 

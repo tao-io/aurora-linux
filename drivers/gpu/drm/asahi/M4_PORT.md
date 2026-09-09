@@ -238,3 +238,30 @@ not by itself resolve persistent runtime reference cycles or qualify Neo unbind.
 two unregistered DRM/GEM allocation/cleanup cycles, both reserved-table cycles,
 and another full RTKit/application-endpoint startup. Peak 51.75 C. The DRM
 backend remains absent; there is still no new-driver Vulkan execution.
+
+## Common UAT ownership and firmware handoff
+
+The handoff lock now returns a bounded error instead of proceeding without
+firmware exclusion. Its RAII guard releases AP interest on every exit path.
+A failed handoff or firmware cache flush faults the UAT session; affected VMs,
+GEM mappings and physical page-table backing are retained until reboot rather
+than recycled while firmware may still reference them. This is containment,
+not a complete hardware reset/recovery implementation. The host lock tests and
+`hardware/handoff-guard-1/` verify ordinary acquisition and both timeout paths;
+the injected failures use private CPU memory, not the live firmware region.
+
+The M4 constructor now uses the common UAT/GEM/GPUVM manager, a 42-bit address
+space, independently allocated user roots and ordinary context allocation.
+Its identified firmware policy initializes current-context to 0xffff and
+publishes AP magic/attention without requiring an immediate firmware magic
+reply. TTBAT and handoff use uncached AP mappings; owned page tables publish
+changed PTE spans. The constructor requires stopped ASC and teardown requires
+quiesced hardware. M4 teardown retracts TTBAT entries before freeing roots.
+
+`hardware/common-uat-1/`, boot `0a12e60d-dcbb-4b0c-a698-a9643a5f5fd5`, passed
+two complete UAT/VM lifecycles. Two VMs mapped VA 0x100000000 to different GEM
+pages with different permissions, obtained distinct roots and contexts 1/2,
+then released mappings, slots and roots. The following raw-table check found
+all contexts disabled and preserved inherited tables. RTKit boot then passed.
+Peak monitored temperature was 52 C. This establishes CPU-side VM construction,
+translation and retirement; no GPU page walk or shader has executed yet.

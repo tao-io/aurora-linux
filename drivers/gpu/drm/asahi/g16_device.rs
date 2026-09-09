@@ -15,7 +15,6 @@ use kernel::{
     },
     platform,
     prelude::*,
-    soc::apple::rtkit,
     sync::aref::ARef,
     time::{delay::fsleep, Delta, Instant, Monotonic},
 };
@@ -234,38 +233,32 @@ impl Device {
         Ok(())
     }
 
-    /// Boot management and application endpoints without submitting initdata.
-    /// A fresh system boot is required for each attempt until reset is ported.
-    pub(crate) fn boot_transport(&self, pdev: &platform::Device<Core>) -> Result {
-        let state = crate::g16_rtkit::State::new(pdev, self.firmware.resources.regions[5])?;
-        let mut rtkit = core::pin::pin!(rtkit::RtKit::<crate::g16_rtkit::Operations>::new(
-            pdev.as_ref(), None, 0, state.clone())?);
+    pub(crate) fn firmware(&self) -> &Firmware { &self.firmware }
+
+    pub(crate) fn require_stopped(&self, pdev: &platform::Device<Core>) -> Result {
+        if self.asc.access(pdev.as_ref())?.read32(ASC_CPU_CONTROL) & ASC_CPU_RUN != 0 {
+            return Err(EBUSY);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn start_asc(&self, pdev: &platform::Device<Core>) -> Result {
+        self.require_stopped(pdev)?;
         let asc = self.asc.access(pdev.as_ref())?;
-        let control = asc.read32(ASC_CPU_CONTROL);
-        if control & ASC_CPU_RUN != 0 { return Err(EBUSY); }
-        asc.write32(control | ASC_CPU_RUN, ASC_CPU_CONTROL);
-        let result = (|| {
-            rtkit.as_mut().wake()?;
-            if !rtkit.as_ref().is_running() || !state.healthy() { return Err(EIO); }
-            for endpoint in [0x20, 0x21] {
-                if !rtkit.as_mut().has_endpoint(endpoint) { return Err(ENODEV); }
-                rtkit.as_mut().start_endpoint(endpoint)?;
-            }
-            fsleep(Delta::from_millis(100));
-            if !state.healthy() { return Err(EIO); }
-            dev_info!(pdev.as_ref(), "G16G: RTKit IOP/AP running, crash storage retained, application endpoints started; no initdata sent\n");
-            Ok(())
-        })();
+        asc.write32(asc.read32(ASC_CPU_CONTROL) | ASC_CPU_RUN, ASC_CPU_CONTROL);
+        Ok(())
+    }
+
+    pub(crate) fn stop_asc(&self) -> Result {
+        let asc = self.asc.try_access().ok_or(ENODEV)?;
         asc.write32(asc.read32(ASC_CPU_CONTROL) & !ASC_CPU_RUN, ASC_CPU_CONTROL);
         let start = Instant::<Monotonic>::now();
         while asc.read32(ASC_CPU_CONTROL) & ASC_CPU_RUN != 0 {
             if start.elapsed() >= Delta::from_millis(100) { return Err(ETIMEDOUT); }
             fsleep(Delta::from_micros(10));
         }
-        dev_info!(pdev.as_ref(), "G16G: ASC stopped before RTKit transport cleanup\n");
-        result
+        Ok(())
     }
-
 
 }
 
