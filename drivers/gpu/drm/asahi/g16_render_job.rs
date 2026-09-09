@@ -99,6 +99,10 @@ impl Render {
         let mut init = [0;0x20];
         wire::init_parameter_buffer(&mut init,job.binding.slot(),0,0,block_count.try_into()?,job.manager.va(),STAMP).map_err(|_| EINVAL)?;
         job.metadata.write(0x300,&init)?;
+        let mut dependency = [0;0x40];
+        wire::render_dependency(&mut dependency,job.metadata.va()+0x408,
+            SLOTS[0],STAMP,STAMP).map_err(|_| EINVAL)?;
+        job.metadata.write(0x340,&dependency)?;
         // PB scene scratch has explicit GPU and firmware aliases. Statistics
         // are a distinct retained record; firmware dereferences them on retire.
         job.metadata.u64(0,job.scratch.gpu_va()?)?;
@@ -151,6 +155,8 @@ impl Render {
     pub(crate) fn index(&self) -> usize { usize::from(self.stage == Stage::Fragment) }
     pub(crate) fn address(&self) -> u64 { self.commands[self.index()].va() }
     pub(crate) fn init_address(&self) -> u64 { self.metadata.va()+0x300 }
+    pub(crate) fn fragment_dependency(&self) -> u64 { self.metadata.va()+0x340 }
+    pub(crate) fn fragment_address(&self) -> u64 { self.commands[1].va() }
     pub(crate) fn descriptor(&self) -> &[u8;16] { &self.descriptor }
     pub(crate) fn context(&self) -> u32 { self.binding.slot() }
     /// Snapshot retained firmware/GPU state without acknowledging faults or

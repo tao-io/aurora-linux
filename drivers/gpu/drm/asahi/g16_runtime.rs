@@ -35,8 +35,6 @@ enum Work {
 }
 impl Work {
     fn pipe(&self) -> usize { match self { Self::Compute(_) => 2, Self::Render(r) => r.index() } }
-    fn slot(&self) -> u8 { match self { Self::Compute(_) => crate::g16_compute::SLOT,
-        Self::Render(r) => crate::g16_render_job::SLOTS[r.index()] } }
     fn status(&mut self) -> Result<[u64; 4]> {
         match self { Self::Compute(c) => { let s=c.status()?; Ok([s[0],s[1],s[2],s[3]]) }, Self::Render(r)=>r.status() }
     }
@@ -44,25 +42,36 @@ impl Work {
 impl Inner {
     fn publish_active(&mut self) -> Result {
         let active = self.active.as_mut().ok_or(EIO)?;
-        let pipe = active.work.pipe();
-        let slot = active.work.slot();
-        let queue = match pipe { 0=>&mut self.queue, 1=>&mut self.fragment_queue, _=>&mut self.compute_queue };
-        queue.advance_threshold()?;
-        let (address,next) = match &active.work {
-            Work::Compute(c) => queue.append_idle(c.address())?,
-            Work::Render(r) => {
-                queue.set_render_context(r.context())?;
-                if pipe==0 {
-                    self.config.parameter_descriptor(r.descriptor())?;
-                    queue.append_batch_idle(&[r.init_address(),r.address()])?
-                } else { queue.append_idle(r.address())? }
-            }
-        };
-        active.queue_next = next;
-        active.pipe_next = self.config.publish_queue(pipe,address,next.try_into()?,slot,
-            pipe==1 && !self.fragment_registered)?;
-        Pin::new(&mut self.transport).send_message(0x21,0x0083000000000000 | pipe as u64)?;
-        if pipe==1 { self.fragment_registered=true; }
+        if let Work::Render(r) = &active.work {
+            // Publish both retained stages. Waiting on the CPU for final TA
+            // retirement deadlocks a pass which needs a partial fragment to
+            // free parameter pages. The firmware barrier encodes that DAG.
+            self.queue.advance_threshold()?;
+            self.fragment_queue.advance_threshold()?;
+            self.queue.set_render_context(r.context())?;
+            self.fragment_queue.set_render_context(r.context())?;
+            self.config.parameter_descriptor(r.descriptor())?;
+            let (ta,ta_next) = self.queue.append_batch_idle(&[r.init_address(),r.address()])?;
+            let (frag,frag_next) = self.fragment_queue.append_batch_idle(
+                &[r.fragment_dependency(),r.fragment_address()])?;
+            active.queue_next[0] = ta_next;
+            active.queue_next[1] = frag_next;
+            active.pipe_next[0] = self.config.publish_queue(0,ta,ta_next.try_into()?,
+                crate::g16_render_job::SLOTS[0],false)?;
+            active.pipe_next[1] = self.config.publish_queue(1,frag,frag_next.try_into()?,
+                crate::g16_render_job::SLOTS[1],!self.fragment_registered)?;
+            Pin::new(&mut self.transport).send_message(0x21,0x0083000000000000)?;
+            Pin::new(&mut self.transport).send_message(0x21,0x0083000000000001)?;
+            self.fragment_registered = true;
+            return Ok(());
+        }
+        let Work::Compute(c) = &active.work else { return Err(EIO); };
+        self.compute_queue.advance_threshold()?;
+        let (address,next) = self.compute_queue.append_idle(c.address())?;
+        active.queue_next[2] = next;
+        active.pipe_next[2] = self.config.publish_queue(2,address,next.try_into()?,
+            crate::g16_compute::SLOT,false)?;
+        Pin::new(&mut self.transport).send_message(0x21,0x0083000000000002)?;
         Ok(())
     }
 }
@@ -70,8 +79,8 @@ struct Active {
     packet: Arc<crate::g16_submit::Packet>,
     work: Work,
     index: usize,
-    queue_next: u32,
-    pipe_next: u32,
+    queue_next: [u32; 3],
+    pipe_next: [u32; 3],
     started: kernel::time::Instant<kernel::time::Monotonic>,
 }
 
@@ -136,7 +145,7 @@ impl Runtime {
         inner.device.check_boot_pstate()?;
         // Retain all DMA backing before the first shared publication, including
         // failure paths that cannot prove whether a mailbox doorbell arrived.
-        inner.active = Some(Active { packet, work, index, queue_next:0,pipe_next:0,
+        inner.active = Some(Active { packet, work, index, queue_next:[0;3],pipe_next:[0;3],
             started:kernel::time::Instant::<kernel::time::Monotonic>::now() });
         inner.gpu_pending = true;
         let publish = inner.publish_active();
@@ -191,18 +200,17 @@ impl Runtime {
         let pipe_index = active.work.pipe();
         let queue = match pipe_index { 0=>inner.queue.status()?,1=>inner.fragment_queue.status()?,_=>inner.compute_queue.status()? };
         let pipe = inner.config.pipe_indices(pipe_index)?;
-        let next = active.queue_next;
+        let next = active.queue_next[pipe_index];
         if status[0] == crate::g16_compute::STAMP as u64
             && status[1] == crate::g16_compute::STAMP as u64
             && (pipe_index != 2 || (status[2] != 0 && status[3] > status[2]))
             && queue == [next, next, next, next, next, 0]
-            && pipe == [active.pipe_next; 3] {
+            && pipe == [active.pipe_next[pipe_index]; 3] {
             if let Work::Render(render) = &mut active.work {
                 dev_info!(inner.drm.as_ref(),"G16G: userspace render stage {:?} retired stamps={:x?} queue={:?}\n",render.stage,status,queue);
                 if render.stage == crate::g16_render::Stage::Tiling {
                     render.stage = crate::g16_render::Stage::Fragment;
                     active.started = kernel::time::Instant::<kernel::time::Monotonic>::now();
-                    inner.publish_active()?;
                     return Ok(true);
                 }
             } else { active.packet.commands[active.index].completed([status[2], status[3]])?; }

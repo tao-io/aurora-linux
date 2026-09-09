@@ -140,3 +140,22 @@ pub(crate) fn init_parameter_buffer(out: &mut [u8], context: u32, id: u32,
     }
     Ok(())
 }
+
+/// M4/25G83 AGXChannel::setupBarrierCommand (+0x896b734), consumed by
+/// agx_drain_work_queue_commands (+0x1cd20). A slot dependency lets firmware
+/// schedule partial fragments before the final tiling stamp is written.
+pub(crate) fn render_dependency(out: &mut [u8], stamp_address: u64,
+    wait_slot: u8, wait_value: u32, stamp_self: u32) -> Result<(), BuildError> {
+    if out.len() < 0x40 { return Err(BuildError::BufferTooSmall); }
+    if !valid_fw(stamp_address) || wait_slot >= 128 || wait_value == 0 || stamp_self == 0 {
+        return Err(BuildError::Address);
+    }
+    out[..0x40].fill(0);
+    put(out, 0, 4, 4);
+    put(out, 4, stamp_address, 8);
+    put(out, 0xc, stamp_address, 8);
+    put(out, 0x14, wait_value as u64, 4);
+    put(out, 0x20, wait_slot as u64, 4);
+    put(out, 0x24, stamp_self as u64, 4);
+    Ok(())
+}
