@@ -130,7 +130,11 @@ impl Drop for GpuContext {
     fn drop(&mut self) {
         mod_dev_dbg!(self.dev, "GpuContext: Freeing GPU context\n");
         let data = self.data.take().unwrap();
-        (*self.dev).gpu.free_context(data);
+        if let Ok(gpu) = (*self.dev).gpu() {
+            gpu.free_context(data);
+        }
+        // Without a published backend this is constructor unwind: the context
+        // never reached firmware and its owned allocation drops normally.
     }
 }
 

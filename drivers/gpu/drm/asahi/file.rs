@@ -318,7 +318,7 @@ impl drm::file::DriverFile for File {
     fn open(device: &AsahiDevice) -> Result<Pin<KBox<Self>>> {
         debug::update_debug_flags();
 
-        let gpu = &device.gpu;
+        let gpu = device.gpu()?;
         let id = gpu.ids().file.next();
 
         mod_dev_dbg!(device, "[File {}]: DRM device opened\n", id);
@@ -384,7 +384,7 @@ impl File {
     ) -> Result<u32> {
         mod_dev_dbg!(device, "[File {}]: IOCTL: get_params\n", file.inner().id);
 
-        let gpu = &device.gpu;
+        let gpu = device.gpu()?;
 
         if data.param_group == crate::g17_status::PARAM_GROUP_VM_STATUS {
             return Self::get_vm_status(device, data, file);
@@ -464,7 +464,7 @@ impl File {
     fn get_vm_status(device: &AsahiDevice, data: &uapi::drm_asahi_get_params,
                      file: &DrmFile) -> Result<u32> {
         use crate::g17_status::{decode_request, encode_response, VM_STATUS_SIZE};
-        if !device.gpu.supports_vm_status() { return Err(EINVAL); }
+        if !device.gpu()?.supports_vm_status() { return Err(EINVAL); }
         if data.pad != 0 || data.size < VM_STATUS_SIZE as u64 { return Err(EINVAL); }
         let user = UserPtr::from_addr(data.pointer as _);
         let mut bytes = [0u8; VM_STATUS_SIZE];
@@ -476,7 +476,7 @@ impl File {
             let vm = guard.get(vm_id as usize).ok_or(ENOENT)?;
             vm.vm.status().clone()
         };
-        status.record(device.gpu.submission_error());
+        status.record(device.gpu()?.submission_error());
         let bytes = encode_response(vm_id, status.get());
         UserSlice::new(user, VM_STATUS_SIZE).writer().write_slice(&bytes)?;
         Ok(0)
@@ -489,7 +489,7 @@ impl File {
         file: &DrmFile,
     ) -> Result<u32> {
         let kernel_range = data.kernel_start..data.kernel_end;
-        let user_range = device.gpu.user_range()?;
+        let user_range = device.gpu()?.user_range()?;
 
         // Validate requested kernel range
         if !user_range.is_superset(kernel_range.clone())
@@ -509,7 +509,7 @@ impl File {
         let kernel_gpu_range = kernel_range.start..(kernel_range.start + kernel_half_size);
         let kernel_gpufw_range = kernel_gpu_range.end..kernel_range.end;
 
-        let gpu = &device.gpu;
+        let gpu = device.gpu()?;
         let file_id = file.inner().id;
         let vm = gpu.new_vm(kernel_range.clone())?;
 
@@ -590,7 +590,7 @@ impl File {
         dummy_obj.vmap()?.memset(0);
         let dummy_mapping = dummy_obj.map_at(
             &vm,
-            device.gpu.unknown_page()?,
+            device.gpu()?.unknown_page()?,
             mmu::PROT_GPU_SHARED_RW,
             true,
         )?;
@@ -1055,7 +1055,7 @@ impl File {
         let bo = gem::ObjectRef::new(gem::Object::lookup_handle(file, data.handle)?);
 
         let mapping = Arc::new(
-            device.gpu.map_timestamp_buffer(bo, offset..end_offset)?,
+            device.gpu()?.map_timestamp_buffer(bo, offset..end_offset)?,
             GFP_KERNEL,
         )?;
         let obj = KBox::new(Object::TimestampBuffer(mapping), GFP_KERNEL)?;
@@ -1150,7 +1150,7 @@ impl File {
         let _ = file_vm;
         core::mem::drop(guard);
 
-        let queue = device.gpu.new_queue(
+        let queue = device.gpu()?.new_queue(
             vm,
             ualloc,
             ualloc_priv,
@@ -1193,7 +1193,7 @@ impl File {
             return Err(EINVAL);
         }
 
-        let gpu = &device.gpu;
+        let gpu = device.gpu()?;
         gpu.update_globals();
 
         // Upgrade to Arc<T> to drop the XArray lock early
@@ -1278,7 +1278,7 @@ impl File {
         }
 
         // TODO: Do this on device-init for perf.
-        let gpu = &device.gpu;
+        let gpu = device.gpu()?;
         let frequency_hz = gpu.base_clock_hz() as u64;
         let ts_gcd = gcd(frequency_hz, NSEC_PER_SEC as u64);
 

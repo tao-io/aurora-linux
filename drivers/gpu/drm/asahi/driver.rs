@@ -17,7 +17,7 @@ use kernel::{
     prelude::*,
     sync::{
         aref::ARef,
-        Arc, //
+        Arc, SetOnce, //
     },
     workqueue::{self, impl_has_work, new_work, Work, WorkItem}, //
 };
@@ -49,15 +49,34 @@ use kernel::macros::vtable;
 /// Holds a reference to the top-level `GpuManager` object.
 #[pin_data]
 pub(crate) struct AsahiData {
-    #[pin]
-    pub(crate) gpu: Arc<dyn drm_gpu::DrmGpu>,
+    gpu: SetOnce<Arc<dyn drm_gpu::DrmGpu>>,
     pub(crate) pdev: ARef<platform::Device>,
     pub(crate) resources: Option<regs::Resources>,
-    pub(crate) g17_runtime: Option<g17_drm::G17PRuntimeRef>,
+    g17_runtime: SetOnce<g17_drm::G17PRuntimeRef>,
     #[pin]
     g17_event_work: Work<AsahiDevice, 1>,
     #[pin]
     g17_recovery_work: Work<AsahiDevice, 2>,
+}
+
+impl AsahiData {
+    pub(crate) fn new(pdev: &platform::Device<Core>, resources: Option<regs::Resources>) -> impl PinInit<Self, Error> {
+        let pdev: ARef<platform::Device> = pdev.into();
+        try_pin_init!(Self {
+            gpu: SetOnce::new(),
+            pdev,
+            resources,
+            g17_runtime: SetOnce::new(),
+            g17_event_work <- new_work!("AsahiData::g17_event_work"),
+            g17_recovery_work <- new_work!("AsahiData::g17_recovery_work"),
+        })
+    }
+
+    /// Runtime construction can use GEM before the GPU backend exists. All
+    /// DRM operations fail with ENODEV until probe publishes the backend once.
+    pub(crate) fn gpu(&self) -> Result<&Arc<dyn drm_gpu::DrmGpu>> {
+        self.gpu.as_ref().ok_or(ENODEV)
+    }
 }
 
 unsafe impl Send for AsahiData {}
@@ -72,7 +91,7 @@ impl WorkItem<1> for AsahiData {
     type Pointer = ARef<AsahiDevice>;
 
     fn run(dev: ARef<AsahiDevice>) {
-        let Some(runtime) = dev.g17_runtime else {
+        let Some(runtime) = dev.g17_runtime.copy() else {
             return;
         };
         if let Err(error) = runtime.service_primary_firmware_events() {
@@ -95,7 +114,7 @@ impl WorkItem<2> for AsahiData {
     type Pointer = ARef<AsahiDevice>;
 
     fn run(dev: ARef<AsahiDevice>) {
-        let Some(runtime) = dev.g17_runtime else {
+        let Some(runtime) = dev.g17_runtime.copy() else {
             return;
         };
         if let Err(error) = runtime.service_primary_recovery() {
@@ -342,12 +361,9 @@ fn probe_t8140_runtime(
 
     unsafe { pdev.dma_set_mask_and_coherent(DmaMask::try_new(soc.uat_oas)?)? };
 
-    // The retained manager allocates its GEM objects from this DRM device.
-    // Registration follows runtime and adapter initialization below.
-    let uninit = unsafe {
-        pin_init::pin_init_from_closure::<AsahiData, kernel::error::Error>(|_slot| Ok(()))
-    };
-    let drm: ARef<AsahiDevice> = drm::device::Device::new(pdev.as_ref(), uninit)?;
+    // GEM construction needs a DRM device before the runtime exists. Its
+    // data is fully initialized now; the backend is published before registration.
+    let drm: ARef<AsahiDevice> = drm::device::Device::new(pdev.as_ref(), AsahiData::new(pdev, None))?;
 
     let runtime = g17_live_boot::G17PLiveRuntime::start(
         pdev,
@@ -364,23 +380,12 @@ fn probe_t8140_runtime(
         g17_drm::G17PDrmGpu::new(runtime_ref, soc, observed)?,
         GFP_KERNEL,
     )?;
-    let data = try_pin_init!(AsahiData {
-        gpu,
-        pdev: pdev.into(),
-        resources: None,
-        g17_runtime: Some(runtime_ref),
-        g17_event_work <- new_work!("AsahiData::g17_event_work"),
-        g17_recovery_work <- new_work!("AsahiData::g17_recovery_work"),
-    });
-    let ptr: *const AsahiData = &raw const **drm;
-    // SAFETY: `drm` was created with an uninitialized data slot above; this
-    // is its only initialization before registration exposes file operations.
-    unsafe {
-        data.__pinned_init(ptr as *mut AsahiData)?;
+    if !drm.g17_runtime.populate(runtime_ref) || !drm.gpu.populate(gpu) {
+        return Err(EBUSY);
     }
     runtime.lock().arm_primary_firmware_event_worker()?;
     runtime.lock().mark_firmware_cache_flush_ready()?;
-    (*drm).gpu.init()?;
+    (*drm).gpu()?.init()?;
     drm::driver::Registration::new_foreign_owned(&drm, pdev.as_ref(), 0)?;
     Ok(runtime)
 }
@@ -408,7 +413,7 @@ fn refuse_agx3_probe(pdev: &platform::Device<Core>, soc: &'static hw::agx3::SocC
                 match g16_device::Device::new(pdev, firmware) {
                     Ok(device) => {
                         dev_info!(pdev.as_ref(), "G16G: owned power and identity complete; discovering management endpoints\n");
-                        if let Err(error) = device.check_tables(pdev).and_then(|()| device.boot_transport(pdev)) {
+                        if let Err(error) = device.check_drm(pdev).and_then(|()| device.check_tables(pdev)).and_then(|()| device.boot_transport(pdev)) {
                             dev_err!(pdev.as_ref(), "G16G: management discovery failed: {:?}\n", error);
                             return error;
                         }
@@ -976,15 +981,9 @@ impl platform::Driver for AsahiDriver {
             .property_read_array_vec(c_str!("apple,firmware-compat"), 3)?
             .required_by(pdev.as_ref())?;
 
-        // TODO: This is very temporary
-        // SAFETY: This should be safe as data is not touched by the driver
-        // untill it gets fully initialised.
-        // Additionally drm::device::Device::release() will not drop data and
-        // leaks instead.
-        let uninit = unsafe {
-            pin_init::pin_init_from_closure::<AsahiData, kernel::error::Error>(|_slot| Ok(()))
-        };
-        let drm: ARef<AsahiDevice> = drm::device::Device::new(pdev.as_ref(), uninit)?;
+        let drm: ARef<AsahiDevice> = drm::device::Device::new(
+            pdev.as_ref(), AsahiData::new(pdev, Some(res)))?;
+        let res = drm.resources.as_ref().ok_or(ENODEV)?;
 
         let legacy_gpu = match (cfg.gpu_gen, cfg.gpu_variant, compat.as_slice()) {
             (hw::GpuGen::G13, _, &[12, 3, 0]) => {
@@ -1016,21 +1015,9 @@ impl platform::Driver for AsahiDriver {
         let gpu: Arc<dyn drm_gpu::DrmGpu> =
             Arc::new(drm_gpu::LegacyDrmGpu::new(legacy_gpu), GFP_KERNEL)?;
 
-        let data = try_pin_init!(AsahiData {
-            gpu,
-            pdev: pdev.into(),
-            resources: Some(res),
-            g17_runtime: None,
-            g17_event_work <- new_work!("AsahiData::g17_event_work"),
-            g17_recovery_work <- new_work!("AsahiData::g17_recovery_work"),
-        });
+        if !drm.gpu.populate(gpu) { return Err(EBUSY); }
 
-        let ptr: *const AsahiData = &raw const **drm;
-        unsafe {
-            data.__pinned_init(ptr as *mut AsahiData)?;
-        }
-
-        (*drm).gpu.init()?;
+        (*drm).gpu()?.init()?;
 
         drm::driver::Registration::new_foreign_owned(&drm, pdev.as_ref(), 0)?;
 
