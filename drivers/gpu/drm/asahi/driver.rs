@@ -28,6 +28,7 @@ use crate::{
     drm_gpu,
     file,
     g15_boot,
+    g16_resources,
     g17_boot,
     g17_drm,
     g17_firmware,
@@ -389,6 +390,25 @@ fn probe_t8140_runtime(
 /// no MMIO write), cross-checks the two, and stops at the generation-specific
 /// firmware boundary.
 fn refuse_agx3_probe(pdev: &platform::Device<Core>, soc: &'static hw::agx3::SocConfig) -> Error {
+    if soc.chip_id == 0x8132 {
+        // Validate the normal device resources before touching SGX registers.
+        // The private lab /chosen export is deliberately not a fallback.
+        match g16_resources::from_device(pdev) {
+            Ok(resources) => dev_info!(
+                pdev.as_ref(),
+                "G16G: J713 memory resources decoded, text PA={:#x} VA={:#x}; firmware ABI and owned startup still required\n",
+                resources.regions[4].base, resources.firmware_vas[0]
+            ),
+            Err(error) => {
+                dev_err!(pdev.as_ref(), "G16G: missing or invalid J713 resource handoff: {:?}\n", error);
+                return error;
+            }
+        }
+        // SGX can still be powered off. Do not perform even ID reads until
+        // the runtime owns and enables its power dependencies.
+        return ENODEV;
+    }
+
     let Some(expected) =
         identity::decode_gpu_identity(soc.hw_family, soc.hw_variant, soc.num_dies as u8)
     else {
