@@ -98,6 +98,10 @@ impl Compute {
         job.output.u32(0, g16_dispatch::SENTINEL)?;
         g16_memory::publish();
         job.log_context(dev)?;
+        dev_info!(dev.as_ref(), "G16G compute memory: command={:#x} preemption={:#x} auxiliary={:#x} context={:#x} private={:#x}+{:#x} pool={:#x} pages={:#x}\n",
+            job.command.gpu_va()?, job.preemption.gpu_va()?, job.auxiliary.gpu_va()?,
+            job.context_store.gpu_va()?, private_base, PRIVATE_BYTES,
+            job.pool_state.gpu_va()?, job.page_list.gpu_va()?);
         Ok(job)
     }
     pub(crate) fn log_context(&self, dev: &driver::AsahiDevice) -> Result {
