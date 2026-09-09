@@ -108,6 +108,53 @@ impl Device {
         Ok(())
     }
 
+    /// Exercise common GEM-backed VMs with no ASC or GPU work in flight.
+    pub(crate) fn check_mmu(&self, pdev: &platform::Device<Core>) -> Result {
+        use crate::{driver, gem, mmu, pgtable::prot};
+        if self.asc.access(pdev.as_ref())?.read32(ASC_CPU_CONTROL) & ASC_CPU_RUN != 0 { return Err(EBUSY); }
+        let drm: ARef<driver::AsahiDevice> = kernel::drm::Device::new(
+            pdev.as_ref(), driver::AsahiData::new(pdev, None))?;
+        for _ in 0..2 {
+            // SAFETY: Device owns power and ASC control, ASC is stopped, and
+            // this UAT and every mapping are destroyed before starting RTKit.
+            let uat = unsafe { mmu::Uat::new_t8132(&drm, &self.firmware) }?;
+            let range = 0x1_0000_0000..0x1_2000_0000;
+            let vm_a = uat.new_vm(0x8132_0010, range.clone())?;
+            let vm_b = uat.new_vm(0x8132_0011, range.clone())?;
+            let object_a = gem::new_kernel_object(&drm, 0x4000)?;
+            let object_b = gem::new_kernel_object(&drm, 0x4000)?;
+            let map_a = vm_a.map_at(range.start, 0x4000, object_a.gem.clone(), prot::PROT_GPU_SHARED_RW, false)?;
+            let map_b = vm_b.map_at(range.start, 0x4000, object_b.gem.clone(), prot::PROT_GPU_SHARED_RO, false)?;
+            let bind_a = uat.bind(&vm_a)?;
+            let bind_b = uat.bind(&vm_b)?;
+            let mut roots = [(0, 0); 64];
+            vm_a.context_roots(&mut roots)?;
+            let mask = ((1u64 << 42) - 1) & !0x3fff;
+            if bind_a.slot() == bind_b.slot()
+                || vm_a.page_table_root() == vm_b.page_table_root()
+                || roots[bind_a.slot() as usize].0 & mask != vm_a.page_table_root()
+                || roots[bind_b.slot() as usize].0 & mask != vm_b.page_table_root()
+                || vm_a.translate_iova(range.start)? == vm_b.translate_iova(range.start)?
+                || !vm_a.covers_range(range.start, 0x4000, true, true)
+                || !vm_b.covers_range(range.start, 0x4000, true, false)
+                || vm_b.covers_range(range.start, 0x4000, false, true) { return Err(EIO); }
+            dev_info!(pdev.as_ref(), "G16G: common VM isolation verified at VA={:#x}, distinct roots and contexts {}/{}\n", range.start, bind_a.slot(), bind_b.slot());
+            drop(map_a);
+            drop(map_b);
+            if vm_a.covers_range(range.start, 0x4000, false, false)
+                || vm_b.covers_range(range.start, 0x4000, false, false) { return Err(EIO); }
+            drop(bind_a);
+            drop(bind_b);
+            drop(vm_a);
+            drop(vm_b);
+            drop(object_a);
+            drop(object_b);
+            drop(uat);
+        }
+        dev_info!(pdev.as_ref(), "G16G: common UAT/GEM/VM lifecycle passed twice; ASC remained stopped\n");
+        Ok(())
+    }
+
     /// Temporary bring-up check of the common walker while ASC is stopped.
     /// No context root is installed and no firmware-visible payload is sent.
     pub(crate) fn check_tables(&self, pdev: &platform::Device<Core>) -> Result {
