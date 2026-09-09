@@ -46,8 +46,10 @@ use kernel::uaccess::{
     UserSlice, //
 };
 use kernel::{
+    c_str,
     dma_fence,
     drm,
+    of,
     uapi,
     xarray, //
 };
@@ -56,36 +58,128 @@ const DEBUG_CLASS: DebugFlags = DebugFlags::File;
 
 pub(crate) const MAX_COMMANDS_PER_SUBMISSION: u32 = 64;
 
+/// Resolve the exact visible iBoot framebuffer aperture from DT.
+///
+/// This deliberately accepts only the native Neo simplefb layout and requires
+/// it to be contained in a `no-map` reserved-memory framebuffer node. The
+/// returned size is the page-aligned visible image, never the larger DCP
+/// reservation. The last page may extend past the byte-exact simplefb aperture,
+/// but only when that complete page remains inside the no-map framebuffer
+/// reservation. No CPU mapping or display/DCP operation is performed here.
+fn t8140_simplefb_phys_range() -> Result<(usize, usize)> {
+    let chosen = of::chosen().ok_or(ENOENT)?;
+    let mut candidate = None;
+
+    for node in chosen.children() {
+        let compatible: KVec<u8> = match node.get_property(c_str!("compatible")) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if compatible.as_slice()
+            != b"apple,simple-framebuffer\0simple-framebuffer\0"
+        {
+            continue;
+        }
+        if candidate.is_some() {
+            return Err(EINVAL);
+        }
+
+        let reg: KVec<u64> = node.get_property(c_str!("reg"))?;
+        let width: u32 = node.get_property(c_str!("width"))?;
+        let height: u32 = node.get_property(c_str!("height"))?;
+        let stride: u32 = node.get_property(c_str!("stride"))?;
+        let format: KVec<u8> = node.get_property(c_str!("format"))?;
+        if reg.len() != 2
+            || format.as_slice() != b"x8r8g8b8\0"
+            || width == 0
+            || height == 0
+            || stride < width.checked_mul(4).ok_or(EOVERFLOW)?
+        {
+            return Err(EINVAL);
+        }
+
+        let visible = usize::try_from(stride)?
+            .checked_mul(usize::try_from(height)?)
+            .ok_or(EOVERFLOW)?;
+        let mapped = align(visible as u64, mmu::UAT_PGSZ as u64);
+        let base = usize::try_from(reg[0])?;
+        let size = usize::try_from(reg[1])?;
+        let mapped = usize::try_from(mapped)?;
+        if base & mmu::UAT_PGMSK != 0 || visible > size {
+            return Err(EINVAL);
+        }
+        candidate = Some((base, mapped));
+    }
+
+    let (base, mapped) = candidate.ok_or(ENOENT)?;
+    let root = of::root().ok_or(ENOENT)?;
+    let mut reserved = None;
+    for node in root.children() {
+        let name: KVec<u8> = match node.get_property(c_str!("name")) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if name.as_slice() == b"reserved-memory\0" {
+            if reserved.replace(node).is_some() {
+                return Err(EINVAL);
+            }
+        }
+    }
+    let reserved = reserved.ok_or(ENOENT)?;
+    let target_end = base.checked_add(mapped).ok_or(EOVERFLOW)?;
+    let mut covered = false;
+    for node in reserved.children() {
+        let compatible: KVec<u8> = match node.get_property(c_str!("compatible")) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        let no_map: KVec<u8> = match node.get_property(c_str!("no-map")) {
+            Ok(value) => value,
+            Err(_) => continue,
+        };
+        if compatible.as_slice() != b"framebuffer\0" || !no_map.is_empty() {
+            continue;
+        }
+        let reg: KVec<u64> = node.get_property(c_str!("reg"))?;
+        if reg.len() != 2 {
+            return Err(EINVAL);
+        }
+        let reserve_base = usize::try_from(reg[0])?;
+        let reserve_size = usize::try_from(reg[1])?;
+        let reserve_end = reserve_base.checked_add(reserve_size).ok_or(EOVERFLOW)?;
+        if reserve_base <= base && target_end <= reserve_end {
+            if covered {
+                return Err(EINVAL);
+            }
+            covered = true;
+        }
+    }
+    if !covered {
+        return Err(EINVAL);
+    }
+    Ok((base, mapped))
+}
+
 /// A client instance of an `mmu::Vm` address space.
 struct Vm {
     ualloc: Arc<Mutex<alloc::DefaultAllocator>>,
     ualloc_priv: Arc<Mutex<alloc::DefaultAllocator>>,
     vm: mmu::Vm,
     kernel_range: Range<u64>,
+    /// The usable user VA range for this device's UAT geometry
+    /// (`mmu::iova_user_usable_range`), captured at creation.
+    user_range: Range<u64>,
     _dummy_mapping: mmu::KernelMapping,
 }
 
 impl Drop for Vm {
     fn drop(&mut self) {
-        // When the user Vm is dropped, unmap everything in the user range
-        let left_range = VM_USER_RANGE.start..self.kernel_range.start;
-        let right_range = self.kernel_range.end..VM_USER_RANGE.end;
-
-        if !left_range.is_empty()
-            && self
-                .vm
-                .unmap_range(left_range.start, left_range.range())
-                .is_err()
+        if self
+            .vm
+            .unmap_user_ranges(self.user_range.clone(), self.kernel_range.clone())
+            .is_err()
         {
-            pr_err!("Vm::Drop: vm.unmap_range() failed\n");
-        }
-        if !right_range.is_empty()
-            && self
-                .vm
-                .unmap_range(right_range.start, right_range.range())
-                .is_err()
-        {
-            pr_err!("Vm::Drop: vm.unmap_range() failed\n");
+            pr_err!("Vm::Drop: vm.unmap_user_ranges() failed\n");
         }
 
         self.vm.bo_deferred_cleanup();
@@ -212,8 +306,7 @@ pub(crate) struct File {
 /// Convenience type alias for our DRM `File` type.
 pub(crate) type DrmFile = drm::File<File>;
 
-/// Available VM range for the user
-const VM_USER_RANGE: Range<u64> = mmu::IOVA_USER_USABLE_RANGE;
+// The DRM adapter supplies the per-device user range and reserved dummy page.
 
 /// Minimum reserved AS for kernel mappings
 const VM_KERNEL_MIN_SIZE: u64 = 0x20000000;
@@ -293,6 +386,18 @@ impl File {
 
         let gpu = &device.gpu;
 
+        if data.param_group == crate::g17_status::PARAM_GROUP_VM_STATUS {
+            return Self::get_vm_status(device, data, file);
+        }
+        if data.param_group == crate::g17_queue_limits::PARAM_GROUP_QUEUE_LIMITS {
+            if data.pad != 0 || data.size < crate::g17_queue_limits::QUEUE_LIMITS_SIZE as u64 {
+                return Err(EINVAL);
+            }
+            let bytes = gpu.independent_queue_limits().ok_or(EINVAL)?;
+            UserSlice::new(UserPtr::from_addr(data.pointer as _), bytes.len())
+                .writer().write_slice(&bytes)?;
+            return Ok(0);
+        }
         if data.param_group != 0 || data.pad != 0 {
             cls_pr_debug!(Errors, "get_params: Invalid arguments\n");
             return Err(EINVAL);
@@ -302,34 +407,40 @@ impl File {
             return Err(ENODEV);
         }
 
+        let facts = gpu.params()?;
         let mut params = uapi::drm_asahi_params_global {
             features: 0,
 
-            gpu_generation: gpu.get_dyncfg().id.gpu_gen as u32,
-            gpu_variant: gpu.get_dyncfg().id.gpu_variant as u32,
-            gpu_revision: gpu.get_dyncfg().id.gpu_rev as u32,
-            chip_id: gpu.get_cfg().chip_id,
+            gpu_generation: facts.gpu_generation,
+            gpu_variant: facts.gpu_variant,
+            gpu_revision: facts.gpu_revision,
+            chip_id: facts.chip_id,
 
-            num_dies: gpu.get_cfg().num_dies,
-            num_clusters_total: gpu.get_dyncfg().id.num_clusters,
-            num_cores_per_cluster: gpu.get_dyncfg().id.num_cores,
-            core_masks: [0; uapi::DRM_ASAHI_MAX_CLUSTERS as usize],
+            num_dies: facts.num_dies,
+            num_clusters_total: facts.num_clusters_total,
+            num_cores_per_cluster: facts.num_cores_per_cluster,
+            core_masks: facts.core_masks.map(|mask| mask.into()),
 
-            vm_start: VM_USER_RANGE.start,
-            vm_end: VM_USER_RANGE.end,
+            vm_start: gpu.user_range()?.start,
+            vm_end: gpu.user_range()?.end,
             vm_kernel_min_size: VM_KERNEL_MIN_SIZE,
 
-            max_commands_per_submission: MAX_COMMANDS_PER_SUBMISSION,
+            max_commands_per_submission: facts.max_commands_per_submission,
             max_attachments: crate::microseq::MAX_ATTACHMENTS as u32,
-            max_frequency_khz: gpu.get_dyncfg().pwr.max_frequency_khz(),
+            max_frequency_khz: facts.max_frequency_khz,
 
             command_timestamp_frequency_hz: 1_000_000_000, // User timestamps always in nanoseconds
+
+            usc_generation: facts.usc_generation,
+            gpu_hal_generation: facts.gpu_hal_generation,
         };
 
-        for (i, mask) in gpu.get_dyncfg().id.core_masks.iter().enumerate() {
-            *(params.core_masks.get_mut(i).ok_or(EIO)?) = (*mask).into();
+        if gpu.supports_vm_status() {
+            params.features |= crate::g17_status::FEATURE_VM_STATUS;
         }
-
+        if gpu.independent_queue_limits().is_some() {
+            params.features |= crate::g17_queue_limits::FEATURE_INDEPENDENT_QUEUES;
+        }
         if *module_parameters::fault_control.value() == 0xb {
             params.features |= uapi::drm_asahi_feature_DRM_ASAHI_FEATURE_SOFT_FAULTS as u64;
         }
@@ -348,6 +459,29 @@ impl File {
         Ok(0)
     }
 
+    /// Status queries never enter firmware recovery or wait for a GPU job.
+    /// File-local lookup enforces VM ownership. Status survives queue teardown.
+    fn get_vm_status(device: &AsahiDevice, data: &uapi::drm_asahi_get_params,
+                     file: &DrmFile) -> Result<u32> {
+        use crate::g17_status::{decode_request, encode_response, VM_STATUS_SIZE};
+        if !device.gpu.supports_vm_status() { return Err(EINVAL); }
+        if data.pad != 0 || data.size < VM_STATUS_SIZE as u64 { return Err(EINVAL); }
+        let user = UserPtr::from_addr(data.pointer as _);
+        let mut bytes = [0u8; VM_STATUS_SIZE];
+        UserSlice::new(user, VM_STATUS_SIZE).reader().read_slice(&mut bytes)?;
+        let vm_id = decode_request(&bytes).ok_or(EINVAL)?;
+        let status = {
+            let vms = file.inner().vms();
+            let guard = vms.lock();
+            let vm = guard.get(vm_id as usize).ok_or(ENOENT)?;
+            vm.vm.status().clone()
+        };
+        status.record(device.gpu.submission_error());
+        let bytes = encode_response(vm_id, status.get());
+        UserSlice::new(user, VM_STATUS_SIZE).writer().write_slice(&bytes)?;
+        Ok(0)
+    }
+
     /// IOCTL: vm_create: Create a new `Vm`.
     pub(crate) fn vm_create(
         device: &AsahiDevice,
@@ -355,9 +489,10 @@ impl File {
         file: &DrmFile,
     ) -> Result<u32> {
         let kernel_range = data.kernel_start..data.kernel_end;
+        let user_range = device.gpu.user_range()?;
 
         // Validate requested kernel range
-        if !VM_USER_RANGE.is_superset(kernel_range.clone())
+        if !user_range.is_superset(kernel_range.clone())
             || kernel_range.range() < VM_KERNEL_MIN_SIZE
             || kernel_range.start & (mmu::UAT_PGMSK as u64) != 0
             || kernel_range.end & (mmu::UAT_PGMSK as u64) != 0
@@ -377,6 +512,33 @@ impl File {
         let gpu = &device.gpu;
         let file_id = file.inner().id;
         let vm = gpu.new_vm(kernel_range.clone())?;
+
+        let simplefb_iova = *module_parameters::g17p_simplefb_iova.value();
+        if simplefb_iova != 0 {
+            if gpu.params()?.chip_id != 0x8140 {
+                return Err(ENOTSUPP);
+            }
+            let (simplefb_phys, simplefb_size) = t8140_simplefb_phys_range()?;
+            let simplefb_end = simplefb_iova
+                .checked_add(simplefb_size as u64)
+                .ok_or(EOVERFLOW)?;
+            let simplefb_range = simplefb_iova..simplefb_end;
+            if simplefb_iova & mmu::UAT_PGMSK as u64 != 0
+                || !user_range.is_superset(simplefb_range.clone())
+                || kernel_range.overlaps(simplefb_range.clone())
+                || vm.driver_range_overlaps(simplefb_range)
+            {
+                return Err(EINVAL);
+            }
+            vm.install_simplefb_mapping(simplefb_iova, simplefb_phys, simplefb_size)?;
+            dev_info!(
+                device,
+                "G17P simplefb: retained GPU alias {:#x}:{:#x} -> phys {:#x}\n",
+                simplefb_iova,
+                simplefb_size,
+                simplefb_phys,
+            );
+        }
 
         let vm_xa = file.inner().vms();
         let resv = vm_xa.lock().reserve_limit(1..=u32::MAX, GFP_KERNEL)?;
@@ -426,8 +588,12 @@ impl File {
         );
         let mut dummy_obj = gem::new_kernel_object(device, 0x4000)?;
         dummy_obj.vmap()?.memset(0);
-        let dummy_mapping =
-            dummy_obj.map_at(&vm, mmu::IOVA_UNK_PAGE, mmu::PROT_GPU_SHARED_RW, true)?;
+        let dummy_mapping = dummy_obj.map_at(
+            &vm,
+            device.gpu.unknown_page()?,
+            mmu::PROT_GPU_SHARED_RW,
+            true,
+        )?;
 
         mod_dev_dbg!(device, "[File {} VM {}]: VM created\n", file_id, id);
         resv.fill(KBox::new(
@@ -436,6 +602,7 @@ impl File {
                 ualloc_priv,
                 vm,
                 kernel_range,
+                user_range,
                 _dummy_mapping: dummy_mapping,
             },
             GFP_KERNEL,
@@ -566,6 +733,18 @@ impl File {
 
         for _i in 0..data.num_binds {
             let bind: uapi::drm_asahi_gem_bind_op = reader.read_up_to(data.stride as usize)?;
+            // Vulkan faults on an unmapped USC exec window. Log every bind so we
+            // can tell whether Mesa asks for that range and we drop it, or never
+            // asks at all.
+            pr_info!(
+                "G17P bind: vm={} addr={:#x} range={:#x} offset={:#x} flags={:#x} handle={}\n",
+                data.vm_id,
+                bind.addr,
+                bind.range,
+                bind.offset,
+                bind.flags,
+                bind.handle,
+            );
             Self::do_gem_bind_unbind(vm_id, &bind, file)?;
         }
 
@@ -627,15 +806,8 @@ impl File {
             return Err(EINVAL);
         }
 
-        if !VM_USER_RANGE.is_superset(range.clone()) {
-            cls_pr_debug!(
-                Errors,
-                "gem_bind: Invalid map range {:#x}..{:#x} (not contained in user range)\n",
-                start,
-                end
-            );
-            return Err(EINVAL); // Invalid map range
-        }
+        // The user range is per-device geometry, so this check moves below
+        // the VM lookup (which is where the range is stored).
 
         let prot = if data.flags & uapi::drm_asahi_bind_flags_DRM_ASAHI_BIND_READ != 0 {
             if data.flags & uapi::drm_asahi_bind_flags_DRM_ASAHI_BIND_WRITE != 0 {
@@ -661,10 +833,21 @@ impl File {
         // Clone it immediately so we aren't holding the XArray lock
         let vm = guarded_vm.vm.clone();
         let kernel_range = guarded_vm.kernel_range.clone();
+        let user_range = guarded_vm.user_range.clone();
         let _ = guarded_vm;
         core::mem::drop(guard);
 
-        if kernel_range.overlaps(range) {
+        if !user_range.is_superset(range.clone()) {
+            cls_pr_debug!(
+                Errors,
+                "gem_bind: Invalid map range {:#x}..{:#x} (not contained in user range)\n",
+                start,
+                end
+            );
+            return Err(EINVAL); // Invalid map range
+        }
+
+        if kernel_range.overlaps(range.clone()) {
             cls_pr_debug!(
                 Errors,
                 "gem_bind: Invalid map range {:#x}..{:#x} (intrudes in kernel range)\n",
@@ -673,8 +856,27 @@ impl File {
             );
             return Err(EINVAL);
         }
+        if vm.driver_range_overlaps(range.clone()) {
+            cls_pr_debug!(
+                Errors,
+                "gem_bind: map range {:#x}..{:#x} overlaps a device-owned VA\n",
+                start,
+                end
+            );
+            return Err(EINVAL);
+        }
 
+        vm.validate_t8140_native_context_binding(data.addr, data.range, single_page)?;
         vm.bind_object(&bo, data.addr, data.range, data.offset, prot, single_page)?;
+        // G17P secure GART has a second, context-0 view for fixed resource
+        // subranges. Record backing identity here, but do not publish the
+        // global context-0 aliases until this VM owns a render submission.
+        vm.track_t8140_native_context_binding(
+            bo.clone(),
+            data.addr,
+            data.range,
+            data.offset,
+        )?;
 
         vm.bo_deferred_cleanup();
 
@@ -708,7 +910,18 @@ impl File {
         let end = data.addr.checked_add(data.range).ok_or(EINVAL)?;
         let range = start..end;
 
-        if !VM_USER_RANGE.is_superset(range.clone()) {
+        let vms_xa = file.inner().vms();
+        let guard = vms_xa.lock();
+        let guarded_vm = guard.get(vm_id).ok_or(ENOENT)?;
+
+        // Clone it immediately so we aren't holding the XArray lock
+        let vm = guarded_vm.vm.clone();
+        let kernel_range = guarded_vm.kernel_range.clone();
+        let user_range = guarded_vm.user_range.clone();
+        let _ = guarded_vm;
+        core::mem::drop(guard);
+
+        if !user_range.is_superset(range.clone()) {
             cls_pr_debug!(
                 Errors,
                 "gem_bind: Invalid unmap range {:#x}..{:#x} (not contained in user range)\n",
@@ -717,16 +930,6 @@ impl File {
             );
             return Err(EINVAL); // Invalid map range
         }
-
-        let vms_xa = file.inner().vms();
-        let guard = vms_xa.lock();
-        let guarded_vm = guard.get(vm_id).ok_or(ENOENT)?;
-
-        // Clone it immediately so we aren't holding the XArray lock
-        let vm = guarded_vm.vm.clone();
-        let kernel_range = guarded_vm.kernel_range.clone();
-        let _ = guarded_vm;
-        core::mem::drop(guard);
 
         if kernel_range.overlaps(range.clone()) {
             cls_pr_debug!(
@@ -737,8 +940,18 @@ impl File {
             );
             return Err(EINVAL);
         }
+        if vm.driver_range_overlaps(range.clone()) {
+            cls_pr_debug!(
+                Errors,
+                "gem_unbind: range {:#x}..{:#x} overlaps a device-owned VA\n",
+                start,
+                end
+            );
+            return Err(EINVAL);
+        }
 
         vm.unmap_range(range.start, range.range())?;
+        vm.untrack_t8140_native_context_range(range);
 
         vm.bo_deferred_cleanup();
 
@@ -758,6 +971,7 @@ impl File {
                     let vm = file_vm.borrow().vm.clone();
                     core::mem::drop(file_vm);
                     vm.drop_mappings(bo)?;
+                    vm.untrack_t8140_native_context_object(bo);
                     if idx == usize::MAX {
                         break;
                     }
@@ -1065,7 +1279,7 @@ impl File {
 
         // TODO: Do this on device-init for perf.
         let gpu = &device.gpu;
-        let frequency_hz = gpu.get_cfg().base_clock_hz as u64;
+        let frequency_hz = gpu.base_clock_hz() as u64;
         let ts_gcd = gcd(frequency_hz, NSEC_PER_SEC as u64);
 
         let num = (NSEC_PER_SEC as u64) / ts_gcd;
