@@ -28,6 +28,20 @@ pub(crate) struct Runtime {
 }
 
 impl Runtime {
+    pub(crate) fn drm(&self) -> driver::AsahiDevRef { self.inner.drm.clone() }
+    pub(crate) fn core_mask(&self) -> u32 { self.inner.device.core_mask() }
+    pub(crate) fn healthy(&self) -> bool { self.inner.state.healthy() }
+    pub(crate) fn new_user_vm(&mut self, id: u64, range: core::ops::Range<u64>) -> Result<mmu::Vm> {
+        use crate::util::RangeExt;
+        let driver_range = 0x70_0000_0000..0x80_0000_0000;
+        if range.overlaps(driver_range.clone()) { return Err(EINVAL); }
+        let vm = self.inner.uat.new_vm(id, range)?;
+        let mut reserved = KVec::new();
+        reserved.push(driver_range, GFP_KERNEL)?;
+        vm.install_driver_mappings(KVec::new(), reserved)?;
+        Ok(vm)
+    }
+
     pub(crate) fn new(pdev: &platform::Device<Core>, device: Device) -> Result<Self> {
         device.require_stopped(pdev)?;
         let drm: driver::AsahiDevRef = kernel::drm::Device::new(

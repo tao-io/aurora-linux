@@ -57,6 +57,11 @@ pub(crate) struct Config {
     iomap_bytes: KBox<[u8; 42 * 0x28]>,
 }
 
+// SAFETY: `loader` maps retained normal firmware RAM, not thread-local memory.
+// All accesses require &mut Config and use bounded volatile reads/writes. A
+// runtime mutex serializes transfer/use; firmware synchronization is unchanged.
+unsafe impl Send for Config {}
+
 impl Config {
     pub(crate) fn new(pdev: &platform::Device<Core>, dev: &driver::AsahiDevice,
         vm: &mmu::Vm, gpu_vm: &mmu::Vm, firmware: &Firmware) -> Result<Self> {

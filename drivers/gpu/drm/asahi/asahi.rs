@@ -23,6 +23,7 @@ mod g16_firmware;
 mod g16_device;
 mod g16_rtkit;
 mod g16_runtime;
+mod g16_drm;
 mod g16_initdata;
 mod g16_memory;
 mod g16_config;

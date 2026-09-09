@@ -30,6 +30,7 @@ pub(crate) struct Device {
     sgx: Pin<KBox<Devres<IoMem>>>,
     firmware: Firmware,
     power_vote: bool,
+    core_mask: u32,
 }
 
 impl Device {
@@ -65,6 +66,7 @@ impl Device {
             sgx,
             firmware,
             power_vote: false,
+            core_mask: 0,
         };
         // SAFETY: PMP lifetime is linked above. Command 0xf, logical device 5
         // is the executed J713 AGX power contract; the bridge waits for ACK.
@@ -85,8 +87,11 @@ impl Device {
         {
             return Err(ENODEV);
         }
+        device.core_mask = core_mask;
         Ok(device)
     }
+
+    pub(crate) fn core_mask(&self) -> u32 { self.core_mask }
 
     pub(crate) fn check_drm(&self, pdev: &platform::Device<Core>) -> Result {
         use kernel::dma::{Device as _, DmaMask};

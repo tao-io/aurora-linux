@@ -49,7 +49,7 @@ use kernel::macros::vtable;
 /// Holds a reference to the top-level `GpuManager` object.
 #[pin_data]
 pub(crate) struct AsahiData {
-    gpu: SetOnce<Arc<dyn drm_gpu::DrmGpu>>,
+    pub(crate) gpu: SetOnce<Arc<dyn drm_gpu::DrmGpu>>,
     pub(crate) pdev: ARef<platform::Device>,
     pub(crate) resources: Option<regs::Resources>,
     g17_runtime: SetOnce<g17_drm::G17PRuntimeRef>,
@@ -145,6 +145,7 @@ pub(crate) fn queue_g17p_recovery_worker(dev: ARef<AsahiDevice>) {
 enum AsahiRuntime {
     Legacy(ARef<drm::Device<AsahiDriver>>),
     G17P(g17_drm::SharedG17PRuntime),
+    G16(crate::g16_drm::Registered),
 }
 
 pub(crate) struct AsahiDriver {
@@ -931,6 +932,12 @@ impl platform::Driver for AsahiDriver {
     type IdInfo = ProbeConfig;
     const OF_ID_TABLE: Option<of::IdTable<Self::IdInfo>> = Some(&OF_TABLE);
 
+    fn unbind(_pdev: &platform::Device<Core>, this: Pin<&Self>) {
+        if let AsahiRuntime::G16(runtime) = &this.runtime {
+            runtime.stop();
+        }
+    }
+
     /// Device probe function.
     fn probe(
         pdev: &platform::Device<Core>,
@@ -942,6 +949,10 @@ impl platform::Driver for AsahiDriver {
 
         let cfg = match info.ok_or(ENODEV)? {
             ProbeConfig::Supported(cfg) => *cfg,
+            ProbeConfig::Agx3Diagnostic(soc) if soc.chip_id == 0x8132 => {
+                let runtime = crate::g16_drm::Registered::start(pdev)?;
+                return Ok(Self { runtime: AsahiRuntime::G16(runtime) });
+            }
             ProbeConfig::Agx3Diagnostic(soc) if soc.chip_id == 0x8140 => {
                 let runtime = probe_t8140_runtime(pdev, soc)?;
                 dev_info!(

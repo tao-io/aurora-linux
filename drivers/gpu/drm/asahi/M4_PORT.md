@@ -458,3 +458,23 @@ Boot: `1bdcb220-ba9a-45a5-96fc-1ee187fd2b29`. Watchdog: verified 60 seconds with
 Six-channel thermal peak: 51 C; no monitor failure.
 Evidence: `_provenance/asahi-pivot-20260909/hardware/compute-store-8/`.
 This is a kernel qualification shader, not a Vulkan or desktop success.
+
+## Persistent common DRM frontend
+
+`drm-frontend-2` boot 8727f7d6-095b-46cc-b1f0-576c534fa9a7 passed
+probe compute qualification, two-client params/GEM/GPUVM allocation and binding,
+driver-reserved VA rejection, and platform unbind with both files and CPU
+mappings retained. Disconnected ioctls returned ENODEV while CPU GEM data
+remained valid. ASC stopped before runtime release and module unload passed.
+The first attempt exposed final Rust Drop occurring after devres revocation;
+shutdown now runs from platform unbind, with an idempotent Drop fallback.
+The shared optional runtime prevents dangling backend pointers and breaks the
+DRM/runtime reference cycle at teardown. Failure to establish retirement still
+quarantines backing and pins the module until reboot.
+
+Evidence: `_provenance/asahi-pivot-20260909/hardware/drm-frontend-{1,2}/`.
+Verified 60-second watchdog, six-channel thermal peak 51.25 C, no sensor failure.
+`tools/m4_drm_probe.c` is the bounded destructive-unbind integration test;
+run it only inside the watchdog/thermal wrapper. Queue creation and timestamp
+mapping are still refused pending their owned userspace submission path.
+This does not establish Vulkan or desktop rendering.
