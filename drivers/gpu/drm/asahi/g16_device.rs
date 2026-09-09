@@ -9,7 +9,10 @@ use kernel::{
     device::Core,
     devres::Devres,
     error::to_result,
-    io::{mem::IoMem, Io},
+    io::{
+        mem::{ExclusiveIoMem, IoMem},
+        Io,
+    },
     platform,
     prelude::*,
     sync::aref::ARef,
@@ -22,7 +25,7 @@ const ASC_CPU_RUN: u32 = 1 << 4;
 
 pub(crate) struct Device {
     dev: ARef<platform::Device>,
-    asc: Pin<KBox<Devres<IoMem<0x4000>>>>,
+    asc: Pin<KBox<Devres<ExclusiveIoMem<0x4000>>>>,
     sgx: Pin<KBox<Devres<IoMem>>>,
     firmware: Firmware,
     power_vote: bool,
@@ -30,12 +33,13 @@ pub(crate) struct Device {
 
 impl Device {
     pub(crate) fn new(pdev: &platform::Device<Core>, firmware: Firmware) -> Result<Self> {
-        // Claim both apertures before taking a vote. A second owner must not
-        // change power underneath an existing runtime.
+        // Claim ASC before taking a vote. The larger SGX aperture contains
+        // this control window and the separate mailbox provider, so it is
+        // mapped without a conflicting claim over those child resources.
         let asc = KBox::pin_init(
             pdev.io_request_by_name(c_str!("asc"))
                 .ok_or(EINVAL)?
-                .iomap_sized::<0x4000>(),
+                .iomap_exclusive_sized::<0x4000>(),
             GFP_KERNEL,
         )?;
         let sgx = KBox::pin_init(
