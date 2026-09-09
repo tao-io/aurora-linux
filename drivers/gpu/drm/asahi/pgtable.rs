@@ -308,6 +308,7 @@ pub(crate) struct DumpedPage {
 pub(crate) struct UatPageTable {
     ttb: PhysicalAddr,
     ttb_owned: bool,
+    quarantined: bool,
     reserved_tables: Option<ReservedTables>,
     va_range: Range<u64>,
     geometry: UatGeometry,
@@ -323,6 +324,7 @@ impl UatPageTable {
         Ok(UatPageTable {
             ttb,
             ttb_owned: true,
+            quarantined: false,
             reserved_tables: None,
             va_range: 0..geometry.root_size(),
             geometry,
@@ -383,6 +385,7 @@ impl UatPageTable {
         Ok(UatPageTable {
             ttb,
             ttb_owned: false,
+            quarantined: false,
             reserved_tables: None,
             va_range,
             geometry,
@@ -413,6 +416,7 @@ impl UatPageTable {
         Ok(Self {
             ttb,
             ttb_owned: false,
+            quarantined: false,
             reserved_tables: Some(reserved_tables),
             va_range,
             geometry,
@@ -486,6 +490,13 @@ impl UatPageTable {
             // caller detached it and quiesced GPU walks before reclamation.
             unsafe { Page::from_phys(physical) };
         }
+    }
+
+    /// Retain physical page-table backing when hardware exclusion or
+    /// invalidation failed. CPU mappings may be released, but allocator-owned
+    /// table pages must not be recycled until a proven reset (currently reboot).
+    pub(crate) fn quarantine(&mut self) {
+        self.quarantined = true;
     }
 
     pub(crate) fn ttb(&self) -> PhysicalAddr {
@@ -1412,6 +1423,7 @@ impl Drop for PhysPageMapping {
 
 impl Drop for UatPageTable {
     fn drop(&mut self) {
+        if self.quarantined { return; }
         mod_pr_debug!("UATPageTable::drop range: {:#x?}\n", &self.va_range);
         if self
             .with_pages(self.va_range.clone(), false, true, false, |iova, ptes| {

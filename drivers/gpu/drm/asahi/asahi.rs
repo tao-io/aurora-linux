@@ -56,6 +56,7 @@ mod mmu;
 mod object;
 mod pgtable;
 mod pgtable_memory;
+mod handoff_lock;
 mod queue;
 mod regs;
 mod slotalloc;
