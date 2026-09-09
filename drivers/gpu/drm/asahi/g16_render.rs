@@ -159,6 +159,7 @@ impl Stage {
     }
 }
 
+#[derive(Clone, Copy, Default)]
 pub(crate) struct Register {
     pub(crate) offset: u32,
     pub(crate) flagged: bool,

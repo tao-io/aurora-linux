@@ -506,3 +506,17 @@ This is a direct UAPI diagnostic using a generated known shader, not Vulkan.
 The current per-command 32 MiB private pool is conservative allocation policy;
 its reuse, adaptive sizing and growth remain work. Ring wrap is implemented but
 the hardware test covered eight user entries, not a complete wrap.
+
+## Typed M4 render wire translation (host validation)
+
+The render envelope, firmware sequence, parameter manager and one-layer register
+producers now accept explicit owner-supplied addresses. TA and fragment have
+separate layouts; partial-render program and depth/stencil mirrors are retained.
+No old runtime, global capture graph or lab submission code is linked by these
+encoders. Samplers, helper programs, compression and MSAA need further porting.
+
+The `tools/m4_render_{wire,state}_{fixture.rs,reference.c}` differential fixtures
+compare complete byte streams against the previously executed M4 C encoders.
+Both comparisons pass, including full-panel and odd-size geometry, 16/32-pixel
+utiles, relocated addresses, nonzero resource high words and depth/stencil state.
+This establishes encoding parity, not new-driver hardware rendering.
