@@ -3,7 +3,8 @@
 //! Bounded one-thread store used to qualify the owned M4 submission path.
 //! This is a diagnostic shader, not a userspace compiler or a Vulkan claim.
 //! MOV immediate fields follow the local applegpu M3 decoder; the store/stop
-//! body and HAL200 load-shader/CDM grammar match the qualified M4 source.
+//! body is a public M3 fixture. Container and state-loader helpers follow
+//! the completed 25G83 M4 iadd witness; hardware output is checked separately.
 
 pub(crate) const VALUE: u32 = 0x44a72000;
 pub(crate) const SENTINEL: u32 = 0xdeadbeef;
@@ -26,14 +27,55 @@ pub(crate) fn shader(output: u64) -> Result<[u8; 42], ()> {
     Ok(code)
 }
 
-pub(crate) fn esl(shader: u64) -> Result<[u8; 32], ()> {
-    if shader == 0 || shader >= 1 << 42 || shader & 63 != 0 { return Err(()); }
-    let mut out = [0; 32];
+pub(crate) const ENTRY: usize = 0x3c0;
+const PUBLISH: [u8; 10] = [3, 0, 7, 0, 2, 0, 0, 0, 0x60, 0];
+
+/// M4 executable container with a constant program and ten-position profile
+/// helper tables. No captured allocations, pointers or mutable state are copied.
+pub(crate) fn image(output: u64) -> Result<[u8; 0x400], ()> {
+    let body = shader(output)?;
+    let mut out = [0; 0x400];
+    out[..4].copy_from_slice(&0x340u32.to_le_bytes());
+    for half in out[0x40..0x340].chunks_exact_mut(2) { half[0] = 6; }
+    for base in [0x100, 0x200] {
+        for index in 0..10 {
+            let offset = base + index * 16;
+            out[offset..offset + 10].fill(0);
+            out[offset] = 0x0f;
+            out[offset + 2] = 0x54;
+            out[offset + 3] = ((10 - index) * 16) as u8;
+        }
+        for offset in [base + 0xa0, base + 0xb0] {
+            // Default SETPROFILECTL followed by the helper return.
+            out[offset..offset + 8].copy_from_slice(&[0xf7, 3, 0xaa, 0, 0x8f, 2, 0x54, 1]);
+        }
+    }
+    // Header + constant program + aligned main body.
+    out[0x340..0x344].copy_from_slice(&0xc0u32.to_le_bytes());
+    out[0x380..0x38a].copy_from_slice(&PUBLISH);
+    out[0x38a] = 0x0e;
+    out[ENTRY..ENTRY + body.len()].copy_from_slice(&body);
+    Ok(out)
+}
+
+pub(crate) fn esl(container: u64) -> Result<[u8; 90], ()> {
+    if container == 0 || container >= (1 << 42) - 0x400 || container & 0x3fff != 0 {
+        return Err(());
+    }
+    let shader = container + ENTRY as u64;
+    let mut out = [0; 90];
     out[..8].copy_from_slice(&0x412a0077u64.to_le_bytes());
     out[8..16].copy_from_slice(&((shader << 17) | 0x2a0177).to_le_bytes());
-    // Retain the M4 progress-marker resource control and no constant program.
-    out[16..28].copy_from_slice(&[6, 0, 0xf7, 0, 0x2a, 0, 0, 0, 0, 0, 0, 0]);
-    out[28] = 0x0e;
+    // Completed iadd witness: ordinary constant-program state, no resources.
+    out[16..28].copy_from_slice(&[0, 0, 0xf7, 0, 0x2a, 0, 0, 0, 0, 0, 0, 0]);
+    out[28..36].copy_from_slice(&mov32(1, 0));
+    out[36..44].copy_from_slice(&[0x14, 0x81, 0x11, 6, 0, 0, 0, 0]);
+    out[44..52].copy_from_slice(&mov32(0, (container + 0x100) as u32));
+    out[52..62].copy_from_slice(&[0x9f, 0x11, 0x54, 0, 2, 0, 8, 0xa8, 0x10, 5]);
+    out[62..70].copy_from_slice(&mov32(1, (container >> 32) as u32));
+    out[70..76].copy_from_slice(&[0x0f, 0x12, 0x54, 0, 0x4c, 0]);
+    out[76..86].copy_from_slice(&PUBLISH);
+    out[86] = 0x0e;
     Ok(out)
 }
 
@@ -52,7 +94,7 @@ pub(crate) fn cdm(esl: u64) -> Result<[u8; 48], ()> {
 mod tests {
     use super::*;
     #[test]
-    fn independently_decoded_m4_store_fixture() {
+    fn independently_decoded_m3_store_fixture() {
         assert_eq!(shader(0x10000090000).unwrap(), [
             0x0c,0x80,0x02,0,0,0,0x48,0, 0x1c,0x80,0x02,0,4,0,0,0,
             0x2c,0x80,0x02,0x44,0,0,0x39,5, 0xe7,0,0x54,4,0,0,0,0,
@@ -61,10 +103,17 @@ mod tests {
         assert!(shader(1 << 42).is_err());
     }
     #[test]
-    fn qualified_m4_load_shader_record() {
-        let encoded = esl(0x200013c040).unwrap();
-        assert_eq!(&encoded[8..28], &[0x77,1,0xaa,0x80,0x27,0,0x40,0,
-            6,0,0xf7,0,0x2a,0,0,0,0,0,0,0]);
+    fn completed_m4_container_and_loader() {
+        let encoded = esl(0x10000000000).unwrap();
+        // Completed iadd: LDSHDR points at +3c0, not +380. The low address
+        // bits overlap the old decoder's supposed additive 0xaa bias.
+        assert_eq!(&encoded[8..28], &[0x77,1,0xaa,7,0,0,0,2,
+            0,0,0xf7,0,0x2a,0,0,0,0,0,0,0]);
+        let container = image(0x10000090000).unwrap();
+        assert_eq!(&container[0x340..0x344], &[0xc0,0,0,0]);
+        assert_eq!(&container[0x380..0x38a], &encoded[76..86]);
+        assert_eq!(&container[0x1a0..0x1a8], &[0xf7,3,0xaa,0,0x8f,2,0x54,1]);
+        assert_eq!(&container[ENTRY..ENTRY + 42], &shader(0x10000090000).unwrap());
         assert!(esl(65).is_err());
         assert!(cdm(63).is_err());
     }

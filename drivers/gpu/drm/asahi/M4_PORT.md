@@ -421,3 +421,12 @@ classes, including before shader publication; 0x407 carries [1,1], [0,1], [2,1].
 `compute-store-6` initialized the named J713 progress, idle, wake, context-switch
 and kill timers with producer/common-Asahi defaults. It did not resolve retry.
 Both runs saved evidence and rebooted normally. The trace is diagnostic only.
+
+`compute-store-7` rebuilt the diagnostic executable as an M4 code container:
+0x340 leading block, two ten-position profile-helper tables, a 0x40-byte CODE
+header, a terminating constant program and main entry at +0x3c0. Its state
+loader includes the relocated profile helper call and publication suffix from
+the completed iadd path. The LDSHDR address scatter agrees with Aurora Mesa;
+the old lab subtract-0xaa decoder misleadingly labels +0x3c0 as +0x380.
+The generated image/loader host checks pass. Hardware still preempts/retries
+with output unchanged; this container correction alone is not execution proof.

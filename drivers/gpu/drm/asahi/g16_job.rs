@@ -75,7 +75,7 @@ impl Compute {
         }
         job.page_list.u64(0, (1u64 << 61) | private_base)?;
         job.command.write(0, &bytes[..])?;
-        job.shader.write(0, &g16_dispatch::shader(job.output.gpu_va()?).map_err(|_| EINVAL)?)?;
+        job.shader.write(0, &g16_dispatch::image(job.output.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.esl.write(0, &g16_dispatch::esl(job.shader.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.cdm.write(0, &g16_dispatch::cdm(job.esl.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.output.u32(0, g16_dispatch::SENTINEL)?;
