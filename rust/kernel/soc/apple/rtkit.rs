@@ -374,6 +374,12 @@ impl<T: Operations> RtKit<T> {
         })
     }
 
+    /// Check whether both processors acknowledged their running power state.
+    pub fn is_running(self: Pin<&Self>) -> bool {
+        // SAFETY: `rtk` is valid for this retained client.
+        unsafe { bindings::apple_rtkit_is_running(self.rtk) }
+    }
+
     /// Checks if an endpoint is present
     pub fn has_endpoint(self: Pin<&mut Self>, endpoint: u8) -> bool {
         unsafe { bindings::apple_rtkit_has_endpoint(self.rtk, endpoint) }

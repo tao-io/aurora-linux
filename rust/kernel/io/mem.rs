@@ -394,6 +394,22 @@ impl Mem {
         self.ptr.cast().as_ptr()
     }
 
+    /// Borrow a bounded byte view for APIs which accept an iosys mapping.
+    /// The view retains this mapping's lifetime and uses normal-memory access.
+    pub fn iosys_map(&mut self, offset: usize, size: usize) -> Result<crate::iosys_map::IoSysMapRef<'_, u8>> {
+        if offset.checked_add(size).ok_or(EOVERFLOW)? > self.size {
+            return Err(EINVAL);
+        }
+        // SAFETY: The requested span lies entirely inside the retained mapping.
+        let pointer = unsafe { self.ptr().add(offset) };
+        let raw = crate::iosys_map::RawIoSysMap::from_raw(bindings::iosys_map {
+            is_iomem: false,
+            __bindgen_anon_1: bindings::iosys_map__bindgen_ty_1 { vaddr: pointer.cast() },
+        });
+        // SAFETY: The bounded view cannot outlive this borrowed Mem owner.
+        Ok(unsafe { crate::iosys_map::IoSysMapRef::new(raw, size) })
+    }
+
     /// Returns the size of this mapped memory block.
     pub fn size(&self) -> usize {
         self.size
