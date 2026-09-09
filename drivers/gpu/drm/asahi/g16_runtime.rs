@@ -165,7 +165,10 @@ impl Runtime {
         let id = self.inner.active.as_ref().unwrap().packet.id;
         match self.poll_job() {
             Ok(pending) => pending,
-            Err(error) => { self.fail_job(id, error); false }
+            Err(error) => {
+                let _ = self.inner.device.log_engine_state();
+                self.fail_job(id, error); false
+            }
         }
     }
     fn poll_job(&mut self) -> Result<bool> {

@@ -555,3 +555,11 @@ client backing within the reserved driver arena. Otherwise a retained previous
 pass could occupy the next command VA selected independently in context zero.
 This follows the lifetime requirement for firmware-cached parameter managers;
 it does not change any client VA or render-size limit.
+
+Repeated submission is not yet qualified: `vulkan-render-repeat-1` entered
+firmware recovery after the first completed pass; repeat-2 identified reason 3
+(translation fault), this time after TA on the first pass. No unproven backing
+was freed, and the guard saved evidence and rebooted. Recovery diagnostics now
+snapshot owned firmware RAM and the powered engine's already-selected fault
+bank without selecting or acknowledging hardware banks. Do not infer a fault
+address from the all-zero statistics payload alone.

@@ -238,9 +238,23 @@ impl Config {
     /// Snapshot only admitted firmware-data RAM, never a GPU register bank.
     /// These 25G83 globals describe engine issue and power accounting. Values
     /// are diagnostics; neither a cached snapshot nor a stamp proves DMA done.
+    fn log_recovery(&mut self, dev: &driver::AsahiDevice) -> Result {
+        for (object, name, offset, count) in [
+            (Object::Activity26c, "engine-recovery", 0usize, 24usize),
+            (Object::FirmwareData, "recovery-summary", 0x4ebc, 64)] {
+            for start in (0..count).step_by(8) {
+                let mut words = [0u32; 8];
+                for (i, word) in words.iter_mut().enumerate() {
+                    *word = self.object(object).read_u32(offset + (start+i)*4)?;
+                }
+                dev_err!(dev.as_ref(), "G16G: {} +{:#x}={:x?}\n", name, offset+start*4, words);
+            }
+        }
+        self.log_firmware_state(dev)
+    }
     pub(crate) fn log_firmware_state(&mut self, dev: &driver::AsahiDevice) -> Result {
         for (address, count) in [(0x68158usize, 1usize), (0x128d60, 8),
-            (0x129b20, 4), (0x129bc8, 8), (0x129d00, 8), (0x147368, 6), (0x192900, 5), (0x1935a0, 1)] {
+            (0x129b20, 4), (0x129bc8, 8), (0x129d00, 8), (0x147368, 6), (0x192900, 5), (0x1929d0, 8), (0x1935a0, 1)] {
             let map = self.loader.iosys_map(address.checked_sub(0x60000).ok_or(EINVAL)?, count * 8)?;
             let mut words = [0u64; 8];
             for (index, word) in words[..count].iter_mut().enumerate() {
@@ -389,6 +403,7 @@ impl Config {
                     }
                 } else if u32::from_le_bytes(record[..4].try_into().unwrap()) == 0x16 {
                     dev_err!(dev.as_ref(), "G16G recovery statistics: {:02x?}\n", record);
+                    self.log_recovery(dev)?;
                     return Err(EIO);
                 }
                 consumer = (consumer + 1) % count;
