@@ -108,6 +108,23 @@ impl Device {
         Ok(device)
     }
 
+    pub(crate) fn check_drm(&self, pdev: &platform::Device<Core>) -> Result {
+        use kernel::dma::{Device as _, DmaMask};
+        // SAFETY: This is the admitted T8132's 42-bit physical DMA capability.
+        unsafe { pdev.dma_set_mask_and_coherent(DmaMask::try_new(42)?)? };
+        for _ in 0..2 {
+            let drm: ARef<crate::driver::AsahiDevice> = kernel::drm::Device::new(
+                pdev.as_ref(), crate::driver::AsahiData::new(pdev, None))?;
+            if drm.gpu().is_ok() { return Err(EIO); }
+            let mut object = crate::gem::new_kernel_object(&drm, 0x4000)?;
+            object.vmap()?.memset(0);
+            drop(object);
+            drop(drm);
+        }
+        dev_info!(pdev.as_ref(), "G16G: initialized DRM data and GEM allocation/cleanup passed twice; backend absent, device unregistered\n");
+        Ok(())
+    }
+
     /// Temporary bring-up check of the common walker while ASC is stopped.
     /// No context root is installed and no firmware-visible payload is sent.
     pub(crate) fn check_tables(&self, pdev: &platform::Device<Core>) -> Result {
