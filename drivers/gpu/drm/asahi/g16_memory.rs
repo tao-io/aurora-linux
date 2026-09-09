@@ -18,11 +18,15 @@ pub(crate) struct Buffer {
 
 impl Buffer {
     pub(crate) fn new(dev: &driver::AsahiDevice, vm: &mmu::Vm, size: usize) -> Result<Self> {
+        Self::allocate(dev, vm, size, prot::PROT_FW_SHARED_RW)
+    }
+    fn allocate(dev: &driver::AsahiDevice, vm: &mmu::Vm, size: usize,
+        protection: prot::Prot) -> Result<Self> {
         if size == 0 || size.checked_add(mmu::UAT_PGMSK).is_none() { return Err(EINVAL); }
         let mut object = gem::new_kernel_object_wc(dev, size)?;
         object.vmap()?.memset(0);
         let mapping = object.map_into_range(vm, KERNEL_RANGE, mmu::UAT_PGSZ as u64,
-            prot::PROT_FW_SHARED_RW, true)?;
+            protection, true)?;
         Ok(Self { mapping, gpu_mapping: None, object, size })
     }
 
@@ -31,7 +35,9 @@ impl Buffer {
     /// allocator, never from masking a firmware address or a captured VA.
     pub(crate) fn new_gpu(dev: &driver::AsahiDevice, firmware_vm: &mmu::Vm,
         gpu_vm: &mmu::Vm, size: usize) -> Result<Self> {
-        let mut buffer = Self::new(dev, firmware_vm, size)?;
+        // Firmware-generated engine state can retain canonical aliases.
+        // Match the shared firmware/GPU access of the qualified M4 objects.
+        let mut buffer = Self::allocate(dev, firmware_vm, size, prot::PROT_GPU_FW_SHARED_RW)?;
         buffer.gpu_mapping = Some(buffer.object.map_into_range(gpu_vm,
             0x70_0000_0000..0x80_0000_0000, mmu::UAT_PGSZ as u64,
             prot::PROT_GPU_SHARED_RW, true)?);

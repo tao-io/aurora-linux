@@ -131,6 +131,10 @@ impl Runtime {
         let inner = &mut *self.inner;
         inner.device.check_boot_pstate()?;
         inner.device.log_engine_state()?;
+        dev_info!(inner.drm.as_ref(), "G16G: compute publication power-generation={}/{}\n", inner.config.consumed_generation()?, inner.generation);
+        let mut roots = [(0, 0); 1];
+        inner.uat.kernel_vm().context_roots(&mut roots)?;
+        dev_info!(inner.drm.as_ref(), "G16G: pre-compute context0 roots={:x?}\n", roots);
         // Mark before the first queue publication. Even an unsuccessful
         // mailbox send can have delivered its doorbell to firmware.
         inner.gpu_pending = true;

@@ -354,3 +354,19 @@ The precise failing stage is unproven. The next run streams kernel evidence
 back to the host while probing. Engine/MMU diagnostic registers are skipped
 when GPC reports pstate zero: the working old compute path explicitly reports
 the GPU powered down at that point and takes those snapshots after issue.
+
+`compute-terminate-2`, `-3` and `-4` consumed the queue and wrote both stamps
+(0x100), but produced zero start/end timestamps. They are failures, not GPU
+execution proof. Linux stayed responsive and the guard saved evidence before
+normal reboot with the watchdog armed. Run 3 added basic decoded firmware
+KTrace: StartCompute/FinishCompute, stamp and event records appear without
+recovery. Context-0 roots remain installed and power-generation remains 2/3
+before compute, so there is no evidence that the preceding barrier consumes
+the outstanding power assertion.
+
+Run 4 corrected canonical aliases of shared command/state buffers to permit
+both firmware and GPU access, including owned slot state and the UMA counter.
+This matches the qualified old M4 object permissions but did not resolve the
+zero timestamps. The firmware timestamp opcode reads engine timestamps then
+writes CPU-visible cells; a firmware completion stamp alone remains inadequate.
+Evidence is under `_provenance/asahi-pivot-20260909/hardware/` in the collection.

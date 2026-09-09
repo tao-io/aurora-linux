@@ -186,7 +186,7 @@ impl Config {
         for (offset, value) in [(4, 4), (8, 6), (12, 3), (16, 7), (20, 7), (40, 8), (48, 1)] {
             self.object(Main).u32(0x2540 + offset, value)?;
         }
-        self.object(Control).u32(0, 0x33)?;
+        self.object(Control).u32(0, 1)?;
         Ok(())
     }
 
@@ -305,7 +305,14 @@ impl Config {
                 self.object(data).read(consumer as usize * 0x48, &mut record)?;
                 if trace {
                     if u32::from_le_bytes(record[..4].try_into().unwrap()) != 5 { return Err(EIO); }
-                    dev_dbg!(dev.as_ref(), "G16G KTrace: {:02x?}\n", record);
+                    let tag = u32::from_le_bytes(record[44..48].try_into().unwrap());
+                    let phase = u32::from_le_bytes(record[48..52].try_into().unwrap());
+                    let mut args = [0u64; 4];
+                    for (i, arg) in args.iter_mut().enumerate() {
+                        *arg = u64::from_le_bytes(record[12 + i * 8..20 + i * 8].try_into().unwrap());
+                    }
+                    dev_info!(dev.as_ref(), "G16G trace thread={} id={:#x} phase={} args={:x?}\n", tag >> 24, tag & 0xffffff, phase, args);
+                    if tag & 0xffffff == 0x11c { return Err(EOVERFLOW); }
                 } else if matches!(state, EventState) {
                     dev_info!(dev.as_ref(), "G16G event: {:02x?}\n", record);
                     if u32::from_le_bytes(record[..4].try_into().unwrap()) != 1 {

@@ -20,13 +20,13 @@ impl Compute {
         let gpu = |size| Buffer::new_gpu(dev, uat.kernel_vm(), uat.kernel_lower_vm(), size);
         let mut job = Self {
             command: gpu(g16_compute::SIZE)?,
-            slot_state: Buffer::new(dev, uat.kernel_vm(), 0x4000)?,
+            slot_state: gpu(0x4000)?,
             context_store: gpu(0x40000)?,
             // Empty pool for this terminate. Size the metadata for a 64 MiB
             // pool rather than populating a captured private-memory graph.
             pool_state: gpu(0x20000)?,
             page_list: gpu(0x4000)?,
-            counter: Buffer::new(dev, uat.kernel_vm(), 8)?,
+            counter: gpu(8)?,
         };
         let mut bytes = KBox::new([0; g16_compute::SIZE], GFP_KERNEL)?;
         g16_compute::encode(&mut bytes[..], Addresses {
@@ -40,9 +40,11 @@ impl Compute {
         Ok(job)
     }
     pub(crate) fn address(&self) -> u64 { self.command.va() }
-    pub(crate) fn status(&mut self) -> Result<[u64; 5]> {
+    pub(crate) fn status(&mut self) -> Result<[u64; 9]> {
         Ok([self.command.read_u32(0xee0)? as u64, self.command.read_u32(0xee4)? as u64,
             self.command.read_u64(0x8c0)?, self.command.read_u64(0x8c8)?,
-            self.command.read_u32(0x8ac)? as u64])
+            self.command.read_u32(0x8ac)? as u64, self.command.read_u64(0xf00)?,
+            self.command.read_u32(0xe44)? as u64, self.command.read_u64(0x89c)?,
+            self.command.read_u32(0x76c)? as u64])
     }
 }
