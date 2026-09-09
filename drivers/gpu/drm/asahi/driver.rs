@@ -390,7 +390,8 @@ fn probe_t8140_runtime(
 /// This logs the statically decoded identity, performs the read-only SGX
 /// identification (ID block + core-enable masks), cross-checks the two, and
 /// stops at the generation-specific firmware boundary. J713 first acquires
-/// its validated power dependencies; no path here starts ASC or registers DRM.
+/// its validated power dependencies and performs bounded management discovery.
+/// No path here registers DRM or starts application endpoints.
 fn refuse_agx3_probe(pdev: &platform::Device<Core>, soc: &'static hw::agx3::SocConfig) -> Error {
     if soc.chip_id == 0x8132 {
         // Validate the normal device resources before touching SGX registers.
@@ -405,7 +406,13 @@ fn refuse_agx3_probe(pdev: &platform::Device<Core>, soc: &'static hw::agx3::SocC
                     firmware.resources.firmware_vas[0]
                 );
                 match g16_device::Device::new(pdev, firmware) {
-                    Ok(_device) => dev_info!(pdev.as_ref(), "G16G: owned power and identity complete; UAT/runtime startup next\n"),
+                    Ok(device) => {
+                        dev_info!(pdev.as_ref(), "G16G: owned power and identity complete; discovering management endpoints\n");
+                        if let Err(error) = device.discover(pdev) {
+                            dev_err!(pdev.as_ref(), "G16G: management discovery failed: {:?}\n", error);
+                            return error;
+                        }
+                    },
                     Err(error) => return error,
                 }
             },

@@ -94,6 +94,22 @@ an alignment fault, so the read was changed to an explicit aligned size and
 a clean reboot is required before continuing GPU experiments. No shader has
 executed through the new runtime yet.
 
+After reboot, normalized identity and acknowledged GFX power passed on J713.
+The first cleanup exposed a Rust exclusive-MMIO reservation made under a
+detached OF descriptor, then released through the global tree. The wrapper
+now reserves through the global MMIO tree too. Two consecutive probe/remove
+cycles on boot `04d0137e-c9a0-4b4b-89da-e86de7b40ad1` read version
+`0x0a021100`, counts `0x0011010a`, core mask `0x3bd`, and completed without
+resource-release errors. The watchdog was verified at 60 seconds and the
+six-channel thermal monitor peaked at 52.25 C. Evidence is under
+`_provenance/asahi-pivot-20260909/hardware/power-probe-3-repeated/`.
+
+The next probe stage uses the normal RTKit discovery-only client with mailbox
+interrupts. It claims power first, enables ASC, waits only for HELLO/EPMAP,
+then stops ASC before releasing RTKit and the PMP vote. It does not start
+crashlog or application endpoints, allocate firmware-visible host memory, or
+send initdata. A firmware session must not be retried without a reboot yet.
+
 ## Runtime integration boundary
 
 The outer power hierarchy is now represented as GFX TVM -> PMGR GFX, with
