@@ -408,7 +408,7 @@ fn refuse_agx3_probe(pdev: &platform::Device<Core>, soc: &'static hw::agx3::SocC
                 match g16_device::Device::new(pdev, firmware) {
                     Ok(device) => {
                         dev_info!(pdev.as_ref(), "G16G: owned power and identity complete; discovering management endpoints\n");
-                        if let Err(error) = device.check_tables(pdev).and_then(|()| device.discover(pdev)) {
+                        if let Err(error) = device.check_tables(pdev).and_then(|()| device.boot_transport(pdev)) {
                             dev_err!(pdev.as_ref(), "G16G: management discovery failed: {:?}\n", error);
                             return error;
                         }
