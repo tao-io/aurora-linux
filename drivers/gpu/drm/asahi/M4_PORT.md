@@ -563,3 +563,18 @@ was freed, and the guard saved evidence and rebooted. Recovery diagnostics now
 snapshot owned firmware RAM and the powered engine's already-selected fault
 bank without selecting or acknowledging hardware banks. Do not infer a fault
 address from the all-zero statistics payload alone.
+
+### Repeated render qualification and USC freelist capacity
+
+The selected fault bank in `vulkan-render-repeat-3` identified a gUPM write
+40h past the 64 KiB freelist. Its descriptor advertised 8192 entries, all
+populated. The render allocator now leaves capacity beyond the populated
+entries, as the qualified compute allocator already does: 16384 qwords for
+8192 pages. The shared encoder rejects a completely full freelist.
+
+`vulkan-render-repeat-4` retired eight render passes across two client VMs,
+including four interleaved compute copies, without firmware recovery. Four
+host-copy renders verified every pixel, checksum `a513efed37c25325`. The GPU
+image-to-buffer copy completed but returned an incorrect green channel; this
+is not yet graphics/desktop parity. Peak observed PMP temperature was 53.5 C
+with the verified 60-second watchdog and thermal guard.

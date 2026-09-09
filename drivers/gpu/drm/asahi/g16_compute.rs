@@ -58,7 +58,7 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
         || a.context >= 64 || (a.context != 0 && a.generation == 0)
         || a.command & 0x3fff != 0 || a.slot_state & 7 != 0
         || a.counter & 7 != 0 || pool_qwords == 0
-        || pages > pool_qwords || pages % 512 != 0
+        || pages >= pool_qwords || pages % 512 != 0
         || [a.command_gpu, a.auxiliary_gpu, a.preemption_gpu, a.context_store_gpu, a.pool_state_gpu, a.page_list_gpu]
             .iter().any(|va| *va == 0 || *va & 0x3fff != 0 || *va >= (1 << 42) - 0x20000)
         || a.metrics < 0xffff_fc00_0000_0000 || a.metrics & 7 != 0
@@ -197,6 +197,13 @@ mod tests {
         assert!(bytes[0x140..0x720].iter().all(|byte| *byte == 0));
     }
     #[test]
+    fn populated_freelist_requires_headroom() {
+        let mut bytes = [0xa5; SIZE];
+        assert!(encode(&mut bytes, addresses(), 512, 512).is_err());
+        assert_eq!(bytes, [0xa5; SIZE]);
+        assert!(encode(&mut bytes, addresses(), 1024, 512).is_ok());
+    }
+    #[test]
     fn invalid_address_is_transactional() {
         let mut bytes = [0x55; SIZE];
         let mut a = addresses(); a.command_gpu |= 1;
@@ -209,7 +216,7 @@ mod tests {
 /// Shared M4 USC private-memory descriptor used by compute and render engines.
 pub(crate) fn encode_uma(out: &mut [u8], pool: u64, pool_qwords: u32,
     pages: u32, list: u64, counter: u64) -> Result<(), ()> {
-    if out.len() < 0xa0 || pool_qwords == 0 || pages > pool_qwords || pages % 512 != 0
+    if out.len() < 0xa0 || pool_qwords == 0 || pages >= pool_qwords || pages % 512 != 0
         || [pool,list].iter().any(|p| *p == 0 || *p & 0x3fff != 0 || *p >= 1<<42)
         || counter < 0xfffffc0000000000 || counter & 7 != 0 { return Err(()); }
     out[..0xa0].fill(0);

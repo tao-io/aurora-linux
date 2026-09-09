@@ -8,6 +8,10 @@ use crate::{driver, mmu, g16_memory::{self, Buffer}, g16_render::{self, Geometry
 
 const PRIVATE_BYTES: usize = 32 * 1024 * 1024;
 const PRIVATE_PAGES: usize = PRIVATE_BYTES / 4096;
+// The gUPM freelist needs headroom beyond the initially populated pages.
+// Equal capacity faulted on a write at freelist+0x10040 with 8192 pages.
+// Derive the next ring size instead of silently overflowing a full ring.
+const PRIVATE_QWORDS: usize = (PRIVATE_PAGES + 1).next_power_of_two();
 const PB_BLOCK_BYTES: usize = 4 * 32768;
 pub(crate) const STAMP: u32 = 0x100;
 pub(crate) const SLOTS: [u8; 2] = [0x70, 0x71];
@@ -67,14 +71,14 @@ impl Render {
             // Sizes inherited from the qualified M4 context-save experiment.
             preemption:[gpu(0x10000)?,gpu(0x10000)?],auxiliary:gpu(0x10000)?,
             uma:gpu(0x4000)?,private_memory:gpu(PRIVATE_BYTES)?,
-            pool_state:gpu(PRIVATE_PAGES*8)?,page_list:gpu(0x4000)?,
+            pool_state:gpu(PRIVATE_QWORDS*8)?,page_list:gpu(0x4000)?,
             binding:uat.bind(vm)?,descriptor:[0;16],stage:Stage::Tiling,
         };
         let base = job.private_memory.gpu_va()?;
         for i in 0..PRIVATE_PAGES { job.pool_state.u64(i*8,base+i as u64*4096)?; }
         for i in 0..PRIVATE_BYTES/0x200000 { job.page_list.u64(i*64,(1u64<<61)|(base+i as u64*0x200000))?; }
         let mut uma = [0;0xa0];
-        crate::g16_compute::encode_uma(&mut uma,job.pool_state.gpu_va()?,PRIVATE_PAGES as u32,
+        crate::g16_compute::encode_uma(&mut uma,job.pool_state.gpu_va()?,PRIVATE_QWORDS as u32,
             PRIVATE_PAGES as u32,job.page_list.gpu_va()?,job.metadata.va()+0x500).map_err(|_| EINVAL)?;
         job.uma.write(0,&uma)?;
         let pb_base = state::compact(job.pb_memory.gpu_va()?).map_err(|_| EINVAL)?;
@@ -138,6 +142,8 @@ impl Render {
             job.sequences[i].write(0,&sequence[..wire::sequence_size(stage)])?;
         }
         g16_memory::publish();
+        dev_info!(dev.as_ref(), "G16G: render USC freelist={:#x} capacity={} populated={}\n",
+            job.pool_state.gpu_va()?,PRIVATE_QWORDS,PRIVATE_PAGES);
         dev_info!(dev.as_ref(),"G16G: owned render {}x{} ASID={} PB={} pages tilemap={:#x} TPC={:#x}\n",
             r.width,r.height,job.binding.slot(),page_count,job.tilemap.gpu_va()?,job.tpc.gpu_va()?);
         Ok(job)
