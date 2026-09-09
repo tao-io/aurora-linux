@@ -108,6 +108,85 @@ impl Device {
         Ok(device)
     }
 
+    /// Temporary bring-up check of the common walker while ASC is stopped.
+    /// No context root is installed and no firmware-visible payload is sent.
+    pub(crate) fn check_tables(&self, pdev: &platform::Device<Core>) -> Result {
+        use crate::{pgtable::{UatPageTable, prot}, pgtable_memory::ReservedTables, uat::UatGeometry};
+        use kernel::{io::mem::{Mem, MemFlag}, page::Page};
+        use core::sync::atomic::{AtomicU64, Ordering};
+        if self.asc.access(pdev.as_ref())?.read32(ASC_CPU_CONTROL) & ASC_CPU_RUN != 0 {
+            return Err(EBUSY);
+        }
+        let node = pdev.as_ref().of_node().ok_or(ENODEV)?;
+        // SAFETY: Validated reserved RAM; ASC is stopped. This is a read-only
+        // check that no context has been installed before touching tables.
+        let ttbs = unsafe { Mem::try_new(node.reserved_mem_region_to_resource_byname(c_str!("ttbs"))?, MemFlag::WB.into()) }?;
+        let contexts = unsafe { core::slice::from_raw_parts(ttbs.ptr().cast::<AtomicU64>(), 128) };
+        if contexts.iter().any(|entry| entry.load(Ordering::Acquire) != 0) {
+            return Err(EBUSY);
+        }
+        let make_tables = || -> Result<ReservedTables> {
+            let mut resources = KVec::new();
+            for name in [c_str!("pagetables"), c_str!("shared-l2")] {
+                resources.push(node.reserved_mem_region_to_resource_byname(name)?, GFP_KERNEL)?;
+            }
+            // SAFETY: Device::new admitted the board's reserved no-map regions
+            // and exclusive ASC control. No context or running firmware can
+            // modify the tables throughout this synchronous check.
+            unsafe { ReservedTables::new(resources) }
+        };
+        let snapshot = |tables: &ReservedTables| -> Result<KVec<u64>> {
+            let mut words = KVec::new();
+            for index in [1, 3] {
+                let region = self.firmware.resources.regions[index];
+                for address in (region.base..region.base + region.size).step_by(0x4000) {
+                    tables.with_page(address, |entries| {
+                        for entry in entries {
+                            words.push(entry.load(Ordering::Acquire), GFP_KERNEL)?;
+                        }
+                        Ok(())
+                    })?;
+                }
+            }
+            Ok(words)
+        };
+        let geometry = UatGeometry::new(42).ok_or(EINVAL)?;
+        let tables = make_tables()?;
+        let before = snapshot(&tables)?;
+        drop(tables);
+        let payload = Page::alloc_page(GFP_KERNEL | __GFP_ZERO)?;
+        for _ in 0..2 {
+            // SAFETY: All TTBAT entries are zero and ASC remains stopped.
+            // The table owner is dropped here before any firmware startup.
+            let mut table = unsafe { UatPageTable::new_with_reserved_ttb(
+                self.firmware.resources.regions[1].base,
+                geometry.kernel_va_base()..geometry.kernel_va_top(), 42, 42, make_tables()?) }?;
+            let boundary = geometry.kernel_va_base() + (1 << 25);
+            let spans = [boundary - 0x8000..boundary + 0x18000,
+                geometry.kernel_va_top() - 0x4000..geometry.kernel_va_top()];
+            for span in &spans {
+                table.prepare_map(span.clone())?;
+                table.map_pages(span.clone(), payload.phys(), prot::PROT_GPU_SHARED_RW, true)?;
+                if table.prepare_map(span.clone()) != Err(EBUSY)
+                    || !table.covers_range(span.clone(), true, true)? {
+                    return Err(EIO);
+                }
+                for va in (span.start..span.end).step_by(0x4000) {
+                    if table.translate_iova(va + 13)? != payload.phys() + 13 { return Err(EIO); }
+                }
+                table.reprot_pages(span.clone(), prot::PROT_GPU_SHARED_RO)?;
+                if !table.covers_range(span.clone(), true, false)?
+                    || table.covers_range(span.clone(), false, true)? { return Err(EIO); }
+                table.unmap_pages(span.clone())?;
+                if table.covers_range(span.clone(), false, false)? { return Err(EIO); }
+            }
+            drop(table);
+            if snapshot(&make_tables()?)? != before { return Err(EIO); }
+        }
+        dev_info!(pdev.as_ref(), "G16G: reserved UAT walker passed two map/protect/unmap/drop cycles across leaf boundaries; inherited tables unchanged, contexts disabled\n");
+        Ok(())
+    }
+
     /// Exercise the normal interrupt-driven RTKit management transport before
     /// giving firmware any host allocations or starting application endpoints.
     /// The caller must reboot before attempting another firmware session.
