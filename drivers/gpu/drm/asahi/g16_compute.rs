@@ -18,6 +18,7 @@ pub(crate) struct Addresses {
     pub counter: u64,
     pub context: u32,
     pub generation: u8,
+    pub stamp: u32,
 }
 
 pub(crate) const SIZE: usize = 0x1000;
@@ -108,7 +109,7 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     u32_at(out, 0x7e8, u32::MAX);
     u64_at(out, 0x800, c + 0xee4);
     u64_at(out, 0x808, c + 0xee0);
-    u32_at(out, 0x810, STAMP);
+    u32_at(out, 0x810, a.stamp);
     u32_at(out, 0x814, SLOT as u32);
     u32_at(out, 0x820, 1);
     u64_at(out, 0x834, c + 0x8c0);
@@ -147,7 +148,7 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
         u64_at(out, 0xb58 + off, value);
     }
     u32_at(out, 0xb6c, a.context);
-    u32_at(out, 0xb8c, STAMP);
+    u32_at(out, 0xb8c, a.stamp);
     u32_at(out, 0xbbc, (-0x258i32) as u32);
     u32_at(out, 0xbd4, 0x40000002);
     // Independently consumed notifier and retirement stamps.
@@ -170,7 +171,7 @@ mod tests {
         Addresses { command: 0xfffffc2000014000, command_gpu: 0x7000100000, cdm_gpu: 0x7000500000, preemption_gpu: 0x7000600000, metrics: 0xfffffc2000050000, auxiliary_gpu: 0x7000700000,
             slot_state: 0xfffffc2000030000, context_store_gpu: 0x7000800000,
             pool_state_gpu: 0x7000200000, page_list_gpu: 0x7000300000,
-            counter: 0xfffffc2000040000, context: 1, generation: 1 }
+            counter: 0xfffffc2000040000, context: 1, generation: 1, stamp: STAMP }
     }
     #[test]
     fn packed_abi_roles_and_end_record() {
@@ -195,6 +196,16 @@ mod tests {
         assert_eq!(u64_at(0xbc9), 0xfffffc200001488c);
         assert_eq!(&bytes[0xbd4..0xbd8], &[2, 0, 0, 0x40]);
         assert!(bytes[0x140..0x720].iter().all(|byte| *byte == 0));
+    }
+    #[test]
+    fn dispatch_and_finish_carry_the_same_event_value() {
+        let mut a = addresses();
+        a.stamp = 0x12300;
+        let mut bytes = [0; SIZE];
+        encode(&mut bytes, a, 16384, 512).unwrap();
+        for offset in [0x810, 0xb8c] {
+            assert_eq!(&bytes[offset..offset + 4], &0x12300u32.to_le_bytes());
+        }
     }
     #[test]
     fn populated_freelist_requires_headroom() {

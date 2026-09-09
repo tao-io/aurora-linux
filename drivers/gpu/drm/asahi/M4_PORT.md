@@ -683,3 +683,12 @@ then still stalled on the large first scene. No complete 0 A.D. frame was
 qualified by that run. The five standalone render dependency/geometry
 checks and the ARM64 module build passed. Watchdog 60 s, six PMP channels,
 CPU thermal policy and the unchanged 338 MHz GPU clock remain mandatory.
+
+Compute now carries its own advancing event value after the bootstrap
+0x100 event; dispatch metadata, finish sequence and retirement checks agree
+on it. The four standalone compute wire tests and ARM64 module build pass.
+`0ad-fma-new-stamp-cold` still returned unchanged values, so event aliasing
+is not established as the cause of that cold-start failure. A subsequent
+synchronized scene replay completed without a kernel fault but rendered
+mostly black; it is not a passing scene. Neither event-value change raises
+clocks or relaxes retirement/watchdog checks.

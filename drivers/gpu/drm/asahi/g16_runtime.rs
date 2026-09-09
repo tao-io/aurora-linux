@@ -28,6 +28,7 @@ struct Inner {
     failed: bool,
     user_generation: u8,
     render_stamp: u32,
+    compute_stamp: u32,
     active: Option<Active>,
 }
 
@@ -38,7 +39,7 @@ enum Work {
 impl Work {
     fn pipe(&self) -> usize { match self { Self::Compute(_) => 2, Self::Render(r) => r.index() } }
     fn stamp(&self) -> u32 {
-        match self { Self::Compute(_) => crate::g16_compute::STAMP, Self::Render(r) => r.stamp() }
+        match self { Self::Compute(c) => c.stamp(), Self::Render(r) => r.stamp() }
     }
     fn status(&mut self) -> Result<[u64; 4]> {
         match self { Self::Compute(c) => { let s=c.status()?; Ok([s[0],s[1],s[2],s[3]]) }, Self::Render(r)=>r.status() }
@@ -142,11 +143,13 @@ impl Runtime {
         // event value exactly as the common Asahi queues do, across clients.
         if matches!(payload, crate::g16_submit::Payload::Render { .. }) {
             inner.render_stamp = inner.render_stamp.wrapping_add(0x100).max(0x100);
+        } else {
+            inner.compute_stamp = inner.compute_stamp.wrapping_add(0x100).max(0x100);
         }
         let work = match payload {
             crate::g16_submit::Payload::Compute(control) => Work::Compute(KBox::new(crate::g16_job::Compute::in_vm(
                 &inner.drm,&inner.uat,&mut inner.config,&packet.vm,Some(control),
-                Some(inner.compute_queue.notification()),generation)?, GFP_KERNEL)?),
+                Some(inner.compute_queue.notification()),generation,inner.compute_stamp)?, GFP_KERNEL)?),
             crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
                 &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,
                 [inner.queue.address(),inner.fragment_queue.address()],
@@ -285,7 +288,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config)?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, render_stamp: 0, active: None }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, render_stamp: 0, compute_stamp: crate::g16_compute::STAMP, active: None }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

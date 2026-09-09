@@ -24,6 +24,7 @@ pub(crate) struct Compute {
     page_list: Buffer,
     counter: Buffer,
     binding: mmu::VmBind,
+    stamp: u32,
 }
 
 const PRIVATE_BYTES: usize = 0x2000000;
@@ -32,11 +33,11 @@ const PRIVATE_PAGES: usize = PRIVATE_BYTES / 0x1000;
 impl Compute {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, config: &mut crate::g16_config::Config) -> Result<Self> {
         let vm = uat.new_vm(0x81320020, 0x70_0000_0000..0x80_0000_0000)?;
-        Self::in_vm(dev, uat, config, &vm, None, None, 1)
+        Self::in_vm(dev, uat, config, &vm, None, None, 1, g16_compute::STAMP)
     }
     pub(crate) fn in_vm(dev: &driver::AsahiDevice, uat: &mmu::Uat,
         config: &mut crate::g16_config::Config, vm: &mmu::Vm,
-        control: Option<g16_compute::Control>, notification: Option<g16_compute::Notification>, generation: u8) -> Result<Self> {
+        control: Option<g16_compute::Control>, notification: Option<g16_compute::Notification>, generation: u8, stamp: u32) -> Result<Self> {
         let uma_client = if control.is_none() { Some(config.bind_uma_table(vm)?) } else { None };
         let gpu = |size| Buffer::new_gpu(dev, uat.kernel_vm(), &vm, size);
         // The engine fetches the register list in bootstrap context zero, then
@@ -65,6 +66,7 @@ impl Compute {
             page_list: gpu(0x4000)?,
             counter: gpu(8)?,
             binding: uat.bind(&vm)?,
+            stamp,
         };
         let mut bytes = KBox::new([0; g16_compute::SIZE], GFP_KERNEL)?;
         let addresses = Addresses {
@@ -75,7 +77,7 @@ impl Compute {
             slot_state: job.slot_state.va(), context_store_gpu: job.context_store.gpu_va()?,
             pool_state_gpu: job.pool_state.gpu_va()?, page_list_gpu: job.page_list.gpu_va()?,
             counter: job.counter.va(),
-            context: job.binding.slot(), generation,
+            context: job.binding.slot(), generation, stamp,
         };
         if let Some(control) = control {
             g16_compute::encode_dispatch(&mut bytes[..], addresses, 0x4000,
@@ -118,6 +120,7 @@ impl Compute {
         dev_info!(dev.as_ref(), "G16G: compute preemption progress={:x?} private-pages={}\n", cells, PRIVATE_PAGES);
         Ok(())
     }
+    pub(crate) fn stamp(&self) -> u32 { self.stamp }
     pub(crate) fn address(&self) -> u64 { self.command.va() }
     pub(crate) fn status(&mut self) -> Result<[u64; 10]> {
         Ok([self.command.read_u32(0xee0)? as u64, self.command.read_u32(0xee4)? as u64,
