@@ -665,3 +665,21 @@ value and immediate operands. No GPU device loss occurred in that run.
 Peak monitored PMP temperature was 53.75 C; the 60-second watchdog and all
 thermal checks remained mandatory. Full kernel modules built successfully.
 Evidence: workspace `_provenance/asahi-0ad-20260909/`.
+
+### Render event values during 0 A.D. bring-up (2026-09-10)
+
+The owned M4 runtime now advances render event values by 0x100, as common
+Asahi queues do, and polls the value carried by the active render. Both TA
+and fragment metadata, InitPB and their dependency use that value. Values
+are shared across user contexts for the retained hardware queues; the wire
+encoder's reserved zero value is skipped on wrap.
+
+M4/25G83 firmware `agx_drain_work_queue_commands` at 0x1cf74 and
+0x1cfc8 extracts stamp bits 14:8 to select internal command records. A fixed
+0x100 aliases successive renders to the same record. This patch removes
+that aliasing; it does not establish the cause of all observed stalls.
+`0ad-scene-render-stamp` retired the upload passes with increasing values,
+then still stalled on the large first scene. No complete 0 A.D. frame was
+qualified by that run. The five standalone render dependency/geometry
+checks and the ARM64 module build passed. Watchdog 60 s, six PMP channels,
+CPU thermal policy and the unchanged 338 MHz GPU clock remain mandatory.

@@ -27,6 +27,7 @@ struct Inner {
     gpu_pending: bool,
     failed: bool,
     user_generation: u8,
+    render_stamp: u32,
     active: Option<Active>,
 }
 
@@ -36,6 +37,9 @@ enum Work {
 }
 impl Work {
     fn pipe(&self) -> usize { match self { Self::Compute(_) => 2, Self::Render(r) => r.index() } }
+    fn stamp(&self) -> u32 {
+        match self { Self::Compute(_) => crate::g16_compute::STAMP, Self::Render(r) => r.stamp() }
+    }
     fn status(&mut self) -> Result<[u64; 4]> {
         match self { Self::Compute(c) => { let s=c.status()?; Ok([s[0],s[1],s[2],s[3]]) }, Self::Render(r)=>r.status() }
     }
@@ -133,12 +137,18 @@ impl Runtime {
         let inner = &mut *self.inner;
         let payload = packet.commands.get(index).ok_or(EINVAL)?.payload;
         let generation = inner.user_generation.wrapping_add(1).max(1);
+        // Firmware indexes its per-event command records with stamp[14:8].
+        // Reusing 0x100 aliases every render to the same record. Advance the
+        // event value exactly as the common Asahi queues do, across clients.
+        if matches!(payload, crate::g16_submit::Payload::Render { .. }) {
+            inner.render_stamp = inner.render_stamp.wrapping_add(0x100).max(0x100);
+        }
         let work = match payload {
             crate::g16_submit::Payload::Compute(control) => Work::Compute(KBox::new(crate::g16_job::Compute::in_vm(
                 &inner.drm,&inner.uat,&mut inner.config,&packet.vm,Some(control),
                 Some(inner.compute_queue.notification()),generation)?, GFP_KERNEL)?),
             crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
-                &inner.drm,&inner.uat,&packet.vm,command,usc,generation,
+                &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,
                 [inner.queue.address(),inner.fragment_queue.address()],
                 [inner.queue.notification().address,inner.fragment_queue.notification().address])?),
         };
@@ -202,8 +212,8 @@ impl Runtime {
         let queue = match pipe_index { 0=>inner.queue.status()?,1=>inner.fragment_queue.status()?,_=>inner.compute_queue.status()? };
         let pipe = inner.config.pipe_indices(pipe_index)?;
         let next = active.queue_next[pipe_index];
-        if status[0] == crate::g16_compute::STAMP as u64
-            && status[1] == crate::g16_compute::STAMP as u64
+        if status[0] == active.work.stamp() as u64
+            && status[1] == active.work.stamp() as u64
             && (pipe_index != 2 || (status[2] != 0 && status[3] > status[2]))
             && queue == [next, next, next, next, next, 0]
             && pipe == [active.pipe_next[pipe_index]; 3] {
@@ -275,7 +285,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config)?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, active: None }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, render_stamp: 0, active: None }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

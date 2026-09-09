@@ -13,7 +13,6 @@ const PRIVATE_PAGES: usize = PRIVATE_BYTES / 4096;
 // Derive the next ring size instead of silently overflowing a full ring.
 const PRIVATE_QWORDS: usize = (PRIVATE_PAGES + 1).next_power_of_two();
 const PB_BLOCK_BYTES: usize = 4 * 32768;
-pub(crate) const STAMP: u32 = 0x100;
 pub(crate) const SLOTS: [u8; 2] = [0x70, 0x71];
 
 pub(crate) struct Render {
@@ -39,10 +38,11 @@ pub(crate) struct Render {
     binding: mmu::VmBind,
     descriptor: [u8; 16],
     pub(crate) stage: Stage,
+    stamp: u32,
 }
 impl Render {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, vm: &mmu::Vm,
-        r: UapiRenderCommand, usc: u64, generation: u8,
+        r: UapiRenderCommand, usc: u64, generation: u8, stamp: u32,
         queues: [u64; 2], notifications: [u64; 2]) -> Result<Self> {
         let utile = |n| match n {16=>Ok(Utile::Pixels16),32=>Ok(Utile::Pixels32),_=>Err(EINVAL)};
         let geometry = Geometry::new(r.width as u32,r.height as u32,
@@ -72,7 +72,7 @@ impl Render {
             preemption:[gpu(0x10000)?,gpu(0x10000)?],auxiliary:gpu(0x10000)?,
             uma:gpu(0x4000)?,private_memory:gpu(PRIVATE_BYTES)?,
             pool_state:gpu(PRIVATE_QWORDS*8)?,page_list:gpu(0x4000)?,
-            binding:uat.bind(vm)?,descriptor:[0;16],stage:Stage::Tiling,
+            binding:uat.bind(vm)?,descriptor:[0;16],stage:Stage::Tiling,stamp,
         };
         let base = job.private_memory.gpu_va()?;
         for i in 0..PRIVATE_PAGES { job.pool_state.u64(i*8,base+i as u64*4096)?; }
@@ -97,11 +97,11 @@ impl Render {
         descriptor.update(job.pages.gpu_va()?,page_count.try_into()?,0,0,false,false).map_err(|_| EINVAL)?;
         job.descriptor = descriptor.to_bytes();
         let mut init = [0;0x20];
-        wire::init_parameter_buffer(&mut init,job.binding.slot(),0,0,block_count.try_into()?,job.manager.va(),STAMP).map_err(|_| EINVAL)?;
+        wire::init_parameter_buffer(&mut init,job.binding.slot(),0,0,block_count.try_into()?,job.manager.va(),stamp).map_err(|_| EINVAL)?;
         job.metadata.write(0x300,&init)?;
         let mut dependency = [0;0x40];
         wire::render_dependency(&mut dependency,job.metadata.va()+0x408,
-            SLOTS[0],STAMP,STAMP).map_err(|_| EINVAL)?;
+            SLOTS[0],stamp,stamp).map_err(|_| EINVAL)?;
         job.metadata.write(0x340,&dependency)?;
         // PB scene scratch has explicit GPU and firmware aliases. Statistics
         // are a distinct retained record; firmware dereferences them on retire.
@@ -133,7 +133,7 @@ impl Render {
                 notifier:notifications[i],shared_stamp:job.metadata.va()+0x400+i as u64*16,
                 stamp_address:job.metadata.va()+0x408+i as u64*16,uma:job.uma.va(),
                 uma_aux:job.uma.gpu_va()?+0x100+i as u64*0x100,
-                context:job.binding.slot(),generation,counter:i as u64+1,uuid,stamp:STAMP,
+                context:job.binding.slot(),generation,counter:i as u64+1,uuid,stamp:stamp,
                 event_slot:SLOTS[i] as u32,pb_id:0,pass_id:0 }).map_err(|_| EINVAL)?;
             let (mut count,mode) = state::registers(&mut registers[..],stage,&state,uuid).map_err(|_| EINVAL)?;
             // Common Asahi USC execution window selectors (TA/ISP), retaining
@@ -152,6 +152,7 @@ impl Render {
             r.width,r.height,job.binding.slot(),page_count,job.tilemap.gpu_va()?,job.tpc.gpu_va()?,r.vdm_base);
         Ok(job)
     }
+    pub(crate) fn stamp(&self) -> u32 { self.stamp }
     pub(crate) fn index(&self) -> usize { usize::from(self.stage == Stage::Fragment) }
     pub(crate) fn address(&self) -> u64 { self.commands[self.index()].va() }
     pub(crate) fn init_address(&self) -> u64 { self.metadata.va()+0x300 }
