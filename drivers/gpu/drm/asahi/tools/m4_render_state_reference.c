@@ -16,7 +16,7 @@ int main(void) {
 #define D(o,v,z) g16_render_put(d+(o),(v),(z))
 #define P(o,v,z) g16_render_put(out+(o),(v),(z))
    if(!stage) {
-    struct g16_render_ta_platform p={.accelerator_count_4e4=1,.default_d418=1,.pb_slot_word_00=b+0x70000,.accelerator_flags_6a8=0x10000};
+    struct g16_render_ta_platform p={.pb_slot_word_28=c+0xf0000,.accelerator_count_4e4=1,.default_d418=1,.pb_slot_word_00=b+0x70000,.accelerator_flags_6a8=0x10000};
     D(0xea8,c+0x10000,8);D(0xf48,c+0x50000,8);D(0xf50,c+0x60000,8);
     D(0xf08,c+0xe0000,8);D(0xf10,1,4);D(0x1268,0x1c,4);D(0x13dc,8,4);
     D(0xf88,0x003a0012006b0003ULL,8);D(0xf90,1,4);
@@ -29,7 +29,7 @@ int main(void) {
     P(0x760,0xfffffc2004000000ULL,8);P(0x768,g.tpc_bytes,8);P(0x7a8,c+0x50000,8);
     P(0x906,1,1);P(0x8fe,0xfffffc2008000000ULL,8);P(0x90f,0xfffffc200c000000ULL,8);P(0x830,mode,8);
    } else {
-    struct g16_render_fragment_platform p={.accelerator_count_4e4=1,.disable_spill_registers=1};
+    struct g16_render_fragment_platform p={.pb_slot_word_28=c+0xf0000,.accelerator_count_4e4=1,.disable_spill_registers=1};
     D(0x41c,dims[test][2],4);D(0x420,dims[test][2],4);
     D(0x580,0x300000012ULL,8);D(0x588,0x10000004000ULL,8);D(0x6d8,0x500000014ULL,8);D(0x6e0,0x10000008000ULL,8);
     D(0x5b0,0x700000016ULL,8);D(0x5b8,0x1000000c000ULL,8);D(0x6f8,0x900000018ULL,8);D(0x700,0x10000010000ULL,8);

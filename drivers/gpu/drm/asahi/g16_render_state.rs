@@ -11,7 +11,7 @@ pub(crate) struct DepthStencil { pub base: u64, pub stride: u64 }
 pub(crate) struct State {
     pub geometry: Geometry,
     pub vdm: u64, pub tilemap: u64, pub tpc: u64, pub unknown: u64,
-    pub preemption: [u64; 3], pub scratch: u64, pub auxiliary: u64,
+    pub preemption: [u64; 3], pub scratch: u64, pub auxiliary: u64, pub scene_list: u64,
     pub multisample: u64, pub ppp: u32,
     pub merge_upper: [u32; 2], pub tilebuffer_blocks: u32,
     pub background: Program, pub eot: Program,
@@ -73,7 +73,7 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         for o in [0x1a098,0x1a0a0,0x1a068,0x1a070,0x1a0c8,0x1a0d0,0x101c8,0xd470] { r!(o,1,0); }
         r!(0x1a0f0,1,8);
         r!(0x10798,1,0xff0000); r!(0x1c830,0,0);
-        r!(0x1ca30,0,0); r!(0x16c38,1,0);
+        r!(0x1ca30,0,compact(s.scene_list)?); r!(0x16c38,1,compact(s.scene_list)?);
         let v = s.scratch;
         r!(0x1c910,0,((v>>3)&0x8000000000) | (((if v & 0x40000000000 != 0 {0} else {0x7000000000}) + v) & 0x7ffffffffe) | 1);
         r!(0xa5a0,1,0x6000400020u64); r!(0xd418,1,1);
@@ -111,7 +111,7 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         for o in [0x1a0a8,0x1a0b0,0x1a078,0x1a080,0x1a0d8,0x1a0e0,0x101c0,0xd468] { r!(o,1,0); }
         r!(0x1a0f8,1,8);
         r!(0x160e0,0,uuid); r!(0x1498,1,uuid); r!(0xa340,1,uuid);
-        r!(0x1c838,0,0); r!(0x1ca28,0,0);
+        r!(0x1c838,0,0); r!(0x1ca28,0,compact(s.scene_list)?);
         Ok((n,mode))
     }
 }

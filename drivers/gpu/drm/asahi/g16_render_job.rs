@@ -26,6 +26,7 @@ pub(crate) struct Render {
     block_ring: Buffer,
     pb_memory: Buffer,
     scratch: Buffer,
+    scene_list: Buffer,
     tilemap: Buffer,
     tpc: Buffer,
     unknown: Buffer,
@@ -81,7 +82,9 @@ impl Render {
                 metadata:fw(0x4000)?,manager:fw(0xc0)?,pages:gpu(page_count*4)?,
                 blocks:fw(block_capacity*8)?,block_ring:fw(8)?,
                 pb_memory:Buffer::new_gpu_aligned(dev,uat.kernel_vm(),vm,pb_bytes,PB_BLOCK_BYTES as u64)?,
-                scratch:gpu(0x4000)?,tilemap:gpu(geometry.tilemap_bytes.try_into()?)?,
+                // Zero-backed per-scene list; native PB slot+28 binds its
+                // compact address in both TA and fragment register lists.
+                scratch:gpu(0x4000)?,scene_list:gpu(0x4000)?,tilemap:gpu(geometry.tilemap_bytes.try_into()?)?,
                 tpc:gpu(geometry.tpc_bytes.try_into()?)?,unknown:gpu(0x4000)?,
                 // Sizes inherited from the qualified M4 context-save experiment.
                 preemption:[gpu(0x10000)?,gpu(0x10000)?,gpu(0x4000)?],auxiliary:gpu(0x10000)?,
@@ -126,13 +129,15 @@ impl Render {
         let statistics = job.metadata.va()+0x200;
         job.metadata.u64(0,scratch_gpu)?;
         job.metadata.u64(8,scratch_fw)?;
+        let scene_list = state::compact(job.scene_list.gpu_va()?).map_err(|_| EINVAL)?;
+        job.metadata.u64(0x28,scene_list)?;
         job.metadata.u64(0x40,statistics)?;
         let mask = if r.flags & 16 != 0 {u64::MAX} else {u32::MAX as u64};
         let program = |p:crate::g17_uapi::UapiProgram| Program {
             address:usc+u64::from(p.usc & !63), resources:p.resource_spec & mask };
         let state = State { geometry,vdm:r.vdm_base,tilemap:job.tilemap.gpu_va()?,tpc:job.tpc.gpu_va()?,
             unknown:job.unknown.gpu_va()?,preemption:[job.preemption[0].gpu_va()?,job.preemption[1].gpu_va()?,job.preemption[2].gpu_va()?],
-            scratch:job.scratch.gpu_va()?,auxiliary:job.auxiliary.gpu_va()?,multisample:r.multisample_control,ppp:r.ppp_control,
+            scratch:job.scratch.gpu_va()?,scene_list:job.scene_list.gpu_va()?,auxiliary:job.auxiliary.gpu_va()?,multisample:r.multisample_control,ppp:r.ppp_control,
             // UAPI values are already validated. Merge limits are float bits,
             // not geometry counts; color storage is measured in 2 KiB blocks.
             merge_upper:[r.merge_upper_x,r.merge_upper_y],
@@ -196,7 +201,7 @@ impl Render {
         for buffer in [
             &mut self.metadata, &mut self.manager, &mut self.pages,
             &mut self.blocks, &mut self.block_ring, &mut self.pb_memory,
-            &mut self.scratch, &mut self.tilemap, &mut self.tpc,
+            &mut self.scratch, &mut self.scene_list, &mut self.tilemap, &mut self.tpc,
             &mut self.unknown, &mut self.auxiliary, &mut self.uma,
             &mut self.private_memory, &mut self.pool_state, &mut self.page_list,
         ] { buffer.clear()?; }

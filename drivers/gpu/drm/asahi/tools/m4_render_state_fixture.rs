@@ -11,7 +11,7 @@ fn main() {
   let s = State { geometry:g,vdm:base+0x10000,tilemap:base+0x20000,tpc:base+0x30000,
    unknown:base+0x40000,preemption:[base+0x50000,base+0x60000,base+0xe0000],scratch:base+0x70000,
    merge_upper:[0x3addb3d9;2],tilebuffer_blocks:2,
-   auxiliary:base+0x80000,multisample:0x88,ppp:0x201,
+   scene_list:base+0xf0000,auxiliary:base+0x80000,multisample:0x88,ppp:0x201,
    background:Program{address:0x10000004000,resources:0x300000012},eot:Program{address:0x10000008000,resources:0x500000014},
    partial_background:Program{address:0x1000000c000,resources:0x700000016},partial_eot:Program{address:0x10000010000,resources:0x900000018},
    depth_bias:base+0x90000,scissor:base+0xa0000,query:base+0xb0000,
