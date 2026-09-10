@@ -692,3 +692,32 @@ is not established as the cause of that cold-start failure. A subsequent
 synchronized scene replay completed without a kernel fault but rendered
 mostly black; it is not a passing scene. Neither event-value change raises
 clocks or relaxes retirement/watchdog checks.
+
+### Retained CPU mapping borrows (2026-09-10)
+
+M4 firmware buffers now borrow their ObjectRef's retained VMap for CPU
+accesses. Previously every word in the 8,192-entry private-page freelist
+created and dropped a second VMapRef, taking the GEM reservation lock on
+both operations. The owner already pins the mapping and backing. Borrowing
+it directly avoids those extra locks and reference-count operations; WC
+attributes, volatile shared-state accesses, initialization and device
+barriers are unchanged. No Mesa change is needed.
+
+The ARM64 module build passes (60 existing warnings). On J713,
+`0ad-kernel-map-baseline` and `0ad-kernel-map-cached` replay the same
+synchronized prefix through call 23123 with the same installed Mesa. Both
+retire 1,360 jobs, including 1,351 renders, and produce pixel-identical PNGs.
+First-to-last retirement spans are 29.185 s and 28.360 s respectively; the
+summed previous-retirement-to-render-construction gaps decrease from
+14.172 s to 13.176 s. These include host scheduling and tracing overhead:
+they are a single replay comparison, not pure GPU timings or a game FPS
+claim. Peak PMP readings are 52.25 C and 53 C.
+
+The first cold pixel check (`0ad-cached-vmap-pressure`) reproduces the
+already observed all-zero readback without a GPU fault. After the replay,
+`0ad-cached-vmap-pressure-warm` passes both four-draw attribute/uniform and
+four-draw parameter-pressure checks, each checking 4,096 exact pixels.
+The cold-readback issue, batched-scene hang and building artifacts remain
+unresolved. All runs arm/verify the 60-second watchdog and monitor all six
+PMP channels; CPU thermal policy and the 338 MHz GPU state are preserved.
+Evidence remains in workspace `_provenance/asahi-0ad-20260909/`.

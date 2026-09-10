@@ -24,7 +24,7 @@ impl Buffer {
         protection: prot::Prot) -> Result<Self> {
         if size == 0 || size.checked_add(mmu::UAT_PGMSK).is_none() { return Err(EINVAL); }
         let mut object = gem::new_kernel_object_wc(dev, size)?;
-        object.vmap()?.memset(0);
+        object.cached_vmap()?.memset(0);
         let mapping = object.map_into_range(vm, KERNEL_RANGE, mmu::UAT_PGSZ as u64,
             protection, true)?;
         Ok(Self { mapping, gpu_mapping: None, object, size })
@@ -88,11 +88,11 @@ impl Buffer {
     pub(crate) fn va(&self) -> u64 { self.mapping.iova() }
     pub(crate) fn write(&mut self, offset: usize, bytes: &[u8]) -> Result {
         if offset.checked_add(bytes.len()).ok_or(EOVERFLOW)? > self.size { return Err(ERANGE); }
-        self.object.vmap()?.write(bytes, offset)
+        self.object.cached_vmap()?.write(bytes, offset)
     }
     pub(crate) fn u32(&mut self, offset: usize, value: u32) -> Result {
         if offset & 3 != 0 || offset.checked_add(4).ok_or(EOVERFLOW)? > self.size { return Err(ERANGE); }
-        let vmap = self.object.vmap()?;
+        let vmap = self.object.cached_vmap()?;
         // SAFETY: aligned, checked u32 in retained WC normal memory. Channel
         // producer/consumer indices must be published with one word store.
         unsafe { vmap.as_mut_ptr().add(offset).cast::<u32>().write_volatile(value.to_le()) };
@@ -105,7 +105,7 @@ impl Buffer {
     /// protocol; no Rust slice aliases memory that firmware can mutate.
     pub(crate) fn read(&mut self, offset: usize, bytes: &mut [u8]) -> Result {
         if offset.checked_add(bytes.len()).ok_or(EOVERFLOW)? > self.size { return Err(ERANGE); }
-        let vmap = self.object.vmap()?;
+        let vmap = self.object.cached_vmap()?;
         // SAFETY: WC normal RAM, retained by the GEM/vmap, checked byte range.
         unsafe {
             core::arch::asm!("dmb osh", options(nostack, preserves_flags));
@@ -116,7 +116,7 @@ impl Buffer {
     }
     pub(crate) fn read_u32(&mut self, offset: usize) -> Result<u32> {
         if offset & 3 != 0 || offset.checked_add(4).ok_or(EOVERFLOW)? > self.size { return Err(ERANGE); }
-        let vmap = self.object.vmap()?;
+        let vmap = self.object.cached_vmap()?;
         // SAFETY: Aligned u32 in the checked GEM allocation; firmware channel
         // indices and ready flags are naturally aligned atomic-sized accesses.
         let value = unsafe { vmap.as_ptr().add(offset).cast::<u32>().read_volatile() };
