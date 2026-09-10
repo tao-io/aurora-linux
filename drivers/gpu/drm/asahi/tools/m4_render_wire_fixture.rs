@@ -8,13 +8,22 @@ fn main() {
     let b = 0xfffffc2001000000;
     let mut out = std::io::stdout();
     for stage in [g16_render::Stage::Tiling, g16_render::Stage::Fragment] {
-        let a = Args { command:b, sku:b+0x4000, queue:b+0x8000, slots:b+0xc004,
+        let a = Args { command:b, sku:b+0x4000, queue:b+0x8000, stats:b+0xc004,
             pb_slot:b+0x10000, manager:b+0x14000, pb_aux:b+0x18000, notifier:b+0x1c000,
             shared_stamp:b+0x20000, stamp_address:b+0x24000, uma:b+0x28000,
             uma_aux:0x7003000000, context:3, generation:2, counter:0x100000001,
             uuid:0x1234, stamp:0x300, event_slot:0x71, pb_id:2, pass_id:4 };
         let mut command = [0xa5; 0xca0]; let mut sku = [0xa5; 0x300];
         encode(&mut command,&mut sku,stage,a).unwrap();
+        // Firmware engine statistics and queue pointers must survive both
+        // start and finalize; the two engines use different packed offsets.
+        let ptr = |off| u64::from_le_bytes(sku[off..off+8].try_into().unwrap());
+        let (stats_offsets, queue_offsets) = match stage {
+            g16_render::Stage::Tiling => ([0x2c, 0x1e4], [0x34, 0x1ec]),
+            g16_render::Stage::Fragment => ([0x24, 0x220], [0x4c, 0x240]),
+        };
+        for off in stats_offsets { assert_eq!(ptr(off), a.stats); }
+        for off in queue_offsets { assert_eq!(ptr(off), a.queue); }
         out.write_all(&command).unwrap();out.write_all(&sku).unwrap();
         let before = command; let before_sku = sku;
         let mut invalid = a; invalid.context=64;

@@ -7,7 +7,7 @@ use crate::g16_render::{BuildError, Stage};
 
 #[derive(Clone, Copy)]
 pub(crate) struct Args {
-    pub command: u64, pub sku: u64, pub queue: u64, pub slots: u64,
+    pub command: u64, pub sku: u64, pub queue: u64, pub stats: u64,
     pub pb_slot: u64, pub manager: u64, pub pb_aux: u64,
     pub notifier: u64, pub shared_stamp: u64, pub stamp_address: u64,
     pub uma: u64, pub uma_aux: u64,
@@ -33,7 +33,7 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
     let total = sequence_size(stage);
     if command.len() < stage.command_size() || sku.len() < total { return Err(BuildError::BufferTooSmall); }
     if a.context >= 64 || a.generation == 0 || a.event_slot >= 128 || a.stamp == 0
-        || ![a.command, a.sku, a.queue, a.slots, a.pb_slot, a.manager, a.pb_aux,
+        || ![a.command, a.sku, a.queue, a.stats, a.pb_slot, a.manager, a.pb_aux,
               a.notifier, a.shared_stamp, a.stamp_address, a.uma].iter().all(|p| valid_fw(*p))
         || a.uma_aux == 0 || a.uma_aux >= 1 << 42 {
         return Err(BuildError::Address);
@@ -70,14 +70,14 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
     put(sku, start, 1, 4);
     if ta {
         for (off, value, size) in [
-            (0x1c,a.manager,8), (0x24,a.pb_slot,8), (0x2c,a.slots,8),
+            (0x1c,a.manager,8), (0x24,a.pb_slot,8), (0x2c,a.stats,8),
             (0x34,a.queue,8), (0x3c,a.command+0x85c,8), (0x44,a.context as u64,4),
             (0x50,a.pb_id as u64,4), (0x58,a.pass_id as u64,4),
             (0x64,a.command+0x784,8), (0x6c,a.command+0x8a8,8),
             (0x7c,a.uuid as u64,4), (0x1c0,a.event_slot as u64,4)] { put(sku,off,value,size); }
     } else {
         for (off, value, size) in [
-            (0x1c,a.pb_slot,8), (0x24,a.slots,8), (0x2c,a.command+0xb70,8),
+            (0x1c,a.pb_slot,8), (0x24,a.stats,8), (0x2c,a.command+0xb70,8),
             (0x34,a.pb_slot+0x54,8), (0x3c,a.command+0xbb0,8), (0x44,a.command+0xbb4,8),
             (0x4c,a.queue,8), (0x54,a.command,8), (0x5c,a.context as u64,4),
             (0x68,a.pb_id as u64,4), (0x70,a.pass_id as u64,4),
@@ -88,7 +88,7 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
     put(f, 0, if ta { 6 } else { 8 }, 4);
     if ta {
         for (off,value,size) in [
-            (4,a.pb_slot,8), (0xc,a.manager,8), (0x14,a.slots,8), (0x1c,a.queue,8),
+            (4,a.pb_slot,8), (0xc,a.manager,8), (0x14,a.stats,8), (0x1c,a.queue,8),
             (0x24,a.command+0x85c,8), (0x2c,a.context as u64,4),
             (0x34,a.command+0x784,8), (0x40,a.uuid as u64,4), (0x48,a.stamp_address,8),
             (0x50,a.stamp as u64,4), (0x78,a.sku+uma as u64,8),
@@ -96,7 +96,7 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
     } else {
         for (off,value,size) in [
             (4,a.uuid as u64,4), (0xc,a.stamp_address,8), (0x14,a.stamp as u64,4),
-            (0x1c,a.pb_slot,8), (0x24,a.manager,8), (0x2c,1,4), (0x30,a.slots,8),
+            (0x1c,a.pb_slot,8), (0x24,a.manager,8), (0x2c,1,4), (0x30,a.stats,8),
             (0x38,a.command+0xbb0,8), (0x40,a.command+0xbb4,8), (0x48,a.command+0xb70,8),
             (0x50,a.queue,8), (0x58,a.command,8), (0x60,a.context as u64,4),
             (0x64,a.command+0xa58,8), (0x98,a.sku+uma as u64,8),

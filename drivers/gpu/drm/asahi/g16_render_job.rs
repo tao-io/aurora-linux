@@ -44,7 +44,7 @@ pub(crate) struct Render {
 impl Render {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, vm: &mmu::Vm,
         r: UapiRenderCommand, usc: u64, generation: u8, stamp: u32,
-        queues: [u64; 2], notifications: [u64; 2],
+        queues: [u64; 2], notifications: [u64; 2], stats: [u64; 2],
         reusable: Option<KBox<Self>>) -> Result<KBox<Self>> {
         let utile = |n| match n {16=>Ok(Utile::Pixels16),32=>Ok(Utile::Pixels32),_=>Err(EINVAL)};
         let geometry = Geometry::new(r.width as u32,r.height as u32,
@@ -147,7 +147,7 @@ impl Render {
             let uuid = 0x16000000 | (u32::from(generation)<<8) | i as u32;
             wire::encode(&mut work[..],&mut sequence,stage,wire::Args {
                 command:job.commands[i].va(),sku:job.sequences[i].va(),queue:queues[i],
-                slots:job.metadata.va()+0x600+(i as u64+1)*4,
+                stats:stats[i],
                 pb_slot:job.metadata.va(),manager:job.manager.va(),pb_aux:job.metadata.va()+0x100,
                 notifier:notifications[i],shared_stamp:job.metadata.va()+0x400+i as u64*16,
                 stamp_address:job.metadata.va()+0x408+i as u64*16,uma:job.uma.va(),

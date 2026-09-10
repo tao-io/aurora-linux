@@ -793,3 +793,11 @@ Five standalone compute wire tests and the ARM64 module build pass. Guarded
 cold fill 20260910T183822 still had 106644 stale words at its fence and zero
 on the later read; this corrects object wiring but does not qualify a complete
 memory-visibility fix. Firmware and the boot qualification shader ran.
+
+Render statistics now similarly use Runtime+254 backing plus four bytes for
+vertex and Runtime+25c backing plus eight for fragment, replacing per-job
+scratch. Exact 25G83 initFirmwareSharedData (89a8388..89a840c) and native
+TA/3D SKU producers (89cb7e0, 89bf61c) establish these shared object identities
+and header offsets. Start/finalize fixture assertions and ARM64 build pass.
+Guarded 184155 1024-pixel-square mipmap loop20 still times out: the object-role
+fix alone does not resolve the large fragment failure.

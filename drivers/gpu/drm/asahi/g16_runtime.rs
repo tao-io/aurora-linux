@@ -157,7 +157,7 @@ impl Runtime {
                 &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,
                 [inner.queue.address(),inner.fragment_queue.address()],
                 [inner.queue.notification().address,inner.fragment_queue.notification().address],
-                inner.reusable_render.take())?),
+                inner.config.render_stats(), inner.reusable_render.take())?),
         };
         let attachments = &packet.commands[index].attachments;
         match &mut work {

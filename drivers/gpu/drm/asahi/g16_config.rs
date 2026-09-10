@@ -139,6 +139,11 @@ impl Config {
     /// Same global engine state passed in Runtime+0x264. Firmware indexes
     /// scheduler records here; a notifier or per-job scratch is not equivalent.
     pub(crate) fn compute_stats(&self) -> u64 { self.va(Object::Activity264) }
+    /// Native 25G83 producers add four/eight bytes to the same engine
+    /// allocations published at Runtime+254/+25c, past global command counts.
+    pub(crate) fn render_stats(&self) -> [u64; 2] {
+        [self.va(Object::Activity254) + 4, self.va(Object::Activity25c) + 8]
+    }
     fn va(&self, object: Object) -> u64 { self.objects[object as usize].va() }
     fn object(&mut self, object: Object) -> &mut Buffer { &mut self.objects[object as usize] }
     fn ptr(&mut self, owner: Object, offset: usize, target: Object, delta: u64) -> Result {
