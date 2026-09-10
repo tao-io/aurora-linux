@@ -96,3 +96,25 @@ Native wire tests and ARM64 compilation pass. Updated C/Rust state fixtures
 match all19,392bytes across three geometries and both stages. Guarded211520
 large stilltimesout(peak50.75C);211701small retainsmode0firstreadfailure,
 exactsecondread,andmode2bothreadsexact(peak50.5C). No fullgamefixclaimed.
+
+
+Render timestamp port: native25G83 TA and fragment
+SKU records each contain a0x4c-byte start timestamp, WFI, and a0x4c-byte end
+timestamp. Their pointer fields address RunCommand cells, not raw result
+storage. The pass owner now retains distinct start/end cells for each stage;
+the native records point through TA8c8/8d0 and fragmentc10/c18. Restart offsets
+and attachment-finalize flags account for the longer sequence. Timestamps
+are logged as raw ticks; UAPI timestamp requests remain rejected until their
+separate destination/lifetime path is implemented and tested.
+
+Offline verifier compares both full timestamp records, WFI and restart
+positions byte-for-byte with matched193311 native sequences (identity pointers
+and UUID taken from the input). Both stages match. Existing six dependency/
+geometry/state tests and ARM64 build pass. Guarded222429 small renders populate
+ordered timestamps for both stages, without a GPU fault (peak51.5C); the
+known cold first read remains stale, so this is not a correctness pass.
+Guarded222452 full1024 loop20 still times out in fragment (peak50.75C).
+Both fragment timestamps are populated while retirement stamps remain zero.
+Firmware trace shows two execution intervals and reason5 quiescence. The
+end timestamp records a partial/preempted interval too; it is not proof of
+a complete render. No Vulkan timestamp-query support or 0AD fix is claimed.

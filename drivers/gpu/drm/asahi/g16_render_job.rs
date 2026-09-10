@@ -78,7 +78,7 @@ impl Render {
             let mut views = KVec::new();
             for command in &mut commands { views.push(command.map_gpu_view(vm)?,GFP_KERNEL)?; }
             KBox::new(Self {
-                _command_views:views, commands, sequences:[fw(0x300)?,fw(0x300)?],
+                _command_views:views, commands, sequences:[fw(0x400)?,fw(0x400)?],
                 metadata:fw(0x4000)?,manager:fw(0xc0)?,pages:gpu(page_count*4)?,
                 blocks:fw(block_capacity*8)?,block_ring:fw(8)?,
                 pb_memory:Buffer::new_gpu_aligned(dev,uat.kernel_vm(),vm,pb_bytes,PB_BLOCK_BYTES as u64)?,
@@ -150,7 +150,7 @@ impl Render {
             depth_dimensions:r.depth_dimensions as u64,zls_control:r.zls_control,
             depth_clear:r.depth_clear,stencil_clear:r.stencil_clear,process_empty_tiles:r.flags&2!=0 };
         let mut work = KBox::new([0;0xca0],GFP_KERNEL)?;
-        let mut sequence = [0;0x300];
+        let mut sequence = [0;0x400];
         let mut registers = KBox::new([Register::default();128],GFP_KERNEL)?;
         for (i,stage) in [Stage::Tiling,Stage::Fragment].into_iter().enumerate() {
             let uuid = 0x16000000 | (u32::from(generation)<<8) | i as u32;
@@ -161,6 +161,7 @@ impl Render {
                 notifier:notifications[i],shared_stamp:job.metadata.va()+0x400+i as u64*16,
                 stamp_address:job.metadata.va()+0x408+i as u64*16,uma:job.uma.va(),
                 uma_aux:job.uma.gpu_va()?+0x100+i as u64*0x100,
+                timestamp_storage:job.metadata.va()+0x600+i as u64*0x20,
                 context:job.binding.slot(),generation,counter:counter + u64::from(i == 0),uuid,stamp:stamp,
                 event_slot:SLOTS[i] as u32,pb_id:0,pass_id:0 }).map_err(|_| EINVAL)?;
             let (mut count,mode) = state::registers(&mut registers[..],stage,&state,uuid).map_err(|_| EINVAL)?;
@@ -183,7 +184,7 @@ impl Render {
     pub(crate) fn set_attachments(&mut self, attachments: &[crate::g16_attachments::Attachments; 2]) -> Result {
         // StartVertex+88/count+188; StartFragment+a8/count+1a8.
         // The following UMA bindings and WFI records stay intact.
-        for (i, (start, finish_flag)) in [(0x88, 0x254), (0xa8, 0x294)].into_iter().enumerate() {
+        for (i, (start, finish_flag)) in [(0x88, 0x2ec), (0xa8, 0x32c)].into_iter().enumerate() {
             self.sequences[i].write(start, &attachments[i].0)?;
             self.sequences[i].write(finish_flag, &[u8::from(attachments[i].count() != 0)])?;
         }
@@ -220,6 +221,7 @@ impl Render {
     pub(crate) fn log_progress(&mut self, dev: &driver::AsahiDevice) -> Result {
         dev_info!(dev.as_ref(), "G16G: stalled render stage={:?} context={}\n",
             self.stage, self.context());
+        dev_info!(dev.as_ref(), "G16G: render GPU timestamps={:x?}\n", self.timestamps()?);
         let [ta_command, fragment_command] = &mut self.commands;
         let [ta_sequence, fragment_sequence] = &mut self.sequences;
         for (name, buffer, start, length) in [
@@ -250,5 +252,9 @@ impl Render {
         Ok([self.metadata.read_u32(0x400+i*16)? as u64,self.metadata.read_u32(0x408+i*16)? as u64,
             self.commands[i].read_u32(if i==0 {0x918} else {0xc60})? as u64,
             self.manager.read_u32(0x54)? as u64])
+    }
+    pub(crate) fn timestamps(&mut self) -> Result<[[u64; 2]; 2]> {
+        Ok([[self.metadata.read_u64(0x600)?, self.metadata.read_u64(0x608)?],
+            [self.metadata.read_u64(0x620)?, self.metadata.read_u64(0x628)?]])
     }
 }

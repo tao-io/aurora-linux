@@ -21,12 +21,12 @@ fn native_start_and_command_counters_agree_without_truncation() {
         let a = Args {
             command:p,sku:p+0x4000,queue:p+0x8000,stats:p+0xc000,
             pb_slot:p,manager:p,pb_aux:p,notifier:p,shared_stamp:p,
-            stamp_address:p,uma:p,uma_aux:0x7100010000,
+            stamp_address:p,uma:p,uma_aux:0x7100010000,timestamp_storage:p+0x600,
             context:2,generation:1,counter,uuid:42,stamp:0x100,event_slot:0x70,
             pb_id:0,pass_id:0,
         };
         let mut command = [0;0xca0];
-        let mut sku = [0;0x300];
+        let mut sku = [0;0x400];
         g16_render_command::encode(&mut command,&mut sku,stage,a).unwrap();
         assert_eq!(&command[4..12], &counter.to_le_bytes());
         assert_eq!(&sku[offset..offset+8], &counter.to_le_bytes());
@@ -36,10 +36,10 @@ fn native_start_and_command_counters_agree_without_truncation() {
         if stage == Stage::Fragment {
             assert_eq!(command[0xc84], 1);
             assert_eq!(sku[0x1e4], 1);
-            assert_eq!(sku[0x1f0 + 0xb1], 1);
+            assert_eq!(sku[0x288 + 0xb1], 1);
             assert_eq!(&command[0xbec..0xbf0], &[0;4]);
         } else {
-            assert_eq!(sku[0x1d0 + 0x8d], 1);
+            assert_eq!(sku[0x268 + 0x8d], 1);
             assert_eq!(&command[0x8a4..0x8a8], &[0;4]);
         }
     }

@@ -235,6 +235,7 @@ impl Runtime {
             && pipe == [active.pipe_next[pipe_index]; 3] {
             if let Work::Render(render) = &mut active.work {
                 dev_info!(inner.drm.as_ref(),"G16G: userspace render stage {:?} retired stamps={:x?} queue={:?}\n",render.stage,status,queue);
+                dev_info!(inner.drm.as_ref(), "G16G: render GPU timestamps={:x?}\n", render.timestamps()?);
                 if render.stage == crate::g16_render::Stage::Tiling {
                     render.stage = crate::g16_render::Stage::Fragment;
                     active.started = kernel::time::Instant::<kernel::time::Monotonic>::now();
