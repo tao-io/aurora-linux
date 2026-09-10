@@ -213,9 +213,11 @@ fn validate_render(r: g17_uapi::UapiRenderCommand, usc: u64, space: &AddressSpac
         r.fragment_timestamps.start,r.fragment_timestamps.end] {
         if t.handle != 0 { return Err(ENOTSUPP); }
     }
+    // sample_size describes color tilebuffer storage. Depth/stencil-only
+    // passes legitimately require zero bytes of color storage.
     if r.width == 0 || r.height == 0 || r.width > 16384 || r.height > 16384
         || !matches!(r.utile_width,16|32) || !matches!(r.utile_height,16|32)
-        || r.sample_size == 0 || u32::from(r.sample_size)*u32::from(r.utile_width)*u32::from(r.utile_height)>32768 {
+        || u32::from(r.sample_size)*u32::from(r.utile_width)*u32::from(r.utile_height)>32768 {
         return Err(EINVAL);
     }
     crate::g16_render_state::compact(r.vdm_base).map_err(|_| EINVAL)?;
