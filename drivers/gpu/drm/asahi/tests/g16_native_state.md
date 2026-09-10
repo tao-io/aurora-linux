@@ -118,3 +118,17 @@ Both fragment timestamps are populated while retirement stamps remain zero.
 Firmware trace shows two execution intervals and reason5 quiescence. The
 end timestamp records a partial/preempted interval too; it is not proof of
 a complete render. No Vulkan timestamp-query support or 0AD fix is claimed.
+
+UMA allocation defaults: retain native G16 min/max DUPM 1/2 for both stages
+(registers d418/d428), and emit fragment a5a8 instead of inheriting the first
+4x4 lab's disable_spill_registers diagnostic. The no-override fallback is
+6000400020 in the native TA/3D producers. Matched193311/193422 captures instead
+supply explicit capacities (TA a900400020, fragment d500400020), but both
+confirm d418/d428=200000001. The G16 virtual defaults at89c4438/89c4444 return
+2/1. Do not claim our fallback equals the captured dynamic capacities.
+
+Four native-state/geometry tests and ARM64 build pass. Guarded224037 small
+has the same known firstmode0read failure; secondread and mode2bothreads exact,
+no GPUfault, peak52.5C. Guarded224054 large still times out in fragment,
+bothreads incorrect, peak50.5C. Saved allfault evidence and reboot recovered.
+This removes inherited lab state; it does not fix the long-render stall.

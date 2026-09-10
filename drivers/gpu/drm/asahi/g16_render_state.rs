@@ -76,7 +76,7 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         r!(0x1ca30,0,compact(s.scene_list)?); r!(0x16c38,1,compact(s.scene_list)?);
         let v = s.scratch;
         r!(0x1c910,0,((v>>3)&0x8000000000) | (((if v & 0x40000000000 != 0 {0} else {0x7000000000}) + v) & 0x7ffffffffe) | 1);
-        r!(0xa5a0,1,0x6000400020u64); r!(0xd418,1,1);
+        r!(0xa5a0,1,0x6000400020u64); r!(0xd418,1,0x200000001u64);
         r!(0x1ca10,0,uuid); r!(0x14a0,1,uuid); r!(0xa348,1,uuid);
         Ok((n,0))
     } else {
@@ -110,6 +110,10 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
             ((g.screen as u64 & 0x1ff)<<44) | (((g.screen as u64>>12)&0x1ff)<<53));
         for o in [0x1a0a8,0x1a0b0,0x1a078,0x1a080,0x1a0d8,0x1a0e0,0x101c0,0xd468] { r!(o,1,0); }
         r!(0x1a0f8,1,8);
+        // Native G16 fallback when the command has no explicit allocation
+        // override (25G83 TEXT89c329c). The old 4x4 lab omitted these fields.
+        // G16G virtual getMin/MaxDUPM values are 1/2, for TA and fragment.
+        r!(0xa5a8,1,0x6000400020u64); r!(0xd428,1,0x200000001u64);
         r!(0x160e0,0,uuid); r!(0x1498,1,uuid); r!(0xa340,1,uuid);
         r!(0x1c838,0,0); r!(0x1ca28,0,compact(s.scene_list)?);
         Ok((n,mode))

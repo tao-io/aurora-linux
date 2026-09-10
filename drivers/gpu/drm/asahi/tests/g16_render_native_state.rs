@@ -39,6 +39,7 @@ fn native_m4_merge_dimensions_and_tilebuffer_contract() {
             let (n,_)=g16_render_state::registers(&mut regs,Stage::Fragment,&s,42).unwrap();
             for (address,value) in [(0x15130,merge as u64),(0x15138,merge as u64),
                 (0x15210,((width as u64)<<32)|width as u64),(0x10050,blocks as u64),
+                (0xa5a8,0x6000400020),(0xd428,0x200000001),
                 (0x101e8,0x1c),(0x1a0f8,8),(0x15020,0xc000),(0x15048,0x100000)] {
                 let matches:Vec<_>=regs[..n].iter().filter(|r|r.offset==address).collect();
                 assert_eq!(matches.len(),1);
@@ -52,7 +53,8 @@ fn native_m4_merge_dimensions_and_tilebuffer_contract() {
             }
             assert!(regs[..n].iter().any(|r|r.offset==0x1c950 && !r.flagged
                 && r.value==0x0004000000010000));
-            for (address,value) in [(0x101e0,0x1c),(0x1a0f0,8)] {
+            for (address,value) in [(0xa5a0,0x6000400020),(0xd418,0x200000001),
+                (0x101e0,0x1c),(0x1a0f0,8)] {
                 assert!(regs[..n].iter().any(|r|r.offset==address && r.flagged && r.value==value));
             }
         }
