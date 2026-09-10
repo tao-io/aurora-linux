@@ -256,7 +256,7 @@ impl Runtime {
                 }
             }
             if index == packet.commands.len() {
-                dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands)\n", packet.id, index);
+                dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={}\n", packet.id, index, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get());
                 packet.finish(Ok(()));
                 return Ok(false);
             }
