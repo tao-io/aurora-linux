@@ -149,7 +149,7 @@ impl Runtime {
         } else {
             inner.compute_stamp = inner.compute_stamp.wrapping_add(0x100).max(0x100);
         }
-        let work = match payload {
+        let mut work = match payload {
             crate::g16_submit::Payload::Compute(control) => Work::Compute(KBox::new(crate::g16_job::Compute::in_vm(
                 &inner.drm,&inner.uat,&mut inner.config,&packet.vm,Some(control),
                 Some(inner.compute_queue.notification()),generation,inner.compute_stamp)?, GFP_KERNEL)?),
@@ -159,6 +159,11 @@ impl Runtime {
                 [inner.queue.notification().address,inner.fragment_queue.notification().address],
                 inner.reusable_render.take())?),
         };
+        let attachments = &packet.commands[index].attachments;
+        match &mut work {
+            Work::Compute(compute) => compute.set_attachments(&attachments[0])?,
+            Work::Render(render) => render.set_attachments(attachments)?,
+        }
         inner.user_generation = generation;
         inner.device.check_boot_pstate()?;
         // Retain all DMA backing before the first shared publication, including

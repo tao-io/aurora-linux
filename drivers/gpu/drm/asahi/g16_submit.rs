@@ -46,6 +46,7 @@ pub(crate) enum Payload {
 }
 pub(crate) struct Command {
     pub(crate) payload: Payload,
+    pub(crate) attachments: [crate::g16_attachments::Attachments; 2],
     timestamps: [Option<Destination>; 2],
 }
 impl Command {
@@ -158,6 +159,8 @@ impl queue::Queue for Queue {
                 g17_uapi::validate_attachments(&AddressSpace(&self.vm), &vertex_attachments).map_err(|_| EINVAL)?;
                 g17_uapi::validate_attachments(&AddressSpace(&self.vm), &fragment_attachments).map_err(|_| EINVAL)?;
                 commands.push(Command { payload: Payload::Render { command:payload, usc:self.usc },
+                    attachments: [encode_attachments(&self.vm, &vertex_attachments)?,
+                                  encode_attachments(&self.vm, &fragment_attachments)?],
                     timestamps:[None,None] }, GFP_KERNEL)?;
                 continue;
             }
@@ -175,6 +178,8 @@ impl queue::Queue for Queue {
             commands.push(Command {
                 payload: Payload::Compute(crate::g16_compute::Control { base: cmd.control_stream_base,
                     end: cmd.control_stream_end, usc_base: self.usc }),
+                attachments: [encode_attachments(&self.vm, &cmd.attachments)?,
+                              crate::g16_attachments::Attachments::EMPTY],
                 timestamps: [Destination::resolve(objects, cmd.timestamps.start)?,
                     Destination::resolve(objects, cmd.timestamps.end)?],
             }, GFP_KERNEL)?;
@@ -196,6 +201,20 @@ impl queue::Queue for Queue {
         }
         Ok(())
     }
+}
+
+fn encode_attachments(vm: &mmu::Vm, list: &g17_uapi::UapiAttachmentList)
+    -> Result<crate::g16_attachments::Attachments> {
+    use crate::g16_attachments::{Attachments, CAPACITY};
+    use g17_uapi::{GpuAddressSpace, GpuAccess};
+    let mut ranges = [(0, 0); CAPACITY];
+    for (range, entry) in ranges.iter_mut().zip(list.as_slice()) {
+        *range = Attachments::range(entry.address, entry.size).map_err(|_| EINVAL)?;
+        if !AddressSpace(vm).covers(range.0, range.1, GpuAccess::Write) {
+            return Err(EINVAL);
+        }
+    }
+    Attachments::new(&ranges[..list.as_slice().len()]).map_err(|_| EINVAL)
 }
 
 fn validate_render(r: g17_uapi::UapiRenderCommand, usc: u64, space: &AddressSpace<'_>) -> Result {

@@ -106,6 +106,13 @@ impl Compute {
             job.pool_state.gpu_va()?, job.page_list.gpu_va()?);
         Ok(job)
     }
+    pub(crate) fn set_attachments(&mut self, attachments: &crate::g16_attachments::Attachments) -> Result {
+        // 25G83 StartCompute+58..15c and FinalizeCompute+68.
+        self.command.write(0x958, &attachments.0)?;
+        self.command.write(0xbc0, &[u8::from(attachments.count() != 0)])?;
+        g16_memory::publish();
+        Ok(())
+    }
     pub(crate) fn log_context(&self, dev: &driver::AsahiDevice) -> Result {
         let mut roots = [(0, 0); 2];
         self.binding.vm().context_roots(&mut roots)?;

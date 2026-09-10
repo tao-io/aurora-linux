@@ -171,6 +171,16 @@ impl Render {
             r.width,r.height,job.binding.slot(),page_count,job.tilemap.gpu_va()?,job.tpc.gpu_va()?,r.vdm_base,reused);
         Ok(job)
     }
+    pub(crate) fn set_attachments(&mut self, attachments: &[crate::g16_attachments::Attachments; 2]) -> Result {
+        // StartVertex+88/count+188; StartFragment+a8/count+1a8.
+        // The following UMA bindings and WFI records stay intact.
+        for (i, (start, finish_flag)) in [(0x88, 0x254), (0xa8, 0x294)].into_iter().enumerate() {
+            self.sequences[i].write(start, &attachments[i].0)?;
+            self.sequences[i].write(finish_flag, &[u8::from(attachments[i].count() != 0)])?;
+        }
+        g16_memory::publish();
+        Ok(())
+    }
     /// Preserve fresh-allocation contents while retaining GEM backing, both
     /// GPU aliases and the ASID lease. In particular, clear old completion
     /// stamps, preemption records and parameter/USC allocator state before

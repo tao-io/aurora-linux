@@ -759,3 +759,23 @@ not resolve those artifacts, cold readback or the need for synchronized
 draws. Mesa remains unchanged throughout this kernel comparison. Evidence
 is saved before the guard stops the session and disarms the verified
 60-second watchdog; CPU thermal policy and the 338 MHz GPU state are kept.
+
+
+### Forwarding job memory attachments (2026-09-10)
+
+The M4 UAPI adapter validated vertex, fragment and compute attachment lists
+but discarded them before constructing firmware work. Commands now retain
+the lists and encode the 25G83 start records, counts and finalize flags for
+each engine. Byte ranges are normalized to 128-byte lines and the entire
+normalized writable mapping is validated before publication. Overflow and
+the firmware's sixteen-record capacity are checked. The writable descriptor
+attributes 0x18/3 match the retained M4 Ocean witness; this does not enable
+compressed resources. No mappings are synthesized from capture addresses.
+
+Standalone encoding tests cover both edge lines, overflow, capacity and the
+native descriptor fixture. The ARM64 module builds. Firmware event 0x116
+confirms receipt of the exact destinations, and the 128x128 mode0/mode2
+control passes both readbacks. The 1024x1024 loop20 workload still times out,
+and cold Vulkan fill still has stale first-read data; attachments are not
+a qualified fix for either defect or for full-scene 0 A.D. rendering.
+Experiments retain the 60-second watchdog, PMP monitoring and boot pstate.
