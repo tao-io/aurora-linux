@@ -151,7 +151,7 @@ impl Runtime {
         }
         let mut work = match payload {
             crate::g16_submit::Payload::Compute(control) => Work::Compute(KBox::new(crate::g16_job::Compute::in_vm(
-                &inner.drm,&inner.uat,&mut inner.config,&packet.vm,Some(control),
+                &inner.drm,&inner.uat,&mut inner.config,&packet.vm,inner.compute_queue.address(),Some(control),
                 Some(inner.compute_queue.notification()),generation,inner.compute_stamp)?, GFP_KERNEL)?),
             crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
                 &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,
@@ -301,7 +301,7 @@ impl Runtime {
         let queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
         let compute_queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
         let fragment_queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
-        let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config)?;
+        let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
         Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, fragment_registered:false, retired_render:None,reusable_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, render_stamp: 0, compute_stamp: crate::g16_compute::STAMP, active: None }) })

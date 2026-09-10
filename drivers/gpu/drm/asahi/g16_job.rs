@@ -17,7 +17,6 @@ pub(crate) struct Compute {
     preemption: Buffer,
     metrics: Buffer,
     auxiliary: Buffer,
-    slot_state: Buffer,
     context_store: Buffer,
     private_memory: Buffer,
     pool_state: Buffer,
@@ -31,12 +30,12 @@ const PRIVATE_BYTES: usize = 0x2000000;
 const PRIVATE_PAGES: usize = PRIVATE_BYTES / 0x1000;
 
 impl Compute {
-    pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, config: &mut crate::g16_config::Config) -> Result<Self> {
+    pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, config: &mut crate::g16_config::Config, work_queue: u64) -> Result<Self> {
         let vm = uat.new_vm(0x81320020, 0x70_0000_0000..0x80_0000_0000)?;
-        Self::in_vm(dev, uat, config, &vm, None, None, 1, g16_compute::STAMP)
+        Self::in_vm(dev, uat, config, &vm, work_queue, None, None, 1, g16_compute::STAMP)
     }
     pub(crate) fn in_vm(dev: &driver::AsahiDevice, uat: &mmu::Uat,
-        config: &mut crate::g16_config::Config, vm: &mmu::Vm,
+        config: &mut crate::g16_config::Config, vm: &mmu::Vm, work_queue: u64,
         control: Option<g16_compute::Control>, notification: Option<g16_compute::Notification>, generation: u8, stamp: u32) -> Result<Self> {
         let uma_client = if control.is_none() { Some(config.bind_uma_table(vm)?) } else { None };
         let gpu = |size| Buffer::new_gpu(dev, uat.kernel_vm(), &vm, size);
@@ -56,7 +55,6 @@ impl Compute {
             preemption: gpu(0x4000)?,
             metrics: gpu(0x4000)?,
             auxiliary: gpu(0x4000)?,
-            slot_state: gpu(0x4000)?,
             context_store: gpu(0x40000)?,
             // Initial 32 MiB pool for qualification across the resident cores.
             // Metadata capacity is an initial allocation policy, not a driver
@@ -74,7 +72,7 @@ impl Compute {
             cdm_gpu: job.cdm.gpu_va()?,
             preemption_gpu: job.preemption.gpu_va()?, metrics: job.metrics.va(),
             auxiliary_gpu: job.auxiliary.gpu_va()?,
-            slot_state: job.slot_state.va(), context_store_gpu: job.context_store.gpu_va()?,
+            work_queue, stats: config.compute_stats(), context_store_gpu: job.context_store.gpu_va()?,
             pool_state_gpu: job.pool_state.gpu_va()?, page_list_gpu: job.page_list.gpu_va()?,
             counter: job.counter.va(),
             context: job.binding.slot(), generation, stamp,

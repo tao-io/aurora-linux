@@ -779,3 +779,17 @@ control passes both readbacks. The 1024x1024 loop20 workload still times out,
 and cold Vulkan fill still has stale first-read data; attachments are not
 a qualified fix for either defect or for full-scene 0 A.D. rendering.
 Experiments retain the 60-second watchdog, PMP monitoring and boot pstate.
+
+### Compute firmware pointer identities
+
+StartCompute stats (+1c), FinalizeCompute stats (+4), and the Runtime+264
+engine state now reference the same retained Config object. The work_queue
+pointers in start, timestamps, and finish reference the actual QueueInfo.
+The old lab wiring incorrectly substituted a notifier threshold for stats and
+a zero scratch buffer for QueueInfo. Exact 25G83 iadd captures establish both
+identities; the common Asahi compute builder uses these same object roles.
+
+Five standalone compute wire tests and the ARM64 module build pass. Guarded
+cold fill 20260910T183822 still had 106644 stale words at its fence and zero
+on the later read; this corrects object wiring but does not qualify a complete
+memory-visibility fix. Firmware and the boot qualification shader ran.

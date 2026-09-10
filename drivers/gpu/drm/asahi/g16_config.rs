@@ -136,6 +136,9 @@ impl Config {
     pub(crate) fn parameter_descriptor(&mut self, bytes: &[u8; 16]) -> Result {
         self.object(Object::ParameterTable).write(0, bytes)
     }
+    /// Same global engine state passed in Runtime+0x264. Firmware indexes
+    /// scheduler records here; a notifier or per-job scratch is not equivalent.
+    pub(crate) fn compute_stats(&self) -> u64 { self.va(Object::Activity264) }
     fn va(&self, object: Object) -> u64 { self.objects[object as usize].va() }
     fn object(&mut self, object: Object) -> &mut Buffer { &mut self.objects[object as usize] }
     fn ptr(&mut self, owner: Object, offset: usize, target: Object, delta: u64) -> Result {

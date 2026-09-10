@@ -11,7 +11,8 @@ pub(crate) struct Addresses {
     pub preemption_gpu: u64,
     pub metrics: u64,
     pub auxiliary_gpu: u64,
-    pub slot_state: u64,
+    pub work_queue: u64,
+    pub stats: u64,
     pub context_store_gpu: u64,
     pub pool_state_gpu: u64,
     pub page_list_gpu: u64,
@@ -57,13 +58,14 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
         || out.len() < SIZE || a.command < 0xffff_fc00_0000_0000
         || a.command.checked_add(SIZE as u64).is_none()
         || a.context >= 64 || (a.context != 0 && a.generation == 0)
-        || a.command & 0x3fff != 0 || a.slot_state & 7 != 0
+        || a.command & 0x3fff != 0 || a.work_queue & 7 != 0
+        || a.stats & 7 != 0 || a.stats < 0xffff_fc00_0000_0000
         || a.counter & 7 != 0 || pool_qwords == 0
         || pages >= pool_qwords || pages % 512 != 0
         || [a.command_gpu, a.auxiliary_gpu, a.preemption_gpu, a.context_store_gpu, a.pool_state_gpu, a.page_list_gpu]
             .iter().any(|va| *va == 0 || *va & 0x3fff != 0 || *va >= (1 << 42) - 0x20000)
         || a.metrics < 0xffff_fc00_0000_0000 || a.metrics & 7 != 0
-        || a.slot_state < 0xffff_fc00_0000_0000 || a.counter < 0xffff_fc00_0000_0000 {
+        || a.work_queue < 0xffff_fc00_0000_0000 || a.counter < 0xffff_fc00_0000_0000 {
         return Err(());
     }
     out[..SIZE].fill(0);
@@ -121,7 +123,7 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     u64_at(out, 0x883, a.metrics);
     // SKU start, UMA binding and context-store tuple.
     u32_at(out, 0x900, 0xb);
-    for (offset, value) in [(0x14, c + 0x20), (0x1c, threshold), (0x24, a.slot_state),
+    for (offset, value) in [(0x14, c + 0x20), (0x1c, a.stats), (0x24, a.work_queue),
         (0x44, c + 0x76c), (0x160, uma), (0x1a8, c + 0x8ac)] {
         u64_at(out, 0x900 + offset, value);
     }
@@ -136,13 +138,13 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     for (base, opcode, selected) in [(0xabc, 0x80000003, 0x834), (0xb0c, 3, 0x83c)] {
         u32_at(out, base, opcode);
         for (off, value) in [(4, c + 0x82c), (12, c + 0x834), (20, c + selected),
-            (28, a.slot_state), (44, c + 0x89c), (52, c + 0x7dc), (68, 1)] {
+            (28, a.work_queue), (44, c + 0x89c), (52, c + 0x7dc), (68, 1)] {
             u64_at(out, base + off, value);
         }
     }
     u32_at(out, 0xb08, 1); // compute WFI
     u32_at(out, 0xb58, 0xc);
-    for (off, value) in [(4, threshold), (12, a.slot_state), (24, c + 0x76c),
+    for (off, value) in [(4, a.stats), (12, a.work_queue), (24, c + 0x76c),
         (36, 1), (44, c + 0xee0), (0x5c, sku + 0x160),
         (0x69, c + 0x8ac), (0x71, c + 0x88c)] {
         u64_at(out, 0xb58 + off, value);
@@ -169,7 +171,7 @@ mod tests {
     use super::*;
     fn addresses() -> Addresses {
         Addresses { command: 0xfffffc2000014000, command_gpu: 0x7000100000, cdm_gpu: 0x7000500000, preemption_gpu: 0x7000600000, metrics: 0xfffffc2000050000, auxiliary_gpu: 0x7000700000,
-            slot_state: 0xfffffc2000030000, context_store_gpu: 0x7000800000,
+            work_queue: 0xfffffc2000030000, stats: 0xfffffc2000060000, context_store_gpu: 0x7000800000,
             pool_state_gpu: 0x7000200000, page_list_gpu: 0x7000300000,
             counter: 0xfffffc2000040000, context: 1, generation: 1, stamp: STAMP }
     }
@@ -196,6 +198,19 @@ mod tests {
         assert_eq!(u64_at(0xbc9), 0xfffffc200001488c);
         assert_eq!(&bytes[0xbd4..0xbd8], &[2, 0, 0, 0x40]);
         assert!(bytes[0x140..0x720].iter().all(|byte| *byte == 0));
+    }
+    #[test]
+    fn engine_state_queue_and_notifier_are_distinct() {
+        let a = addresses();
+        let n = Notification { address: 0xfffffc2000070000, threshold: 0xfffffc2000074000 };
+        let mut bytes = [0; SIZE];
+        encode_dispatch(&mut bytes, a, 16384, 512,
+            Control { base: a.cdm_gpu, end: a.cdm_gpu + 0x30, usc_base: 0 }, Some(n)).unwrap();
+        let ptr = |off| u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
+        for off in [0x91c, 0xb5c] { assert_eq!(ptr(off), a.stats); }
+        for off in [0x924, 0xad8, 0xb28, 0xb64] { assert_eq!(ptr(off), a.work_queue); }
+        assert_eq!(ptr(0x10), n.address);
+        assert_eq!(ptr(0xc00), n.threshold);
     }
     #[test]
     fn dispatch_and_finish_carry_the_same_event_value() {
