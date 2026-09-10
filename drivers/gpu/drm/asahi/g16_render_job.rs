@@ -29,7 +29,7 @@ pub(crate) struct Render {
     tilemap: Buffer,
     tpc: Buffer,
     unknown: Buffer,
-    preemption: [Buffer; 2],
+    preemption: [Buffer; 3],
     auxiliary: Buffer,
     uma: Buffer,
     private_memory: Buffer,
@@ -84,7 +84,7 @@ impl Render {
                 scratch:gpu(0x4000)?,tilemap:gpu(geometry.tilemap_bytes.try_into()?)?,
                 tpc:gpu(geometry.tpc_bytes.try_into()?)?,unknown:gpu(0x4000)?,
                 // Sizes inherited from the qualified M4 context-save experiment.
-                preemption:[gpu(0x10000)?,gpu(0x10000)?],auxiliary:gpu(0x10000)?,
+                preemption:[gpu(0x10000)?,gpu(0x10000)?,gpu(0x4000)?],auxiliary:gpu(0x10000)?,
                 uma:gpu(0x4000)?,private_memory:gpu(PRIVATE_BYTES)?,
                 pool_state:gpu(PRIVATE_QWORDS*8)?,page_list:gpu(0x4000)?,
                 binding:uat.bind(vm)?,descriptor:[0;16],stage:Stage::Tiling,stamp,layout,
@@ -131,7 +131,7 @@ impl Render {
         let program = |p:crate::g17_uapi::UapiProgram| Program {
             address:usc+u64::from(p.usc & !63), resources:p.resource_spec & mask };
         let state = State { geometry,vdm:r.vdm_base,tilemap:job.tilemap.gpu_va()?,tpc:job.tpc.gpu_va()?,
-            unknown:job.unknown.gpu_va()?,preemption:[job.preemption[0].gpu_va()?,job.preemption[1].gpu_va()?],
+            unknown:job.unknown.gpu_va()?,preemption:[job.preemption[0].gpu_va()?,job.preemption[1].gpu_va()?,job.preemption[2].gpu_va()?],
             scratch:job.scratch.gpu_va()?,auxiliary:job.auxiliary.gpu_va()?,multisample:r.multisample_control,ppp:r.ppp_control,
             // UAPI values are already validated. Merge limits are float bits,
             // not geometry counts; color storage is measured in 2 KiB blocks.

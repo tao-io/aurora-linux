@@ -11,7 +11,7 @@ pub(crate) struct DepthStencil { pub base: u64, pub stride: u64 }
 pub(crate) struct State {
     pub geometry: Geometry,
     pub vdm: u64, pub tilemap: u64, pub tpc: u64, pub unknown: u64,
-    pub preemption: [u64; 2], pub scratch: u64, pub auxiliary: u64,
+    pub preemption: [u64; 3], pub scratch: u64, pub auxiliary: u64,
     pub multisample: u64, pub ppp: u32,
     pub merge_upper: [u32; 2], pub tilebuffer_blocks: u32,
     pub background: Program, pub eot: Program,
@@ -56,7 +56,9 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         r!(0x10148,1,g.utile_config); r!(0x10138,1,s.multisample);
         r!(0x10110,1,preempt0); r!(0x1c9b0,0,preempt0);
         r!(0x10118,1,preempt1); r!(0x1c9b8,0,preempt1);
-        r!(0x1c958,0,1); r!(0x1c950,0,0); r!(0x1c930,0,0);
+        // Third preemption area and enable flag: native G16 TA descriptor
+        // f08/f10 and common Asahi preempt_buf_3, previously left zero.
+        r!(0x1c958,0,1); r!(0x1c950,0,compact(s.preemption[2])? | (1u64 << 50)); r!(0x1c930,0,0);
         r!(0x1c880,0,compact(s.vdm)? & !3);
         r!(0x1c078,1,unknown); r!(0x1c9d8,0,unknown);
         r!(0x10150,1,0);

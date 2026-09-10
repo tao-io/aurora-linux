@@ -84,3 +84,15 @@ not add application-CPU framebuffer copies or change GPU clocks.
 ARM64 build and four native-state tests pass. Guarded210501 small retains
 firstmode0readbad/secondexact and bothmode2readsexact (peak50.25C).
 210523 large stilltimesout (peak49.75C). Neither establishes0ADcorrectness.
+
+The third TA preemption buffer is now owned alongside the first two and
+bound through register1c950 with bit50, matching the native descriptor f08/f10
+and common Asahi preempt_buf_3. It is zeroed before reuse and retained for
+the pass lifetime. A16KiB allocation covers the single-cluster record;
+the earlier two64KiB areas are retained. The existing low-address reserve
+is retained pending qualification of all remaining bindings.
+
+Native wire tests and ARM64 compilation pass. Updated C/Rust state fixtures
+match all19,392bytes across three geometries and both stages. Guarded211520
+large stilltimesout(peak50.75C);211701small retainsmode0firstreadfailure,
+exactsecondread,andmode2bothreadsexact(peak50.5C). No fullgamefixclaimed.

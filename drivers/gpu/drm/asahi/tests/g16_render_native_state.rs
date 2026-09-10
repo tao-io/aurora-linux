@@ -16,7 +16,7 @@ fn native_m4_merge_dimensions_and_tilebuffer_contract() {
             let a=0x1000010000;
             let s=State {
                 geometry:Geometry::new(width,width,Utile::Pixels32,Utile::Pixels32,1).unwrap(),
-                vdm:a,tilemap:a,tpc:a,unknown:a,preemption:[a,a],scratch:a,auxiliary:a,
+                vdm:a,tilemap:a,tpc:a,unknown:a,preemption:[a,a,a],scratch:a,auxiliary:a,
                 multisample:0x88,ppp:0,merge_upper:[merge,merge],tilebuffer_blocks:blocks,
                 background:Program::default(),eot:Program::default(),
                 partial_background:Program::default(),partial_eot:Program::default(),
@@ -46,6 +46,8 @@ fn native_m4_merge_dimensions_and_tilebuffer_contract() {
                 assert_eq!(matches[0].value,value);
             }
             let (n,_)=g16_render_state::registers(&mut regs,Stage::Tiling,&s,42).unwrap();
+            assert!(regs[..n].iter().any(|r|r.offset==0x1c950 && !r.flagged
+                && r.value==0x0004000000010000));
             for (address,value) in [(0x101e0,0x1c),(0x1a0f0,8)] {
                 assert!(regs[..n].iter().any(|r|r.offset==address && r.flagged && r.value==value));
             }

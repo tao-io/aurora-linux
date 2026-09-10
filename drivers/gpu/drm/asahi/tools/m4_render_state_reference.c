@@ -18,6 +18,7 @@ int main(void) {
    if(!stage) {
     struct g16_render_ta_platform p={.accelerator_count_4e4=1,.default_d418=1,.pb_slot_word_00=b+0x70000,.accelerator_flags_6a8=0x10000};
     D(0xea8,c+0x10000,8);D(0xf48,c+0x50000,8);D(0xf50,c+0x60000,8);
+    D(0xf08,c+0xe0000,8);D(0xf10,1,4);D(0x1268,0x1c,4);D(0x13dc,8,4);
     D(0xf88,0x003a0012006b0003ULL,8);D(0xf90,1,4);
     D(0x1000,c+0x30000,8);D(0x1010,g.tpc_stride,4);D(0x1018,c+0x20000,8);D(0x1020,g.region_stride,4);
     D(0x1030,c+0x40000,8);D(0x1038,1,4);D(0x1040,c+0x40000,8);
@@ -26,7 +27,7 @@ int main(void) {
     n=g16_render_ta_registers(regs,128,d,sizeof(d),&p,0x16001234,&mode);assert(n>0);
     assert(!g16_render_pack_registers(out,sizeof(out),stage,b,regs,n));
     P(0x760,0xfffffc2004000000ULL,8);P(0x768,g.tpc_bytes,8);P(0x7a8,c+0x50000,8);
-    P(0x8fe,0xfffffc2008000000ULL,8);P(0x90f,0xfffffc200c000000ULL,8);P(0x830,mode,8);
+    P(0x906,1,1);P(0x8fe,0xfffffc2008000000ULL,8);P(0x90f,0xfffffc200c000000ULL,8);P(0x830,mode,8);
    } else {
     struct g16_render_fragment_platform p={.accelerator_count_4e4=1,.disable_spill_registers=1};
     D(0x41c,dims[test][2],4);D(0x420,dims[test][2],4);
@@ -39,13 +40,15 @@ int main(void) {
     D(0x5f8,b+0xd0000,8);D(0x600,b+0xd0000,8);D(0x608,b+0xd0000,8);
     D(0x640,0x45678,8);D(0x648,0x45678,8);D(0x650,0x98765,8);D(0x658,0x98765,8);
     D(0x7d0,b+0x20000,8);D(0x7d8,b+0x40000,8);D(0x7e0,b+0x40000,8);
-    D(0x7f8,1,4);D(0x800,g.isp_blocks,4);D(0x804,g.screen,4);D(0x808,g.x_blocks,4);D(0x80c,g.y_blocks,4);D(0x810,g.blocks,4);
+    D(0x7f8,1,4);D(0x800,g.isp_blocks,4);D(0x804,g.screen,4);D(0x808,g.x_blocks,4);D(0x80c,g.y_blocks,4);D(0x810,0x3addb3d9,4);D(0x814,0x3addb3d9,4);
+    D(0x6b8,2,8);D(0x6c0,0xc000,8);D(0x6c8,((u64)dims[test][1]<<32)|dims[test][0],8);D(0x6d0,0x100000,8);
+    D(0x9c8,0x1c,4);D(0xa54,8,4);
     D(0x820,1,4);D(0x824,g.region_stride,4);D(0x828,g.tiles,4);D(0x890,1,1);D(0x891,1,1);
     n=g16_render_fragment_registers(regs,128,d,sizeof(d),&p,0x16001234,&mode);assert(n>0);
     assert(!g16_render_pack_registers(out,sizeof(out),stage,b,regs,n));
     P(0x40,b+0x20000,8);P(0x50,1,4);P(0x54,g.isp_blocks,4);P(0x60,g.x_blocks,4);P(0x64,g.y_blocks,4);P(0x68,g.blocks,4);P(0x78,g.tiles,4);
     assert(!g16_render_fragment_resume_state(out,sizeof(out),d,sizeof(d)));
-    P(0xc46,0xfffffc2008000000ULL,8);P(0xc57,0xfffffc200c000000ULL,8);P(0x9d8,mode,8);
+    P(0xc4e,1,1);P(0xc46,0xfffffc2008000000ULL,8);P(0xc57,0xfffffc200c000000ULL,8);P(0x9d8,mode,8);
    }
    assert(fwrite(out,1,sizeof(out),stdout)==sizeof(out));
   }
