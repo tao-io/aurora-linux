@@ -24,6 +24,17 @@ fn native_m4_merge_dimensions_and_tilebuffer_contract() {
                 depth_dimensions:0,zls_control:0,depth_clear:0x3f800000,stencil_clear:0x300,
                 process_empty_tiles:true,
             };
+            // Independent native wire bytes: UMA pointer, maintenance flag,
+            // optional size and auxiliary pointer use packed offsets.
+            for (stage, base) in [(Stage::Tiling,0x8fe),(Stage::Fragment,0xc46)] {
+                let mut cmd=[0;0xca0];
+                g16_render_state::mirrors(&mut cmd,stage,&s,
+                    0xfffffc2010000000,0xfffffc2012340000,0xfffffc2012350000,0).unwrap();
+                assert_eq!(&cmd[base..base+8],&0xfffffc2012340000u64.to_le_bytes());
+                assert_eq!(cmd[base+8],1);
+                assert_eq!(&cmd[base+9..base+17],&[0;8]);
+                assert_eq!(&cmd[base+17..base+25],&0xfffffc2012350000u64.to_le_bytes());
+            }
             let mut regs=[Register::default();128];
             let (n,_)=g16_render_state::registers(&mut regs,Stage::Fragment,&s,42).unwrap();
             for (address,value) in [(0x15130,merge as u64),(0x15138,merge as u64),

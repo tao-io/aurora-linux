@@ -72,3 +72,15 @@ of reusing 1/2 for every pass. Fragment precedes vertex in the pair, matching
 queue/render.rs and the captured native pair (1/2). Counter exhaustion is
 rejected before publication. ARM64 build passes; guarded 210048 still times
 out at 1024 (peak 50.5 C), so monotonic counters alone do not cure the stall.
+
+RunTA+906 and RunFragment+c4e also now request firmware cache maintenance
+of their retained UMA descriptor. Both native captures set this byte to1;
+25G83 TEXT+21144/+223fc pass it to2af18, which calls3e8c8 for0x98bytes.
+The 58134/58338 path performs firmware CPU DC CIVAC followed by DSB SY.
+The compute adapter already supplies the equivalent RunCompute+872 flag.
+Packed neighbor offsets are covered by the native wire fixture. This does
+not add application-CPU framebuffer copies or change GPU clocks.
+
+ARM64 build and four native-state tests pass. Guarded210501 small retains
+firstmode0readbad/secondexact and bothmode2readsexact (peak50.25C).
+210523 large stilltimesout (peak49.75C). Neither establishes0ADcorrectness.

@@ -122,10 +122,15 @@ pub(crate) fn mirrors(out: &mut [u8], stage: Stage, s: &State,
     }; }
     if stage == Stage::Tiling {
         let preempt = compact(s.preemption[0])?;
+        // Native 25G83 RunTA+906 / RunFragment+c4e request firmware
+        // cache maintenance of the 0x98-byte UMA descriptor before lookup
+        // (TEXT 21144/223fc -> 2af18 -> 3e8c8). It was omitted here.
+        p!(0x906,1,1);
         p!(0x760,tpc_fw,8); p!(0x768,s.geometry.tpc_bytes,8);
         p!(0x7a8,preempt,8); p!(0x8fe,uma_fw,8); p!(0x90f,uma_aux_fw,8); p!(0x830,mode,8);
     } else {
         let g = s.geometry;
+        p!(0xc4e,1,1);
         p!(0x40,s.tilemap,8); p!(0x50,1,4); p!(0x54,g.isp_blocks,4);
         p!(0x60,g.x_blocks,4); p!(0x64,g.y_blocks,4); p!(0x68,g.blocks,4); p!(0x78,g.tiles,4);
         for (o,v) in [
