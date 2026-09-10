@@ -15,7 +15,6 @@ pub(crate) struct Compute {
     esl: Buffer,
     output: Buffer,
     preemption: Buffer,
-    metrics: Buffer,
     auxiliary: Buffer,
     context_store: Buffer,
     private_memory: Buffer,
@@ -53,7 +52,6 @@ impl Compute {
             esl: Buffer::new_gpu_readonly(dev, uat.kernel_vm(), &vm, 0x4000)?,
             output: gpu(0x4000)?,
             preemption: gpu(0x4000)?,
-            metrics: gpu(0x4000)?,
             auxiliary: gpu(0x4000)?,
             context_store: gpu(0x40000)?,
             // Initial 32 MiB pool for qualification across the resident cores.
@@ -70,7 +68,10 @@ impl Compute {
         let addresses = Addresses {
             command: job.command.va(), command_gpu: job.command.gpu_va()?,
             cdm_gpu: job.cdm.gpu_va()?,
-            preemption_gpu: job.preemption.gpu_va()?, metrics: job.metrics.va(),
+            // RunCompute+883 and StartCompute+178 are the firmware and
+            // GPU aliases of one metrics record, not independent storage.
+            // Matched 25G83 native UAT walks resolve both to the same page.
+            preemption_gpu: job.preemption.gpu_va()?, metrics: job.auxiliary.va(),
             auxiliary_gpu: job.auxiliary.gpu_va()?,
             work_queue, stats: config.compute_stats(), context_store_gpu: job.context_store.gpu_va()?,
             pool_state_gpu: job.pool_state.gpu_va()?, page_list_gpu: job.page_list.gpu_va()?,
