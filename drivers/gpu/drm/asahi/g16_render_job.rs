@@ -215,7 +215,13 @@ impl Render {
     pub(crate) fn log_progress(&mut self, dev: &driver::AsahiDevice) -> Result {
         dev_info!(dev.as_ref(), "G16G: stalled render stage={:?} context={}\n",
             self.stage, self.context());
+        let [ta_command, fragment_command] = &mut self.commands;
+        let [ta_sequence, fragment_sequence] = &mut self.sequences;
         for (name, buffer, start, length) in [
+            ("command-ta", ta_command, 0, Stage::Tiling.command_size()),
+            ("command-fragment", fragment_command, 0, Stage::Fragment.command_size()),
+            ("sequence-ta", ta_sequence, 0, wire::sequence_size(Stage::Tiling)),
+            ("sequence-fragment", fragment_sequence, 0, wire::sequence_size(Stage::Fragment)),
             ("parameter-manager", &mut self.manager, 0, 0xc0),
             ("parameter-ring", &mut self.block_ring, 0, 8),
             ("scene", &mut self.metadata, 0, 0x80),
