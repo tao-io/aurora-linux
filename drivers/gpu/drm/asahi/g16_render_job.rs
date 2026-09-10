@@ -133,6 +133,10 @@ impl Render {
         let state = State { geometry,vdm:r.vdm_base,tilemap:job.tilemap.gpu_va()?,tpc:job.tpc.gpu_va()?,
             unknown:job.unknown.gpu_va()?,preemption:[job.preemption[0].gpu_va()?,job.preemption[1].gpu_va()?],
             scratch:job.scratch.gpu_va()?,auxiliary:job.auxiliary.gpu_va()?,multisample:r.multisample_control,ppp:r.ppp_control,
+            // UAPI values are already validated. Merge limits are float bits,
+            // not geometry counts; color storage is measured in 2 KiB blocks.
+            merge_upper:[r.merge_upper_x,r.merge_upper_y],
+            tilebuffer_blocks:(u32::from(r.sample_size)*u32::from(r.utile_width)*u32::from(r.utile_height)).div_ceil(2048),
             background:program(r.background),eot:program(r.end_of_tile),
             partial_background:program(r.partial_background),partial_eot:program(r.partial_end_of_tile),
             depth_bias:r.depth_bias_base,scissor:r.scissor_base,query:r.occlusion_query_base,

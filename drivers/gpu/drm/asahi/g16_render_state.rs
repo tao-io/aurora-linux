@@ -13,6 +13,7 @@ pub(crate) struct State {
     pub vdm: u64, pub tilemap: u64, pub tpc: u64, pub unknown: u64,
     pub preemption: [u64; 2], pub scratch: u64, pub auxiliary: u64,
     pub multisample: u64, pub ppp: u32,
+    pub merge_upper: [u32; 2], pub tilebuffer_blocks: u32,
     pub background: Program, pub eot: Program,
     pub partial_background: Program, pub partial_eot: Program,
     pub depth_bias: u64, pub scissor: u64, pub query: u64,
@@ -66,8 +67,9 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         r!(0x1c068,1,g.x_blocks); r!(0x1c070,1,g.y_blocks); r!(0x1c080,1,g.blocks);
         r!(0x1c0a8,1,g.tpc_stride); r!(0x10170,1,0x100); r!(0x10168,1,0x8000);
         r!(0xa308,1,0); r!(0x1c8e0,0,u64::MAX); r!(0x1c8e8,0,u64::MAX);
-        r!(0x1c898,0,0); r!(0x101e0,1,0); r!(0x1c9e8,0,0);
-        for o in [0x1a098,0x1a0a0,0x1a068,0x1a070,0x1a0c8,0x1a0d0,0x101c8,0xd470,0x1a0f0] { r!(o,1,0); }
+        r!(0x1c898,0,0); r!(0x101e0,1,0x1c); r!(0x1c9e8,0,0);
+        for o in [0x1a098,0x1a0a0,0x1a068,0x1a070,0x1a0c8,0x1a0d0,0x101c8,0xd470] { r!(o,1,0); }
+        r!(0x1a0f0,1,8);
         r!(0x10798,1,0xff0000); r!(0x1c830,0,0);
         r!(0x1ca30,0,0); r!(0x16c38,1,0);
         let v = s.scratch;
@@ -79,12 +81,14 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         r!(0x1738,1,1); r!(0x10008,1,g.utile_config);
         r!(0x15378,1,s.eot.resources); r!(0x15380,1,s.eot.address);
         r!(0x15368,1,s.background.resources); r!(0x15370,1,s.background.address);
-        r!(0x15130,1,g.blocks); r!(0x15138,1,0);
+        r!(0x15130,1,s.merge_upper[0]); r!(0x15138,1,s.merge_upper[1]);
         r!(0x100a0,1,0); r!(0x15068,1,0); r!(0x15070,1,0); r!(0x16058,0,0);
         r!(0x10018,1,s.multisample); r!(0x100b0,1,g.isp_blocks); r!(0x16030,0,g.isp_blocks);
         r!(0x100d8,1,g.screen); r!(0xa300,1,0); r!(0x10790,1,0xff0200);
         r!(0x16098,0,s.unknown & !63); r!(0x15108,1,s.scissor & !3); r!(0x15100,1,s.depth_bias & !3);
-        for o in [0x15020,0x15210,0x15048,0x10050] { r!(o,1,0); }
+        r!(0x15020,1,0);
+        r!(0x15210,1,((u64::from(g.pixels >> 16) + 1) << 32) | (u64::from(g.pixels & 0xffff) + 1));
+        r!(0x15048,1,0); r!(0x10050,1,s.tilebuffer_blocks);
         r!(0x15320,1,s.depth_dimensions); r!(0x15300,1,s.depth_clear); r!(0x15308,1,s.stencil_clear);
         r!(0x15310,1,s.query & !15); r!(0x15318,1,s.zls_control); r!(0x15348,1,0x04040404); r!(0x15350,1,0);
         r!(0x15328,1,s.depth.base); r!(0x15330,1,s.depth.base);
@@ -97,10 +101,11 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         let mode = 0x280 | (u64::from(s.process_empty_tiles)<<16);
         r!(0x10038,1,mode); r!(0x16020,0,0); r!(0x16450,1,0); r!(0x15358,1,0);
         r!(0x100b8,0,0x8860); r!(0x16460,1,s.auxiliary); r!(0x16090,0,s.auxiliary);
-        r!(0x101e8,1,0); r!(0x160a8,0,0);
+        r!(0x101e8,1,0x1c); r!(0x160a8,0,0);
         r!(0x16068,0,0x3717fu64 | ((g.utile_config>>12)<<40) | (0x200u64<<28) |
             ((g.screen as u64 & 0x1ff)<<44) | (((g.screen as u64>>12)&0x1ff)<<53));
-        for o in [0x1a0a8,0x1a0b0,0x1a078,0x1a080,0x1a0d8,0x1a0e0,0x101c0,0xd468,0x1a0f8] { r!(o,1,0); }
+        for o in [0x1a0a8,0x1a0b0,0x1a078,0x1a080,0x1a0d8,0x1a0e0,0x101c0,0xd468] { r!(o,1,0); }
+        r!(0x1a0f8,1,8);
         r!(0x160e0,0,uuid); r!(0x1498,1,uuid); r!(0xa340,1,uuid);
         r!(0x1c838,0,0); r!(0x1ca28,0,0);
         Ok((n,mode))
