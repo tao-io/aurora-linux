@@ -43,7 +43,7 @@ pub(crate) struct Render {
 }
 impl Render {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, vm: &mmu::Vm,
-        r: UapiRenderCommand, usc: u64, generation: u8, stamp: u32,
+        r: UapiRenderCommand, usc: u64, generation: u8, stamp: u32, counter: u64,
         queues: [u64; 2], notifications: [u64; 2], stats: [u64; 2],
         reusable: Option<KBox<Self>>) -> Result<KBox<Self>> {
         let utile = |n| match n {16=>Ok(Utile::Pixels16),32=>Ok(Utile::Pixels32),_=>Err(EINVAL)};
@@ -156,7 +156,7 @@ impl Render {
                 notifier:notifications[i],shared_stamp:job.metadata.va()+0x400+i as u64*16,
                 stamp_address:job.metadata.va()+0x408+i as u64*16,uma:job.uma.va(),
                 uma_aux:job.uma.gpu_va()?+0x100+i as u64*0x100,
-                context:job.binding.slot(),generation,counter:i as u64+1,uuid,stamp:stamp,
+                context:job.binding.slot(),generation,counter:counter + u64::from(i == 0),uuid,stamp:stamp,
                 event_slot:SLOTS[i] as u32,pb_id:0,pass_id:0 }).map_err(|_| EINVAL)?;
             let (mut count,mode) = state::registers(&mut registers[..],stage,&state,uuid).map_err(|_| EINVAL)?;
             // Common Asahi USC execution window selectors (TA/ISP), retaining

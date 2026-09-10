@@ -66,3 +66,9 @@ Wire regression tests and ARM64 compilation pass. Hardware runs
 20260910T205140 (128) and 20260910T205159 (1024) retain the cold first-read
 mismatch and large-fragment timeout respectively. Small mode2 passes both
 reads. These are command-format corrections, not a claim to fix the stall.
+
+The runtime also now advances a 64-bit render command counter pair instead
+of reusing 1/2 for every pass. Fragment precedes vertex in the pair, matching
+queue/render.rs and the captured native pair (1/2). Counter exhaustion is
+rejected before publication. ARM64 build passes; guarded 210048 still times
+out at 1024 (peak 50.5 C), so monotonic counters alone do not cure the stall.
