@@ -269,7 +269,11 @@ impl Device {
         let mut mmu = [0u32; 13];
         for (i, word) in mmu.iter_mut().enumerate() { *word = sgx.try_read32(0xd08000 + i * 4)?; }
         dev_info!(self.dev.as_ref(), "G16G: GPU MMU configuration={:x?}\n", mmu);
-        for offset in [0xc040, 0xc048, 0xc050, 0xc058, 0xd8c0, 0xd8c8] {
+        // 25G83's firmware wait path reads completion status at 0xc120
+        // and handshake state at 0xc148 (TEXT +0x1c2b0..0x1c360). Snapshot
+        // these without writing interrupt acknowledgements or selectors.
+        for offset in [0xc040, 0xc048, 0xc050, 0xc058, 0xc120, 0xc140, 0xc148,
+            0xd8c0, 0xd8c8] {
             dev_info!(self.dev.as_ref(), "G16G: SGX +{:#x}={:#018x}\n", offset, sgx.try_read64(offset)?);
         }
         Ok(())
