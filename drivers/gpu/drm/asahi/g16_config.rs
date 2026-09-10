@@ -217,7 +217,7 @@ impl Config {
         for (offset, value) in [(4, 4), (8, 6), (12, 3), (16, 7), (20, 7), (40, 8), (48, 1)] {
             self.object(Main).u32(0x2540 + offset, value)?;
         }
-        self.object(Control).u32(0, 0x11)?;
+        self.object(Control).u32(0, 0x33)?;
         Ok(())
     }
 
@@ -294,6 +294,13 @@ impl Config {
         dev_info!(dev.as_ref(), "G16G: hardware UMA slot1={:x?}\n", uma);
         let power = self.object(Object::PowerPerformance).read_u32(0x38)?;
         dev_info!(dev.as_ref(), "G16G: firmware GPU power state={:#x}\n", power);
+        for start in [0usize, 0x20, 0x40, 0xb80, 0xbc0, 0x6510, 0x6550] {
+            let mut words = [0u32; 8];
+            for (index, word) in words.iter_mut().enumerate() {
+                *word = self.object(Object::PowerPerformance).read_u32(start + index * 4)?;
+            }
+            dev_info!(dev.as_ref(), "G16G: power policy +{:#x}={:x?}\n", start, words);
+        }
         Ok(())
     }
 
@@ -326,6 +333,7 @@ impl Config {
     pub(crate) fn consumed_generation(&mut self) -> Result<u32> {
         self.object(Object::FirmwareData).read_u32(0xeae8)
     }
+    pub(crate) fn reset_trace_budget(&mut self) { self.trace_seen = [0; 2]; }
     pub(crate) fn rearm_scheduler(&mut self) -> Result {
         if self.object(Object::FirmwareData).read_u32(0x4fd4)? != 0 { return Err(EBUSY); }
         self.object(Object::FirmwareData).u32(0x4fd4, 1)?;
@@ -409,9 +417,9 @@ impl Config {
                     let class = usize::from((tag & 0xffffff) >= 0x400);
                     let seen = &mut self.trace_seen[class];
                     *seen = seen.saturating_add(1);
-                    if *seen <= 192 {
-                        dev_info!(dev.as_ref(), "G16G trace thread={} id={:#x} phase={} args={:x?}\n", tag >> 24, tag & 0xffffff, phase, args);
-                    } else if *seen == 193 {
+                    if *seen <= 768 {
+                        dev_info!(dev.as_ref(), "G16G trace thread={} id={:#x} phase={} args={:x?} tick={}\n", tag >> 24, tag & 0xffffff, phase, args, u64::from_le_bytes(record[4..12].try_into().unwrap()));
+                    } else if *seen == 769 {
                         dev_info!(dev.as_ref(), "G16G trace class={} subsequent records counted without printk\n", class);
                     }
                     if tag & 0xffffff == 0x11c { return Err(EOVERFLOW); }

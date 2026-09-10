@@ -138,6 +138,7 @@ impl Runtime {
 
     fn start_command(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usize) -> Result {
         let inner = &mut *self.inner;
+        inner.config.reset_trace_budget();
         let payload = packet.commands.get(index).ok_or(EINVAL)?.payload;
         let generation = inner.user_generation.wrapping_add(1).max(1);
         // Firmware indexes its per-event command records with stamp[14:8].
