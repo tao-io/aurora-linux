@@ -53,3 +53,16 @@ This correction builds for ARM64 and passes the wire fixture. Hardware run
 its first read remains incorrect. Neither result qualifies full correctness.
 The separately tested 20-second timeout and power-policy candidates failed;
 they are not part of this change.
+
+The matched captures also carry RunCommand+4 counters in StartVertex+1b8
+and StartFragment+1d8, and render mode 1 in RunFragment+c84,
+StartFragment+1e4, FinalizeFragment+b1 and FinalizeVertex+8d. Preserve the
+full 64-bit counter and all mode mirrors. The 25G83 processRender producer
+at 0x897b49c..0x897b4c0 selects modes 1/2/3; the former zero-fill was not its
+normal path. This mode is separate from ISP register 0x10038. Mode-2 flags
+in the run commands remain clear for this single-pass path.
+
+Wire regression tests and ARM64 compilation pass. Hardware runs
+20260910T205140 (128) and 20260910T205159 (1024) retain the cold first-read
+mismatch and large-fragment timeout respectively. Small mode2 passes both
+reads. These are command-format corrections, not a claim to fix the stall.

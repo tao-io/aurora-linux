@@ -15,6 +15,11 @@ pub(crate) struct Args {
     pub uuid: u32, pub stamp: u32, pub event_slot: u32,
     pub pb_id: u32, pub pass_id: u32,
 }
+// Normal single-pass mode in matched 25G83 J713 captures. The native producer
+// selects 1/2/3; zero is not its normal render mode. This is separate from
+// the ISP raster mode register. Keep command, start and finalize in agreement.
+const RENDER_MODE: u8 = 1;
+
 fn put(out: &mut [u8], offset: usize, value: u64, size: usize) {
     out[offset..offset + size].copy_from_slice(&value.to_le_bytes()[..size]);
 }
@@ -62,11 +67,15 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
             (0x28, a.manager, 8), (0x30, a.pb_slot, 8), (0x38, a.pb_aux, 8),
             (0xbe8, a.pass_id as u64, 4)] { put(command, off, value, size); }
         command[0xc5f] = a.generation;
+        command[0xc84] = RENDER_MODE;
     }
     put(sku, 0, if ta { 5 } else { 7 }, 4);
     put(sku, 0x14, a.command + if ta { 0x40 } else { 0x80 }, 8);
     put(sku, uma, a.uma, 8);
     put(sku, uma + 0x18, a.uma_aux, 8);
+    // The native producer mirrors RunCommand+4 into the start record.
+    // TA+1b8 / Fragment+1d8 are not padding in the UMA-adjacent tail.
+    put(sku, uma + 0x28, a.counter, 8);
     put(sku, start, 1, 4);
     if ta {
         for (off, value, size) in [
@@ -84,6 +93,7 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
             (0x7c,a.command+0xa58,8), (0x84,a.command+0xbf0,8),
             (0xa0,a.uuid as u64,4), (0x1e0,a.event_slot as u64,4)] { put(sku,off,value,size); }
     }
+    if !ta { sku[0x1e4] = RENDER_MODE; }
     let f = &mut sku[start + 4..];
     put(f, 0, if ta { 6 } else { 8 }, 4);
     if ta {
@@ -103,6 +113,7 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
             (0xa0,(-(start as i32+4)) as u32 as u64,4), (0xa5,a.command+0xc60,8),
             (0xad,1,4), (0xb2,a.event_slot as u64,4)] { put(f,off,value,size); }
     }
+    f[if ta { 0x8d } else { 0xb1 }] = RENDER_MODE;
     put(f,finish,0x40000002,4);
     Ok(())
 }
