@@ -231,7 +231,12 @@ impl Runtime {
                     active.started = kernel::time::Instant::<kernel::time::Monotonic>::now();
                     return Ok(true);
                 }
-            } else { active.packet.commands[active.index].completed([status[2], status[3]])?; }
+            } else {
+                if let Work::Compute(compute) = &mut active.work {
+                    dev_info!(inner.drm.as_ref(), "G16G: compute completion status={:x?}\n", compute.status()?);
+                }
+                active.packet.commands[active.index].completed([status[2], status[3]])?;
+            }
             let active = inner.active.take().ok_or(EIO)?;
             inner.gpu_pending = false;
             let packet = active.packet.clone();
