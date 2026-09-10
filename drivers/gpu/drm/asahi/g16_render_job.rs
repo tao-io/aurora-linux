@@ -39,21 +39,16 @@ pub(crate) struct Render {
     descriptor: [u8; 16],
     pub(crate) stage: Stage,
     stamp: u32,
+    layout: [u32; 4],
 }
 impl Render {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, vm: &mmu::Vm,
         r: UapiRenderCommand, usc: u64, generation: u8, stamp: u32,
-        queues: [u64; 2], notifications: [u64; 2]) -> Result<Self> {
+        queues: [u64; 2], notifications: [u64; 2],
+        reusable: Option<KBox<Self>>) -> Result<KBox<Self>> {
         let utile = |n| match n {16=>Ok(Utile::Pixels16),32=>Ok(Utile::Pixels32),_=>Err(EINVAL)};
         let geometry = Geometry::new(r.width as u32,r.height as u32,
             utile(r.utile_width)?,utile(r.utile_height)?,1).map_err(|_| EINVAL)?;
-        let gpu = |size| Buffer::new_gpu(dev,uat.kernel_vm(),vm,size);
-        let fw = |size| Buffer::new(dev,uat.kernel_vm(),size);
-        let mut commands = [
-            Buffer::new_command(dev,uat.kernel_vm(),uat.kernel_lower_vm(),Stage::Tiling.command_size())?,
-            Buffer::new_command(dev,uat.kernel_vm(),uat.kernel_lower_vm(),Stage::Fragment.command_size())?];
-        let mut views = KVec::new();
-        for command in &mut commands { views.push(command.map_gpu_view(vm)?,GFP_KERNEL)?; }
         // Initial allocation follows pass geometry, rounded to PB blocks. The
         // firmware can partially store/reload a pass. This is not a UAPI limit.
         let pb_bytes = (4*1024*1024usize).max(usize::try_from(geometry.tilemap_bytes)? * 128)
@@ -61,18 +56,39 @@ impl Render {
         let page_count = pb_bytes / 32768;
         let block_count = pb_bytes / PB_BLOCK_BYTES;
         let block_capacity = (block_count+1).next_power_of_two();
-        let mut job = Self {
-            _command_views:views, commands, sequences:[fw(0x300)?,fw(0x300)?],
-            metadata:fw(0x4000)?,manager:fw(0xc0)?,pages:gpu(page_count*4)?,
-            blocks:fw(block_capacity*8)?,block_ring:fw(8)?,
-            pb_memory:Buffer::new_gpu_aligned(dev,uat.kernel_vm(),vm,pb_bytes,PB_BLOCK_BYTES as u64)?,
-            scratch:gpu(0x4000)?,tilemap:gpu(geometry.tilemap_bytes.try_into()?)?,
-            tpc:gpu(geometry.tpc_bytes.try_into()?)?,unknown:gpu(0x4000)?,
-            // Sizes inherited from the qualified M4 context-save experiment.
-            preemption:[gpu(0x10000)?,gpu(0x10000)?],auxiliary:gpu(0x10000)?,
-            uma:gpu(0x4000)?,private_memory:gpu(PRIVATE_BYTES)?,
-            pool_state:gpu(PRIVATE_QWORDS*8)?,page_list:gpu(0x4000)?,
-            binding:uat.bind(vm)?,descriptor:[0;16],stage:Stage::Tiling,stamp,
+        let layout = [r.width as u32, r.height as u32,
+            r.utile_width as u32, r.utile_height as u32];
+        // Only an owner displaced by a completely retired replacement may
+        // be recycled. Never borrow the firmware's most recently used owner,
+        // and never reuse private mappings across distinct client GPUVMs.
+        let reusable = reusable.filter(|job| job.binding.matches(vm) && job.layout == layout);
+        let reused = reusable.is_some();
+        let mut job = if let Some(mut job) = reusable {
+            job.clear()?;
+            job.stage = Stage::Tiling;
+            job.stamp = stamp;
+            job
+        } else {
+            let gpu = |size| Buffer::new_gpu(dev,uat.kernel_vm(),vm,size);
+            let fw = |size| Buffer::new(dev,uat.kernel_vm(),size);
+            let mut commands = [
+                Buffer::new_command(dev,uat.kernel_vm(),uat.kernel_lower_vm(),Stage::Tiling.command_size())?,
+                Buffer::new_command(dev,uat.kernel_vm(),uat.kernel_lower_vm(),Stage::Fragment.command_size())?];
+            let mut views = KVec::new();
+            for command in &mut commands { views.push(command.map_gpu_view(vm)?,GFP_KERNEL)?; }
+            KBox::new(Self {
+                _command_views:views, commands, sequences:[fw(0x300)?,fw(0x300)?],
+                metadata:fw(0x4000)?,manager:fw(0xc0)?,pages:gpu(page_count*4)?,
+                blocks:fw(block_capacity*8)?,block_ring:fw(8)?,
+                pb_memory:Buffer::new_gpu_aligned(dev,uat.kernel_vm(),vm,pb_bytes,PB_BLOCK_BYTES as u64)?,
+                scratch:gpu(0x4000)?,tilemap:gpu(geometry.tilemap_bytes.try_into()?)?,
+                tpc:gpu(geometry.tpc_bytes.try_into()?)?,unknown:gpu(0x4000)?,
+                // Sizes inherited from the qualified M4 context-save experiment.
+                preemption:[gpu(0x10000)?,gpu(0x10000)?],auxiliary:gpu(0x10000)?,
+                uma:gpu(0x4000)?,private_memory:gpu(PRIVATE_BYTES)?,
+                pool_state:gpu(PRIVATE_QWORDS*8)?,page_list:gpu(0x4000)?,
+                binding:uat.bind(vm)?,descriptor:[0;16],stage:Stage::Tiling,stamp,layout,
+            }, GFP_KERNEL)?
         };
         let base = job.private_memory.gpu_va()?;
         for i in 0..PRIVATE_PAGES { job.pool_state.u64(i*8,base+i as u64*4096)?; }
@@ -105,9 +121,12 @@ impl Render {
         job.metadata.write(0x340,&dependency)?;
         // PB scene scratch has explicit GPU and firmware aliases. Statistics
         // are a distinct retained record; firmware dereferences them on retire.
-        job.metadata.u64(0,job.scratch.gpu_va()?)?;
-        job.metadata.u64(8,job.scratch.va())?;
-        job.metadata.u64(0x40,job.metadata.va()+0x200)?;
+        let scratch_gpu = job.scratch.gpu_va()?;
+        let scratch_fw = job.scratch.va();
+        let statistics = job.metadata.va()+0x200;
+        job.metadata.u64(0,scratch_gpu)?;
+        job.metadata.u64(8,scratch_fw)?;
+        job.metadata.u64(0x40,statistics)?;
         let mask = if r.flags & 16 != 0 {u64::MAX} else {u32::MAX as u64};
         let program = |p:crate::g17_uapi::UapiProgram| Program {
             address:usc+u64::from(p.usc & !63), resources:p.resource_spec & mask };
@@ -148,9 +167,26 @@ impl Render {
         g16_memory::publish();
         dev_info!(dev.as_ref(), "G16G: render USC freelist={:#x} capacity={} populated={}\n",
             job.pool_state.gpu_va()?,PRIVATE_QWORDS,PRIVATE_PAGES);
-        dev_info!(dev.as_ref(),"G16G: owned render {}x{} ASID={} PB={} pages tilemap={:#x} TPC={:#x} VDM={:#x}\n",
-            r.width,r.height,job.binding.slot(),page_count,job.tilemap.gpu_va()?,job.tpc.gpu_va()?,r.vdm_base);
+        dev_info!(dev.as_ref(),"G16G: owned render {}x{} ASID={} PB={} pages tilemap={:#x} TPC={:#x} VDM={:#x} reused={}\n",
+            r.width,r.height,job.binding.slot(),page_count,job.tilemap.gpu_va()?,job.tpc.gpu_va()?,r.vdm_base,reused);
         Ok(job)
+    }
+    /// Preserve fresh-allocation contents while retaining GEM backing, both
+    /// GPU aliases and the ASID lease. In particular, clear old completion
+    /// stamps, preemption records and parameter/USC allocator state before
+    /// their new event values and freelists are encoded.
+    fn clear(&mut self) -> Result {
+        for buffer in &mut self.commands { buffer.clear()?; }
+        for buffer in &mut self.sequences { buffer.clear()?; }
+        for buffer in &mut self.preemption { buffer.clear()?; }
+        for buffer in [
+            &mut self.metadata, &mut self.manager, &mut self.pages,
+            &mut self.blocks, &mut self.block_ring, &mut self.pb_memory,
+            &mut self.scratch, &mut self.tilemap, &mut self.tpc,
+            &mut self.unknown, &mut self.auxiliary, &mut self.uma,
+            &mut self.private_memory, &mut self.pool_state, &mut self.page_list,
+        ] { buffer.clear()?; }
+        Ok(())
     }
     pub(crate) fn stamp(&self) -> u32 { self.stamp }
     pub(crate) fn index(&self) -> usize { usize::from(self.stage == Stage::Fragment) }

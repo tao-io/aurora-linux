@@ -86,6 +86,13 @@ impl Buffer {
         Ok(u64::from_le_bytes(bytes))
     }
     pub(crate) fn va(&self) -> u64 { self.mapping.iova() }
+    /// Reset a retired allocation before rebuilding its firmware records.
+    /// The caller must have proved that no engine or firmware owner still
+    /// consumes the previous contents.
+    pub(crate) fn clear(&mut self) -> Result {
+        self.object.cached_vmap()?.memset(0);
+        Ok(())
+    }
     pub(crate) fn write(&mut self, offset: usize, bytes: &[u8]) -> Result {
         if offset.checked_add(bytes.len()).ok_or(EOVERFLOW)? > self.size { return Err(ERANGE); }
         self.object.cached_vmap()?.write(bytes, offset)

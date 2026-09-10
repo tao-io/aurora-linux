@@ -16,7 +16,9 @@ struct Inner {
     compute_queue: crate::g16_queue::Queue,
     fragment_queue: crate::g16_queue::Queue,
     fragment_registered: bool,
-    retired_render: Option<crate::g16_render_job::Render>,
+    retired_render: Option<KBox<crate::g16_render_job::Render>>,
+    // Older than retired_render: firmware's replacement has itself retired.
+    reusable_render: Option<KBox<crate::g16_render_job::Render>>,
     retired_compute: Option<KBox<crate::g16_job::Compute>>,
     compute: crate::g16_job::Compute,
     config: crate::g16_config::Config,
@@ -34,7 +36,7 @@ struct Inner {
 
 enum Work {
     Compute(KBox<crate::g16_job::Compute>),
-    Render(crate::g16_render_job::Render),
+    Render(KBox<crate::g16_render_job::Render>),
 }
 impl Work {
     fn pipe(&self) -> usize { match self { Self::Compute(_) => 2, Self::Render(r) => r.index() } }
@@ -153,7 +155,8 @@ impl Runtime {
             crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
                 &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,
                 [inner.queue.address(),inner.fragment_queue.address()],
-                [inner.queue.notification().address,inner.fragment_queue.notification().address])?),
+                [inner.queue.notification().address,inner.fragment_queue.notification().address],
+                inner.reusable_render.take())?),
         };
         inner.user_generation = generation;
         inner.device.check_boot_pstate()?;
@@ -236,9 +239,11 @@ impl Runtime {
             // private-memory pool and ASID lease before the next command.
             match active.work {
                 Work::Render(render) => {
-                    // Firmware caches the parameter manager slot. The replacement
-                    // has now retired, so its predecessor may finally be freed.
-                    inner.retired_render = Some(render);
+                    // Firmware caches the parameter manager slot. Only after
+                    // its replacement retires may the predecessor be freed or
+                    // reused by a matching VM/pass geometry. A cache miss
+                    // allocates normally and drops the spare.
+                    inner.reusable_render = inner.retired_render.replace(render);
                 }
                 Work::Compute(compute) => {
                     // Firmware caches the UMA descriptor by its canonical VA.
@@ -288,7 +293,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config)?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, render_stamp: 0, compute_stamp: crate::g16_compute::STAMP, active: None }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, fragment_registered:false, retired_render:None,reusable_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, render_stamp: 0, compute_stamp: crate::g16_compute::STAMP, active: None }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

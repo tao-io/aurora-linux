@@ -721,3 +721,41 @@ The cold-readback issue, batched-scene hang and building artifacts remain
 unresolved. All runs arm/verify the 60-second watchdog and monitor all six
 PMP channels; CPU thermal policy and the 338 MHz GPU state are preserved.
 Evidence remains in workspace `_provenance/asahi-0ad-20260909/`.
+
+### Recycle render backing after replacement retirement (2026-09-10)
+
+The serialized runtime keeps one reusable render owner, separately from
+its most recently retired owner. A render only becomes reusable after a
+distinct replacement has retired both TA and fragment stages. The next
+render may take that spare only when VmBind identity and width, height and
+utile dimensions match. A miss allocates normally; this imposes no draw,
+framebuffer or submission limit. Render owners are boxed to avoid adding a
+large by-value object to the runtime and worker stacks.
+
+Recycling retains GEM allocations, CPU/firmware/GPU mappings and the ASID
+lease. Every buffer is zeroed, including private memory and parameter-buffer
+contents, then command records, stamps, freelists and dependencies are
+rebuilt. The most recent firmware owner remains untouched. Publication,
+completion, fault quarantine and CPU/GPU memory ordering are unchanged.
+
+The ARM64 module build passes. `0ad-kernel-render-reuse` replays the same
+prefix through call 23123 used above, retiring 1,360 jobs and 1,351 renders
+with exactly the baseline pixels. Of those renders, 858 reuse backing and
+493 allocate. The trace confirms every reused owner follows a distinct
+fully retired render. First-to-last retirement takes 20.387 s versus
+29.185 s before both kernel optimizations, about 30% less time. The summed
+setup/scheduling gaps fall to 7.584 s and their median to 2.118 ms; these
+remain traced replay measurements, not game FPS or pure GPU timings.
+Peak PMP temperature is 53.75 C. `0ad-render-reuse-pressure` also passes
+both the four ordinary draws and the four 65,536-instance pressure draws,
+checking 4,096 exact pixels in each mode.
+
+`0ad-kernel-reuse-desktop` then passes the bounded 180-second 0 A.D.
+Acropolis Bay session on the physical 2560x1664 Hyprland desktop: 30 fresh
+Vulkan/compositor checks, 388 thermal samples, peak 55 C, no GPU fault or
+thermal trip. The final screenshot shows the map and the known incorrect
+building surfaces; the overlay still reads 1 FPS. The replay speedup does
+not resolve those artifacts, cold readback or the need for synchronized
+draws. Mesa remains unchanged throughout this kernel comparison. Evidence
+is saved before the guard stops the session and disarms the verified
+60-second watchdog; CPU thermal policy and the 338 MHz GPU state are kept.
