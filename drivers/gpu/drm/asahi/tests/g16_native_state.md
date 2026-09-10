@@ -39,3 +39,17 @@ reads. Its preceding first no-loop draw still had the separately tracked cold
 immediate-read failure (second read correct); the 1024 texture-loop draw still
 timed out. This fixes missing state forwarding, not the unresolved completion,
 large-shader or 0 A.D. correctness bugs. GPU clocks were unchanged.
+
+The auxiliary framebuffer controls also follow the common Asahi path:
+ISP control 0xc000 for the currently admitted floating depth-bias path,
+and auxiliary control 0x100000. Both were previously zero. Native M4 has
+0xc001/0x100000; its extra low ISP bit is not inferred from this capture.
+The M4 adapter still rejects integer depth-bias requests. The auxiliary buffer
+is already larger than the native 32 KiB allocation.
+
+This correction builds for ARM64 and passes the wire fixture. Hardware run
+20260910T201157 still times out in the 1024 texture-loop draw. The subsequent
+128 texture-free arithmetic control retires with an exact second read, but
+its first read remains incorrect. Neither result qualifies full correctness.
+The separately tested 20-second timeout and power-policy candidates failed;
+they are not part of this change.

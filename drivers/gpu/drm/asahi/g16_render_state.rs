@@ -86,9 +86,11 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         r!(0x10018,1,s.multisample); r!(0x100b0,1,g.isp_blocks); r!(0x16030,0,g.isp_blocks);
         r!(0x100d8,1,g.screen); r!(0xa300,1,0); r!(0x10790,1,0xff0200);
         r!(0x16098,0,s.unknown & !63); r!(0x15108,1,s.scissor & !3); r!(0x15100,1,s.depth_bias & !3);
-        r!(0x15020,1,0);
+        // Common Asahi auxiliary framebuffer controls. Integer depth bias
+        // remains rejected by the M4 UAPI validator.
+        r!(0x15020,1,0xc000);
         r!(0x15210,1,((u64::from(g.pixels >> 16) + 1) << 32) | (u64::from(g.pixels & 0xffff) + 1));
-        r!(0x15048,1,0); r!(0x10050,1,s.tilebuffer_blocks);
+        r!(0x15048,1,0x100000); r!(0x10050,1,s.tilebuffer_blocks);
         r!(0x15320,1,s.depth_dimensions); r!(0x15300,1,s.depth_clear); r!(0x15308,1,s.stencil_clear);
         r!(0x15310,1,s.query & !15); r!(0x15318,1,s.zls_control); r!(0x15348,1,0x04040404); r!(0x15350,1,0);
         r!(0x15328,1,s.depth.base); r!(0x15330,1,s.depth.base);
