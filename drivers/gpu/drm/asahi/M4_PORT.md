@@ -801,3 +801,12 @@ TA/3D SKU producers (89cb7e0, 89bf61c) establish these shared object identities
 and header offsets. Start/finalize fixture assertions and ARM64 build pass.
 Guarded 184155 1024-pixel-square mipmap loop20 still times out: the object-role
 fix alone does not resolve the large fragment failure.
+
+The context-control flag in StartVertex+48 and StartFragment+60 is enabled
+as in native/common Asahi construction; compute+30 is fixed to one instead
+of being confused with RunCompute's separate ASID-generation byte. Firmware
+uses this flag when updating the context mask at SGX+d8f0. Added bounded
+read-only global engine-state snapshots on faults. Wire tests and ARM64 build
+pass. Guarded 184607 large loop still times out; cold small 184910 has stale
+first read then correct later reads, while warm 185026 passes both modes and
+all reads. These changes do not establish a visibility or timeout cure.

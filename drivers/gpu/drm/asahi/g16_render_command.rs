@@ -72,7 +72,7 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
         for (off, value, size) in [
             (0x1c,a.manager,8), (0x24,a.pb_slot,8), (0x2c,a.stats,8),
             (0x34,a.queue,8), (0x3c,a.command+0x85c,8), (0x44,a.context as u64,4),
-            (0x50,a.pb_id as u64,4), (0x58,a.pass_id as u64,4),
+            (0x48,1,4), (0x50,a.pb_id as u64,4), (0x58,a.pass_id as u64,4),
             (0x64,a.command+0x784,8), (0x6c,a.command+0x8a8,8),
             (0x7c,a.uuid as u64,4), (0x1c0,a.event_slot as u64,4)] { put(sku,off,value,size); }
     } else {
@@ -80,7 +80,7 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
             (0x1c,a.pb_slot,8), (0x24,a.stats,8), (0x2c,a.command+0xb70,8),
             (0x34,a.pb_slot+0x54,8), (0x3c,a.command+0xbb0,8), (0x44,a.command+0xbb4,8),
             (0x4c,a.queue,8), (0x54,a.command,8), (0x5c,a.context as u64,4),
-            (0x68,a.pb_id as u64,4), (0x70,a.pass_id as u64,4),
+            (0x60,1,4), (0x68,a.pb_id as u64,4), (0x70,a.pass_id as u64,4),
             (0x7c,a.command+0xa58,8), (0x84,a.command+0xbf0,8),
             (0xa0,a.uuid as u64,4), (0x1e0,a.event_slot as u64,4)] { put(sku,off,value,size); }
     }

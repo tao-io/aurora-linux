@@ -295,6 +295,16 @@ impl Config {
             }
             dev_info!(dev.as_ref(), "G16G: firmware RAM +{:#x}={:x?}\n", address, &words[..count]);
         }
+        // Global engine state consumed by the microsequence and scheduler.
+        // Record only normal firmware RAM, without acknowledging GPU status.
+        for (object, name) in [(Object::Activity254, "vertex"),
+            (Object::Activity25c, "fragment"), (Object::Activity264, "compute")] {
+            let mut words = [0u32; 16];
+            for (i, word) in words.iter_mut().enumerate() {
+                *word = self.object(object).read_u32(i * 4)?;
+            }
+            dev_info!(dev.as_ref(), "G16G: {} engine state={:x?}\n", name, words);
+        }
         let mut uma = [0u64; 4];
         for (index, word) in uma.iter_mut().enumerate() {
             *word = self.object(Object::UmaTable).read_u64(32 + index * 8)?;

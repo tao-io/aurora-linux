@@ -128,7 +128,8 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
         u64_at(out, 0x900 + offset, value);
     }
     u32_at(out, 0x92c, a.context);
-    u32_at(out, 0x930, a.generation as u32);
+    // Context-control flag, separate from RunCompute ASID generation.
+    u32_at(out, 0x930, 1);
     u32_at(out, 0x950, 1);
     u64_at(out, 0xa78, a.auxiliary_gpu);
     for (i, delta) in [0, 0xf400, 0x1e800, 0x1f000].iter().enumerate() {

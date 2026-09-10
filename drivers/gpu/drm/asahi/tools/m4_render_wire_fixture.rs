@@ -22,6 +22,8 @@ fn main() {
             g16_render::Stage::Tiling => ([0x2c, 0x1e4], [0x34, 0x1ec]),
             g16_render::Stage::Fragment => ([0x24, 0x220], [0x4c, 0x240]),
         };
+        let control = if stage == g16_render::Stage::Tiling { 0x48 } else { 0x60 };
+        assert_eq!(&sku[control..control+4], &1u32.to_le_bytes());
         for off in stats_offsets { assert_eq!(ptr(off), a.stats); }
         for off in queue_offsets { assert_eq!(ptr(off), a.queue); }
         out.write_all(&command).unwrap();out.write_all(&sku).unwrap();
