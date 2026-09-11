@@ -37,6 +37,14 @@
 #include "m4_dcp_native.h"
 #include "m4_dcp_kms.h"
 
+/* Diagnostic history capacity, unrelated to submission or buffering limits. */
+#define M4_PRESENT_HISTORY 256
+struct m4_present_record {
+	u64 sequence, submitted_ns, completed_ns;
+	u32 framebuffer;
+	s32 status;
+};
+
 struct m4_kms {
 	struct drm_device drm;
 	struct drm_plane plane;
@@ -51,6 +59,9 @@ struct m4_kms {
 	bool failed;
 	u64 completed;
 	u64 swap_total_ns, swap_max_ns;
+	spinlock_t history_lock;
+	u64 history_count;
+	struct m4_present_record history[M4_PRESENT_HISTORY];
 };
 
 static struct m4_kms *to_m4(struct drm_device *drm)
@@ -196,6 +207,18 @@ static bool m4_present(struct m4_kms *m4, struct drm_framebuffer *fb)
 	ret = m4_dcp_native_swap(m4->native, fb ? surface : NULL, dva,
 				fb ? fb->width : 0, fb ? fb->height : 0);
 	elapsed = ktime_get_ns() - start;
+	/* Never make a timing reader wait on present_lock or copy scanout pixels. */
+	spin_lock(&m4->history_lock);
+	m4->history[m4->history_count % M4_PRESENT_HISTORY] =
+		(struct m4_present_record) {
+			.sequence = m4->history_count + 1,
+			.submitted_ns = start,
+			.completed_ns = start + elapsed,
+			.framebuffer = fb ? fb->base.id : 0,
+			.status = ret,
+		};
+	m4->history_count++;
+	spin_unlock(&m4->history_lock);
 	if (ret) {
 		/* Either buffer may still be scanned out. Never unmap them on error. */
 		m4->failed_fb = fb;
@@ -377,6 +400,32 @@ static int m4_status(struct seq_file *seq, void *unused)
 	return 0;
 }
 
+static int m4_present_history(struct seq_file *seq, void *unused)
+{
+	struct drm_debugfs_entry *entry = seq->private;
+	struct m4_kms *m4 = to_m4(entry->dev);
+	struct m4_present_record *records;
+	u64 count, first, i;
+
+	records = kmalloc(sizeof(m4->history), GFP_KERNEL);
+	if (!records)
+		return -ENOMEM;
+	spin_lock(&m4->history_lock);
+	count = m4->history_count;
+	memcpy(records, m4->history, sizeof(m4->history));
+	spin_unlock(&m4->history_lock);
+	seq_puts(seq, "sequence submitted_ns completed_ns framebuffer status\n");
+	first = count > M4_PRESENT_HISTORY ? count - M4_PRESENT_HISTORY : 0;
+	for (i = first; i < count; i++) {
+		struct m4_present_record *r = &records[i % M4_PRESENT_HISTORY];
+
+		seq_printf(seq, "%llu %llu %llu %u %d\n", r->sequence,
+			   r->submitted_ns, r->completed_ns, r->framebuffer, r->status);
+	}
+	kfree(records);
+	return 0;
+}
+
 struct m4_snapshot {
 	size_t size;
 	u8 bytes[];
@@ -510,6 +559,7 @@ int m4_dcp_kms_register(struct m4_dcp_native *native, bool takeover)
 	drm = &m4->drm;
 	m4->native = native;
 	mutex_init(&m4->present_lock);
+	spin_lock_init(&m4->history_lock);
 	timing = m4_dcp_native_property(native, "PreferredTimingElements", &size);
 	if (!timing)
 		return -ENODATA;
@@ -561,6 +611,7 @@ int m4_dcp_kms_register(struct m4_dcp_native *native, bool takeover)
 			return ret;
 	}
 	drm_debugfs_add_file(drm, "m4_status", m4_status, NULL);
+	drm_debugfs_add_file(drm, "m4_present_history", m4_present_history, NULL);
 	ret = drm_dev_register(drm, 0);
 	if (!ret)
 		debugfs_create_file("m4_scanout", 0400, drm->debugfs_root, m4, &m4_snapshot_fops);

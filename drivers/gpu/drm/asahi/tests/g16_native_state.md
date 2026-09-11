@@ -323,3 +323,25 @@ higher CPU clocks did not improve pacing. Caps were lowered back to1860MHz
 The user reports mostly60FPS with occasional severe dips; these spikes remain
 an investigation target, not a stable60FPS claim. Preserve new scheduling and
 use the cooler caps for further timing work.
+
+
+### 2026-09-11 native presentation timing history
+
+The development DCP KMS module exposes the last 256 completed presentation
+records through `m4_present_history`. Each record contains CLOCK_MONOTONIC
+submission/completion timestamps, sequence, framebuffer ID and status. A
+separate short spinlock protects the history snapshot; readers never wait for
+a native swap or copy scanout pixels. This is diagnostic history capacity,
+not a buffering or submission limit.
+
+ARM64 module build passed. Guarded J713 run
+`20260911T215216385951Z-quickshell-present-history-evidence` passed 101 health
+checks and 1,037 thermal samples, peak 56 C, zero native presentation failures.
+DCP module SHA-256: `6d8454cfee9e87548c24333e5288f89df4f3b80b48e5bd96d3ac996f7258af97`.
+The ten-second menu-hover interval had median 16.665 ms, p99 33.437 ms and
+maximum 33.495 ms. A 20-second continuously moving-pointer test with five menu
+opens caught five gaps over 50 ms (maximum 66.763 ms), predominantly before
+native submission; maximum observed cursor IPC latency was 82.819 ms.
+The history reader took at most 0.813 ms. No missing history records or DCP
+failures occurred. This reproduces a smaller stutter, not the user's estimated
+200 ms worst case, and does not establish a steady 60 FPS desktop.
