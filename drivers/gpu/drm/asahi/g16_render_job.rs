@@ -222,6 +222,13 @@ impl Render {
         dev_info!(dev.as_ref(), "G16G: stalled render stage={:?} context={}\n",
             self.stage, self.context());
         dev_info!(dev.as_ref(), "G16G: render GPU timestamps={:x?}\n", self.timestamps()?);
+        for (stage, offset) in [("ta", 0x100), ("fragment", 0x200)] {
+            let mut words = [0u64; 4];
+            for (index, word) in words.iter_mut().enumerate() {
+                *word = self.uma.read_u64(offset+index*8)?;
+            }
+            dev_info!(dev.as_ref(), "G16G: render UMA metrics {}={:x?}\n", stage, words);
+        }
         let [ta_command, fragment_command] = &mut self.commands;
         let [ta_sequence, fragment_sequence] = &mut self.sequences;
         for (name, buffer, start, length) in [
