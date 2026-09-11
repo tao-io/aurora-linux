@@ -92,6 +92,8 @@ struct Active {
     queue_next: [u32; 3],
     pipe_next: [u32; 3],
     started: kernel::time::Instant<kernel::time::Monotonic>,
+    preparation_ns: i64,
+    published: kernel::time::Instant<kernel::time::Monotonic>,
 }
 
 pub(crate) struct Runtime {
@@ -139,6 +141,7 @@ impl Runtime {
     }
 
     fn start_command(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usize) -> Result {
+        let preparing = kernel::time::Instant::<kernel::time::Monotonic>::now();
         let inner = &mut *self.inner;
         inner.config.reset_trace_budget();
         let payload = packet.commands.get(index).ok_or(EINVAL)?.payload;
@@ -174,6 +177,8 @@ impl Runtime {
         // Retain all DMA backing before the first shared publication, including
         // failure paths that cannot prove whether a mailbox doorbell arrived.
         inner.active = Some(Active { packet, work, index, queue_next:[0;3],pipe_next:[0;3],
+            preparation_ns: preparing.elapsed().as_nanos(),
+            published: kernel::time::Instant::<kernel::time::Monotonic>::now(),
             started:kernel::time::Instant::<kernel::time::Monotonic>::now() });
         inner.gpu_pending = true;
         let publish = inner.publish_active();
@@ -249,6 +254,8 @@ impl Runtime {
                 active.packet.commands[active.index].completed([status[2], status[3]])?;
             }
             let active = inner.active.take().ok_or(EIO)?;
+            let active_ns = active.published.elapsed().as_nanos();
+            let cleanup = kernel::time::Instant::<kernel::time::Monotonic>::now();
             inner.gpu_pending = false;
             let packet = active.packet.clone();
             let index = active.index + 1;
@@ -272,7 +279,7 @@ impl Runtime {
                 }
             }
             if index == packet.commands.len() {
-                dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={}\n", packet.id, index, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get());
+                dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} last_prepare_ns={} last_active_ns={} last_cleanup_ns={}\n", packet.id, index, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), active.preparation_ns, active_ns, cleanup.elapsed().as_nanos());
                 packet.finish(Ok(()));
                 return Ok(false);
             }

@@ -179,3 +179,22 @@ two render workers, versus 3.12% in the logging-only profile. Retained logs
 record 4938 reused and 1212 newly allocated passes across desktop clients.
 The cold compute readback failure remains unresolved and is independent of
 this render-only change.
+
+## Host command phase timing — 2026-09-11
+
+Existing job-retirement logs now include last_prepare_ns, last_active_ns and
+last_cleanup_ns, measured with CLOCK_MONOTONIC. These describe only the last
+command in a packet. Active time begins before queue publication and includes
+firmware scheduling, GPU execution and completion polling; it is not GPU busy
+time. Cleanup measures the retired-owner replacement before signaling the
+packet fence. No timeout, submission order or ownership rule changed.
+
+J713 experiment133932 command-phase-timing-0ad-baseline passed180seconds under
+native Hyprland/Zink with ordinary batching, compressed assets and postprocessing.
+384 thermal samples, peak51.5C; final screenshot inspected with correct buildings
+and shadows. Module7752732d, qualified Vulkanad40/Gallium9a5e. Across7102
+single-command packets, preparation totaled32.018s and cleanup0.292s. Latest120
+main-thread frames averaged2.015FPS. This qualifies instrumentation, not a speedup
+or a fix for the separately recorded completion/visibility defect.
+Workspace tools/gpu-phase-summary.py analyzes complete retained kernel logs
+without comparing printk and CLOCK_MONOTONIC as if they were the same clock.
