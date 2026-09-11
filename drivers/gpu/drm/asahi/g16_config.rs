@@ -211,8 +211,16 @@ impl Config {
         self.object(Main).u32(0xea0, 1)?;
         self.object(Main).u32(0xeb8, 1)?;
         self.object(Main).u64(0xf24, 0x0000000607002004)?;
-        self.object(Main).u32(0xfc0, 10)?;
-        self.object(Main).u32(0xfc4, 9)?;
+        // Describe only the powered-off state and the admitted J713 boot OPP.
+        // Native 25G83 initPowerAndPerformanceData publishes MHz here; TEXT
+        // 319c4 imports these entries and their reciprocal period for firmware
+        // accounting. Advertising ten states with an empty frequency table
+        // leaves even state 1 with a zero frequency. Higher OPPs remain
+        // unavailable until GPU thermal policy is implemented and qualified.
+        self.object(Main).u32(0xfc0, 2)?;
+        self.object(Main).u32(0xfc4, 1)?;
+        self.object(Main).u32(0xfcc, 338)?;
+        self.object(Main).u32(0x180c, 338)?;
         self.object(Main).u32(0x259c, 1)?;
         // Fender initialization also constructs scheduler accounting buckets:
         // 25G83 imports ea0/ee0 to globals 193b48/193b7c, and its 3b614
