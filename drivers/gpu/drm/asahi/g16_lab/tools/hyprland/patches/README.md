@@ -30,3 +30,11 @@ Omarchy sysroot and pinned upstream dependencies. The binary is installed at
 binary remains available. desktop-experiment.py --hyprland-binary records the
 selected binary hash and source patch. Inspect final guard results separately
 from these short latency measurements.
+
+
+Final qualification: the cold run completed79 health checks and815 thermal
+samples, peak55.75C, with no GPU/DCP failure. The final menu screenshot was
+inspected and rendered correctly. Six-second steady-motion intervals:
+desktop59.80FPS,max16.699ms; menu54.09FPS,max33.498ms, no interval above50ms.
+Cursor IPC maxima were6.47ms and7.21ms. The user reported "way better" with
+small dips remaining. This is not a claim of a continuously locked60FPS menu.
