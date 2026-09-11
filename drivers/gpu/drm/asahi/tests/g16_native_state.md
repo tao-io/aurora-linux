@@ -269,3 +269,19 @@ loaded on a recovered boot with no previous Asahi module loaded. Guarded
 Quickshell's Qt RHI reports Vulkan on Apple M4; process owns Asahi DRM fds
 and loads the private Vulkan driver. Panel and background final frame visually
 correct. Watchdog60/thermal guard unchanged, normal max GPU state9.
+
+## Retain retired parameter-page payload (2026-09-11)
+
+Same-VM render reuse no longer clears parameter-page payload. Allocator,
+scene metadata, private shader memory, completion records and preemption state
+still receive their full reset. New backing remains zero allocated. Only an
+owner displaced by a fully retired replacement is eligible for reuse.
+
+ARM64 module a7bfea0f8c93 passed guarded native desktop experiment
+20260911T213016244262Z-quickshell-retain-pb. All 323 thermal samples were valid,
+peak54.5C. Warm R8/RGBA8 atlas readbacks checked310410bytes with zero mismatches;
+menu scanout was visually inspected. Six-second cursor motion measured59.76FPS
+hidden and30.08FPS open: this is a preparation-cost improvement, not60FPS yet.
+The open interval's551jobs spent1052.22ms preparing and1885.12ms active, compared
+with1161.80ms preparation across555jobs in the prior full-clear comparison.
+Private-memory omission and persistent-UMA experiments are NOT qualified.
