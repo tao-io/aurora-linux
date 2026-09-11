@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 //! M4 firmware memory-range descriptors, shared by all three engines.
 //! 25G83 TEXT+1a4a8/19290/19f5c consumes sixteen 16-byte records followed
-//! by their count. Attributes 0x18/3 match the writable-buffer descriptor in
-//! the retained 25G83 Ocean capture; compressed resources remain unsupported.
+//! by their count. Attributes 0x18/1 match independently captured J713/25G83
+//! shared-buffer fill and uncompressed color-output descriptors. The last
+//! field selects a hardware mask exponent, not a read/write bitmask.
 
 pub(crate) const SIZE: usize = 0x104;
 pub(crate) const CAPACITY: usize = 16;
@@ -34,7 +35,7 @@ impl Attachments {
             record[..8].copy_from_slice(&address.to_le_bytes());
             record[8..12].copy_from_slice(&((size >> 7) as u32).to_le_bytes());
             record[12..14].copy_from_slice(&0x18u16.to_le_bytes());
-            record[14..16].copy_from_slice(&3u16.to_le_bytes());
+            record[14..16].copy_from_slice(&1u16.to_le_bytes());
         }
         out.0[0x100..].copy_from_slice(&(ranges.len() as u32).to_le_bytes());
         Ok(out)
@@ -49,7 +50,7 @@ mod tests {
         let a = Attachments::new(&[(0x100007f, 2)]).unwrap();
         assert_eq!(u64::from_le_bytes(a.0[..8].try_into().unwrap()), 0x1000000);
         assert_eq!(u32::from_le_bytes(a.0[8..12].try_into().unwrap()), 2);
-        assert_eq!(&a.0[12..16], &[0x18, 0, 3, 0]);
+        assert_eq!(&a.0[12..16], &[0x18, 0, 1, 0]);
         assert_eq!(a.count(), 1);
         assert!(a.0[16..0x100].iter().all(|v| *v == 0));
     }
@@ -67,11 +68,11 @@ mod tests {
     }
     #[test]
     fn matches_native_m4_writable_buffer_descriptor() {
-        // Retained 25G83 Ocean StartCompute+58, independently produced by
-        // macOS. This VA is only a byte-encoding fixture, never a live mapping.
-        let encoded = Attachments::new(&[(0x10000090000, 0xe10000)]).unwrap();
+        // J713/25G83 native 061054 shared 4 MiB fill, StartCompute+58.
+        // This VA is only a byte-encoding fixture, never a live mapping.
+        let encoded = Attachments::new(&[(0x100000a8000, 0x400000)]).unwrap();
         assert_eq!(&encoded.0[..16], &[
-            0, 0, 9, 0, 0, 1, 0, 0, 0, 0xc2, 1, 0, 0x18, 0, 3, 0]);
+            0, 0x80, 0x0a, 0, 0, 1, 0, 0, 0, 0x80, 0, 0, 0x18, 0, 1, 0]);
         assert_eq!(encoded.count(), 1);
     }
 }
