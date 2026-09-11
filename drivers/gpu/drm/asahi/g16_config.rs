@@ -478,9 +478,14 @@ impl Config {
                     let class = usize::from((tag & 0xffffff) >= 0x400);
                     let seen = &mut self.trace_seen[class];
                     *seen = seen.saturating_add(1);
-                    if *seen <= 768 {
+                    // Firmware tracing is diagnostic, not normal desktop
+                    // output. A busy scene can produce a megabyte of printk
+                    // text per second. Continue draining and validating all
+                    // records; opt in through the common KTraceCh debug bit.
+                    let print_trace = crate::debug::debug_enabled(crate::debug::DebugFlags::KTraceCh);
+                    if print_trace && *seen <= 768 {
                         dev_info!(dev.as_ref(), "G16G trace thread={} id={:#x} phase={} args={:x?} tick={}\n", tag >> 24, tag & 0xffffff, phase, args, u64::from_le_bytes(record[4..12].try_into().unwrap()));
-                    } else if *seen == 769 {
+                    } else if print_trace && *seen == 769 {
                         dev_info!(dev.as_ref(), "G16G trace class={} subsequent records counted without printk\n", class);
                     }
                     if tag & 0xffffff == 0x11c {

@@ -132,3 +132,28 @@ has the same known firstmode0read failure; secondread and mode2bothreads exact,
 no GPUfault, peak52.5C. Guarded224054 large still times out in fragment,
 bothreads incorrect, peak50.5C. Saved allfault evidence and reboot recovered.
 This removes inherited lab state; it does not fix the long-render stall.
+
+### Opt-in high-volume logging
+
+Normal desktop submissions no longer print every G16 firmware ktrace record or
+GEM bind. The existing `debug_flags` bits enable these diagnostics: bit17
+(`KTraceCh`, 0x20000) for firmware traces and bit0 (`Mmu`, 0x1) for binds.
+Trace records are still drained and validated, and trace loss remains reported.
+Fault reports and per-job retirement records, including monotonic timestamps
+used by the watchdog guard, remain unconditional.
+
+The triggering 180-second 0 A.D. CPU profile recorded 1,199,592 firmware trace
+lines and 494,309 bind lines, with journald accounting for 7.69% of system-wide
+CPU samples across all cores. Profiling and bounded run evidence are retained
+in workspace experiment `20260911T112352341126Z-default-0ad-cpu-profile`.
+The game finished its 34 health checks; the outer guard failed because offline
+report generation was mistakenly run on-target with a 20-second timeout.
+No GPU fault was observed. ARM64 module compilation passes for the log gating;
+hardware validation is recorded below once completed.
+
+Guarded test `20260911T113708594165Z-opt-in-logging-0ad-profile` passed the
+180-second actual game run and all 35 health checks; 387 thermal samples peaked
+at 53.5 C. The final image retains the scene and shadows (HUD still 2 FPS).
+Logs fell from 186 MiB to 7.7 MiB, and journald fell from 7.69% to 0.45% of
+all-CPU samples. This reduces logging overhead; it does not fix cold visibility
+or establish faster gameplay. Both profiles retain their exact installed hashes.

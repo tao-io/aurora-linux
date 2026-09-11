@@ -736,11 +736,10 @@ impl File {
 
         for _i in 0..data.num_binds {
             let bind: uapi::drm_asahi_gem_bind_op = reader.read_up_to(data.stride as usize)?;
-            // Vulkan faults on an unmapped USC exec window. Log every bind so we
-            // can tell whether Mesa asks for that range and we drop it, or never
-            // asks at all.
-            pr_info!(
-                "G17P bind: vm={} addr={:#x} range={:#x} offset={:#x} flags={:#x} handle={}\n",
+            // Preserve the bind diagnostic without formatting every normal
+            // desktop allocation into the kernel journal.
+            cls_pr_debug!(Mmu,
+                "GPU bind: vm={} addr={:#x} range={:#x} offset={:#x} flags={:#x} handle={}\n",
                 data.vm_id,
                 bind.addr,
                 bind.range,
