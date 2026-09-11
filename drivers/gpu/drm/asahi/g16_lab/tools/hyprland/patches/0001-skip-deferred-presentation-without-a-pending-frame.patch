@@ -1,0 +1,30 @@
+From bcf2624eda07abd36cbe9104fe7e8ed79d914607 Mon Sep 17 00:00:00 2001
+From: Eryk Wieliczko <github@wieliczko.ninja>
+Date: Sat, 12 Sep 2026 00:22:20 +0200
+Subject: [PATCH] render: skip deferred presentation without a pending frame
+
+---
+ src/output/MonitorFrameScheduler.cpp | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/src/output/MonitorFrameScheduler.cpp b/src/output/MonitorFrameScheduler.cpp
+index 9299bfb..a058bab 100644
+--- a/src/output/MonitorFrameScheduler.cpp
++++ b/src/output/MonitorFrameScheduler.cpp
+@@ -72,7 +72,12 @@ void CMonitorFrameScheduler::onPresented() {
+ 
+         auto ml = m.lock();
+ 
+-        g_pHyprRenderer->commitPendingAndDoExplicitSync(ml); // commit the pending frame. If it didn't fire yet (is not rendered) it doesn't matter. Syncs will wait.
++        // renderMonitor can return without drawing (for example, no remaining
++        // damage). A frame event may also have consumed the pending buffer
++        // before this deferred callback runs. Do not issue a metadata-only,
++        // blocking KMS commit in either case: there is no new frame to submit.
++        if (ml->m_output->state->state().committed & Aquamarine::COutputState::AQ_OUTPUT_STATE_BUFFER)
++            g_pHyprRenderer->commitPendingAndDoExplicitSync(ml);
+ 
+         // schedule a frame: we might have some missed damage, which got cleared due to the above commit.
+         // TODO: this is not always necessary, but doesn't hurt in general. We likely won't hit this if nothing's happening anyways.
+-- 
+2.55.0
+
