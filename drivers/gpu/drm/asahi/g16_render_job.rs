@@ -43,6 +43,25 @@ pub(crate) struct Render {
     layout: [u32; 4],
 }
 impl Render {
+    #[cfg(CONFIG_DEV_COREDUMP)]
+    pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
+        // Retained pass-owned state only. In particular, partial tiling can
+        // exhaust parameter pages while fragment work waits for a dependency.
+        // Keep allocator and command evidence together without reading user BOs.
+        dump.buffer("render-parameter-manager", &mut self.manager, 0xc0)?;
+        dump.buffer("render-parameter-ring", &mut self.block_ring, 8)?;
+        dump.buffer("render-scene-metadata", &mut self.metadata, 0x4000)?;
+        dump.buffer("render-uma-descriptor", &mut self.uma, 0x300)?;
+        dump.buffer("render-pool-state", &mut self.pool_state, PRIVATE_QWORDS * 8)?;
+        for (i, stage) in [Stage::Tiling, Stage::Fragment].into_iter().enumerate() {
+            dump.buffer(["render-ta-command", "render-fragment-command"][i],
+                &mut self.commands[i], stage.command_size())?;
+            dump.buffer(["render-ta-sequence", "render-fragment-sequence"][i],
+                &mut self.sequences[i], wire::sequence_size(stage))?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, vm: &mmu::Vm,
         r: UapiRenderCommand, usc: u64, generation: u8, stamp: u32, counter: u64,
         queues: [u64; 2], notifications: [u64; 2], stats: [u64; 2],
