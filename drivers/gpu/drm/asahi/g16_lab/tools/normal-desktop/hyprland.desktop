@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Hyprland (M4 accelerated)
+Comment=Normal Omarchy configuration on the native M4 graphics stack
+Exec=/usr/local/bin/m4-hyprland-session
+TryExec=/usr/local/bin/m4-hyprland-session
+DesktopNames=Hyprland
+Type=Application

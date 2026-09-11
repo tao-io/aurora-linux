@@ -1,0 +1,11 @@
+[Unit]
+Description=Apple M4 native GPU and display initialization
+After=systemd-udev-trigger.service
+Before=sddm.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/libexec/m4-graphics-init.py
+RemainAfterExit=yes
+TimeoutStartSec=50
+# Firmware and scanout owners remain pinned until shutdown. No unsafe unload.

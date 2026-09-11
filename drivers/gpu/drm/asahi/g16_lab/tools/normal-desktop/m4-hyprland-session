@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+set -a
+. /etc/environment.d/90-omarchy-j713-rendering.conf
+. /run/m4-graphics/environment
+set +a
+unset QT_QUICK_BACKEND QSG_RHI_PREFER_SOFTWARE_RENDERER
+export PATH="/opt/m4-hyprland/bin:$PATH"
+if [ -f /run/m4-graphics/capture-compiler ]; then
+    export AGX_COMPILER_CAPTURE_DIR="$HOME/.cache/agx-failures"
+    mkdir -p "$AGX_COMPILER_CAPTURE_DIR"
+    chmod 700 "$AGX_COMPILER_CAPTURE_DIR"
+fi
+exec /usr/bin/start-hyprland --path /opt/m4-hyprland/bin/Hyprland -- --config /usr/local/share/m4-desktop/session.lua
