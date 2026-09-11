@@ -843,3 +843,17 @@ Host preparation total fell24.956s to10.302s and cleanup5.735s to0.145s
 across comparable~108s captured intervals. Logging/clocks unchanged.
 Measured baseline without either change is5.05034FPS; requested5x remains
 incomplete. GPU intervals include firmware latency, not utilization counters.
+
+Performance follow-up:40e353 reads shared firmware snapshots with aligned u64
+loads and byte edges, preserving every byte/barrier.181215 passes226thermals
+52.75C but FPS8.17848 vsprior9.51235; CPUprofiledraincost falls, not an FPS win
+claim. Mesaencoderopts181740 then measure10.40117FPS. de314987 opt-in raw
+normal event bytes183030 passes226thermals52C,10.48710FPS. Retirement timing,
+unexpected events, firmware logs, thermal checks and338MHz remain enabled.
+
+Rejected12541061 scratchpayloadreuse182250: firmware recovery statistics0x16
+atjob104 duringdesktopstartup,18thermal samples52.25C, guardreboot. Removed
+both private32MiB andPB>=4MiB clears; that broad assumption is unqualified.
+Revert76afde restores allclears. Logs saved; devcoredump sealed1662808bytes but
+notcollectedbeforeold desktopguardreboot. Newdesktopguard nowcollects it with
+5sbound andno watchdogrenewal onfailure. Do notcallscratchpayloadreuse safe.
