@@ -58,6 +58,12 @@ impl Queue {
         queue.context.write(0, &[255, 255])?;
         queue.context.write(5, &[1])?;
         queue.context.write(0x33, &[255])?;
+        // Normal process scheduling weight. Native allocateSchedulerState
+        // (25G83 TEXT8973c44) supplies this for every queue, not just the first
+        // queue in a process group. Firmware TEXT14f28 defaults it to two only
+        // when creating a group; later queues inherit no value. Leaving zero
+        // starves their proportional timeslice (TEXT15304/15044).
+        queue.context.write(0x26, &[2])?;
         queue.ring_state.u32(0x50, capacity)?;
         // Barrier opcode 4, already-satisfied wait at the owned zero stamp.
         queue.command.u32(0, 4)?;
