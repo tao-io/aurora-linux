@@ -6,6 +6,36 @@
 use kernel::prelude::*;
 use crate::{driver, g16_memory::{self, Buffer}, mmu};
 
+/// One scheduling context for the three engine queues of a logical queue.
+/// Runtime owns this until after all referring queues have stopped and dropped,
+/// matching the common Asahi queue's shared GpuContext ownership.
+pub(crate) struct Context {
+    data: Buffer,
+}
+
+impl Context {
+    pub(crate) fn new(dev: &driver::AsahiDevice, vm: &mmu::Vm) -> Result<Self> {
+        let mut data = Buffer::new(dev, vm, 0x38)?;
+        data.write(0, &[255, 255])?;
+        data.write(5, &[1])?;
+        data.write(0x33, &[255])?;
+        // Normal process scheduling weight. Native allocateSchedulerState
+        // (25G83 TEXT8973c44) supplies this for every logical queue. Firmware
+        // TEXT14f28 defaults it only when creating a new process group.
+        data.write(0x26, &[2])?;
+        Ok(Self { data })
+    }
+    pub(crate) fn registered(&mut self) -> Result<bool> {
+        let mut state = [0; 3];
+        self.data.read(0, &mut state)?;
+        Ok(state[0] != 255 && state[1] != 255 && state[2] == 4)
+    }
+    #[cfg(CONFIG_DEV_COREDUMP)]
+    pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
+        dump.buffer("queue-context", &mut self.data, 0x38)
+    }
+}
+
 pub(crate) struct Queue {
     capacity: u32,
     notification: Buffer,
@@ -15,13 +45,13 @@ pub(crate) struct Queue {
     ring_state: Buffer,
     ring: Buffer,
     notifier: Buffer,
-    context: Buffer,
     command: Buffer,
     stamp: Buffer,
 }
 
 impl Queue {
-    pub(crate) fn new(dev: &driver::AsahiDevice, vm: &mmu::Vm, capacity: u32) -> Result<Self> {
+    pub(crate) fn new(dev: &driver::AsahiDevice, vm: &mmu::Vm, context: &Context,
+        capacity: u32) -> Result<Self> {
         // Pipe messages carry a u16 ring index. Ring wrap uses a power-of-two
         // mask; capacity is supplied by the queue policy rather than a lab cap.
         if !capacity.is_power_of_two() || !(2..=65536).contains(&capacity) { return Err(EINVAL); }
@@ -34,7 +64,6 @@ impl Queue {
             ring_state: Buffer::new(dev, vm, 0x60)?,
             ring: Buffer::new(dev, vm, capacity as usize * 8)?,
             notifier: Buffer::new(dev, vm, 0x18)?,
-            context: Buffer::new(dev, vm, 0x38)?,
             command: Buffer::new(dev, vm, 0x40)?,
             stamp: Buffer::new(dev, vm, 8)?,
         };
@@ -53,17 +82,8 @@ impl Queue {
         queue.info.u64(0x38, 0xffff000000000000)?;
         queue.info.u32(0x48, 2)?;
         queue.info.u32(0x4c, u32::MAX)?;
-        queue.info.u64(0xa4, queue.context.va())?;
+        queue.info.u64(0xa4, context.data.va())?;
         queue.notifier.u64(8, queue.notifier.va())?;
-        queue.context.write(0, &[255, 255])?;
-        queue.context.write(5, &[1])?;
-        queue.context.write(0x33, &[255])?;
-        // Normal process scheduling weight. Native allocateSchedulerState
-        // (25G83 TEXT8973c44) supplies this for every queue, not just the first
-        // queue in a process group. Firmware TEXT14f28 defaults it to two only
-        // when creating a group; later queues inherit no value. Leaving zero
-        // starves their proportional timeslice (TEXT15304/15044).
-        queue.context.write(0x26, &[2])?;
         queue.ring_state.u32(0x50, capacity)?;
         // Barrier opcode 4, already-satisfied wait at the owned zero stamp.
         queue.command.u32(0, 4)?;
@@ -113,11 +133,10 @@ impl Queue {
     }
     pub(crate) fn address(&self) -> u64 { self.info.va() }
     #[cfg(CONFIG_DEV_COREDUMP)]
-    pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump, names: [&str; 3]) -> Result {
+    pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump, names: [&str; 2]) -> Result {
         // Includes the complete 128-node firmware scheduler ring at +0xb0.
         dump.buffer(names[0], &mut self.info, 0x24c0)?;
-        dump.buffer(names[1], &mut self.context, 0x38)?;
-        dump.buffer(names[2], &mut self.ring_state, 0x60)
+        dump.buffer(names[1], &mut self.ring_state, 0x60)
     }
     /// InitPB is consumed together with the following TA; publish them as one
     /// batch rather than waiting for a completion the init packet never emits.
@@ -142,10 +161,5 @@ impl Queue {
         Ok([self.info.read_u32(0x20)?, self.info.read_u32(0x24)?, self.info.read_u32(0x28)?,
             self.ring_state.read_u32(0x30)?, self.ring_state.read_u32(0x40)?,
             self.info.read_u32(0x80)?])
-    }
-    pub(crate) fn context_registered(&mut self) -> Result<bool> {
-        let mut state = [0; 3];
-        self.context.read(0, &mut state)?;
-        Ok(state[0] != 255 && state[1] != 255 && state[2] == 4)
     }
 }

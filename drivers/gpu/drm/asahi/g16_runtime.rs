@@ -15,6 +15,7 @@ struct Inner {
     queue: crate::g16_queue::Queue,
     compute_queue: crate::g16_queue::Queue,
     fragment_queue: crate::g16_queue::Queue,
+    queue_context: crate::g16_queue::Context,
     fragment_registered: bool,
     retired_render: Option<KBox<crate::g16_render_job::Render>>,
     // Older than retired_render: firmware's replacement has itself retired.
@@ -294,11 +295,12 @@ impl Runtime {
             if let Err(error) = (|| -> Result {
                 let mut dump = crate::g16_fault::Dump::new(active.packet.id)?;
                 inner.config.capture_fault(&mut dump)?;
-                inner.queue.capture_fault(&mut dump, ["queue-ta", "context-ta", "ring-state-ta"])?;
+                inner.queue_context.capture_fault(&mut dump)?;
+                inner.queue.capture_fault(&mut dump, ["queue-ta", "ring-state-ta"])?;
                 inner.fragment_queue.capture_fault(&mut dump,
-                    ["queue-fragment", "context-fragment", "ring-state-fragment"])?;
+                    ["queue-fragment", "ring-state-fragment"])?;
                 inner.compute_queue.capture_fault(&mut dump,
-                    ["queue-compute", "context-compute", "ring-state-compute"])?;
+                    ["queue-compute", "ring-state-compute"])?;
                 dump.publish(inner.drm.as_ref())
             })() {
                 // Snapshot allocation/read failure must not replace the GPU
@@ -318,13 +320,14 @@ impl Runtime {
         // is stopped, and Runtime::drop stops ASC before dropping this UAT.
         let uat = unsafe { mmu::Uat::new_t8132(&drm, device.firmware()) }?;
         let mut config = crate::g16_config::Config::new(pdev, &drm, uat.kernel_vm(), uat.kernel_lower_vm(), device.firmware())?;
-        let queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
-        let compute_queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
-        let fragment_queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), 256)?;
+        let queue_context = crate::g16_queue::Context::new(&drm, uat.kernel_vm())?;
+        let queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), &queue_context, 256)?;
+        let compute_queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), &queue_context, 256)?;
+        let fragment_queue = crate::g16_queue::Queue::new(&drm, uat.kernel_vm(), &queue_context, 256)?;
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, fragment_registered:false, retired_render:None,reusable_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, active: None }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,reusable_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, active: None }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {
@@ -394,7 +397,7 @@ impl Runtime {
             inner.device.check_boot_pstate()?;
             let pipe = inner.config.pipe_indices(0)?;
             let queue = inner.queue.status()?;
-            if pipe == [next; 3] && queue == [1, 1, 1, 1, 1, 0] && inner.queue.context_registered()? {
+            if pipe == [next; 3] && queue == [1, 1, 1, 1, 1, 0] && inner.queue_context.registered()? {
                 let completion = completed.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
                 if completion.elapsed() >= Delta::from_millis(50) {
                     dev_info!(inner.drm.as_ref(), "G16G: owned GEM queue barrier retired, pipe={:?} queue={:?}, context registered, firmware ready\n", pipe, queue);
