@@ -62,7 +62,7 @@ impl Command {
 // recent firmware owner separately; only its retired predecessor returns here.
 // This avoids losing every game allocation when the compositor submits next.
 // Queue/packet ownership bounds lifetime without a global VM-pinning cache.
-pub(crate) type RenderCache = Arc<Mutex<Option<KBox<crate::g16_render_job::Render>>>>;
+pub(crate) type RenderCache = Arc<Mutex<KVec<KBox<crate::g16_render_job::Render>>>>;
 
 pub(crate) struct Packet {
     pub(crate) id: u64,
@@ -152,7 +152,7 @@ impl Queue {
         };
         Ok(Self { entity: sched::Entity::new(&scheduler, priority)?, _scheduler: scheduler,
             shared, dev, vm, usc,
-            render_cache: Arc::pin_init(new_mutex!(None), GFP_KERNEL)?,
+            render_cache: Arc::pin_init(new_mutex!(KVec::new()), GFP_KERNEL)?,
             fences: FenceContexts::new(1, c_str!("asahi_m4_queue"), kernel::static_lock_class!())? })
     }
 }

@@ -163,7 +163,7 @@ impl Runtime {
                 &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,inner.render_counter - 2,
                 [inner.queue.address(),inner.fragment_queue.address()],
                 [inner.queue.notification().address,inner.fragment_queue.notification().address],
-                inner.config.render_stats(), packet.render_cache.lock().take())?),
+                inner.config.render_stats(), packet.render_cache.lock().pop())?),
         };
         let attachments = &packet.commands[index].attachments;
         match &mut work {
@@ -271,7 +271,11 @@ impl Runtime {
                         (render, packet.render_cache.clone())) {
                         // Never put a cache reference inside its own Render:
                         // keeping ownership here avoids an Arc reference cycle.
-                        *cache.lock() = Some(previous);
+                        // Retain all displaced owners: two game passes can
+                        // retire before the compositor gives its owner back.
+                        // Replacing one spare would discard the other pass.
+                        // Allocation failure merely drops this safe spare.
+                        let _ = cache.lock().push(previous, GFP_KERNEL);
                     }
                 }
                 Work::Compute(compute) => {

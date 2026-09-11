@@ -826,3 +826,12 @@ their cache, avoiding an Arc cycle. Closing the queue releases reusable state;
 the latest hardware owner remains retained as required by firmware lifetime.
 No logging, barriers, memory clears, retirement checks or clocks removed.
 Module builds; live measurement/qualification follows.
+
+The first queue-local single-spare version678d0a854816 passed90s SuperTux174430,
+227thermal samples52.5C, improving5.05034 to5.50245FPS. Alternating game passes
+still discarded one another's spares: a prior game owner returns after the
+compositor retires, replacing the other safe game owner. Retain a queue-owned
+vector of displaced owners instead. Pop before allocation; only allocate when
+empty. The runtime's active/latest owners bound outstanding demand; this adds
+no fixed rendering limit. Cache-vector allocation failure drops only the safe
+spare. Modulebuild passes; new live measurement follows.
