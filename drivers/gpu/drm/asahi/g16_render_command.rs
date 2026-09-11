@@ -13,6 +13,7 @@ pub(crate) struct Args {
     pub uma: u64, pub uma_aux: u64, pub timestamp_storage: u64,
     pub context: u32, pub generation: u8, pub counter: u64,
     pub uuid: u32, pub stamp: u32, pub event_slot: u32,
+    pub fragment_slot: u32, pub fragment_stamp: u32,
     pub pb_id: u32, pub pass_id: u32,
 }
 // Normal single-pass mode in matched 25G83 J713 captures. The native producer
@@ -38,6 +39,7 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
     let total = sequence_size(stage);
     if command.len() < stage.command_size() || sku.len() < total { return Err(BuildError::BufferTooSmall); }
     if a.context >= 64 || a.generation == 0 || a.event_slot >= 128 || a.stamp == 0
+        || a.fragment_slot >= 128 || a.fragment_stamp == 0
         || ![a.command, a.sku, a.queue, a.stats, a.pb_slot, a.manager, a.pb_aux,
               a.notifier, a.shared_stamp, a.stamp_address, a.uma,
               a.timestamp_storage].iter().all(|p| valid_fw(*p))
@@ -62,6 +64,12 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
             put(command, off, value, size);
         }
         command[0x917] = a.generation;
+        // Native submitBuffer 8a0306c copies the peer fragment event here.
+        // Firmware 588c/58cc uses its slot and stamp generation to schedule
+        // a partial fragment when TA exhausts parameter pages. Zero names
+        // an unrelated event, leaving TA waiting for a fragment it cannot run.
+        put(command, 0x77c, a.fragment_slot as u64, 4);
+        put(command, 0x780, a.fragment_stamp as u64, 4);
     } else {
         for (off, value, size) in [
             (0x14, a.sku, 8), (0x1c, total as u64, 4), (0x20, a.notifier, 8),

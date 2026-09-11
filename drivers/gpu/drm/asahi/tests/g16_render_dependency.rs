@@ -23,7 +23,7 @@ fn native_start_and_command_counters_agree_without_truncation() {
             pb_slot:p,manager:p,pb_aux:p,notifier:p,shared_stamp:p,
             stamp_address:p,uma:p,uma_aux:0x7100010000,timestamp_storage:p+0x600,
             context:2,generation:1,counter,uuid:42,stamp:0x100,event_slot:0x70,
-            pb_id:0,pass_id:0,
+            fragment_slot:0x71,fragment_stamp:0x432100,pb_id:0,pass_id:0,
         };
         let mut command = [0;0xca0];
         let mut sku = [0;0x400];
@@ -39,6 +39,9 @@ fn native_start_and_command_counters_agree_without_truncation() {
             assert_eq!(sku[0x288 + 0xb1], 1);
             assert_eq!(&command[0xbec..0xbf0], &[0;4]);
         } else {
+            // Firmware's partial-render lookup takes the low seven slot bits
+            // and the generation byte at +781, independently of TA's event.
+            assert_eq!(&command[0x77c..0x784], &[0x71,0,0,0,0,0x21,0x43,0]);
             assert_eq!(sku[0x268 + 0x8d], 1);
             assert_eq!(&command[0x8a4..0x8a8], &[0;4]);
         }
