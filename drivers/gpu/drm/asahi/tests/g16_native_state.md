@@ -198,3 +198,16 @@ main-thread frames averaged2.015FPS. This qualifies instrumentation, not a speed
 or a fix for the separately recorded completion/visibility defect.
 Workspace tools/gpu-phase-summary.py analyzes complete retained kernel logs
 without comparing printk and CLOCK_MONOTONIC as if they were the same clock.
+
+## Non-timeout fault evidence (2026-09-11)
+
+Move the existing retained firmware/queue/render snapshot from the timeout-only
+branch to the common active-job error path. MMU/firmware EIO failures now request
+the same snapshot before fail_job; allocation/read failure does not replace the
+original error or release DMA owners. No new MMIO or application buffer reads.
+
+ARM64 module build passed. Guarded 180-second actual 0 A.D. control
+`20260911T135629953009Z-restored-scratch-reset-0ad-control` passed, 385 thermal
+samples, peak 51.75 C; final buildings/shadows visually inspected. This tests
+normal operation, not a deliberately induced EIO snapshot. The rejected private
+scratch-clear omission is fully reverted; it faulted in experiment134701.

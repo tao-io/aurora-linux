@@ -219,6 +219,8 @@ impl Runtime {
             Ok(pending) => pending,
             Err(error) => {
                 let _ = self.inner.device.log_engine_state();
+                #[cfg(CONFIG_DEV_COREDUMP)]
+                self.capture_active_fault();
                 self.fail_job(id, error); false
             }
         }
@@ -298,28 +300,36 @@ impl Runtime {
                 Work::Render(r) => r.log_progress(&inner.drm)?,
             }
             inner.config.log_firmware_state(&inner.drm)?;
-            #[cfg(CONFIG_DEV_COREDUMP)]
-            if let Err(error) = (|| -> Result {
-                let mut dump = crate::g16_fault::Dump::new(active.packet.id)?;
-                inner.config.capture_fault(&mut dump)?;
-                inner.queue_context.capture_fault(&mut dump)?;
-                inner.queue.capture_fault(&mut dump, ["queue-ta", "ring-state-ta"])?;
-                inner.fragment_queue.capture_fault(&mut dump,
-                    ["queue-fragment", "ring-state-fragment"])?;
-                inner.compute_queue.capture_fault(&mut dump,
-                    ["queue-compute", "ring-state-compute"])?;
-                if let Work::Render(render) = &mut active.work {
-                    render.capture_fault(&mut dump)?;
-                }
-                dump.publish(inner.drm.as_ref())
-            })() {
-                // Snapshot allocation/read failure must not replace the GPU
-                // timeout or release any of the unretired command owners.
-                dev_warn!(inner.drm.as_ref(), "G16G: firmware fault snapshot failed: {:?}\n", error);
-            }
             return Err(ETIMEDOUT);
         }
         Ok(true)
+    }
+
+    /// Preserve non-timeout firmware/MMU failures as well as slow jobs.
+    /// Called once before fail_job marks the runtime failed; retained DMA
+    /// owners remain alive and snapshot failure cannot replace the GPU error.
+    #[cfg(CONFIG_DEV_COREDUMP)]
+    fn capture_active_fault(&mut self) {
+        let inner = &mut *self.inner;
+        let Some(active) = inner.active.as_mut() else { return; };
+        if let Err(error) = (|| -> Result {
+            let mut dump = crate::g16_fault::Dump::new(active.packet.id)?;
+            inner.config.capture_fault(&mut dump)?;
+            inner.queue_context.capture_fault(&mut dump)?;
+            inner.queue.capture_fault(&mut dump, ["queue-ta", "ring-state-ta"])?;
+            inner.fragment_queue.capture_fault(&mut dump,
+                ["queue-fragment", "ring-state-fragment"])?;
+            inner.compute_queue.capture_fault(&mut dump,
+                ["queue-compute", "ring-state-compute"])?;
+            if let Work::Render(render) = &mut active.work {
+                render.capture_fault(&mut dump)?;
+            }
+            dump.publish(inner.drm.as_ref())
+        })() {
+            // Snapshot allocation/read failure must not replace the GPU
+            // error or release any of the unretired command owners.
+            dev_warn!(inner.drm.as_ref(), "G16G: firmware fault snapshot failed: {:?}\n", error);
+        }
     }
 
     pub(crate) fn new(pdev: &platform::Device<Core>, device: Device) -> Result<Self> {
