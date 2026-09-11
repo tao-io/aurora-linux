@@ -290,6 +290,19 @@ impl Runtime {
                 Work::Render(r) => r.log_progress(&inner.drm)?,
             }
             inner.config.log_firmware_state(&inner.drm)?;
+            #[cfg(CONFIG_DEV_COREDUMP)]
+            if let Err(error) = (|| -> Result {
+                let mut dump = crate::g16_fault::Dump::new(active.packet.id)?;
+                inner.config.capture_fault(&mut dump)?;
+                inner.queue.capture_fault(&mut dump, "queue-ta")?;
+                inner.fragment_queue.capture_fault(&mut dump, "queue-fragment")?;
+                inner.compute_queue.capture_fault(&mut dump, "queue-compute")?;
+                dump.publish(inner.drm.as_ref())
+            })() {
+                // Snapshot allocation/read failure must not replace the GPU
+                // timeout or release any of the unretired command owners.
+                dev_warn!(inner.drm.as_ref(), "G16G: firmware fault snapshot failed: {:?}\n", error);
+            }
             return Err(ETIMEDOUT);
         }
         Ok(true)

@@ -106,6 +106,11 @@ impl Queue {
         self.append_batch_idle(&[command])
     }
     pub(crate) fn address(&self) -> u64 { self.info.va() }
+    #[cfg(CONFIG_DEV_COREDUMP)]
+    pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump, name: &str) -> Result {
+        // Includes the complete 128-node firmware scheduler ring at +0xb0.
+        dump.buffer(name, &mut self.info, 0x24c0)
+    }
     /// InitPB is consumed together with the following TA; publish them as one
     /// batch rather than waiting for a completion the init packet never emits.
     pub(crate) fn append_batch_idle(&mut self, commands: &[u64]) -> Result<(u64, u32)> {

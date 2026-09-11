@@ -20,6 +20,8 @@ mod fw;
 mod g15_boot;
 mod g15_initdata;
 mod g16_firmware;
+#[cfg(CONFIG_DEV_COREDUMP)]
+mod g16_fault;
 mod g16_device;
 mod g16_rtkit;
 mod g16_runtime;

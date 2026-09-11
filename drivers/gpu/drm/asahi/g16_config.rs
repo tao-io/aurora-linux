@@ -364,6 +364,29 @@ impl Config {
         self.object(Object::FirmwareData).read_u32(0xeae8)
     }
     pub(crate) fn reset_trace_budget(&mut self) { self.trace_seen = [0; 2]; }
+    #[cfg(CONFIG_DEV_COREDUMP)]
+    pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
+        use Object::*;
+        // The loader mapping contains only the admitted firmware data RAM.
+        let map = self.loader.iosys_map(0, 0x13c000)?;
+        dump.record("firmware-data", 0xfffffc0000060000, 0x13c000, |out| {
+            for (i, byte) in out.iter_mut().enumerate() {
+                // SAFETY: bounded read of the retained WC RAM mapping above.
+                *byte = unsafe { map.as_ptr().add(i).read_volatile() };
+            }
+            Ok(())
+        })?;
+        for (object, name) in [(Root, "initdata-root"), (Runtime, "runtime"),
+            (Globals, "globals"), (FirmwareData, "host-firmware-data"),
+            (Main, "main"), (PowerPerformance, "power-performance"), (Timer, "timer"),
+            (Activity254, "vertex-engine"), (Activity25c, "fragment-engine"),
+            (Activity264, "compute-engine"), (UmaTable, "uma-table"),
+            (ParameterTable, "parameter-table"), (KtraceState, "trace-state"),
+            (KtraceData, "trace-data")] {
+            dump.buffer(name, self.object(object), SIZES[object as usize])?;
+        }
+        Ok(())
+    }
     pub(crate) fn rearm_scheduler(&mut self) -> Result {
         if self.object(Object::FirmwareData).read_u32(0x4fd4)? != 0 { return Err(EBUSY); }
         self.object(Object::FirmwareData).u32(0x4fd4, 1)?;
