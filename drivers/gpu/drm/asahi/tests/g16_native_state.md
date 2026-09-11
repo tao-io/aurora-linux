@@ -345,3 +345,29 @@ native submission; maximum observed cursor IPC latency was 82.819 ms.
 The history reader took at most 0.813 ms. No missing history records or DCP
 failures occurred. This reproduces a smaller stutter, not the user's estimated
 200 ms worst case, and does not establish a steady 60 FPS desktop.
+
+
+### 2026-09-11 nonblocking VM health queries
+
+A menu-toggle CPU profile found Hyprland's Zink submission thread spinning on
+the runtime mutex in `hk_check_status` -> VM_STATUS -> `submission_error`.
+Device status is now a separately retained atomic Health object containing no
+device references. Firmware crash, lost crash-log mapping, publication/job
+failure and disconnect remain visible; submission/resource operations retain
+the runtime mutex. Every former runtime `failed` assignment now stores the
+same sticky atomic state used by status readers. Unregister publishes failure
+before waiting for teardown; failed DMA owners remain pinned as before.
+
+ARM64 modules build passed, SHA-256
+`63c23de5373467c15713c7b0d7217bf244af2af68c0f2e11b9c8819e31b5247e`.
+Guarded J713 run `20260911T220456787988Z-quickshell-nonblocking-health` passed
+95 health checks, 977 thermal samples, peak 56 C. Native scanout verified
+3,922,365 red pixels and screencopy verified 3,952,605; Quickshell reported
+Vulkan on Apple M4. No fault injection was performed in this latency test.
+
+This fixes query serialization, but did NOT remove the ~80 ms menu-opening
+input stalls: a 20-second toggle test still had max66.610ms presentation gap.
+Subsequent main-thread /proc wait sampling identified blocking DRM atomic
+commits, not VM status, throughout the input stalls. Captured atomic requests
+had flags=0, no new-frame event, and reprogrammed the existing primary plane.
+Follow-up is the compositor's deferred commit without a pending new buffer.

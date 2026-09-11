@@ -15,6 +15,7 @@ pub(crate) const USER_TOP: u64 = (1u64 << 42) - 2 * mmu::UAT_PGSZ as u64;
 pub(crate) struct Registered {
     registration: Pin<KBox<Mutex<Option<drm::driver::Registration<driver::AsahiDriver>>>>>,
     shared: Shared,
+    health: Arc<crate::g16_rtkit::Health>,
 }
 
 impl Registered {
@@ -29,14 +30,15 @@ impl Registered {
         runtime.boot(pdev)?;
         let drm = runtime.drm();
         let mask = runtime.core_mask();
+        let health = runtime.health();
         let shared = Arc::pin_init(new_mutex!(Some(runtime)), GFP_KERNEL)?;
         // Install the teardown owner before publishing the backend. On any
         // later construction failure Drop breaks the runtime -> DRM cycle.
-        let owner = Self { registration: KBox::pin_init(new_mutex!(None), GFP_KERNEL)?, shared: shared.clone() };
+        let owner = Self { registration: KBox::pin_init(new_mutex!(None), GFP_KERNEL)?, shared: shared.clone(), health: health.clone() };
         let scheduler = Arc::new(drm::sched::Scheduler::new(drm.as_ref(), 4, 1, 0,
             3000, kernel::c_str!("asahi_m4_sched"))?, GFP_KERNEL)?;
         let backend: Arc<dyn DrmGpu> = Arc::new(Backend {
-            shared, scheduler, ids: gpu::SequenceIDs::default(), core_mask: mask,
+            shared, scheduler, ids: gpu::SequenceIDs::default(), core_mask: mask, health,
         }, GFP_KERNEL)?;
         if !drm.gpu.populate(backend) { return Err(EBUSY); }
         *owner.registration.lock() = Some(drm::driver::Registration::new(&drm, 0)?);
@@ -49,6 +51,9 @@ impl Registered {
     // Called by platform unbind while managed MMIO and mailbox resources are
     // still accessible. Final driver Drop occurs after devres revocation.
     pub(crate) fn stop(&self) {
+        // Publish disconnect before waiting for the hardware mutex. Status
+        // queries remain nonblocking, including during device removal.
+        self.health.mark_failed();
         drop(self.registration.lock().take());
         // The same mutex serializes every hardware operation. After taking
         // the runtime no surviving file can acquire it. Drop stops ASC, or
@@ -64,6 +69,7 @@ impl Drop for Registered {
 
 struct Backend {
     shared: Shared,
+    health: Arc<crate::g16_rtkit::Health>,
     scheduler: Arc<drm::sched::Scheduler<crate::g16_submit::Job>>,
     ids: gpu::SequenceIDs,
     core_mask: u32,
@@ -73,7 +79,9 @@ impl DrmGpu for Backend {
     fn init(&self) -> Result { if self.is_crashed() { Err(ENODEV) } else { Ok(()) } }
     fn ids(&self) -> &gpu::SequenceIDs { &self.ids }
     fn is_crashed(&self) -> bool {
-        !self.shared.lock().as_ref().is_some_and(|runtime| runtime.healthy())
+        // Vulkan checks device status even for an already signaled fence.
+        // Do not wait for unrelated command allocation or retirement here.
+        !self.health.healthy()
     }
     fn update_globals(&self) {}
     fn supports_vm_status(&self) -> bool { true }

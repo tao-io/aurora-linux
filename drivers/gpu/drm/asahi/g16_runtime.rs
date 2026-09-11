@@ -26,7 +26,6 @@ struct Inner {
     device: Device,
     generation: u32,
     gpu_pending: bool,
-    failed: bool,
     user_generation: u8,
     render_stamp: u32,
     render_counter: u64,
@@ -101,7 +100,9 @@ pub(crate) struct Runtime {
 impl Runtime {
     pub(crate) fn drm(&self) -> driver::AsahiDevRef { self.inner.drm.clone() }
     pub(crate) fn core_mask(&self) -> u32 { self.inner.device.core_mask() }
-    pub(crate) fn healthy(&self) -> bool { !self.inner.failed && self.inner.state.healthy() }
+    pub(crate) fn health(&self) -> Arc<g16_rtkit::Health> { self.inner.state.health.clone() }
+
+    pub(crate) fn healthy(&self) -> bool { self.inner.state.healthy() }
     pub(crate) fn new_user_vm(&mut self, id: u64, range: core::ops::Range<u64>) -> Result<mmu::Vm> {
         use crate::util::RangeExt;
         let driver_range = 0x70_0000_0000..0x80_0000_0000;
@@ -181,7 +182,7 @@ impl Runtime {
         inner.gpu_pending = true;
         let publish = inner.publish_active();
         if let Err(error) = publish {
-            inner.failed = true;
+            inner.state.health.mark_failed();
             dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven after userspace publication error {:?}\n", error);
         }
         publish
@@ -191,7 +192,7 @@ impl Runtime {
         let inner = &mut *self.inner;
         if let Some(active) = inner.active.as_ref() {
             if active.packet.id == id {
-                inner.failed = true;
+                inner.state.health.mark_failed();
                 active.packet.finish(Err(error));
                 dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven, job {} error {:?}; retaining DMA owners\n", id, error);
             }
@@ -201,11 +202,11 @@ impl Runtime {
     /// Poll one completion snapshot. The worker drops the runtime mutex between
     /// snapshots, so queued ioctls and device removal can make progress.
     pub(crate) fn service_job(&mut self) -> bool {
-        if self.inner.failed { return false; }
+        if self.inner.state.health.failed() { return false; }
         if self.inner.active.is_none() {
             let inner = &mut *self.inner;
             if let Err(error) = inner.config.drain(&inner.drm) {
-                inner.failed = true;
+                inner.state.health.mark_failed();
                 inner.gpu_pending = true;
                 let _ = inner.device.log_engine_state();
                 dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven after idle firmware error {:?}; retaining DMA owners\n", error);
@@ -361,7 +362,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, active: None }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, active: None }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {
@@ -541,6 +542,7 @@ impl Runtime {
 
 impl Drop for Runtime {
     fn drop(&mut self) {
+        self.inner.state.health.mark_failed();
         if self.inner.gpu_pending {
             // Stopping ASC alone does not stop GPU DMA. Keep the complete
             // transport, mappings, GEM objects and PMP vote until reboot.

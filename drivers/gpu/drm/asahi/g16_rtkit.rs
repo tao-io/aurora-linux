@@ -20,9 +20,28 @@ pub(crate) struct State {
     dev: ARef<platform::Device>,
     drm: crate::driver::AsahiDevRef,
     data: Region,
+    pub(crate) health: Arc<Health>,
+    claimed: AtomicBool,
+}
+
+/// Shared status contains no device references, so DRM files may retain it
+/// after runtime teardown without retaining MMIO or creating a DRM cycle.
+pub(crate) struct Health {
     crashed: AtomicBool,
     mapped: AtomicBool,
-    claimed: AtomicBool,
+    failed: AtomicBool,
+}
+
+impl Health {
+    pub(crate) fn healthy(&self) -> bool {
+        self.mapped.load(Ordering::Acquire)
+            && !self.crashed.load(Ordering::Acquire)
+            && !self.failed()
+    }
+
+    pub(crate) fn failed(&self) -> bool { self.failed.load(Ordering::Acquire) }
+
+    pub(crate) fn mark_failed(&self) { self.failed.store(true, Ordering::Release); }
 }
 
 impl State {
@@ -32,8 +51,11 @@ impl State {
                 dev: dev.into(),
                 drm,
                 data,
-                crashed: AtomicBool::new(false),
-                mapped: AtomicBool::new(false),
+                health: Arc::new(Health {
+                    crashed: AtomicBool::new(false),
+                    mapped: AtomicBool::new(false),
+                    failed: AtomicBool::new(false),
+                }, GFP_KERNEL)?,
                 claimed: AtomicBool::new(false),
             },
             GFP_KERNEL,
@@ -41,7 +63,7 @@ impl State {
     }
 
     pub(crate) fn healthy(&self) -> bool {
-        self.mapped.load(Ordering::Acquire) && !self.crashed.load(Ordering::Acquire)
+        self.health.healthy()
     }
 }
 
@@ -57,7 +79,7 @@ impl Drop for FirmwareBuffer {
     fn drop(&mut self) {
         // Includes allocation failure in RTKit's wrapper after shmem_map
         // returned: readiness must not survive loss of the actual mapping.
-        self.state.mapped.store(false, Ordering::Release);
+        self.state.health.mapped.store(false, Ordering::Release);
     }
 }
 
@@ -78,7 +100,7 @@ impl rtkit::Operations for Operations {
     type Buffer = FirmwareBuffer;
 
     fn crashed(state: ArcBorrow<'_, State>, crashlog: Option<&[u8]>) {
-        state.crashed.store(true, Ordering::Release);
+        state.health.crashed.store(true, Ordering::Release);
         dev_err!(
             state.dev.as_ref(),
             "G16G: firmware crashed, retained crashlog bytes={}\n",
@@ -121,7 +143,7 @@ impl rtkit::Operations for Operations {
             physical,
             size
         );
-        state.mapped.store(true, Ordering::Release);
+        state.health.mapped.store(true, Ordering::Release);
         Ok(FirmwareBuffer {
             state: state.into(),
             mapping,
