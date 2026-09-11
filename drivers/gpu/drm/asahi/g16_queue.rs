@@ -107,9 +107,11 @@ impl Queue {
     }
     pub(crate) fn address(&self) -> u64 { self.info.va() }
     #[cfg(CONFIG_DEV_COREDUMP)]
-    pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump, name: &str) -> Result {
+    pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump, names: [&str; 3]) -> Result {
         // Includes the complete 128-node firmware scheduler ring at +0xb0.
-        dump.buffer(name, &mut self.info, 0x24c0)
+        dump.buffer(names[0], &mut self.info, 0x24c0)?;
+        dump.buffer(names[1], &mut self.context, 0x38)?;
+        dump.buffer(names[2], &mut self.ring_state, 0x60)
     }
     /// InitPB is consumed together with the following TA; publish them as one
     /// batch rather than waiting for a completion the init packet never emits.

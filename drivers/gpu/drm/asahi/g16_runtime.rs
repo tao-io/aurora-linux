@@ -294,9 +294,11 @@ impl Runtime {
             if let Err(error) = (|| -> Result {
                 let mut dump = crate::g16_fault::Dump::new(active.packet.id)?;
                 inner.config.capture_fault(&mut dump)?;
-                inner.queue.capture_fault(&mut dump, "queue-ta")?;
-                inner.fragment_queue.capture_fault(&mut dump, "queue-fragment")?;
-                inner.compute_queue.capture_fault(&mut dump, "queue-compute")?;
+                inner.queue.capture_fault(&mut dump, ["queue-ta", "context-ta", "ring-state-ta"])?;
+                inner.fragment_queue.capture_fault(&mut dump,
+                    ["queue-fragment", "context-fragment", "ring-state-fragment"])?;
+                inner.compute_queue.capture_fault(&mut dump,
+                    ["queue-compute", "context-compute", "ring-state-compute"])?;
                 dump.publish(inner.drm.as_ref())
             })() {
                 // Snapshot allocation/read failure must not replace the GPU
