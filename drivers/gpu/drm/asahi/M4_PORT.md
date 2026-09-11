@@ -835,3 +835,11 @@ vector of displaced owners instead. Pop before allocation; only allocate when
 empty. The runtime's active/latest owners bound outstanding demand; this adds
 no fixed rendering limit. Cache-vector allocation failure drops only the safe
 spare. Modulebuild passes; new live measurement follows.
+
+Queue pool8e578 qualified in90s SuperTux175837,226thermal samples52C.
+With the same ZINK_INLINE_UNIFORMS=1 used by the prior7.36096FPS control,
+it measured8.49472FPS (672complete frames after20s startup exclusion).
+Host preparation total fell24.956s to10.302s and cleanup5.735s to0.145s
+across comparable~108s captured intervals. Logging/clocks unchanged.
+Measured baseline without either change is5.05034FPS; requested5x remains
+incomplete. GPU intervals include firmware latency, not utilization counters.
