@@ -210,6 +210,14 @@ impl Config {
         objects[Main as usize].write(0x640, &iomaps[..])?;
         self.object(Main).u32(0xea0, 1)?;
         self.object(Main).u32(0xeb8, 1)?;
+        // J713's reference clock and native firmware maintenance cadence.
+        // 25G83 TEXT34d60 derives the scheduler timer from the clock in kHz;
+        // TEXT37aa4 uses the first interval as a divisor before maintenance,
+        // and TEXT37a80 uses the power sampling interval. Zero is not disabled:
+        // it supplies a zero timer interval and skips scheduling updates.
+        self.object(Main).u32(0xed0, 24_000)?;
+        self.object(Main).u32(0xed4, 1)?;
+        self.object(Main).u32(0xed8, 8)?;
         self.object(Main).u64(0xf24, 0x0000000607002004)?;
         // The physical core-position count is independent of the OPP cap.
         // Native initFirmwareData (25G83 TEXT8993918) copies the accelerator's
