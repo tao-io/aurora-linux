@@ -240,13 +240,20 @@ impl Runtime {
             && queue == [next, next, next, next, next, 0]
             && pipe == [active.pipe_next[pipe_index]; 3] {
             if let Work::Render(render) = &mut active.work {
-                dev_info!(inner.drm.as_ref(),"G16G: userspace render stage {:?} retired stamps={:x?} queue={:?}\n",render.stage,status,queue);
-                dev_info!(inner.drm.as_ref(), "G16G: render GPU timestamps={:x?}\n", render.timestamps()?);
+                if crate::debug::debug_enabled(crate::debug::DebugFlags::KTraceCh) {
+                    dev_info!(inner.drm.as_ref(),"G16G: userspace render stage {:?} retired stamps={:x?} queue={:?}\n",render.stage,status,queue);
+                }
                 if render.stage == crate::g16_render::Stage::Tiling {
                     render.stage = crate::g16_render::Stage::Fragment;
                     active.started = kernel::time::Instant::<kernel::time::Monotonic>::now();
-                    return Ok(true);
+                    // Both stages were submitted together. The fragment may
+                    // already be retired: check it now instead of forcing a
+                    // worker sleep after observing the TA completion. This
+                    // adds at most one call; the fragment path cannot recurse.
+                    return self.poll_job();
                 }
+                // Preserve both stages' GPU timings once per completed pass.
+                dev_info!(inner.drm.as_ref(), "G16G: render GPU timestamps={:x?}\n", render.timestamps()?);
             } else {
                 if let Work::Compute(compute) = &mut active.work {
                     dev_info!(inner.drm.as_ref(), "G16G: compute completion status={:x?}\n", compute.status()?);

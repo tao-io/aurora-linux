@@ -285,3 +285,41 @@ hidden and30.08FPS open: this is a preparation-cost improvement, not60FPS yet.
 The open interval's551jobs spent1052.22ms preparing and1885.12ms active, compared
 with1161.80ms preparation across555jobs in the prior full-clear comparison.
 Private-memory omission and persistent-UMA experiments are NOT qualified.
+
+## Completion checking and compositor scheduling (2026-09-11)
+
+The completion worker immediately checks the already-published fragment after
+observing TA retirement instead of unconditionally sleeping100us first. This
+can recurse only once per poll: the fragment branch does not recurse. Preserve
+one complete GPU timestamp pair per retired render pass; redundant per-stage
+stamp/queue logs now require KTraceCh. Completion and ownership checks remain.
+
+ARM64 module85cf022a200e passed guarded213545-completion-check startup and warm
+R8/RGBA8 atlas oracle (310410bytes, zero mismatches). Identical six-second motion
+still measured59.77FPS hidden/30.10FPS open; active time dropped only modestly
+(1862.72ms across551openjobs), so do not attribute a major gain to polling.
+
+Within the SAME guard, enabling Hyprland render:new_render_scheduling yielded
+59.38FPS hidden/54.95FPS open. The compositor's native-fence scheduler overlaps
+rendering with presentation instead of falling to half refresh while waiting.
+Keep this supported option in the supervised Omarchy config. Same resolution,
+Mesa binaries, rendering, GPU clock and conservative CPU caps; no software
+fallback, drawing reduction or quality change. This is approximately55FPS,
+not a60FPS qualification yet. Complete experiment evidence is retained by the
+workspace tools under213545-completion-check.
+
+Qualification boundary: the213545guard's end-of-run wrapper failed its obsolete
+assertion requiring the now-optional per-stage log. Rendering/health checks
+passed,565thermal samples peaked55C, but the overall guard result is FAIL and
+it rebooted after collecting evidence. The wrapper now requires a complete,
+nonzero GPU timestamp pair instead. This must pass in the follow-up run before
+claiming a complete qualification of the completion-log change.
+
+Follow-up214231-normal-scheduler passed the corrected wrapper, all50health
+checks and522thermal samples (peak67.5C). Starting with normalCPU ceilings
+4104/2892MHz measured59.71FPS hidden/41.97FPS open across ten-second intervals;
+higher CPU clocks did not improve pacing. Caps were lowered back to1860MHz
+(the kernel rounds the P cluster to1800MHz), with all guards still active.
+The user reports mostly60FPS with occasional severe dips; these spikes remain
+an investigation target, not a stable60FPS claim. Preserve new scheduling and
+use the cooler caps for further timing work.

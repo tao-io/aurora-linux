@@ -5,6 +5,8 @@ hl.env("PATH", "/opt/m4-hyprland/bin:/usr/share/omarchy/bin:" .. os.getenv("PATH
 hl.config({
   animations = { enabled = false },
   general = { border_size = 0 },
+  -- Use native-fence scheduling to overlap rendering with presentation.
+  render = { new_render_scheduling = true },
   debug = { disable_logs = false, enable_stdout_logs = true },
 })
 -- The retained framebuffer reports synthetic physical dimensions, so auto
