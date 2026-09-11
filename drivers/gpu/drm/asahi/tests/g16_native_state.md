@@ -243,3 +243,29 @@ exclusion. Original baseline was 5.050340 FPS (5.93x overall improvement).
 83 thermal samples, peak 54.25 C; watchdog60 and the 75 C cutoff remained
 active. Final frame visually inspected: scene, textures and desktop intact.
 This short run is not long-duration thermal or stability qualification.
+
+## Bootstrap command mapping invalidation (2026-09-11)
+
+Quickshell's direct Vulkan backend exposed stale context-zero command
+translations: compute job115 faulted reading an earlier job's auxiliary VA
+0x7104998000 in ASID4 while the new command named ASID5 and auxiliary
+0x71024f4000. A separate OpenGL/Zink shell run reached the desktop but its
+third independently created health-probe VM faulted on an old CDM address
+in ASID6 while the current job used ASID7. Both followed reuse of bootstrap
+command VA0x7000060000 after the prior GEM backing had been dropped.
+
+The permanent low root never obtains a VmBind, so VmInner::slot returned
+None. KernelMapping teardown removed its PTEs and freed the GEM pages without
+invalidating the still-installed context0 translation. Record its explicit
+fixed slot0 in the M4 UAT constructor; existing teardown/remap invalidation
+now sees the actual context. Dynamic VM bindings and other platforms retain
+their previous behavior. No extra command retention pool or global flush
+is added to submission.
+
+ARM64 module build passed. Module244b88c8aefce601f2c9be2626fe3dba2590fa32e0b0e11de486d5b1bb86a3a4
+loaded on a recovered boot with no previous Asahi module loaded. Guarded
+`20260911T194615186543Z-quickshell-vulkan-bootstrap-tlb` passed20 seconds,
+61 thermal samples, peak53.75C, repeated compute checks and native KMS.
+Quickshell's Qt RHI reports Vulkan on Apple M4; process owns Asahi DRM fds
+and loads the private Vulkan driver. Panel and background final frame visually
+correct. Watchdog60/thermal guard unchanged, normal max GPU state9.

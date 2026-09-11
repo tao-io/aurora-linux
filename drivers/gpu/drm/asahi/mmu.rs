@@ -651,6 +651,8 @@ const PAGETABLES_SIZE: usize = UAT_PGSZ;
 struct VmInner {
     dev: driver::AsahiDevRef,
     is_kernel: bool,
+    /// Permanently installed context without a dynamic VmBind lease.
+    fixed_slot: Option<u32>,
     va_range: Range<u64>,
     page_table: UatPageTable,
     mm: mm::Allocator<(), KernelMappingInner>,
@@ -936,6 +938,7 @@ impl gpuvm::DriverGpuVm for VmInner {
 impl VmInner {
     /// Returns the slot index, if this VM is bound.
     fn slot(&self) -> Option<u32> {
+        if let Some(slot) = self.fixed_slot { return Some(slot); }
         if self.is_kernel {
             // The GFX ASC does not care about the ASID. Pick an arbitrary one.
             // TODO: This needs to be a persistently reserved ASID once we integrate
@@ -2058,6 +2061,7 @@ impl Vm {
                     dev: dev.into(),
                     va_range,
                     is_kernel,
+                    fixed_slot: None,
                     page_table,
                     mm,
                     uat_inner,
@@ -4943,6 +4947,15 @@ impl Uat {
             1,
             true,
         )?;
+        if cfg == UatConfig::T8132 {
+            // M4's bootstrap command register lists are fetched through this
+            // low root in context zero. It never acquires a VmBind, but its
+            // mappings are live: dropping/remapping a command must invalidate
+            // context-zero translations before releasing the old GEM pages.
+            // Otherwise reusing the VA can fetch a previous command's ASID,
+            // register list and CDM after those client mappings are gone.
+            kernel_lower_vm.inner.exec_lock(None, false)?.fixed_slot = Some(0);
+        }
         let kernel_vm = Vm::new(dev, inner.clone(), kernel_range, cfg, Some(ttb1), 0, false)?;
 
         dev_info!(dev.as_ref(), "MMU: Kernel page tables created\n");
