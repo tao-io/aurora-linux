@@ -30,6 +30,7 @@ mod g16_submit;
 mod g16_initdata;
 mod g16_memory;
 mod g16_config;
+mod g16_power;
 mod g16_queue;
 mod g16_compute;
 mod g16_attachments;
@@ -92,6 +93,10 @@ kernel::module_platform_driver! {
             default: 0,
             // permissions: 0o644,
             description: "Debug flags",
+        },
+        g16_pstate: u32 {
+            default: 9,
+            description: "J713 fixed firmware performance state (1..9, 338..1470 MHz); bounded monitored development use",
         },
         fault_control: u32 {
             default: 0xb,

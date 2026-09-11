@@ -247,10 +247,10 @@ impl Device {
         Ok(())
     }
 
-    pub(crate) fn check_boot_pstate(&self) -> Result {
+    pub(crate) fn check_pstate(&self) -> Result {
         let value = self.sgx.try_access().ok_or(ENODEV)?.try_read32(0xe01000)?;
-        if value & 0xf > 1 {
-            dev_err!(self.dev.as_ref(), "G16G: unexpected performance state {:#x} exceeds boot test cap\n", value);
+        if value & 0xf > crate::g16_power::requested_state()? {
+            dev_err!(self.dev.as_ref(), "G16G: unexpected performance state {:#x} exceeds configured ceiling\n", value);
             return Err(ERANGE);
         }
         Ok(())

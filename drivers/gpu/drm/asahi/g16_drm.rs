@@ -95,9 +95,8 @@ impl DrmGpu for Backend {
             gpu_revision: hw::GpuRevision::B0 as u32,
             chip_id: 0x8132, num_dies: 1, num_clusters_total: 1,
             num_cores_per_cluster: 10, core_masks: masks,
-            // The port currently retains the qualified boot clock. Do not
-            // advertise higher clocks without a qualified thermal policy.
-            max_frequency_khz: 338000, usc_generation: 3,
+            // Match the configured firmware performance-state ceiling.
+            max_frequency_khz: crate::g16_power::frequency_khz()?, usc_generation: 3,
             gpu_hal_generation: hw::GpuHalGeneration::Hal200 as u32,
             max_commands_per_submission: crate::file::MAX_COMMANDS_PER_SUBMISSION,
         })

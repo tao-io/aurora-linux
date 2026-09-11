@@ -171,7 +171,7 @@ impl Runtime {
             Work::Render(render) => render.set_attachments(attachments)?,
         }
         inner.user_generation = generation;
-        inner.device.check_boot_pstate()?;
+        inner.device.check_pstate()?;
         // Retain all DMA backing before the first shared publication, including
         // failure paths that cannot prove whether a mailbox doorbell arrived.
         inner.active = Some(Active { packet, work, index, queue_next:[0;3],pipe_next:[0;3],
@@ -227,7 +227,7 @@ impl Runtime {
         let inner = &mut *self.inner;
         inner.config.drain(&inner.drm)?;
         if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
-        inner.device.check_boot_pstate()?;
+        inner.device.check_pstate()?;
         let active = inner.active.as_mut().ok_or(EIO)?;
         let status = active.work.status()?;
         let pipe_index = active.work.pipe();
@@ -372,7 +372,7 @@ impl Runtime {
         let mut roots = [(0, 0); 1];
         self.inner.uat.kernel_vm().context_roots(&mut roots)?;
         dev_info!(pdev.as_ref(), "G16G: RTKit IOP/AP running with owned common UAT, context0=[{:#x},{:#x}]; application endpoints started, no initdata sent\n", roots[0].0, roots[0].1);
-        self.inner.device.check_boot_pstate()?;
+        self.inner.device.check_pstate()?;
         self.inner.device.set_power_generation(0)?;
         {
             let inner = &mut *self.inner;
@@ -403,9 +403,11 @@ impl Runtime {
         fsleep(Delta::from_millis(100));
         let inner = &mut *self.inner;
         inner.config.drain(&inner.drm)?;
-        inner.device.check_boot_pstate()?;
+        inner.device.check_pstate()?;
         if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
-        dev_info!(pdev.as_ref(), "G16G: device-control NOP, RIARTT and idle-power policy consumed; firmware ready, boot pstate retained\n");
+        dev_info!(pdev.as_ref(), "G16G: device-control NOP, RIARTT and idle-power policy consumed; firmware ready, performance-state ceiling verified\n");
+        inner.device.log_engine_state()?;
+        inner.config.log_firmware_state(&inner.drm)?;
         self.check_barrier()?;
         self.check_compute()
     }
@@ -421,7 +423,7 @@ impl Runtime {
             let inner = &mut *self.inner;
             inner.config.drain(&inner.drm)?;
             if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
-            inner.device.check_boot_pstate()?;
+            inner.device.check_pstate()?;
             let pipe = inner.config.pipe_indices(0)?;
             let queue = inner.queue.status()?;
             if pipe == [next; 3] && queue == [1, 1, 1, 1, 1, 0] && inner.queue_context.registered()? {
@@ -442,7 +444,7 @@ impl Runtime {
     fn check_compute(&mut self) -> Result {
         use crate::g16_compute::{SLOT, STAMP};
         let inner = &mut *self.inner;
-        inner.device.check_boot_pstate()?;
+        inner.device.check_pstate()?;
         inner.device.log_engine_state()?;
         dev_info!(inner.drm.as_ref(), "G16G: compute publication power-generation={}/{}\n", inner.config.consumed_generation()?, inner.generation);
         let mut roots = [(0, 0); 1];
@@ -468,7 +470,7 @@ impl Runtime {
                 return Err(error);
             }
             if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
-            inner.device.check_boot_pstate()?;
+            inner.device.check_pstate()?;
             // The two firmware stores have different producers: notifier
             // completion and in-order engine-node retirement. Require both,
             // valid timestamp order, queue idle, and a stability interval.
@@ -506,7 +508,7 @@ impl Runtime {
         loop {
             let inner = &mut *self.inner;
             inner.config.drain(&inner.drm)?;
-            inner.device.check_boot_pstate()?;
+            inner.device.check_pstate()?;
             if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
             let indices = inner.config.control_indices()?;
             // The startup NOP is retired without incrementing fw-data+0xeae8;

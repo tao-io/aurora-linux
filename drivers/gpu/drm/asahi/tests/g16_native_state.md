@@ -211,3 +211,35 @@ ARM64 module build passed. Guarded 180-second actual 0 A.D. control
 samples, peak 51.75 C; final buildings/shadows visually inspected. This tests
 normal operation, not a deliberately induced EIO snapshot. The rejected private
 scratch-clear omission is fully reverted; it faulted in experiment134701.
+
+## J713 maximum performance state (2026-09-11)
+
+`asahi.g16_pstate` selects a fixed firmware performance state from 1 through 9;
+the development default is 9 (1,470 MHz), explicitly requested for monitored
+tests. `1` selects 338 MHz. This is fixed performance policy, not an adaptive
+load/thermal governor. Preserve the bounded watchdog and external temperature
+monitor until GPU thermal management is implemented.
+
+`g16_power.rs` records the native J713/25G83 compacted frequency, core voltage,
+SRAM voltage and auxiliary frequency metadata. Source witness:
+`20260911T061054Z-fill-active-fwtrace/executing/firmware-initdata-main.bin`,
+fields +fc8, +1008, +1408 and +1808. Core-position count +fc0 remains 10.
+The constructor explicitly initializes policy bounds, outputs and initial
+target, leaving current state zero for the actual firmware transition. No
+foreign pointers, captured live controller history or PLL register writes.
+The firmware/PMP performs voltage/frequency sequencing; each runtime poll
+validates the hardware state against the configured ceiling. DRM frequency
+metadata uses that same ceiling. Unported controller outputs are fixed by
+this policy; this does not establish that native GPU thermal control works.
+
+ARM64 module build passed; offline execution of the unchanged 25G83 selector
+with these initial inputs selected state 9 with full duty. Guarded experiment
+`20260911T192432058400Z-supertux-max-pstate` passed a 20-second SuperTux run
+under native Hyprland/Zink. Both SGX +e01000 and the firmware current-state
+field reported 9. Same installed Mesa6fbaeadc3f14, inline uniforms and opt-in
+UBO prefetch as the preceding 338 MHz run: 29.948634 FPS versus 13.660367 FPS.
+Measured 560 completed SDL swaps / 18.698682 seconds after 10-second startup
+exclusion. Original baseline was 5.050340 FPS (5.93x overall improvement).
+83 thermal samples, peak 54.25 C; watchdog60 and the 75 C cutoff remained
+active. Final frame visually inspected: scene, textures and desktop intact.
+This short run is not long-duration thermal or stability qualification.

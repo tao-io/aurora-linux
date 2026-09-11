@@ -224,22 +224,54 @@ impl Config {
         // core count here. Firmware TEXT2c2ac imports it for per-core context
         // storage offsets (for example TEXT1af24 uses count * 0x1800).
         self.object(Main).u32(0xfc0, 10)?;
-        // Describe only the powered-off state and the admitted J713 boot OPP.
-        // Native 25G83 initPowerAndPerformanceData publishes MHz here; TEXT
-        // 319c4 imports these entries and their reciprocal period for firmware
-        // accounting. An empty frequency table leaves state 1 with a zero
-        // frequency. Higher OPPs remain
-        // unavailable until GPU thermal policy is implemented and qualified.
-        self.object(Main).u32(0xfc4, 1)?;
-        self.object(Main).u32(0xfcc, 338)?;
-        self.object(Main).u32(0x180c, 338)?;
+        // Publish the J713 compacted tables, including SRAM and auxiliary
+        // accounting frequencies. Hardware voltage sequencing stays in firmware.
+        let pstate = crate::g16_power::requested_state()?;
+        self.object(Main).u32(0xfc4, pstate)?;
+        for state in 0..=pstate as usize {
+            self.object(Main).u32(0xfc8 + state * 4,
+                crate::g16_power::FREQUENCIES_MHZ[state])?;
+            self.object(Main).u32(0x1808 + state * 4,
+                crate::g16_power::AUX_FREQUENCIES_MHZ[state])?;
+            for core in 0..16 {
+                self.object(Main).u32(0x1008 + state * 64 + core * 4,
+                    crate::g16_power::VOLTAGES_MV[state])?;
+                self.object(Main).u32(0x1408 + state * 64 + core * 4,
+                    crate::g16_power::SRAM_VOLTAGES_MV[state])?;
+            }
+        }
+        // Fixed performance policy: the 25G83 selector consumes hundredths
+        // of a state. Zero-filled caps request zero duty, not an unlimited
+        // controller. No captured runtime state or foreign pointers are copied.
+        let units = pstate * 100;
+        for offset in [0x88, 0x8c, 0x98] {
+            self.object(Globals).u32(offset, units)?;
+        }
+        self.object(PowerPerformance).u32(0x10, 4)?;
+        self.object(PowerPerformance).u32(0x14, 0x3f800000)?;
+        self.object(PowerPerformance).u32(0x2c, pstate)?;
+        self.object(PowerPerformance).u32(0x30, pstate)?;
+        // Keep current hardware state at zero until firmware acknowledges
+        // the real transition. Initial actual/target are constructor inputs.
+        for offset in [
+            0x9f0, 0x9f4, 0xa38, // power PI bounds/output
+            0xaa8, 0xaac, 0xaf0, // PPM PI bounds/output
+            0xb78, 0xb7c, 0xb80, 0xbc0, // performance bounds/base/output
+            0x22b0, 0x22b4, 0x22f8, // temperature PI bounds/output
+            0x2210, 0x2870, 0x2a3c, // additional selector inputs
+            0x2b84, 0x2b88, 0x2b8c, 0x2bcc, // secondary performance
+            0x2c40, 0x2c44, 0x2c88, // average power PI bounds/output
+        ] {
+            self.object(PowerPerformance).u32(offset, units)?;
+        }
+        self.object(PowerPerformance).write(0x279e, &units.to_le_bytes())?;
         self.object(Main).u32(0x259c, 1)?;
         // Fender initialization also constructs scheduler accounting buckets:
         // 25G83 imports ea0/ee0 to globals 193b48/193b7c, and its 3b614
         // path initializes the buckets only with both enabled. Disabling ee0
         // while ea0 is enabled makes the first queue submission assert.
         // Retain its save area; device-control separately disables idle power
-        // off, and the runtime verifies that the low boot pstate is retained.
+        // off, and the runtime checks the configured performance-state ceiling.
         self.ptr(Main, 0xe88, Retention, 0)?;
         self.object(Main).u32(0xee0, 1)?;
         for (offset, value) in [(4, 4), (8, 6), (12, 3), (16, 7), (20, 7), (40, 8), (48, 1)] {
