@@ -235,20 +235,25 @@ impl Render {
         g16_memory::publish();
         Ok(())
     }
-    /// Preserve fresh-allocation contents while retaining GEM backing, both
-    /// GPU aliases and the ASID lease. In particular, clear old completion
+    /// Reset control state while retaining GEM backing, both GPU aliases and
+    /// the ASID lease. In particular, clear old completion
     /// stamps, preemption records and parameter/USC allocator state before
     /// their new event values and freelists are encoded.
+    /// Private spill and parameter payload pages are GPU scratch, overwritten
+    /// before consumption. Their allocation metadata lives in separate buffers
+    /// below. As with the common parameter-buffer heap, do not clear payload
+    /// pages on every pass. New allocations are zeroed, and reuse is restricted
+    /// to this VM after firmware retirement, so no contents cross clients.
     fn clear(&mut self) -> Result {
         for buffer in &mut self.commands { buffer.clear()?; }
         for buffer in &mut self.sequences { buffer.clear()?; }
         for buffer in &mut self.preemption { buffer.clear()?; }
         for buffer in [
             &mut self.metadata, &mut self.manager, &mut self.pages,
-            &mut self.blocks, &mut self.block_ring, &mut self.pb_memory,
+            &mut self.blocks, &mut self.block_ring,
             &mut self.scratch, &mut self.scene_list, &mut self.tilemap, &mut self.tpc,
             &mut self.unknown, &mut self.auxiliary, &mut self.uma,
-            &mut self.private_memory, &mut self.pool_state, &mut self.page_list,
+            &mut self.pool_state, &mut self.page_list,
         ] { buffer.clear()?; }
         Ok(())
     }
