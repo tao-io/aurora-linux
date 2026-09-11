@@ -17,9 +17,7 @@ struct Inner {
     fragment_queue: crate::g16_queue::Queue,
     queue_context: crate::g16_queue::Context,
     fragment_registered: bool,
-    retired_render: Option<KBox<crate::g16_render_job::Render>>,
-    // Older than retired_render: firmware's replacement has itself retired.
-    reusable_render: Option<KBox<crate::g16_render_job::Render>>,
+    retired_render: Option<(KBox<crate::g16_render_job::Render>, crate::g16_submit::RenderCache)>,
     retired_compute: Option<KBox<crate::g16_job::Compute>>,
     compute: crate::g16_job::Compute,
     config: crate::g16_config::Config,
@@ -165,7 +163,7 @@ impl Runtime {
                 &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,inner.render_counter - 2,
                 [inner.queue.address(),inner.fragment_queue.address()],
                 [inner.queue.notification().address,inner.fragment_queue.notification().address],
-                inner.config.render_stats(), inner.reusable_render.take())?),
+                inner.config.render_stats(), packet.render_cache.lock().take())?),
         };
         let attachments = &packet.commands[index].attachments;
         match &mut work {
@@ -269,7 +267,12 @@ impl Runtime {
                     // its replacement retires may the predecessor be freed or
                     // reused by a matching VM/pass geometry. A cache miss
                     // allocates normally and drops the spare.
-                    inner.reusable_render = inner.retired_render.replace(render);
+                    if let Some((previous, cache)) = inner.retired_render.replace(
+                        (render, packet.render_cache.clone())) {
+                        // Never put a cache reference inside its own Render:
+                        // keeping ownership here avoids an Arc reference cycle.
+                        *cache.lock() = Some(previous);
+                    }
                 }
                 Work::Compute(compute) => {
                     // Firmware caches the UMA descriptor by its canonical VA.
@@ -347,7 +350,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,reusable_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, active: None }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, failed: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, active: None }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

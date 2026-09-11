@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 //! Common DRM scheduling and syncobj ownership for M4 submissions.
-use kernel::{c_str, dma_fence::*, drm::sched, prelude::*,
-    sync::Arc, xarray};
+use kernel::{c_str, dma_fence::*, drm::sched, new_mutex, prelude::*,
+    sync::{Arc, Mutex}, xarray};
 use crate::{driver, file, g16_drm::Shared, g17_uapi, mmu, queue};
 
 #[derive(Default)]
@@ -58,10 +58,17 @@ impl Command {
     }
 }
 
+// Queue-owned, fully displaced render storage. The runtime retains the most
+// recent firmware owner separately; only its retired predecessor returns here.
+// This avoids losing every game allocation when the compositor submits next.
+// Queue/packet ownership bounds lifetime without a global VM-pinning cache.
+pub(crate) type RenderCache = Arc<Mutex<Option<KBox<crate::g16_render_job::Render>>>>;
+
 pub(crate) struct Packet {
     pub(crate) id: u64,
     pub(crate) vm: mmu::Vm,
     pub(crate) commands: KVec<Command>,
+    pub(crate) render_cache: RenderCache,
     pub(crate) completion: UserFence<Completion>,
     _vm_job: mmu::T8140VmJobGuard,
 }
@@ -130,6 +137,7 @@ pub(crate) struct Queue {
     vm: mmu::Vm,
     usc: u64,
     fences: FenceContexts,
+    render_cache: RenderCache,
 }
 
 impl Queue {
@@ -144,6 +152,7 @@ impl Queue {
         };
         Ok(Self { entity: sched::Entity::new(&scheduler, priority)?, _scheduler: scheduler,
             shared, dev, vm, usc,
+            render_cache: Arc::pin_init(new_mutex!(None), GFP_KERNEL)?,
             fences: FenceContexts::new(1, c_str!("asahi_m4_queue"), kernel::static_lock_class!())? })
     }
 }
@@ -186,6 +195,7 @@ impl queue::Queue for Queue {
         }
         parser.finish().map_err(|_| EINVAL)?;
         let packet = Arc::new(Packet { id, vm: self.vm.clone(), commands,
+            render_cache: self.render_cache.clone(),
             completion: self.fences.new_fence(0, Completion)?.into(), _vm_job: vm_job }, GFP_KERNEL)?;
         let mut job = self.entity.new_job(1, Job { shared: self.shared.clone(), packet, dev: self.dev.clone() })?;
         for sync in syncs.drain(0..in_sync_count) {

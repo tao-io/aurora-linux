@@ -810,3 +810,19 @@ read-only global engine-state snapshots on faults. Wire tests and ARM64 build
 pass. Guarded 184607 large loop still times out; cold small 184910 has stale
 first read then correct later reads, while warm 185026 passes both modes and
 all reads. These changes do not establish a visibility or timeout cure.
+
+### Queue-owned render recycling (2026-09-11)
+
+SuperTux profiling found repeated cross-client cache misses: the one global
+reusable render owner was discarded whenever the game and compositor switched
+GPUVMs. Both allocate and map a fresh private pool again (about16ms preparation
+on misses, about2ms on hits). Keep a reusable displaced owner in the originating
+DRM queue instead. Runtime still quarantines the latest firmware owner until
+a distinct replacement has retired; only then return it to its queue cache.
+
+The queue and in-flight packets own this cache; no unbounded global VM cache
+or mapping reuse across clients is introduced. Render objects never reference
+their cache, avoiding an Arc cycle. Closing the queue releases reusable state;
+the latest hardware owner remains retained as required by firmware lifetime.
+No logging, barriers, memory clears, retirement checks or clocks removed.
+Module builds; live measurement/qualification follows.
