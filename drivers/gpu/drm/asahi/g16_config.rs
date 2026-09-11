@@ -483,7 +483,15 @@ impl Config {
                     } else if *seen == 769 {
                         dev_info!(dev.as_ref(), "G16G trace class={} subsequent records counted without printk\n", class);
                     }
-                    if tag & 0xffffff == 0x11c { return Err(EOVERFLOW); }
+                    if tag & 0xffffff == 0x11c {
+                        // 25G83 TEXT246e0 detects a full trace ring; TEXT248f0
+                        // reports the dropped count and elapsed ticks once
+                        // room returns. This is diagnostic loss, not a GPU
+                        // execution error. Consume it so subsequent records
+                        // remain drainable; stamps/queues still prove retirement.
+                        dev_warn!(dev.as_ref(), "G16G: firmware trace lost {} records over {} ticks; diagnostics incomplete\n",
+                            args[0], args[1]);
+                    }
                 } else if matches!(state, EventState) {
                     dev_info!(dev.as_ref(), "G16G event: {:02x?}\n", record);
                     if u32::from_le_bytes(record[..4].try_into().unwrap()) != 1 {
