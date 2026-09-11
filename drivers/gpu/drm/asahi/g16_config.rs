@@ -498,9 +498,15 @@ impl Config {
                             args[0], args[1]);
                     }
                 } else if matches!(state, EventState) {
-                    dev_info!(dev.as_ref(), "G16G event: {:02x?}\n", record);
                     if u32::from_le_bytes(record[..4].try_into().unwrap()) != 1 {
+                        dev_err!(dev.as_ref(), "G16G unexpected event: {:02x?}\n", record);
                         return Err(EIO);
+                    }
+                    // Normal event payloads duplicate the per-job retirement
+                    // log. Keep raw bytes available for channel diagnostics,
+                    // without formatting 72 bytes twice for every render.
+                    if crate::debug::debug_enabled(crate::debug::DebugFlags::KTraceCh) {
+                        dev_info!(dev.as_ref(), "G16G event: {:02x?}\n", record);
                     }
                 } else if u32::from_le_bytes(record[..4].try_into().unwrap()) == 0x16 {
                     dev_err!(dev.as_ref(), "G16G recovery statistics: {:02x?}\n", record);
