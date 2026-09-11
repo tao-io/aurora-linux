@@ -163,7 +163,7 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     u32_at(out, 0xee0, u32::MAX);
     u32_at(out, 0xee4, u32::MAX);
     u64_at(out, 0xf00, 1);
-    encode_uma(&mut out[0xe00..0xea0], a.pool_state_gpu, pool_qwords, pages, a.page_list_gpu, a.counter)?;
+    encode_uma(&mut out[0xe00..0xea0], a.pool_state_gpu, pool_qwords, pages, a.page_list_gpu, a.counter, UmaEngine::Compute)?;
     Ok(())
 }
 
@@ -231,6 +231,23 @@ mod tests {
         assert!(encode(&mut bytes, addresses(), 1024, 512).is_ok());
     }
     #[test]
+    fn render_pool_allows_peer_fragment_while_tiler_is_active() {
+        // Native pool initialization distinguishes data master, independent
+        // of whether pages have been populated. Render shares one TA/FS pool.
+        let a = addresses();
+        for pages in [0, 512, 8192] {
+            for (engine, expected) in [(UmaEngine::Render, 0u32),
+                (UmaEngine::Compute, u32::from(pages != 0))] {
+                let mut bytes = [0xa5; 0xa0];
+                encode_uma(&mut bytes, a.pool_state_gpu, 16384, pages,
+                    a.page_list_gpu, a.counter, engine).unwrap();
+                assert_eq!(&bytes[0x5c..0x60], &expected.to_le_bytes());
+                assert_eq!(&bytes[0x60..0x64], &[0; 4]);
+                assert_eq!(&bytes[0x24..0x28], &pages.to_le_bytes());
+            }
+        }
+    }
+    #[test]
     fn invalid_address_is_transactional() {
         let mut bytes = [0x55; SIZE];
         let mut a = addresses(); a.command_gpu |= 1;
@@ -240,9 +257,12 @@ mod tests {
     }
 }
 
+#[derive(Clone, Copy)]
+pub(crate) enum UmaEngine { Compute, Render }
+
 /// Shared M4 USC private-memory descriptor used by compute and render engines.
 pub(crate) fn encode_uma(out: &mut [u8], pool: u64, pool_qwords: u32,
-    pages: u32, list: u64, counter: u64) -> Result<(), ()> {
+    pages: u32, list: u64, counter: u64, engine: UmaEngine) -> Result<(), ()> {
     if out.len() < 0xa0 || pool_qwords == 0 || pages >= pool_qwords || pages % 512 != 0
         || [pool,list].iter().any(|p| *p == 0 || *p & 0x3fff != 0 || *p >= 1<<42)
         || counter < 0xfffffc0000000000 || counter & 7 != 0 { return Err(()); }
@@ -251,9 +271,14 @@ pub(crate) fn encode_uma(out: &mut [u8], pool: u64, pool_qwords: u32,
     let u64_at = |b: &mut [u8], off, value: u64| b[off..off + 8].copy_from_slice(&value.to_le_bytes());
     // Firmware-owned descriptor; its counter stays canonical for CPU access.
     u64_at(out, 0, 1);
+    // Native 25G83 populateInitialFirmwareState (TEXT 8a07314..324)
+    // enables the +5c active-job exclusion only for a compute pool (parent
+    // +1e9, set by data-master == 2 at TEXT 8a0a20c). Shared TA/fragment
+    // pools must allow partial fragments while their tiler is still active.
+    let exclusive = matches!(engine, UmaEngine::Compute) && pages != 0;
     for (off, value) in [(8, 1), (12, u32::from(pages == 0)), (16, 2), (0x1c, pool_qwords),
         (0x24, pages), (0x28, u32::from(pages == 0)), (0x2c, pages),
-        (0x40, 4), (0x48, pages / 512 * 8), (0x5c, u32::from(pages != 0)),
+        (0x40, 4), (0x48, pages / 512 * 8), (0x5c, u32::from(exclusive)),
         (0x84, u32::from(pages != 0)), (0x94, 2)] {
         u32_at(out, off, value);
     }

@@ -117,7 +117,8 @@ impl Render {
         for i in 0..PRIVATE_BYTES/0x200000 { job.page_list.u64(i*64,(1u64<<61)|(base+i as u64*0x200000))?; }
         let mut uma = [0;0xa0];
         crate::g16_compute::encode_uma(&mut uma,job.pool_state.gpu_va()?,PRIVATE_QWORDS as u32,
-            PRIVATE_PAGES as u32,job.page_list.gpu_va()?,job.metadata.va()+0x500).map_err(|_| EINVAL)?;
+            PRIVATE_PAGES as u32,job.page_list.gpu_va()?,job.metadata.va()+0x500,
+            crate::g16_compute::UmaEngine::Render).map_err(|_| EINVAL)?;
         job.uma.write(0,&uma)?;
         let pb_base = state::compact(job.pb_memory.gpu_va()?).map_err(|_| EINVAL)?;
         for i in 0..page_count { job.pages.u32(i*4,((pb_base+i as u64*32768)>>15).try_into()?)?; }
