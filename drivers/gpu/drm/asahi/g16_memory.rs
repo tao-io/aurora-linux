@@ -86,6 +86,7 @@ impl Buffer {
         Ok(u64::from_le_bytes(bytes))
     }
     pub(crate) fn va(&self) -> u64 { self.mapping.iova() }
+    pub(crate) fn size(&self) -> usize { self.size }
     /// Reset a retired allocation before rebuilding its firmware records.
     /// The caller must have proved that no engine or firmware owner still
     /// consumes the previous contents.

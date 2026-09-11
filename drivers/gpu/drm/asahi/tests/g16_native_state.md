@@ -157,3 +157,25 @@ at 53.5 C. The final image retains the scene and shadows (HUD still 2 FPS).
 Logs fell from 186 MiB to 7.7 MiB, and journald fell from 7.69% to 0.45% of
 all-CPU samples. This reduces logging overhead; it does not fix cold visibility
 or establish faster gameplay. Both profiles retain their exact installed hashes.
+
+### Reuse retired render capacity across geometry changes
+
+Render owners displaced by a fully retired replacement can now retain their
+command/context and USC allocations when the next pass changes dimensions in
+the same GPUVM. Geometry backing grows as needed; logical sizes, descriptors,
+and complete reset semantics remain unchanged. Latest firmware-owned records
+and cross-VM allocations are not eligible for reuse.
+
+ARM64 module 412639d49f1c compiled successfully. Guarded full unmodified 0 A.D.
+trace replay 20260911T114611717091Z captured calls 172530, 179895 and 187257;
+all three frames are pixel-identical to the previous M4 output, with no API or
+shader errors, and temperatures peaked at 52 C. This is prior-driver parity,
+not pixel identity against llvmpipe.
+
+Guarded actual game test 20260911T114803313970Z passed 180 seconds, with 384
+thermal samples peaking at 53.5 C. The final scene and shadows were inspected;
+HUD remains 2 FPS. CPU-clock samples across all cores attribute 1.70% to the
+two render workers, versus 3.12% in the logging-only profile. Retained logs
+record 4938 reused and 1212 newly allocated passes across desktop clients.
+The cold compute readback failure remains unresolved and is independent of
+this render-only change.

@@ -81,10 +81,33 @@ impl Render {
         // Only an owner displaced by a completely retired replacement may
         // be recycled. Never borrow the firmware's most recently used owner,
         // and never reuse private mappings across distinct client GPUVMs.
-        let reusable = reusable.filter(|job| job.binding.matches(vm) && job.layout == layout);
+        let reusable = reusable.filter(|job| job.binding.matches(vm));
         let reused = reusable.is_some();
         let mut job = if let Some(mut job) = reusable {
+            // A render size change does not invalidate the command/context
+            // storage or the USC pool. Grow only geometry-dependent backing;
+            // each new pass still rebuilds its logical sizes and descriptors.
+            // This owner is already displaced and retired, so replacing a
+            // too-small buffer obeys the same lifetime rule as dropping it.
+            let gpu = |size| Buffer::new_gpu(dev,uat.kernel_vm(),vm,size);
+            if job.pages.size() < page_count * 4 {
+                job.pages = gpu(page_count * 4)?;
+            }
+            if job.blocks.size() < block_capacity * 8 {
+                job.blocks = Buffer::new(dev,uat.kernel_vm(),block_capacity * 8)?;
+            }
+            if job.pb_memory.size() < pb_bytes {
+                job.pb_memory = Buffer::new_gpu_aligned(dev,uat.kernel_vm(),vm,
+                    pb_bytes,PB_BLOCK_BYTES as u64)?;
+            }
+            if job.tilemap.size() < geometry.tilemap_bytes.try_into()? {
+                job.tilemap = gpu(geometry.tilemap_bytes.try_into()?)?;
+            }
+            if job.tpc.size() < geometry.tpc_bytes.try_into()? {
+                job.tpc = gpu(geometry.tpc_bytes.try_into()?)?;
+            }
             job.clear()?;
+            job.layout = layout;
             job.stage = Stage::Tiling;
             job.stamp = stamp;
             job
