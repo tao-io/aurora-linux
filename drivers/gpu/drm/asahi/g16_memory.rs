@@ -114,11 +114,28 @@ impl Buffer {
     pub(crate) fn read(&mut self, offset: usize, bytes: &mut [u8]) -> Result {
         if offset.checked_add(bytes.len()).ok_or(EOVERFLOW)? > self.size { return Err(ERANGE); }
         let vmap = self.object.cached_vmap()?;
-        // SAFETY: WC normal RAM, retained by the GEM/vmap, checked byte range.
+        // SAFETY: WC normal RAM, retained by the page-aligned GEM/vmap,
+        // checked byte range. Read aligned words without creating references
+        // to firmware-owned memory. Byte accesses handle unaligned edges.
+        // A volatile byte loop makes every diagnostic record pay for dozens
+        // of separate uncached reads; normal RAM permits wider accesses.
         unsafe {
             core::arch::asm!("dmb osh", options(nostack, preserves_flags));
             let source = vmap.as_ptr().add(offset);
-            for (i, out) in bytes.iter_mut().enumerate() { *out = source.add(i).read_volatile(); }
+            let mut i = 0;
+            while i < bytes.len() && (offset + i) & 7 != 0 {
+                bytes[i] = source.add(i).read_volatile();
+                i += 1;
+            }
+            while bytes.len() - i >= 8 {
+                let word = source.add(i).cast::<u64>().read_volatile();
+                bytes[i..i + 8].copy_from_slice(&word.to_ne_bytes());
+                i += 8;
+            }
+            while i < bytes.len() {
+                bytes[i] = source.add(i).read_volatile();
+                i += 1;
+            }
         }
         Ok(())
     }
