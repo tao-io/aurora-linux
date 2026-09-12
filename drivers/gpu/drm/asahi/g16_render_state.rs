@@ -92,7 +92,12 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         // remains rejected by the M4 UAPI validator.
         r!(0x15020,1,0xc000);
         r!(0x15210,1,((u64::from(g.pixels >> 16) + 1) << 32) | (u64::from(g.pixels & 0xffff) + 1));
-        r!(0x15048,1,0x100000); r!(0x10050,1,s.tilebuffer_blocks);
+        r!(0x15048,1,0x100000);
+        // G16G tilebuffer control also carries log2(samples) in bits 17:18.
+        // Matched native J713/25G83 1x/2x/4x store-only render captures:
+        // 0x00004 (32x32), 0x20008 (32x32), 0x40008 (32x16).
+        // The size in 2 KiB blocks alone leaves the multisample mode unset.
+        r!(0x10050,1,u64::from(s.tilebuffer_blocks) | ((g.utile_config & 3) << 17));
         r!(0x15320,1,s.depth_dimensions); r!(0x15300,1,s.depth_clear); r!(0x15308,1,s.stencil_clear);
         r!(0x15310,1,s.query & !15); r!(0x15318,1,s.zls_control); r!(0x15348,1,0x04040404); r!(0x15350,1,0);
         r!(0x15328,1,s.depth.base); r!(0x15330,1,s.depth.base);

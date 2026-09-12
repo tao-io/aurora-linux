@@ -79,3 +79,33 @@ fn sample_geometry_keeps_spatial_fields_and_replaces_count() {
         }
     }
 }
+
+#[test]
+fn native_multisample_tilebuffer_control() {
+    // Exact successful macOS 25G83 store-only captures, 2026-09-12:
+    // 15:53: 1x; 15:46:32: 2x; 15:54:13: 4x. Each renders a masked
+    // red triangle then resolves through a separate compute encoder.
+    // Both full 1024x1024 readbacks matched, not just the command bytes.
+    for (samples, height, blocks, native) in [
+        (1,Utile::Pixels32,4,0x00004),
+        (2,Utile::Pixels32,8,0x20008),
+        (4,Utile::Pixels16,8,0x40008),
+    ] {
+        let a=0x1000010000;
+        let mut geometry=Geometry::new(1024,1024,Utile::Pixels32,height,1).unwrap();
+        geometry.set_samples(samples).unwrap();
+        let s=State {
+            geometry,
+            vdm:a,tilemap:a,tpc:a,unknown:a,preemption:[a,a,a],scratch:a,auxiliary:a,scene_list:a,
+            multisample:0x88,ppp:0,merge_upper:[0x3addb3d9;2],tilebuffer_blocks:blocks,
+            background:Program::default(),eot:Program::default(),
+            partial_background:Program::default(),partial_eot:Program::default(),
+            depth_bias:0,scissor:a,query:0,depth:DepthStencil::default(),stencil:DepthStencil::default(),
+            depth_dimensions:0,zls_control:0,depth_clear:0x3f800000,stencil_clear:0x300,
+            process_empty_tiles:true,
+        };
+        let mut regs=[Register::default();128];
+        let (n,_)=g16_render_state::registers(&mut regs,Stage::Fragment,&s,42).unwrap();
+        assert!(regs[..n].iter().any(|r|r.offset==0x10050 && r.flagged && r.value==native));
+    }
+}
