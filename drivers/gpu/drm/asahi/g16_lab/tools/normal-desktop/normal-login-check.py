@@ -5,6 +5,7 @@ Run on J713 with --output NEW_DIRECTORY. Tests the normal installed session,
 captures before/after images and renderer evidence, and leaves the session up.
 """
 import argparse
+import errno
 import json
 import os
 from pathlib import Path
@@ -81,7 +82,19 @@ def screenshot(name, env):
     if a.native_screenshots:
         nodes={p.resolve() for p in Path('/sys/kernel/debug/dri').glob('*/m4_scanout')}
         assert len(nodes)==1, nodes
-        raw=nodes.pop().read_bytes()
+        node=nodes.pop()
+        deadline=time.monotonic()+5
+        while True:
+            health()
+            try:
+                raw=node.read_bytes()
+                break
+            except OSError as error:
+                if error.errno != errno.ENODATA or time.monotonic() >= deadline:
+                    raise
+                # A mapped greeter can precede its first native scanout commit.
+                # Keep thermal/fault gates active while waiting for that frame.
+                time.sleep(.1)
         magic,width,height,stride,fmt,fb,imported,size=struct.unpack_from('<8I',raw)
         assert magic==0x4246344d and imported==1 and len(raw)==size+32
         assert fmt in (int.from_bytes(b'XR24','little'),int.from_bytes(b'AR24','little'))
