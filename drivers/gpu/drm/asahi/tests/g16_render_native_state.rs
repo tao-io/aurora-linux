@@ -22,7 +22,7 @@ fn native_m4_merge_dimensions_and_tilebuffer_contract() {
                 partial_background:Program::default(),partial_eot:Program::default(),
                 depth_bias:0,scissor:a,query:0,depth:DepthStencil::default(),stencil:DepthStencil::default(),
                 depth_dimensions:0,zls_control:0,depth_clear:0x3f800000,stencil_clear:0x300,
-                process_empty_tiles:true,
+                process_empty_tiles:true,integer_depth_bias:false,
             };
             // Independent native wire bytes: UMA pointer, maintenance flag,
             // optional size and auxiliary pointer use packed offsets.
@@ -94,7 +94,7 @@ fn native_multisample_tilebuffer_control() {
         let a=0x1000010000;
         let mut geometry=Geometry::new(1024,1024,Utile::Pixels32,height,1).unwrap();
         geometry.set_samples(samples).unwrap();
-        let s=State {
+        let mut s=State {
             geometry,
             vdm:a,tilemap:a,tpc:a,unknown:a,preemption:[a,a,a],scratch:a,auxiliary:a,scene_list:a,
             multisample:0x88,ppp:0,merge_upper:[0x3addb3d9;2],tilebuffer_blocks:blocks,
@@ -102,7 +102,7 @@ fn native_multisample_tilebuffer_control() {
             partial_background:Program::default(),partial_eot:Program::default(),
             depth_bias:0,scissor:a,query:0,depth:DepthStencil::default(),stencil:DepthStencil::default(),
             depth_dimensions:0,zls_control:0,depth_clear:0x3f800000,stencil_clear:0x300,
-            process_empty_tiles:true,
+            process_empty_tiles:true,integer_depth_bias:false,
         };
         let mut regs=[Register::default();128];
         let (n,_)=g16_render_state::registers(&mut regs,Stage::Fragment,&s,42).unwrap();
@@ -114,5 +114,14 @@ fn native_multisample_tilebuffer_control() {
         assert_eq!(&command[0x9c0..0x9c8],&0xc000u64.to_le_bytes());
         assert_eq!(&command[0x9c8..0x9d0],&0x40000000400u64.to_le_bytes());
         assert_eq!(&command[0x9d0..0x9d8],&0x100000u64.to_le_bytes());
+        // The common Asahi integer-depth flag is bit18 in ISP control, while
+        // tilebuffer sampling stays unchanged. Check both firmware copies.
+        s.integer_depth_bias=true;
+        let (n,_)=g16_render_state::registers(&mut regs,Stage::Fragment,&s,42).unwrap();
+        assert!(regs[..n].iter().any(|r|r.offset==0x15020 && r.value==0x4c000));
+        g16_render_state::mirrors(&mut command,Stage::Fragment,&s,
+            0xfffffc2010000000,0xfffffc2012340000,0xfffffc2012350000,0).unwrap();
+        assert_eq!(&command[0x9c0..0x9c8],&0x4c000u64.to_le_bytes());
+        assert_eq!(&command[0x9b8..0x9c0],&native.to_le_bytes());
     }
 }

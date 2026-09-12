@@ -21,9 +21,15 @@ pub(crate) struct State {
     pub depth_dimensions: u64, pub zls_control: u64,
     pub depth_clear: u32, pub stencil_clear: u32,
     pub process_empty_tiles: bool,
+    pub integer_depth_bias: bool,
 }
 
 impl State {
+    fn isp_control(&self) -> u64 {
+        // Common Asahi UAPI flag deliberately matches the hardware bit.
+        0xc000 | if self.integer_depth_bias { 1 << 18 } else { 0 }
+    }
+
     fn tilebuffer_control(&self) -> u64 {
         u64::from(self.tilebuffer_blocks) | ((self.geometry.utile_config & 3) << 17)
     }
@@ -99,9 +105,8 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         r!(0x10018,1,s.multisample); r!(0x100b0,1,g.isp_blocks); r!(0x16030,0,g.isp_blocks);
         r!(0x100d8,1,g.screen); r!(0xa300,1,0); r!(0x10790,1,0xff0200);
         r!(0x16098,0,s.unknown & !63); r!(0x15108,1,s.scissor & !3); r!(0x15100,1,s.depth_bias & !3);
-        // Common Asahi auxiliary framebuffer controls. Integer depth bias
-        // remains rejected by the M4 UAPI validator.
-        r!(0x15020,1,0xc000);
+        // Keep integer depth-bias selection in both the register and mirror.
+        r!(0x15020,1,s.isp_control());
         r!(0x15210,1,s.framebuffer_dimensions());
         r!(0x15048,1,0x100000);
         // G16G tilebuffer control also carries log2(samples) in bits 17:18.
@@ -165,7 +170,7 @@ pub(crate) fn mirrors(out: &mut [u8], stage: Stage, s: &State,
             // Firmware retains the same four controls outside the register
             // list. Matched 25G83 native 1x/2x/4x RunFragment payloads.
             // Keep the optional small-primitive ISP bit disabled as above.
-            (0x9b8,s.tilebuffer_control()),(0x9c0,0xc000),
+            (0x9b8,s.tilebuffer_control()),(0x9c0,s.isp_control()),
             (0x9c8,s.framebuffer_dimensions()),(0x9d0,0x100000),
             (0x9f4,s.eot.resources),(0x9fc,s.eot.address),
             (0xa14,s.partial_eot.resources),(0xa1c,s.partial_eot.address),

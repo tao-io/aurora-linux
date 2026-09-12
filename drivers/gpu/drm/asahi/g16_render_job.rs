@@ -196,7 +196,8 @@ impl Render {
             depth:DepthStencil{base:r.depth.base,stride:r.depth.stride as u64},
             stencil:DepthStencil{base:r.stencil.base,stride:r.stencil.stride as u64},
             depth_dimensions:r.depth_dimensions as u64,zls_control:r.zls_control,
-            depth_clear:r.depth_clear,stencil_clear:r.stencil_clear,process_empty_tiles:r.flags&2!=0 };
+            depth_clear:r.depth_clear,stencil_clear:r.stencil_clear,process_empty_tiles:r.flags&2!=0,
+            integer_depth_bias:r.flags&(1<<18)!=0 };
         let mut work = KBox::new([0;0xca0],GFP_KERNEL)?;
         let mut sequence = [0;0x400];
         let mut registers = KBox::new([Register::default();128],GFP_KERNEL)?;

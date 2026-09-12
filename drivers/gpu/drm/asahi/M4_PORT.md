@@ -857,3 +857,12 @@ both private32MiB andPB>=4MiB clears; that broad assumption is unqualified.
 Revert76afde restores allclears. Logs saved; devcoredump sealed1662808bytes but
 notcollectedbeforeold desktopguardreboot. Newdesktopguard nowcollects it with
 5sbound andno watchdogrenewal onfailure. Do notcallscratchpayloadreuse safe.
+
+2026-09-12 D16 depth bias: the M4 validator now accepts DBIAS_IS_INT (bit18)
+and carries it into ISP control register15020 and RunFragment mirror9c0,
+matching the common Asahi translation. Six host layout tests pass. J713
+181828 four-sample D16 near/far rejection, resolve and depth reload checks
+all4096pixels at each of five steps (peak57.5C). 181932 active polygon offset
+32768D16 units displaces nominally nearer red behind green as expected,
+all pixels pass (peak56.75C). Both use watchdog60 and six-channel thermals.
+This does not qualify other multisample depth/stencil formats.

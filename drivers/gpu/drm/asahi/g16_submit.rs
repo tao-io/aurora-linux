@@ -220,7 +220,7 @@ fn encode_attachments(vm: &mmu::Vm, list: &g17_uapi::UapiAttachmentList)
 fn validate_render(r: g17_uapi::UapiRenderCommand, usc: u64, space: &AddressSpace<'_>) -> Result {
     use g17_uapi::{GpuAddressSpace, GpuAccess};
     let empty = g17_uapi::UapiHelperProgram { binary:0, config:0, data:0 };
-    if r.flags & !(2|16) != 0 || r.layers != 1 || !matches!(r.samples, 1 | 2 | 4)
+    if r.flags & !(2|16|(1<<18)) != 0 || r.layers != 1 || !matches!(r.samples, 1 | 2 | 4)
         || r.sampler_count != 0 || r.sampler_heap != 0
         || r.vertex_helper != empty || r.fragment_helper != empty
         || r.depth.compression_base != 0 || r.stencil.compression_base != 0
