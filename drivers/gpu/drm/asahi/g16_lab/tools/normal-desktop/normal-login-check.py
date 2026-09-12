@@ -25,6 +25,7 @@ p.add_argument('--output',type=Path,required=True)
 p.add_argument('--capture-compiler',action='store_true')
 p.add_argument('--native-screenshots',action='store_true',help='Read native scanout without compositor GPU readback')
 p.add_argument('--existing-greeter',action='store_true',help='Validate the greeter started by normal boot')
+p.add_argument('--login-only',action='store_true',help='Leave a validated desktop and Foot ready for a separate guarded GUI test')
 p.add_argument('--trace-hyprland',action='store_true',help='Capture compositor GL calls through the installed diagnostic wrapper')
 p.add_argument('--trace-stk',action='store_true',help='Capture the actual SuperTuxKart EGL calls and native shader/command diagnostics')
 a=p.parse_args()
@@ -139,59 +140,62 @@ try:
         time.sleep(0.5)
         t.check()
     screenshot('desktop-terminal-later',env)
-    # Exercise the ordinary user's game configuration and shell environment.
-    # The old race runner used a separate config and disabled dynamic lights
-    # and texture compression, so it did not qualify an ordinary launch.
-    account=pwd.getpwuid(1000)
-    game_output=Path(account.pw_dir)/'.local/state/m4-login-tests'/a.output.name
-    game_output.parent.mkdir(parents=True,exist_ok=True)
-    os.chown(game_output.parent,account.pw_uid,account.pw_gid)
-    game_output.mkdir(exist_ok=False)
-    os.chown(game_output,account.pw_uid,account.pw_gid)
-    game_argv=['/usr/bin/supertuxkart']
-    if a.trace_stk:
-        game_argv=['env','LD_PRELOAD=/opt/m4-apitrace/usr/lib/apitrace/wrappers/egltrace.so',
-            'TRACE_FILE='+str(game_output/'supertuxkart.trace'),
-            'AGX_MESA_DEBUG=shaders,internal','HK_G17P_LAUNCH_TRACE=1',
-            'MESA_SHADER_CACHE_DISABLE=true',*game_argv]
-    command=shlex.join(game_argv)+' > '+shlex.quote(str(game_output/'supertuxkart.log'))+' 2>&1'
-    (a.output/'game-launch.json').write_text(json.dumps({'command':command,'artifacts':str(game_output),
-        'scope':'ordinary user config; launched by clipboard paste into Foot; no graphics-feature overrides'},indent=2)+'\n')
-    # Zero-delay virtual-keyboard keymap changes lost characters under load.
-    # Paste the complete command through the terminal's normal clipboard path.
-    subprocess.run(['wl-copy','--type','text/plain;charset=utf-8','--',command],
-                   env=env,check=True,timeout=3)
-    subprocess.run(['wtype','-M','ctrl','-M','shift','v','-m','shift','-m','ctrl'],
-                   env=env,check=True,timeout=3)
-    time.sleep(0.5)
-    screenshot('supertuxkart-command',env)
-    subprocess.run(['wtype','-k','Return'],env=env,check=True,timeout=3)
-    game=wait_for(lambda:processes(1000,'supertuxkart'))[-1]
-    wait_for(lambda:any(c.get('mapped') and 'supertuxkart' in c.get('class','').lower()
-        for c in json.loads(subprocess.check_output(['hyprctl','-j','clients'],env=env,text=True,timeout=2))))
-    maps=(game/'maps').read_text()
-    assert '/opt/asahi-m4-port/lib/libvulkan_asahi.so' in maps
-    (a.output/'supertuxkart-maps.txt').write_text(maps)
-    screenshot('supertuxkart-mapped',env)
-    for _ in range(10):
+    if not a.login_only:
+        # Exercise the ordinary user's game configuration and shell environment.
+        # The old race runner used a separate config and disabled dynamic lights
+        # and texture compression, so it did not qualify an ordinary launch.
+        account=pwd.getpwuid(1000)
+        game_output=Path(account.pw_dir)/'.local/state/m4-login-tests'/a.output.name
+        game_output.parent.mkdir(parents=True,exist_ok=True)
+        os.chown(game_output.parent,account.pw_uid,account.pw_gid)
+        game_output.mkdir(exist_ok=False)
+        os.chown(game_output,account.pw_uid,account.pw_gid)
+        game_argv=['/usr/bin/supertuxkart']
+        if a.trace_stk:
+            game_argv=['env','LD_PRELOAD=/opt/m4-apitrace/usr/lib/apitrace/wrappers/egltrace.so',
+                'TRACE_FILE='+str(game_output/'supertuxkart.trace'),
+                'AGX_MESA_DEBUG=shaders,internal','HK_G17P_LAUNCH_TRACE=1',
+                'MESA_SHADER_CACHE_DISABLE=true',*game_argv]
+        command=shlex.join(game_argv)+' > '+shlex.quote(str(game_output/'supertuxkart.log'))+' 2>&1'
+        (a.output/'game-launch.json').write_text(json.dumps({'command':command,'artifacts':str(game_output),
+            'scope':'ordinary user config; launched by clipboard paste into Foot; no graphics-feature overrides'},indent=2)+'\n')
+        # Zero-delay virtual-keyboard keymap changes lost characters under load.
+        # Paste the complete command through the terminal's normal clipboard path.
+        subprocess.run(['wl-copy','--type','text/plain;charset=utf-8','--',command],
+                       env=env,check=True,timeout=3)
+        subprocess.run(['wtype','-M','ctrl','-M','shift','v','-m','shift','-m','ctrl'],
+                       env=env,check=True,timeout=3)
         time.sleep(0.5)
-        t.check()
-        assert game.exists(),'SuperTuxKart exited during startup'
-    screenshot('supertuxkart-startup',env)
-    game_log=(game_output/'supertuxkart.log').read_text(errors='replace')
-    assert 'zink' in game_log and 'M4' in game_log,'SuperTuxKart did not identify the M4 renderer'
-    login_log=subprocess.check_output(['journalctl','-b','--since','@'+str(session_started),
-        '--no-pager'],text=True,timeout=3)
-    (a.output/'login-journal.log').write_text(login_log)
-    for failure in ('no grounded AGX3 encoding', 'AGX backend rejected',
-                    'terminated abnormally', 'Kernel panic', 'GPU timeout', 'DEVICE LOST',
-                    'GPU retirement unproven', 'firmware crashed'):
-        assert failure not in login_log, failure
-        assert failure not in game_log,failure
-    # Startup screenshots still need visual review; a mapped loading window
-    # alone is not a menu/race success. Keep the game bounded on both paths.
-    os.kill(int(game.name),15)
-    wait_for(lambda:not game.exists())
+        screenshot('supertuxkart-command',env)
+        subprocess.run(['wtype','-k','Return'],env=env,check=True,timeout=3)
+        game=wait_for(lambda:processes(1000,'supertuxkart'))[-1]
+        wait_for(lambda:any(c.get('mapped') and 'supertuxkart' in c.get('class','').lower()
+            for c in json.loads(subprocess.check_output(['hyprctl','-j','clients'],env=env,text=True,timeout=2))))
+        maps=(game/'maps').read_text()
+        assert '/opt/asahi-m4-port/lib/libvulkan_asahi.so' in maps
+        (a.output/'supertuxkart-maps.txt').write_text(maps)
+        screenshot('supertuxkart-mapped',env)
+        for _ in range(40):
+            time.sleep(0.5)
+            t.check()
+            assert game.exists(),'SuperTuxKart exited during startup'
+        screenshot('supertuxkart-startup',env)
+        game_log=(game_output/'supertuxkart.log').read_text(errors='replace')
+        assert 'zink' in game_log and 'M4' in game_log,'SuperTuxKart did not identify the M4 renderer'
+        login_log=subprocess.check_output(['journalctl','-b','--since','@'+str(session_started),
+            '--no-pager'],text=True,timeout=3)
+        (a.output/'login-journal.log').write_text(login_log)
+        for failure in ('no grounded AGX3 encoding', 'AGX backend rejected',
+                        'terminated abnormally', 'Kernel panic', 'GPU timeout', 'DEVICE LOST',
+                        'GPU retirement unproven', 'firmware crashed'):
+            assert failure not in login_log, failure
+            assert failure not in game_log,failure
+        # Startup screenshots still need visual review; a mapped loading window
+        # alone is not a menu/race success. Keep the game bounded on both paths.
+        os.kill(int(game.name),15)
+        wait_for(lambda:not game.exists())
+    health()
+    record['scope']='normal login and Foot' if a.login_only else 'normal login, Foot and SuperTuxKart startup'
     record['passed']=True
 except BaseException as error:
     record.update(passed=False,error=repr(error))
@@ -247,4 +251,4 @@ finally:
         subprocess.run(['systemctl','reboot'],timeout=5)
         time.sleep(90)
 w.disarm()
-print('PASS: normal SDDM login, Foot and ordinary SuperTuxKart startup; inspect screenshots',flush=True)
+print('PASS: '+record['scope']+'; inspect screenshots',flush=True)

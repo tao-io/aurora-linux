@@ -57,7 +57,7 @@ clipboard shortcut. Per-key input lost characters in long commands; a native
 snapshot is saved before Return. The real user game settings are retained.
 `--trace-stk` captures EGL calls and native shader/launch diagnostics under
 `~/.local/state/m4-login-tests/RUN/`. `--trace-hyprland` enables the installed
-trace wrapper for this test only, saving `~/.cache/m4-login-traces/hyprland-PID.trace`.
+trace wrapper for this test only, saving `process/timestamp traces in ~/.cache/m4-login-traces/`.
 The runtime marker is removed on completion. A live kernel log stops input on
 GPU faults; failed experiments save evidence and request recovery while keeping
 the watchdog open. Startup images need visual review; this does not qualify
@@ -66,3 +66,20 @@ menu navigation or a completed race.
 Subsequent ordinary-use tests found vertex-engine faults in both SuperTuxKart
 (128x128 render, job6114) and Hyprland (2560x1664 render, job242). The successful
 login captures above do not establish that these workloads are reliable.
+
+`--login-only` leaves login and Foot ready for a separately guarded GUI test.
+`desktop-ui.py serve GUARD_OUTPUT --seconds 300`, launched under the existing
+`gpu-experiment.py` guard with a longer outer bound, accepts screenshot, clipboard
+paste and held-key requests over its local socket. Paste saves a screenshot
+before Enter; use the `key` action for a 150 ms hold so game frames observe input.
+For example, `desktop-ui.py send GUARD_OUTPUT '{"action":"key","key":"Return"}'`.
+Review each native snapshot before the next menu transition. `finish` closes the
+capture and terminates newly started SuperTuxKart processes. A successful capture
+session is not a successful game test: menus/race screenshots and application
+logs must establish that independently. The helper requires the ancestor guard's
+watchdog60, fresh GPU retirement and six-channel thermal evidence.
+
+Real GUI Singleplayer tests reached the menu but aborted while compiling the
+kart preview. Captured shaders identify nonzero floating branch constants,
+packed R11G11B10 blend accesses, and F16 EOT output as separate compiler gaps.
+No completed race is established by those captures.

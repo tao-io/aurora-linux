@@ -3,7 +3,11 @@
 set -eu
 mkdir -p "$HOME/.cache/m4-login-traces"
 export LD_PRELOAD=/opt/m4-apitrace/usr/lib/apitrace/wrappers/egltrace.so
-export TRACE_FILE="$HOME/.cache/m4-login-traces/hyprland-$$.trace"
+# Child applications inherit LD_PRELOAD. Default per-executable filenames
+# prevent a child dialog from truncating the compositor's trace.
+unset TRACE_FILE
+export TRACE_TIMESTAMP=1
+cd "$HOME/.cache/m4-login-traces"
 export AGX_MESA_DEBUG=shaders,internal
 export HK_G17P_LAUNCH_TRACE=1
 exec /opt/m4-hyprland/bin/Hyprland "$@"
