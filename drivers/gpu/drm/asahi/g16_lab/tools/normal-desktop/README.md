@@ -32,3 +32,20 @@ issuing additional GPU readback draws while testing ordinary login.
 
 Workspace development copies are under tools/normal-desktop and tools/.
 Keep these tracked copies synchronized when making reusable changes.
+
+## Normal login qualified on J713, 2026-09-12
+
+Mesa `ba9d84f8bc1` fixes premature pixel-ordering release in an early
+discard-only coverage update. The full captured 177-draw Hyprland prefix now
+completes with normal batching; its 4,259,840 pixels match llvmpipe within one
+RGB level and identical alpha. No synchronized-draw diagnostic or disabled
+border is needed. The installed Vulkan library SHA256 is
+`099d10426e143d95cf5ca9578c2e3e1138cf30c71df74c3d7c8e0415e5f2fb94`.
+
+Real password entry passed both a display-manager start and the greeter from
+normal boot. Native screenshots show Quickshell's panel/background and a bordered
+Foot window; Hyprland/Quickshell map private M4 Vulkan. Evidence directories in
+the workspace are `_provenance/normal-login-20260912/` followed by
+`m4-normal-final-coverage-20260912/` and `m4-normal-boot-coverage-20260912/`.
+These are bounded startup/rendering results, not long-duration stability or
+conformance qualification. Keep the watchdog and thermal guards for experiments.
