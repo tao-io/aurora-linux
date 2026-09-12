@@ -138,8 +138,18 @@ finally:
         for node in Path('/sys/class/devcoredump').glob('devcd*/data'):
             try:
                 with node.open('rb',buffering=0) as source:
-                    raw=source.read(16*1024*1024+1)
-                if raw.startswith(b'M4FWD001') and len(raw)<=16*1024*1024:
+                    raw=bytearray(source.read(40))
+                    if len(raw)!=40 or raw[:8]!=b'M4FWD001':
+                        continue
+                    length=struct.unpack_from('<Q',raw,32)[0]
+                    if not 40<=length<=16*1024*1024:
+                        continue
+                    while len(raw)<length:
+                        chunk=source.read(min(65536,length-len(raw)))
+                        if not chunk:
+                            break
+                        raw.extend(chunk)
+                if len(raw)==length:
                     (a.output/(node.parent.name+'.bin')).write_bytes(raw)
             except OSError:
                 pass
