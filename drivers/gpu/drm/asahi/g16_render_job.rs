@@ -66,8 +66,9 @@ impl Render {
         queues: [u64; 2], notifications: [u64; 2], stats: [u64; 2],
         reusable: Option<KBox<Self>>) -> Result<KBox<Self>> {
         let utile = |n| match n {16=>Ok(Utile::Pixels16),32=>Ok(Utile::Pixels32),_=>Err(EINVAL)};
-        let geometry = Geometry::new(r.width as u32,r.height as u32,
+        let mut geometry = Geometry::new(r.width as u32,r.height as u32,
             utile(r.utile_width)?,utile(r.utile_height)?,1).map_err(|_| EINVAL)?;
+        geometry.set_samples(r.samples).map_err(|_| EINVAL)?;
         // Initial allocation follows pass geometry, rounded to PB blocks. The
         // firmware can partially store/reload a pass. This is not a UAPI limit.
         let pb_bytes = (4*1024*1024usize).max(usize::try_from(geometry.tilemap_bytes)? * 128)
@@ -188,7 +189,7 @@ impl Render {
             // UAPI values are already validated. Merge limits are float bits,
             // not geometry counts; color storage is measured in 2 KiB blocks.
             merge_upper:[r.merge_upper_x,r.merge_upper_y],
-            tilebuffer_blocks:(u32::from(r.sample_size)*u32::from(r.utile_width)*u32::from(r.utile_height)).div_ceil(2048),
+            tilebuffer_blocks:(u32::from(r.sample_size)*u32::from(r.utile_width)*u32::from(r.utile_height)*u32::from(r.samples)).div_ceil(2048),
             background:program(r.background),eot:program(r.end_of_tile),
             partial_background:program(r.partial_background),partial_eot:program(r.partial_end_of_tile),
             depth_bias:r.depth_bias_base,scissor:r.scissor_base,query:r.occlusion_query_base,

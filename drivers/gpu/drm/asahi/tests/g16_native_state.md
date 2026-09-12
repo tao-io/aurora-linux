@@ -392,3 +392,20 @@ cursor, rebuilds the page list, and publishes the descriptor at 2ecc4..2ed54
 with a final DSB. Use that protocol for rebuilt owners and remove the racing
 host descriptor write. This preserves paired TA/fragment publication, retained
 DMA ownership, and per-VM resource reuse. Hardware qualification follows below.
+
+## Multisample tile state, 2026-09-12
+
+The M4 adapter now carries sample count into both native utile registers and
+includes samples in the tilebuffer allocation budget, matching the common
+Asahi render contract. It accepts counts1/2/4; this is a wire validation domain,
+not a claim that all corresponding userspace operations work. Geometry host
+tests cover preserving the spatial fields across sample-count changes and
+rejecting unsupported counts.
+
+Installed module SHA256:
+`d1e4b955b2cd604fbe3daf9ee4ecc063cd7f9a98f1e9a1c146d8f71845f75d37`.
+The guarded J713 two-sample Vulkan render/store/resolve passes exact pixels
+(experiment20260912T131549773345Z, peak54.5C). Unmasked GL two-sample
+store/reload/resolve also passes (132947,54.75C). Four-sample storage still
+returns zero and selective coverage remains incorrect; neither is qualified.
+The firmware and GPU scheduler are unchanged by this tile-state change.

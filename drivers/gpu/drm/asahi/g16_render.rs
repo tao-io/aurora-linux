@@ -25,7 +25,7 @@ pub(crate) enum Utile {
     Pixels32,
 }
 
-/// One layer, one sample. The 16K image dimension matches the source geometry
+/// One layer. The 16K image dimension matches the source geometry
 /// profile; allocation is derived from geometry rather than a panel-sized pool.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) struct Geometry {
@@ -44,6 +44,15 @@ pub(crate) struct Geometry {
 }
 
 impl Geometry {
+    /// Set the sample-count part of the tile geometry. The default constructor
+    /// retains 1x for existing callers; sample storage is budgeted separately.
+    pub(crate) fn set_samples(&mut self, samples: u8) -> Result<(), BuildError> {
+        let log2 = match samples { 1 => 0, 2 => 1, 4 => 2,
+            _ => return Err(BuildError::Geometry) };
+        self.utile_config = (self.utile_config & !3) | log2;
+        Ok(())
+    }
+
     pub(crate) fn new(
         width: u32,
         height: u32,

@@ -60,3 +60,22 @@ fn native_m4_merge_dimensions_and_tilebuffer_contract() {
         }
     }
 }
+
+#[test]
+fn sample_geometry_keeps_spatial_fields_and_replaces_count() {
+    for (x,y,spatial) in [(Utile::Pixels32,Utile::Pixels32,0xa000),
+                         (Utile::Pixels32,Utile::Pixels16,0x6000),
+                         (Utile::Pixels16,Utile::Pixels16,0x5000)] {
+        let mut g=Geometry::new(64,64,x,y,1).unwrap();
+        let allocation=(g.tilemap_bytes,g.tpc_bytes);
+        for (samples,bits) in [(4,2),(2,1),(1,0)] {
+            g.set_samples(samples).unwrap();
+            assert_eq!(g.utile_config,spatial|bits);
+            assert_eq!((g.tilemap_bytes,g.tpc_bytes),allocation);
+        }
+        for invalid in [0,3,8,255] {
+            assert!(g.set_samples(invalid).is_err());
+            assert_eq!(g.utile_config,spatial);
+        }
+    }
+}
