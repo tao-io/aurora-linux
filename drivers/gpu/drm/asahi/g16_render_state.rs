@@ -23,6 +23,17 @@ pub(crate) struct State {
     pub process_empty_tiles: bool,
 }
 
+impl State {
+    fn tilebuffer_control(&self) -> u64 {
+        u64::from(self.tilebuffer_blocks) | ((self.geometry.utile_config & 3) << 17)
+    }
+
+    fn framebuffer_dimensions(&self) -> u64 {
+        let pixels = self.geometry.pixels;
+        ((u64::from(pixels >> 16) + 1) << 32) | (u64::from(pixels & 0xffff) + 1)
+    }
+}
+
 /// TA range-1 encoding. This is an engine address transform, not a mapping:
 /// the normal GPU address must already be mapped in the client's GPUVM.
 pub(crate) fn compact(address: u64) -> Result<u64, BuildError> {
@@ -91,13 +102,13 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         // Common Asahi auxiliary framebuffer controls. Integer depth bias
         // remains rejected by the M4 UAPI validator.
         r!(0x15020,1,0xc000);
-        r!(0x15210,1,((u64::from(g.pixels >> 16) + 1) << 32) | (u64::from(g.pixels & 0xffff) + 1));
+        r!(0x15210,1,s.framebuffer_dimensions());
         r!(0x15048,1,0x100000);
         // G16G tilebuffer control also carries log2(samples) in bits 17:18.
         // Matched native J713/25G83 1x/2x/4x store-only render captures:
         // 0x00004 (32x32), 0x20008 (32x32), 0x40008 (32x16).
         // The size in 2 KiB blocks alone leaves the multisample mode unset.
-        r!(0x10050,1,u64::from(s.tilebuffer_blocks) | ((g.utile_config & 3) << 17));
+        r!(0x10050,1,s.tilebuffer_control());
         r!(0x15320,1,s.depth_dimensions); r!(0x15300,1,s.depth_clear); r!(0x15308,1,s.stencil_clear);
         r!(0x15310,1,s.query & !15); r!(0x15318,1,s.zls_control); r!(0x15348,1,0x04040404); r!(0x15350,1,0);
         r!(0x15328,1,s.depth.base); r!(0x15330,1,s.depth.base);
@@ -151,6 +162,11 @@ pub(crate) fn mirrors(out: &mut [u8], stage: Stage, s: &State,
             (0x938,s.zls_control),(0x940,0x04040404),
             (0x948,s.depth.base),(0x950,s.depth.stride),(0x960,s.depth.base),(0x968,s.depth.base),
             (0x978,s.stencil.base),(0x980,s.stencil.stride),(0x990,s.stencil.base),(0x998,s.stencil.base),
+            // Firmware retains the same four controls outside the register
+            // list. Matched 25G83 native 1x/2x/4x RunFragment payloads.
+            // Keep the optional small-primitive ISP bit disabled as above.
+            (0x9b8,s.tilebuffer_control()),(0x9c0,0xc000),
+            (0x9c8,s.framebuffer_dimensions()),(0x9d0,0x100000),
             (0x9f4,s.eot.resources),(0x9fc,s.eot.address),
             (0xa14,s.partial_eot.resources),(0xa1c,s.partial_eot.address),
             (0xa28,s.depth_clear as u64 | ((s.stencil_clear as u64)<<32)),(0xa50,s.depth_dimensions),

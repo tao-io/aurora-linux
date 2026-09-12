@@ -107,5 +107,12 @@ fn native_multisample_tilebuffer_control() {
         let mut regs=[Register::default();128];
         let (n,_)=g16_render_state::registers(&mut regs,Stage::Fragment,&s,42).unwrap();
         assert!(regs[..n].iter().any(|r|r.offset==0x10050 && r.flagged && r.value==native));
+        let mut command=[0;0xca0];
+        g16_render_state::mirrors(&mut command,Stage::Fragment,&s,
+            0xfffffc2010000000,0xfffffc2012340000,0xfffffc2012350000,0).unwrap();
+        assert_eq!(&command[0x9b8..0x9c0],&native.to_le_bytes());
+        assert_eq!(&command[0x9c0..0x9c8],&0xc000u64.to_le_bytes());
+        assert_eq!(&command[0x9c8..0x9d0],&0x40000000400u64.to_le_bytes());
+        assert_eq!(&command[0x9d0..0x9d8],&0x100000u64.to_le_bytes());
     }
 }
