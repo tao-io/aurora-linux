@@ -126,13 +126,6 @@ try:
     for failure in ('no grounded AGX3 encoding', 'AGX backend rejected',
                     'terminated abnormally', 'Kernel panic', 'GPU timeout', 'DEVICE LOST'):
         assert failure not in login_log, failure
-    # Test caps must not become the user's ordinary performance policy.
-    for cap in t.summary().get('cpu_frequency_caps',[]):
-        (Path('/sys/devices/system/cpu/cpufreq')/cap['policy']/'scaling_max_freq').write_text(str(cap['old_max_khz']))
-    for _ in range(4):
-        time.sleep(0.5)
-        t.check()
-    record['test_cpu_caps_restored']=True
     record['passed']=True
 except BaseException as error:
     record.update(passed=False,error=repr(error))
@@ -141,10 +134,25 @@ except BaseException as error:
 finally:
     if a.capture_compiler:
         Path('/run/m4-graphics/capture-compiler').unlink(missing_ok=True)
+    if not record.get('passed'):
+        for node in Path('/sys/class/devcoredump').glob('devcd*/data'):
+            try:
+                with node.open('rb',buffering=0) as source:
+                    raw=source.read(16*1024*1024+1)
+                if raw.startswith(b'M4FWD001') and len(raw)<=16*1024*1024:
+                    (a.output/(node.parent.name+'.bin')).write_bytes(raw)
+            except OSError:
+                pass
     record['thermal']=t.summary()
     (a.output/'result.json').write_text(json.dumps(record,indent=2)+'\n')
     with (a.output/'journal.log').open('w') as f:
         subprocess.run(['journalctl','-b','--since','-2min','--no-pager'],stdout=f,timeout=3)
-    t.close();os.sync()
+    t.close()
+    if record.get('passed'):
+        for cap in record['thermal'].get('cpu_frequency_caps',[]):
+            (Path('/sys/devices/system/cpu/cpufreq')/cap['policy']/'scaling_max_freq').write_text(str(cap['old_max_khz']))
+        record['test_cpu_caps_restored']=True
+        (a.output/'result.json').write_text(json.dumps(record,indent=2)+'\n')
+    os.sync()
 w.disarm()
 print('PASS: real SDDM keyboard login into normal accelerated Omarchy',flush=True)
