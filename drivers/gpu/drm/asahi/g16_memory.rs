@@ -6,7 +6,13 @@ use kernel::prelude::*;
 use crate::{driver, gem, mmu, pgtable::prot};
 
 pub(crate) const KERNEL_RANGE: core::ops::Range<u64> =
-    0xffff_fc20_0000_0000..0xffff_fc30_0000_0000;
+    0xffff_fc20_0000_0000..0xffff_fc2f_fc00_0000;
+
+// Firmware validates Timestamp user destinations against a dedicated 64 MiB
+// interval published in HwDataB+0x28. Reserve the last 64 MiB of the
+// firmware VM selector, disjoint from MMIO/command allocations above.
+pub(crate) const TIMESTAMP_RANGE: core::ops::Range<u64> =
+    0xffff_fc2f_fc00_0000..0xffff_fc30_0000_0000;
 
 pub(crate) struct Buffer {
     // Unmap before releasing our GEM/vmap references.

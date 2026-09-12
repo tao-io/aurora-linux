@@ -128,7 +128,7 @@ impl Runtime {
     pub(crate) fn map_timestamp(&self, mut bo: crate::gem::ObjectRef,
         range: core::ops::Range<usize>) -> Result<mmu::KernelMapping> {
         bo.map_range_into_range(self.inner.uat.kernel_vm(), range,
-            crate::g16_memory::KERNEL_RANGE, mmu::UAT_PGSZ as u64,
+            crate::g16_memory::TIMESTAMP_RANGE, mmu::UAT_PGSZ as u64,
             mmu::PROT_FW_SHARED_RW, false)
     }
 
@@ -167,7 +167,10 @@ impl Runtime {
         };
         let attachments = &packet.commands[index].attachments;
         match &mut work {
-            Work::Compute(compute) => compute.set_attachments(&attachments[0])?,
+            Work::Compute(compute) => {
+                compute.set_attachments(&attachments[0])?;
+                compute.set_user_timestamps(packet.commands[index].timestamp_addresses())?;
+            }
             Work::Render(render) => render.set_attachments(attachments)?,
         }
         inner.user_generation = generation;
@@ -258,7 +261,6 @@ impl Runtime {
                 if let Work::Compute(compute) = &mut active.work {
                     dev_info!(inner.drm.as_ref(), "G16G: compute completion status={:x?}\n", compute.status()?);
                 }
-                active.packet.commands[active.index].completed([status[2], status[3]])?;
             }
             let active = inner.active.take().ok_or(EIO)?;
             let active_ns = active.published.elapsed().as_nanos();

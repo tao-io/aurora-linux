@@ -105,6 +105,16 @@ impl Compute {
             job.pool_state.gpu_va()?, job.page_list.gpu_va()?);
         Ok(job)
     }
+    pub(crate) fn set_user_timestamps(&mut self, addresses: [u64; 2]) -> Result {
+        if addresses == [0, 0] { return Ok(()); }
+        // Timestamp reads the retained pointer pair and publishes nanoseconds.
+        self.command.u64(0x844, addresses[0])?;
+        self.command.u64(0x84c, addresses[1])?;
+        self.command.u64(0xabc + 36, self.command.va() + 0x844)?;
+        self.command.u64(0xb0c + 36, self.command.va() + 0x844)?;
+        g16_memory::publish();
+        Ok(())
+    }
     pub(crate) fn set_attachments(&mut self, attachments: &crate::g16_attachments::Attachments) -> Result {
         // 25G83 StartCompute+58..15c and FinalizeCompute+68.
         self.command.write(0x958, &attachments.0)?;

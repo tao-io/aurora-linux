@@ -29,16 +29,9 @@ impl Destination {
             }
         }
     }
-    fn write(&self, ticks: u64) -> Result {
-        // GET_PARAMS exposes nanoseconds; the hardware clock is 24 MHz.
-        let ns = (ticks / 3).checked_mul(125).and_then(|whole|
-            whole.checked_add((ticks % 3) * 125 / 3)).ok_or(EOVERFLOW)?;
-        self.mapping.with_cpu_bytes(|bytes| {
-            bytes[self.offset..self.offset + 8].copy_from_slice(&ns.to_le_bytes());
-            Ok(())
-        })
-    }
+    fn firmware_address(&self) -> u64 { self.mapping.iova() + self.offset as u64 }
 }
+
 #[derive(Clone, Copy)]
 pub(crate) enum Payload {
     Compute(crate::g16_compute::Control),
@@ -50,11 +43,8 @@ pub(crate) struct Command {
     timestamps: [Option<Destination>; 2],
 }
 impl Command {
-    pub(crate) fn completed(&self, timestamps: [u64; 2]) -> Result {
-        for (dst, ticks) in self.timestamps.iter().zip(timestamps) {
-            if let Some(dst) = dst { dst.write(ticks)?; }
-        }
-        Ok(())
+    pub(crate) fn timestamp_addresses(&self) -> [u64; 2] {
+        core::array::from_fn(|i| self.timestamps[i].as_ref().map_or(0, Destination::firmware_address))
     }
 }
 

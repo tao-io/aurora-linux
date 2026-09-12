@@ -112,13 +112,10 @@ impl Config {
             entry[32..40].copy_from_slice(&mode.to_le_bytes());
             config.iomaps.push(mapping, GFP_KERNEL)?;
         }
-        let sgx = vm.map_io_in_range(KERNEL_RANGE, 0x300000000, 0x4000000, prot::PROT_FW_MMIO_RW)?;
-        let sgx_va = sgx.iova();
-        config.iomaps.push(sgx, GFP_KERNEL)?;
         let scratch = vm.map_io_in_range(KERNEL_RANGE, 0x300d60000, 0x8000, prot::PROT_FW_SHARED_RW)?;
         let scratch_va = scratch.iova();
         config.iomaps.push(scratch, GFP_KERNEL)?;
-        config.initialize(sgx_va, scratch_va)?;
+        config.initialize(scratch_va)?;
         Ok(config)
     }
 
@@ -145,7 +142,7 @@ impl Config {
         let va = self.va(target).checked_add(delta).ok_or(EOVERFLOW)?;
         self.object(owner).u64(offset, va)
     }
-    fn initialize(&mut self, sgx: u64, scratch: u64) -> Result {
+    fn initialize(&mut self, scratch: u64) -> Result {
         use Object::*;
         let mut root = [0; g16_initdata::ROOT_SIZE];
         g16_initdata::encode_root(&mut root, RootPointers {
@@ -200,7 +197,9 @@ impl Config {
         self.ptr(PowerPerformance, 0x3b50, Temperature, 0)?;
         self.object(PowerPerformance).u32(4, 200000)?;
         self.object(PowerPerformance).u32(8, 200000)?;
-        self.object(Main).u64(0x28, sgx)?;
+        // Timestamp opcode3 at 25G83 TEXT19494 validates user result
+        // pointers against this base through base+0x3fffff8, then writes ns.
+        self.object(Main).u64(0x28, g16_memory::TIMESTAMP_RANGE.start)?;
         let (objects, iomaps) = (&mut self.objects, &self.iomap_bytes);
         objects[Main as usize].write(0x640, &iomaps[..])?;
         self.object(Main).u32(0xea0, 1)?;
