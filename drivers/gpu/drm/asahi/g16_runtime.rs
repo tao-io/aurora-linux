@@ -57,7 +57,6 @@ impl Inner {
             self.fragment_queue.advance_threshold()?;
             self.queue.set_render_context(r.context())?;
             self.fragment_queue.set_render_context(r.context())?;
-            self.config.parameter_descriptor(r.descriptor())?;
             let (ta,ta_next) = self.queue.append_batch_idle(&[r.init_address(),r.address()])?;
             let (frag,frag_next) = self.fragment_queue.append_batch_idle(
                 &[r.fragment_dependency(),r.fragment_address()])?;

@@ -371,3 +371,24 @@ Subsequent main-thread /proc wait sampling identified blocking DRM atomic
 commits, not VM status, throughout the input stalls. Captured atomic requests
 had flags=0, no new-frame event, and reprogrammed the existing primary plane.
 Follow-up is the compositor's deferred commit without a pending new buffer.
+
+## Full parameter-buffer rebuild versus incremental staging (2026-09-12)
+
+Ordinary SuperTuxKart menu run `20260912T020936852896Z-normal-stk-hdr-gui`
+faulted at job 94727: GMMU 0x84c1a7c011, read by unit 0xe0 in ASID 19,
+unmapped VA 0x71024cc000. The current manager's page list is 0x7100010000,
+but parameter-table slot 0 still contains `[1024cc00,60000080,b,b]`, whose
+address is the stale list. The earlier Foot job 242 has the same mismatch.
+These are saved sequential fault snapshots, not an atomic observation.
+
+25G83 firmware TEXT 2159c tests InitBuffer+10 as a boolean. Nonzero selects
+2f100, which returns immediately when manager+3c equals block-ring+4. Our
+rebuilt records initialized both to the same staged count. Writing the table
+from the host did not invalidate the hardware's previous cached descriptor.
+
+Zero selects full reinitialization at 215b4 -> 2eb4c. That path drains/reads
+the old slot through 2cb8c/2c950, uses InitBuffer+c as the block-ring read
+cursor, rebuilds the page list, and publishes the descriptor at 2ecc4..2ed54
+with a final DSB. Use that protocol for rebuilt owners and remove the racing
+host descriptor write. This preserves paired TA/fragment publication, retained
+DMA ownership, and per-VM resource reuse. Hardware qualification follows below.

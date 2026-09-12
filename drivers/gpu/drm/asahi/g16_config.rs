@@ -131,11 +131,6 @@ impl Config {
     pub(crate) fn bind_parameter_table(&mut self, vm: &mmu::Vm) -> Result<mmu::KernelMapping> {
         self.object(Object::ParameterTable).map_gpu_view(vm)
     }
-    // One hardware scheduler credit owns slot zero. Keep its previous owner
-    // until a replacement pass retires, mirroring common PB slot ownership.
-    pub(crate) fn parameter_descriptor(&mut self, bytes: &[u8; 16]) -> Result {
-        self.object(Object::ParameterTable).write(0, bytes)
-    }
     /// Same global engine state passed in Runtime+0x264. Firmware indexes
     /// scheduler records here; a notifier or per-job scratch is not equivalent.
     pub(crate) fn compute_stats(&self) -> u64 { self.va(Object::Activity264) }

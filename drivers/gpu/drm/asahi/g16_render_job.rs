@@ -37,7 +37,6 @@ pub(crate) struct Render {
     pool_state: Buffer,
     page_list: Buffer,
     binding: mmu::VmBind,
-    descriptor: [u8; 16],
     pub(crate) stage: Stage,
     stamp: u32,
     layout: [u32; 4],
@@ -132,7 +131,7 @@ impl Render {
                 preemption:[gpu(0x10000)?,gpu(0x10000)?,gpu(0x4000)?],auxiliary:gpu(0x10000)?,
                 uma:gpu(0x4000)?,private_memory:gpu(PRIVATE_BYTES)?,
                 pool_state:gpu(PRIVATE_QWORDS*8)?,page_list:gpu(0x4000)?,
-                binding:uat.bind(vm)?,descriptor:[0;16],stage:Stage::Tiling,stamp,layout,
+                binding:uat.bind(vm)?,stage:Stage::Tiling,stamp,layout,
             }, GFP_KERNEL)?
         };
         let base = job.private_memory.gpu_va()?;
@@ -155,11 +154,16 @@ impl Render {
             block_capacity:block_capacity.try_into()?,write:block_count.try_into()?,read:0,
             min_pages:page_count.try_into()?,max_pages:page_count.try_into()?,id:0 }).map_err(|_| EINVAL)?;
         job.manager.write(0,&manager)?;
-        let mut descriptor = g16_render::ParameterBufferDescriptor([0;4]);
-        descriptor.update(job.pages.gpu_va()?,page_count.try_into()?,0,0,false,false).map_err(|_| EINVAL)?;
-        job.descriptor = descriptor.to_bytes();
         let mut init = [0;0x20];
-        wire::init_parameter_buffer(&mut init,job.binding.slot(),0,0,block_count.try_into()?,job.manager.va(),stamp).map_err(|_| EINVAL)?;
+        // This owner was rebuilt, not incrementally grown. In 25G83, a nonzero
+        // InitBuffer+0x10 selects the append path (TEXT 2159c -> 2f100), which
+        // returns without refreshing the hardware descriptor when the staged
+        // block cursor already equals manager+0x3c. A prior owner's hardware
+        // writeback can then replace a host-written descriptor with stale VAs.
+        // Request full reinitialization: firmware drains the old slot, rebuilds
+        // its page list from the block ring and publishes the new descriptor
+        // in order (TEXT 215b4 -> 2eb4c). The table is firmware-owned.
+        wire::init_parameter_buffer(&mut init,job.binding.slot(),0,0,0,job.manager.va(),stamp).map_err(|_| EINVAL)?;
         job.metadata.write(0x300,&init)?;
         let mut dependency = [0;0x40];
         wire::render_dependency(&mut dependency,job.metadata.va()+0x408,
@@ -260,7 +264,6 @@ impl Render {
     pub(crate) fn init_address(&self) -> u64 { self.metadata.va()+0x300 }
     pub(crate) fn fragment_dependency(&self) -> u64 { self.metadata.va()+0x340 }
     pub(crate) fn fragment_address(&self) -> u64 { self.commands[1].va() }
-    pub(crate) fn descriptor(&self) -> &[u8;16] { &self.descriptor }
     pub(crate) fn context(&self) -> u32 { self.binding.slot() }
     /// Snapshot retained firmware/GPU state without acknowledging faults or
     /// changing the in-flight pass. Keep diagnostics off the submission path.
