@@ -26,6 +26,7 @@ mapping={
     'm4-graphics.service':'/etc/systemd/system/m4-graphics.service',
     'sddm-service.conf':'/etc/systemd/system/sddm.service.d/90-omarchy-j713-rendering.conf',
     'm4-hyprland-session':'/usr/local/bin/m4-hyprland-session',
+    'm4-hyprland-trace':'/usr/local/bin/m4-hyprland-trace',
     'm4-greeter':'/usr/local/bin/m4-greeter',
     'session.lua':'/usr/local/share/m4-desktop/session.lua',
     'greeter.lua':'/usr/local/share/m4-desktop/greeter.lua',
@@ -47,7 +48,7 @@ def install(source, destination, mode=0o644):
     os.replace(temporary,target)
     files[str(target)]=dict(existed=saved.exists(),sha256=hashlib.sha256(target.read_bytes()).hexdigest())
 for name,target in mapping.items():
-    install(stage/name,target,0o755 if name in ('m4-graphics-init.py','m4-hyprland-session','m4-greeter') else 0o644)
+    install(stage/name,target,0o755 if name in ('m4-graphics-init.py','m4-hyprland-session','m4-hyprland-trace','m4-greeter') else 0o644)
 install(Path('/root/m4_dcp_rtkit-asahi.ko'),
         '/lib/modules/'+os.uname().release+'/updates/m4_dcp_rtkit.ko')
 # User managers read the actual card selected during boot, rather than assuming

@@ -9,6 +9,8 @@ import json
 import os
 from pathlib import Path
 import pwd
+import shlex
+import shutil
 import subprocess
 import stat
 import struct
@@ -23,6 +25,8 @@ p.add_argument('--output',type=Path,required=True)
 p.add_argument('--capture-compiler',action='store_true')
 p.add_argument('--native-screenshots',action='store_true',help='Read native scanout without compositor GPU readback')
 p.add_argument('--existing-greeter',action='store_true',help='Validate the greeter started by normal boot')
+p.add_argument('--trace-hyprland',action='store_true',help='Capture compositor GL calls through the installed diagnostic wrapper')
+p.add_argument('--trace-stk',action='store_true',help='Capture the actual SuperTuxKart EGL calls and native shader/command diagnostics')
 a=p.parse_args()
 password=sys.stdin.read().rstrip('\n')
 assert password
@@ -32,6 +36,18 @@ record={'watchdog':w.arm()}
 t=ExperimentThermals(a.output,on_trip=lambda:subprocess.run(
     ['systemctl','--no-block','stop','sddm'],timeout=3))
 began=time.monotonic()
+game=None
+game_output=None
+kernel_log=a.output/'kernel-live.log'
+kernel_stream=kernel_log.open('w')
+kernel_follow=subprocess.Popen(['dmesg','--follow-new','--notime'],stdout=kernel_stream,stderr=subprocess.STDOUT)
+def health():
+    t.check()
+    assert kernel_follow.poll() is None,'kernel diagnostic stream stopped'
+    log=kernel_log.read_text(errors='replace')
+    for failure in ('GPU retirement unproven','userspace GPU timeout','firmware crashed','Kernel panic'):
+        if failure in log:
+            raise RuntimeError(failure)
 def processes(uid, name):
     found=[]
     for path in Path('/proc').glob('[0-9]*'):
@@ -42,7 +58,7 @@ def processes(uid, name):
     return found
 def wait_for(check):
     while time.monotonic()-began < 45:
-        t.check()
+        health()
         answer=check()
         if answer:return answer
         time.sleep(0.2)
@@ -59,7 +75,8 @@ def compositor_env(proc):
     env['WAYLAND_DISPLAY']=sockets[0].name
     return env
 def screenshot(name, env):
-    t.check()
+    health()
+    print('Screenshot: '+name,flush=True)
     if a.native_screenshots:
         nodes={p.resolve() for p in Path('/sys/kernel/debug/dri').glob('*/m4_scanout')}
         assert len(nodes)==1, nodes
@@ -77,6 +94,8 @@ try:
     t.cap_cpu_frequency(1860000)
     if not a.existing_greeter:
         subprocess.run(['systemctl','stop','sddm','user@1000.service'],check=True,timeout=10)
+    if a.trace_hyprland:
+        Path('/run/m4-graphics/trace-hyprland').touch(mode=0o600)
     if a.capture_compiler:
         Path('/run/m4-graphics/capture-compiler').touch(mode=0o600)
     session_started=time.time()
@@ -120,18 +139,73 @@ try:
         time.sleep(0.5)
         t.check()
     screenshot('desktop-terminal-later',env)
+    # Exercise the ordinary user's game configuration and shell environment.
+    # The old race runner used a separate config and disabled dynamic lights
+    # and texture compression, so it did not qualify an ordinary launch.
+    account=pwd.getpwuid(1000)
+    game_output=Path(account.pw_dir)/'.local/state/m4-login-tests'/a.output.name
+    game_output.parent.mkdir(parents=True,exist_ok=True)
+    os.chown(game_output.parent,account.pw_uid,account.pw_gid)
+    game_output.mkdir(exist_ok=False)
+    os.chown(game_output,account.pw_uid,account.pw_gid)
+    game_argv=['/usr/bin/supertuxkart']
+    if a.trace_stk:
+        game_argv=['env','LD_PRELOAD=/opt/m4-apitrace/usr/lib/apitrace/wrappers/egltrace.so',
+            'TRACE_FILE='+str(game_output/'supertuxkart.trace'),
+            'AGX_MESA_DEBUG=shaders,internal','HK_G17P_LAUNCH_TRACE=1',
+            'MESA_SHADER_CACHE_DISABLE=true',*game_argv]
+    command=shlex.join(game_argv)+' > '+shlex.quote(str(game_output/'supertuxkart.log'))+' 2>&1'
+    (a.output/'game-launch.json').write_text(json.dumps({'command':command,'artifacts':str(game_output),
+        'scope':'ordinary user config; launched by clipboard paste into Foot; no graphics-feature overrides'},indent=2)+'\n')
+    # Zero-delay virtual-keyboard keymap changes lost characters under load.
+    # Paste the complete command through the terminal's normal clipboard path.
+    subprocess.run(['wl-copy','--type','text/plain;charset=utf-8','--',command],
+                   env=env,check=True,timeout=3)
+    subprocess.run(['wtype','-M','ctrl','-M','shift','v','-m','shift','-m','ctrl'],
+                   env=env,check=True,timeout=3)
+    time.sleep(0.5)
+    screenshot('supertuxkart-command',env)
+    subprocess.run(['wtype','-k','Return'],env=env,check=True,timeout=3)
+    game=wait_for(lambda:processes(1000,'supertuxkart'))[-1]
+    wait_for(lambda:any(c.get('mapped') and 'supertuxkart' in c.get('class','').lower()
+        for c in json.loads(subprocess.check_output(['hyprctl','-j','clients'],env=env,text=True,timeout=2))))
+    maps=(game/'maps').read_text()
+    assert '/opt/asahi-m4-port/lib/libvulkan_asahi.so' in maps
+    (a.output/'supertuxkart-maps.txt').write_text(maps)
+    screenshot('supertuxkart-mapped',env)
+    for _ in range(10):
+        time.sleep(0.5)
+        t.check()
+        assert game.exists(),'SuperTuxKart exited during startup'
+    screenshot('supertuxkart-startup',env)
+    game_log=(game_output/'supertuxkart.log').read_text(errors='replace')
+    assert 'zink' in game_log and 'M4' in game_log,'SuperTuxKart did not identify the M4 renderer'
     login_log=subprocess.check_output(['journalctl','-b','--since','@'+str(session_started),
         '--no-pager'],text=True,timeout=3)
     (a.output/'login-journal.log').write_text(login_log)
     for failure in ('no grounded AGX3 encoding', 'AGX backend rejected',
-                    'terminated abnormally', 'Kernel panic', 'GPU timeout', 'DEVICE LOST'):
+                    'terminated abnormally', 'Kernel panic', 'GPU timeout', 'DEVICE LOST',
+                    'GPU retirement unproven', 'firmware crashed'):
         assert failure not in login_log, failure
+        assert failure not in game_log,failure
+    # Startup screenshots still need visual review; a mapped loading window
+    # alone is not a menu/race success. Keep the game bounded on both paths.
+    os.kill(int(game.name),15)
+    wait_for(lambda:not game.exists())
     record['passed']=True
 except BaseException as error:
     record.update(passed=False,error=repr(error))
+    print('FAIL: '+repr(error),flush=True)
     subprocess.run(['systemctl','--no-block','stop','sddm'],timeout=3)
     raise
 finally:
+    if game_output and (game_output/'supertuxkart.log').exists():
+        shutil.copy2(game_output/'supertuxkart.log',a.output/'supertuxkart.log')
+    if game and game.exists():
+        try:os.kill(int(game.name),9)
+        except ProcessLookupError:pass
+    if a.trace_hyprland:
+        Path('/run/m4-graphics/trace-hyprland').unlink(missing_ok=True)
     if a.capture_compiler:
         Path('/run/m4-graphics/capture-compiler').unlink(missing_ok=True)
     if not record.get('passed'):
@@ -157,6 +231,9 @@ finally:
     (a.output/'result.json').write_text(json.dumps(record,indent=2)+'\n')
     with (a.output/'journal.log').open('w') as f:
         subprocess.run(['journalctl','-b','--since','-2min','--no-pager'],stdout=f,timeout=3)
+    kernel_follow.terminate()
+    kernel_follow.wait(timeout=3)
+    kernel_stream.close()
     t.close()
     if record.get('passed'):
         for cap in record['thermal'].get('cpu_frequency_caps',[]):
@@ -164,5 +241,10 @@ finally:
         record['test_cpu_caps_restored']=True
         (a.output/'result.json').write_text(json.dumps(record,indent=2)+'\n')
     os.sync()
+    if not record.get('passed'):
+        # Retain watchdog ownership through recovery. Closing an armed fd
+        # on process exit is not itself proof that hardware will reset.
+        subprocess.run(['systemctl','reboot'],timeout=5)
+        time.sleep(90)
 w.disarm()
-print('PASS: real SDDM keyboard login into normal accelerated Omarchy',flush=True)
+print('PASS: normal SDDM login, Foot and ordinary SuperTuxKart startup; inspect screenshots',flush=True)

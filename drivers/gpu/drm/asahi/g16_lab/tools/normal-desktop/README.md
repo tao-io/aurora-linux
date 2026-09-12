@@ -49,3 +49,20 @@ the workspace are `_provenance/normal-login-20260912/` followed by
 `m4-normal-final-coverage-20260912/` and `m4-normal-boot-coverage-20260912/`.
 These are bounded startup/rendering results, not long-duration stability or
 conformance qualification. Keep the watchdog and thermal guards for experiments.
+
+## Ordinary SuperTuxKart startup diagnostic
+
+The login check now pastes `/usr/bin/supertuxkart` into Foot using the normal
+clipboard shortcut. Per-key input lost characters in long commands; a native
+snapshot is saved before Return. The real user game settings are retained.
+`--trace-stk` captures EGL calls and native shader/launch diagnostics under
+`~/.local/state/m4-login-tests/RUN/`. `--trace-hyprland` enables the installed
+trace wrapper for this test only, saving `~/.cache/m4-login-traces/hyprland-PID.trace`.
+The runtime marker is removed on completion. A live kernel log stops input on
+GPU faults; failed experiments save evidence and request recovery while keeping
+the watchdog open. Startup images need visual review; this does not qualify
+menu navigation or a completed race.
+
+Subsequent ordinary-use tests found vertex-engine faults in both SuperTuxKart
+(128x128 render, job6114) and Hyprland (2560x1664 render, job242). The successful
+login captures above do not establish that these workloads are reliable.

@@ -1,0 +1,9 @@
+#!/bin/sh
+# Enabled only by the bounded login test's runtime marker.
+set -eu
+mkdir -p "$HOME/.cache/m4-login-traces"
+export LD_PRELOAD=/opt/m4-apitrace/usr/lib/apitrace/wrappers/egltrace.so
+export TRACE_FILE="$HOME/.cache/m4-login-traces/hyprland-$$.trace"
+export AGX_MESA_DEBUG=shaders,internal
+export HK_G17P_LAUNCH_TRACE=1
+exec /opt/m4-hyprland/bin/Hyprland "$@"
