@@ -83,3 +83,9 @@ Real GUI Singleplayer tests reached the menu but aborted while compiling the
 kart preview. Captured shaders identify nonzero floating branch constants,
 packed R11G11B10 blend accesses, and F16 EOT output as separate compiler gaps.
 No completed race is established by those captures.
+
+The host-side `desktop-ui-remote.py REMOTE_OUTPUT JSON LOCAL_IMAGE_STEM` wraps
+that single request, fetches the named `.m4fb`, and runs the adjacent
+`scanout-image.py` to produce a PNG. It launches no experiment on its own;
+the server must already have a live guard. This reduces repeated SSH/quoting
+and snapshot-copy commands during real menu navigation.
