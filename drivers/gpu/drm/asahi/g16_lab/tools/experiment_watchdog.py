@@ -6,6 +6,7 @@ import fcntl
 import json
 import os
 import subprocess
+import socket
 import time
 
 # Linux arm64 UAPI, include/uapi/linux/watchdog.h.
@@ -21,6 +22,7 @@ class ExperimentWatchdog:
     def __init__(self):
         self.fd = None
         self.started = None
+        self.broker = None
 
     def integer(self, request, value=0):
         data = array.array('i', [value])
@@ -28,8 +30,27 @@ class ExperimentWatchdog:
         return data[0]
 
     def arm(self):
+        broker_path = '/run/m4-ssh-watchdog.sock'
+        if os.path.exists(broker_path):
+            self.broker = socket.socket(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+            self.broker.settimeout(3)
+            self.broker.connect(broker_path)
+            self.broker.send(b'acquire')
+            message, ancillary, flags, _ = self.broker.recvmsg(1024, socket.CMSG_SPACE(4), socket.MSG_CMSG_CLOEXEC)
+            descriptors = []
+            for level, kind, data in ancillary:
+                if level == socket.SOL_SOCKET and kind == socket.SCM_RIGHTS:
+                    values = array.array('i')
+                    values.frombytes(data)
+                    descriptors.extend(values)
+            if not json.loads(message).get('leased') or len(descriptors) != 1:
+                for fd in descriptors:
+                    os.close(fd)
+                raise RuntimeError('Watchdog broker refused experiment lease: ' + message.decode())
+            self.fd = descriptors[0]
         # Opening starts the watchdog. CLOEXEC keeps ownership in this process.
-        self.fd = os.open('/dev/watchdog0', os.O_WRONLY | os.O_CLOEXEC)
+        else:
+            self.fd = os.open('/dev/watchdog0', os.O_WRONLY | os.O_CLOEXEC)
         try:
             info = bytearray(40)
             fcntl.ioctl(self.fd, GETSUPPORT, info, True)
@@ -49,10 +70,22 @@ class ExperimentWatchdog:
         evidence = {'device': '/dev/watchdog0', 'identity': identity,
                     'timeout_seconds': timeout, 'initial_timeleft_seconds': left,
                     'periodic_keepalive': False, 'armed': True}
+        evidence['ssh_broker_lease'] = self.broker is not None
         print('Watchdog armed: ' + json.dumps(evidence), flush=True)
         return evidence
 
     def disarm(self):
+        if self.broker is not None:
+            # Return idle ownership only after the caller saved evidence.
+            # The broker never feeds on SSH pings while we hold this lease.
+            self.broker.send(b'release')
+            if not json.loads(self.broker.recv(1024)).get('released'):
+                raise RuntimeError('Watchdog broker refused release')
+            self.broker.close()
+            self.broker = None
+            os.close(self.fd)
+            self.fd = None
+            return
         # Never call from a finally block around an experiment: exceptions or
         # a stuck child must leave recovery armed. DISABLECARD reports errors,
         # unlike relying only on magic close. No heartbeat thread is started.
