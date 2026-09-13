@@ -337,8 +337,13 @@ impl Runtime {
                 ["queue-fragment", "ring-state-fragment"])?;
             inner.compute_queue.capture_fault(&mut dump,
                 ["queue-compute", "ring-state-compute"])?;
-            if let Work::Render(render) = &mut active.work {
-                render.capture_fault(&mut dump)?;
+            match &mut active.work {
+                Work::Render(render) => render.capture_fault(&mut dump)?,
+                Work::Compute(compute) => compute.capture_fault(&mut dump,
+                    inner.uat.kernel_lower_vm())?,
+            }
+            if let Some(compute) = &mut inner.retired_compute {
+                compute.capture_retired_command(&mut dump)?;
             }
             dump.publish(inner.drm.as_ref())
         })() {

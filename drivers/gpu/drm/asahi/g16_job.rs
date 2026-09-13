@@ -136,6 +136,31 @@ impl Compute {
         dev_info!(dev.as_ref(), "G16G: compute preemption progress={:x?} private-pages={}\n", cells, PRIVATE_PAGES);
         Ok(())
     }
+    /// Fault-only owned records: never walk application addresses or copy the
+    /// private pool. These sequential observations preserve the command's UMA
+    /// descriptor beside the hardware slot after retirement has failed.
+    #[cfg(CONFIG_DEV_COREDUMP)]
+    pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump,
+        bootstrap: &mmu::Vm) -> Result {
+        let gpu = self.command.gpu_va()?;
+        let mut mappings = [0u8; 24];
+        mappings[..8].copy_from_slice(&gpu.to_le_bytes());
+        mappings[8..16].copy_from_slice(&(bootstrap.translate_iova(gpu)? as u64).to_le_bytes());
+        mappings[16..24].copy_from_slice(&(self.binding.vm().translate_iova(gpu)? as u64).to_le_bytes());
+        dump.record("compute-command-mappings", gpu, mappings.len(),
+            |out| { out.copy_from_slice(&mappings); Ok(()) })?;
+        dump.buffer("compute-command", &mut self.command, g16_compute::SIZE)?;
+        dump.buffer("compute-preemption", &mut self.preemption, 0x4000)?;
+        dump.buffer("compute-auxiliary", &mut self.auxiliary, 0x4000)?;
+        dump.buffer("compute-context-store", &mut self.context_store, 0x40000)?;
+        dump.buffer("compute-pool-state", &mut self.pool_state, 0x20000)?;
+        dump.buffer("compute-page-list", &mut self.page_list, 0x4000)?;
+        dump.buffer("compute-counter", &mut self.counter, 8)
+    }
+    #[cfg(CONFIG_DEV_COREDUMP)]
+    pub(crate) fn capture_retired_command(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
+        dump.buffer("compute-retired-command", &mut self.command, g16_compute::SIZE)
+    }
     pub(crate) fn stamp(&self) -> u32 { self.stamp }
     pub(crate) fn address(&self) -> u64 { self.command.va() }
     pub(crate) fn status(&mut self) -> Result<[u64; 10]> {
