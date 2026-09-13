@@ -25,10 +25,11 @@ pub(crate) enum Utile {
     Pixels32,
 }
 
-/// One layer. The 16K image dimension matches the source geometry
+/// The 16K image dimension matches the source geometry
 /// profile; allocation is derived from geometry rather than a panel-sized pool.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 pub(crate) struct Geometry {
+    pub(crate) layers: u16,
     pub(crate) pixels: u32,
     pub(crate) screen: u32,
     pub(crate) x_blocks: u32,
@@ -60,6 +61,16 @@ impl Geometry {
         y: Utile,
         accelerator_count: u32,
     ) -> Result<Self, BuildError> {
+        Self::new_layered(width, height, x, y, accelerator_count, 1)
+    }
+
+    pub(crate) fn new_layered(
+        width: u32, height: u32, x: Utile, y: Utile,
+        accelerator_count: u32, layers: u16,
+    ) -> Result<Self, BuildError> {
+        if layers == 0 || layers > 2048 {
+            return Err(BuildError::Geometry);
+        }
         if width == 0 || height == 0 || width > 16384 || height > 16384 || accelerator_count == 0 {
             return Err(BuildError::Geometry);
         }
@@ -73,8 +84,10 @@ impl Geometry {
         let tpc_bytes = u64::from(accelerator_count)
             .checked_mul(u64::from(entries))
             .and_then(|n| n.checked_mul(8))
+            .and_then(|n| n.checked_mul(u64::from(layers)))
             .ok_or(BuildError::ArithmeticOverflow)?;
         Ok(Self {
+            layers,
             pixels: (width - 1) | ((height - 1) << 16),
             screen: (tx - 1) | ((ty - 1) << 12),
             x_blocks: (bx << 10) | (bx << 18) | (bx * 3),
@@ -86,7 +99,7 @@ impl Geometry {
             isp_blocks: ((sx & 0x3fd) << 16) | (sy & 0x3fd),
             utile_config: (if x == Utile::Pixels32 { 0x2000 } else { 0x1000 })
                 | (if y == Utile::Pixels32 { 0x8000 } else { 0x4000 }),
-            tilemap_bytes: (u64::from(entries) * 5 + 0xfff) & !0xfff,
+            tilemap_bytes: (u64::from(entries) * 5 * u64::from(layers) + 0xfff) & !0xfff,
             tpc_bytes,
         })
     }
@@ -235,6 +248,34 @@ mod tests {
             Geometry::new(0, 4, Utile::Pixels32, Utile::Pixels32, 1),
             Err(BuildError::Geometry)
         );
+    }
+
+    #[test]
+    fn layered_geometry_scales_allocations_not_per_layer_strides() {
+        // G16 halComputeGeometry 25G83: 0x89ca334..368 multiplies both
+        // allocation sizes by object+0x98 (layers); region/TPC strides retain
+        // their single-layer value. Layer metadata is 0x100 iff layers>1.
+        for (w,h) in [(8,8),(257,139),(16384,16384)] {
+            for (x,y) in [(Utile::Pixels32,Utile::Pixels32),
+                          (Utile::Pixels32,Utile::Pixels16),
+                          (Utile::Pixels16,Utile::Pixels16)] {
+                let one=Geometry::new(w,h,x,y,1).unwrap();
+                for n in [1u16,2,4,2048] {
+                    let many=Geometry::new_layered(w,h,x,y,1,n).unwrap();
+                    assert_eq!(many.tilemap_bytes,
+                        (u64::from(one.region_stride)*64*u64::from(n)+0xfff)&!0xfff);
+                    assert_eq!(many.tpc_bytes,one.tpc_bytes*u64::from(n));
+                    assert_eq!(many.region_stride,one.region_stride);
+                    assert_eq!(many.tpc_stride,one.tpc_stride);
+                    assert_eq!(many.tiles,one.tiles);
+                    assert_eq!(many.layers,n);
+                }
+            }
+        }
+        for n in [0,2049] {
+            assert_eq!(Geometry::new_layered(8,8,Utile::Pixels32,Utile::Pixels32,1,n),
+                       Err(BuildError::Geometry));
+        }
     }
 
     #[test]
