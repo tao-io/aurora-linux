@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-//! M4/25G83 one-layer render register state. Source: the qualified M4 TA and
+//! M4/25G83 render register state. Source: the qualified M4 TA and
 //! fragment producers in g16_lab/render; engine addresses come from GEM owners.
 use crate::g16_render::{BuildError, Geometry, Register, Stage};
 
@@ -25,6 +25,26 @@ pub(crate) struct State {
 }
 
 impl State {
+    fn layer_metadata(&self) -> Result<u64, BuildError> {
+        // Native updateRenderTarget 0x89ef208..240 reserves separate layer
+        // (0x100 bytes) and heap metadata when layers>1. The owned 0x4000
+        // allocation has room for both; match the common Asahi heap+0x200
+        // layout. A single layer retains the qualified zero-size alias.
+        self.unknown.checked_add(if self.geometry.layers > 1 { 0x200 } else { 0 })
+            .ok_or(BuildError::ArithmeticOverflow)
+    }
+
+    fn layer_mode(&self) -> u64 {
+        // 25G83 TA 0x89ccb6c..b98: descriptor+0xff6 chooses 0x1000/0x2000.
+        // processRenderSetup 0x8981c6c..94 writes the same source boolean to
+        // +0xff6 and common 3D +0x7bd (PROCESS_EMPTY_TILES at ISP bit16).
+        let layers = self.geometry.layers;
+        if layers > 1 {
+            0xc000 | if self.process_empty_tiles { 0x2000 } else { 0x1000 }
+                | u64::from(layers - 1)
+        } else { 0x8000 }
+    }
+
     fn isp_control(&self) -> u64 {
         // Common Asahi UAPI flag deliberately matches the hardware bit.
         0xc000 | if self.integer_depth_bias { 1 << 18 } else { 0 }
@@ -50,7 +70,7 @@ pub(crate) fn compact(address: u64) -> Result<u64, BuildError> {
 }
 
 /// The caller supplies storage sized for the hardware register aperture.
-/// Unsupported layering, MSAA and helper state is rejected by the UAPI adapter.
+/// Unsupported sample counts and helper state are rejected by the UAPI adapter.
 pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32)
     -> Result<(usize, u64), BuildError> {
     let g = s.geometry;
@@ -63,6 +83,7 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
     if stage == Stage::Tiling {
         let tilemap = compact(s.tilemap)?;
         let unknown = compact(s.unknown)?;
+        let layer_metadata = compact(s.layer_metadata()?)?;
         let preempt0 = compact(s.preemption[0])?;
         let preempt1 = compact(s.preemption[1])?;
         r!(0x1748,0,1); r!(0x10140,1,0x200);
@@ -77,14 +98,14 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         // f08/f10 and common Asahi preempt_buf_3, previously left zero.
         r!(0x1c958,0,1); r!(0x1c950,0,compact(s.preemption[2])? | (1u64 << 50)); r!(0x1c930,0,0);
         r!(0x1c880,0,compact(s.vdm)? & !3);
-        r!(0x1c078,1,unknown); r!(0x1c9d8,0,unknown);
+        r!(0x1c078,1,layer_metadata); r!(0x1c9d8,0,layer_metadata);
         r!(0x10150,1,0);
         for i in 0..5 { r!(0x1c198+i*8,1,0); }
         r!(0x1c8f8,0,0x8860); r!(0x1c0b0,1,g.region_stride); r!(0x1c850,0,g.region_stride);
         r!(0x10130,1,0x88); r!(0x10120,1,2 | (s.ppp & 0x201));
         r!(0x10128,1,g.pixels); r!(0x101b8,1,g.screen);
         r!(0x1c068,1,g.x_blocks); r!(0x1c070,1,g.y_blocks); r!(0x1c080,1,g.blocks);
-        r!(0x1c0a8,1,g.tpc_stride); r!(0x10170,1,0x100); r!(0x10168,1,0x8000);
+        r!(0x1c0a8,1,g.tpc_stride); r!(0x10170,1,0x100); r!(0x10168,1,s.layer_mode());
         r!(0xa308,1,0); r!(0x1c8e0,0,u64::MAX); r!(0x1c8e8,0,u64::MAX);
         r!(0x1c898,0,0); r!(0x101e0,1,0x1c); r!(0x1c9e8,0,0);
         for o in [0x1a098,0x1a0a0,0x1a068,0x1a070,0x1a0c8,0x1a0d0,0x101c8,0xd470] { r!(o,1,0); }
@@ -122,12 +143,12 @@ pub(crate) fn registers(out: &mut [Register], stage: Stage, s: &State, uuid: u32
         r!(0x15400,1,s.depth.stride); r!(0x15420,1,s.depth.stride);
         r!(0x15408,1,s.stencil.stride); r!(0x15428,1,s.stencil.stride);
         for o in [0x153c0,0x15410,0x153c8,0x15430,0x153d0,0x15418,0x153d8,0x15438] { r!(o,1,0); }
-        r!(0x16428,1,s.tilemap); r!(0x16060,0,s.unknown); r!(0x16430,1,(g.region_stride as u64)<<26);
-        let mode = 0x280 | (u64::from(s.process_empty_tiles)<<16);
+        r!(0x16428,1,s.tilemap); r!(0x16060,0,s.layer_metadata()?); r!(0x16430,1,(g.region_stride as u64)<<26);
+        let mode = 0x280 | u64::from(g.layers > 1) | (u64::from(s.process_empty_tiles)<<16);
         r!(0x10038,1,mode); r!(0x16020,0,0); r!(0x16450,1,0); r!(0x15358,1,0);
         r!(0x100b8,0,0x8860); r!(0x16460,1,s.auxiliary); r!(0x16090,0,s.auxiliary);
         r!(0x101e8,1,0x1c); r!(0x160a8,0,0);
-        r!(0x16068,0,0x3717fu64 | ((g.utile_config>>12)<<40) | (0x200u64<<28) |
+        r!(0x16068,0,0x3717fu64 | (u64::from(g.layers > 1)<<32) | ((g.utile_config>>12)<<40) | (0x200u64<<28) |
             ((g.screen as u64 & 0x1ff)<<44) | (((g.screen as u64>>12)&0x1ff)<<53));
         for o in [0x1a0a8,0x1a0b0,0x1a078,0x1a080,0x1a0d8,0x1a0e0,0x101c0,0xd468] { r!(o,1,0); }
         r!(0x1a0f8,1,8);
@@ -158,7 +179,7 @@ pub(crate) fn mirrors(out: &mut [u8], stage: Stage, s: &State,
     } else {
         let g = s.geometry;
         p!(0xc4e,1,1);
-        p!(0x40,s.tilemap,8); p!(0x50,1,4); p!(0x54,g.isp_blocks,4);
+        p!(0x40,s.tilemap,8); p!(0x50,g.layers,4); p!(0x54,g.isp_blocks,4);
         p!(0x60,g.x_blocks,4); p!(0x64,g.y_blocks,4); p!(0x68,g.blocks,4); p!(0x78,g.tiles,4);
         for (o,v) in [
             (0x7a0,s.depth_bias),(0x7b0,s.scissor),(0x7c0,s.query),

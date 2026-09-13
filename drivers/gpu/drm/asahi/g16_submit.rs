@@ -220,7 +220,7 @@ fn encode_attachments(vm: &mmu::Vm, list: &g17_uapi::UapiAttachmentList)
 fn validate_render(r: g17_uapi::UapiRenderCommand, usc: u64, space: &AddressSpace<'_>) -> Result {
     use g17_uapi::{GpuAddressSpace, GpuAccess};
     let empty = g17_uapi::UapiHelperProgram { binary:0, config:0, data:0 };
-    if r.flags & !(2|16|(1<<18)) != 0 || r.layers != 1 || !matches!(r.samples, 1 | 2 | 4)
+    if r.flags & !(2|16|(1<<18)) != 0 || !matches!(r.samples, 1 | 2 | 4)
         || r.sampler_count != 0 || r.sampler_heap != 0
         || r.vertex_helper != empty || r.fragment_helper != empty
         || r.depth.compression_base != 0 || r.stencil.compression_base != 0
@@ -234,7 +234,7 @@ fn validate_render(r: g17_uapi::UapiRenderCommand, usc: u64, space: &AddressSpac
     }
     // sample_size describes color tilebuffer storage. Depth/stencil-only
     // passes legitimately require zero bytes of color storage.
-    if r.width == 0 || r.height == 0 || r.width > 16384 || r.height > 16384
+    if r.layers == 0 || r.layers > 2048 || r.width == 0 || r.height == 0 || r.width > 16384 || r.height > 16384
         || !matches!(r.utile_width,16|32) || !matches!(r.utile_height,16|32)
         || u32::from(r.sample_size)*u32::from(r.utile_width)*u32::from(r.utile_height)*u32::from(r.samples)>32768 {
         return Err(EINVAL);
@@ -247,7 +247,7 @@ fn validate_render(r: g17_uapi::UapiRenderCommand, usc: u64, space: &AddressSpac
     for (p,access) in [(r.depth_bias_base,GpuAccess::Read),(r.occlusion_query_base,GpuAccess::Write)] {
         if p != 0 && (p & 7 != 0 || !space.covers(p,8,access)) { return Err(EINVAL); }
     }
-    for zls in [r.depth,r.stencil] { g17_uapi::validate_zls(space,zls,1).map_err(|_| EINVAL)?; }
+    for zls in [r.depth,r.stencil] { g17_uapi::validate_zls(space,zls,r.layers).map_err(|_| EINVAL)?; }
     let window = g17_uapi::QueueUscWindow { base:usc,user_start:0x4000,user_end:crate::g16_drm::USER_TOP };
     for p in [r.background,r.end_of_tile,r.partial_background,r.partial_end_of_tile] {
         window.full_program(space,p.usc).map_err(|_| EINVAL)?;

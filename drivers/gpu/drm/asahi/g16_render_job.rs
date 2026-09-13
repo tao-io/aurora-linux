@@ -66,8 +66,8 @@ impl Render {
         queues: [u64; 2], notifications: [u64; 2], stats: [u64; 2],
         reusable: Option<KBox<Self>>) -> Result<KBox<Self>> {
         let utile = |n| match n {16=>Ok(Utile::Pixels16),32=>Ok(Utile::Pixels32),_=>Err(EINVAL)};
-        let mut geometry = Geometry::new(r.width as u32,r.height as u32,
-            utile(r.utile_width)?,utile(r.utile_height)?,1).map_err(|_| EINVAL)?;
+        let mut geometry = Geometry::new_layered(r.width as u32,r.height as u32,
+            utile(r.utile_width)?,utile(r.utile_height)?,1,r.layers).map_err(|_| EINVAL)?;
         geometry.set_samples(r.samples).map_err(|_| EINVAL)?;
         // Initial allocation follows pass geometry, rounded to PB blocks. The
         // firmware can partially store/reload a pass. This is not a UAPI limit.
