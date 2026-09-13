@@ -179,7 +179,9 @@ pub(crate) fn mirrors(out: &mut [u8], stage: Stage, s: &State,
     } else {
         let g = s.geometry;
         p!(0xc4e,1,1);
-        p!(0x40,s.tilemap,8); p!(0x50,g.layers,4); p!(0x54,g.isp_blocks,4);
+        // Native four-layer RunFragment 055901 retains +0x50=1; this
+        // field is not the render-target layer count. Layering is in registers.
+        p!(0x40,s.tilemap,8); p!(0x50,1,4); p!(0x54,g.isp_blocks,4);
         p!(0x60,g.x_blocks,4); p!(0x64,g.y_blocks,4); p!(0x68,g.blocks,4); p!(0x78,g.tiles,4);
         for (o,v) in [
             (0x7a0,s.depth_bias),(0x7b0,s.scissor),(0x7c0,s.query),

@@ -45,7 +45,7 @@ for layers in (1, 2, 4, 2048):
                 checks += 1
             if i % 2:
                 for data in outputs:
-                    assert struct.unpack_from('<I', data, i * 0xca0 + 0x50)[0] == layers
+                    assert struct.unpack_from('<I', data, i * 0xca0 + 0x50)[0] == 1
                     checks += 1
 result = dict(passed=True, checks=checks, qualification='offline native-derived encoder comparison')
 (a.output / 'result.json').write_text(json.dumps(result, indent=2) + '\n')

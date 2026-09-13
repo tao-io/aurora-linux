@@ -50,7 +50,7 @@ int main(int argc, char **argv) {
     D(0x820,layers,4);D(0x824,g.region_stride,4);D(0x828,g.tiles,4);D(0x890,1,1);D(0x891,1,1);
     n=g16_render_fragment_registers(regs,128,d,sizeof(d),&p,0x16001234,&mode);assert(n>0);
     assert(!g16_render_pack_registers(out,sizeof(out),stage,b,regs,n));
-    P(0x40,b+0x20000,8);P(0x50,layers,4);P(0x54,g.isp_blocks,4);P(0x60,g.x_blocks,4);P(0x64,g.y_blocks,4);P(0x68,g.blocks,4);P(0x78,g.tiles,4);
+    P(0x40,b+0x20000,8);P(0x50,1,4);P(0x54,g.isp_blocks,4);P(0x60,g.x_blocks,4);P(0x64,g.y_blocks,4);P(0x68,g.blocks,4);P(0x78,g.tiles,4);
     assert(!g16_render_fragment_resume_state(out,sizeof(out),d,sizeof(d)));
     P(0xc4e,1,1);P(0xc46,0xfffffc2008000000ULL,8);P(0xc57,0xfffffc200c000000ULL,8);P(0x9d8,mode,8);
    }
