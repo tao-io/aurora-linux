@@ -866,3 +866,19 @@ all4096pixels at each of five steps (peak57.5C). 181932 active polygon offset
 32768D16 units displaces nominally nearer red behind green as expected,
 all pixels pass (peak56.75C). Both use watchdog60 and six-channel thermals.
 This does not qualify other multisample depth/stencil formats.
+
+### 2026-09-13: layered depth render qualification
+
+Kernel451b84051cb9 with Mesa9bdb8952d99 plus retained array-image development
+changes passed the geometry-layer depth probe on J713/T8132, 25G83. Run
+20260913T055208761249Z-eevee-layer-kernel-depth checked 256 exact pixels across
+four depth layers: bad=0, watchdog60, peak58.25C. Loaded module SHA256
+5f73fcd7cb3a01fbd345581d4399c2c0452b82c716d2543dd3e93960f42d5e34;
+Mesa SHA2567f546a141cfe858158024489f246db10465a1b373e320217d68bb6354e458af3.
+The same native Eevee capture replay055225 advanced past layered depth but
+still encounters Mesa layered-color BG/EOT refusals; peak61.75C. This does
+not qualify a correct Eevee image or arbitrary layered color rendering.
+
+The offline helper `tools/g16-layer-state-test.py --kernel CHECKOUT --output
+NEW_DIRECTORY` compares native-derived C/Rust layer registers and mirrors.
+It reports264 checks and retains binaries; this is separate from GPU evidence.
