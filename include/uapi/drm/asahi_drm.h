@@ -250,6 +250,17 @@ enum drm_asahi_feature {
 
 	/** @DRM_ASAHI_FEATURE_INDEPENDENT_QUEUES: QUEUE_LIMITS and reserved independent compute queues. */
 	DRM_ASAHI_FEATURE_INDEPENDENT_QUEUES = (1UL) << 2,
+
+	/**
+	 * @DRM_ASAHI_FEATURE_SCHEDULED_QUEUES: Separate software queue timelines.
+	 * Each DRM queue owns a scheduler entity. An unresolved dependency on
+	 * one queue does not block ready jobs on another queue. Physical GPU
+	 * execution may be serialized; no concurrent hardware engines or
+	 * reserved contexts are promised. QUEUE_CREATE allocates host-side
+	 * scheduling state and may fail for memory exhaustion. This feature
+	 * alone does not imply the hardware QUEUE_LIMITS query is available.
+	 */
+	DRM_ASAHI_FEATURE_SCHEDULED_QUEUES = (1UL) << 3,
 };
 
 #define DRM_ASAHI_PARAM_GROUP_VM_STATUS 1

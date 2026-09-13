@@ -85,6 +85,9 @@ impl DrmGpu for Backend {
     }
     fn update_globals(&self) {}
     fn supports_vm_status(&self) -> bool { true }
+    // Distinct DRM entities select ready jobs before the shared one-credit
+    // scheduler publishes them to the serialized firmware runtime.
+    fn supports_scheduled_queues(&self) -> bool { true }
     fn submission_error(&self) -> i32 { if self.is_crashed() { EIO.to_errno() } else { 0 } }
     fn service_g16_jobs(&self) {
         loop {

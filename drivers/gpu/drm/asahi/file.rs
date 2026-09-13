@@ -441,6 +441,9 @@ impl File {
         if gpu.independent_queue_limits().is_some() {
             params.features |= crate::g17_queue_limits::FEATURE_INDEPENDENT_QUEUES;
         }
+        if gpu.supports_scheduled_queues() {
+            params.features |= uapi::drm_asahi_feature_DRM_ASAHI_FEATURE_SCHEDULED_QUEUES as u64;
+        }
         // The owned M4 runtime does not apply the legacy InitData fault_control
         // parameter. Do not invite speculative invalid accesses until its
         // firmware/MMU soft-fault configuration is implemented and qualified.
