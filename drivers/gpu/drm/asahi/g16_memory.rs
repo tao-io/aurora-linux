@@ -30,7 +30,10 @@ impl Buffer {
         protection: prot::Prot) -> Result<Self> {
         if size == 0 || size.checked_add(mmu::UAT_PGMSK).is_none() { return Err(EINVAL); }
         let mut object = gem::new_kernel_object_wc(dev, size)?;
-        object.cached_vmap()?.memset(0);
+        // Fresh GEM shmem backing is already zero-filled. map_into_range pins
+        // and DMA-maps those pages before publishing the UAT mapping. Do not
+        // vmap and clear the entire allocation a second time through a WC CPU
+        // alias; GPU-only private pools need no CPU mapping at all.
         let mapping = object.map_into_range(vm, KERNEL_RANGE, mmu::UAT_PGSZ as u64,
             protection, true)?;
         Ok(Self { mapping, gpu_mapping: None, object, size })
