@@ -259,10 +259,10 @@ impl Runtime {
                     return self.poll_job();
                 }
                 // Preserve both stages' GPU timings once per completed pass.
-                dev_info!(inner.drm.as_ref(), "G16G: render GPU timestamps={:x?}\n", render.timestamps()?);
+                dev_info!(inner.drm.as_ref(), "G16G: render GPU timestamps={:x?} UMA completed={}/2\n", render.timestamps()?, render.uma_completed()?);
             } else {
                 if let Work::Compute(compute) = &mut active.work {
-                    dev_info!(inner.drm.as_ref(), "G16G: compute completion status={:x?}\n", compute.status()?);
+                    dev_info!(inner.drm.as_ref(), "G16G: compute completion status={:x?} UMA completed={}/1\n", compute.status()?, compute.uma_completed()?);
                 }
             }
             let active = inner.active.take().ok_or(EIO)?;

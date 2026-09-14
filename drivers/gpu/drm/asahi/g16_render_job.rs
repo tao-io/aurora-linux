@@ -143,6 +143,13 @@ impl Render {
             PRIVATE_PAGES as u32,job.page_list.gpu_va()?,job.metadata.va()+0x500,
             crate::g16_compute::UmaEngine::Render).map_err(|_| EINVAL)?;
         job.uma.write(0,&uma)?;
+        // Native updateSubmitInfo (25G83 TEXT 8a0683c..48) increments the
+        // host submission count once per engine. Firmware increments UMA+54
+        // on final TA/fragment completion and only drains the gUPM slot when
+        // it equals *UMA+4c (TEXT 2b550..670). This rebuilt owner has exactly
+        // two users. Leaving the host count at zero skips that drain and can
+        // carry the preceding client's freelist into the next ASID.
+        job.metadata.u64(0x500, 2)?;
         let pb_base = state::compact(job.pb_memory.gpu_va()?).map_err(|_| EINVAL)?;
         for i in 0..page_count { job.pages.u32(i*4,((pb_base+i as u64*32768)>>15).try_into()?)?; }
         for i in 0..block_count { job.blocks.u32(i*8,((pb_base+i as u64*PB_BLOCK_BYTES as u64)>>15).try_into()?)?; }
@@ -267,6 +274,9 @@ impl Render {
     pub(crate) fn fragment_dependency(&self) -> u64 { self.metadata.va()+0x340 }
     pub(crate) fn fragment_address(&self) -> u64 { self.commands[1].va() }
     pub(crate) fn context(&self) -> u32 { self.binding.slot() }
+    pub(crate) fn uma_completed(&mut self) -> Result<u64> {
+        self.uma.read_u64(0x54)
+    }
     /// Snapshot retained firmware/GPU state without acknowledging faults or
     /// changing the in-flight pass. Keep diagnostics off the submission path.
     pub(crate) fn log_progress(&mut self, dev: &driver::AsahiDevice) -> Result {

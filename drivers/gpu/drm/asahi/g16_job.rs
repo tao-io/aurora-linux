@@ -93,6 +93,10 @@ impl Compute {
             job.page_list.u64(block * 64, (1u64 << 61) | (private_base + block as u64 * 0x200000))?;
         }
         job.command.write(0, &bytes[..])?;
+        // One submitted engine uses this freshly initialized UMA owner.
+        // Match firmware's UMA+54 completion count so TEXT 2b518 drains the
+        // cached gUPM slot before another client's pool is installed.
+        job.counter.u64(0, 1)?;
         job.shader.write(0, &g16_dispatch::image(job.output.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.esl.write(0, &g16_dispatch::esl(job.shader.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.cdm.write(0, &g16_dispatch::cdm(job.esl.gpu_va()?).map_err(|_| EINVAL)?)?;
@@ -114,6 +118,9 @@ impl Compute {
         self.command.u64(0xb0c + 36, self.command.va() + 0x844)?;
         g16_memory::publish();
         Ok(())
+    }
+    pub(crate) fn uma_completed(&mut self) -> Result<u64> {
+        self.command.read_u64(0xe54)
     }
     pub(crate) fn set_attachments(&mut self, attachments: &crate::g16_attachments::Attachments) -> Result {
         // 25G83 StartCompute+58..15c and FinalizeCompute+68.
