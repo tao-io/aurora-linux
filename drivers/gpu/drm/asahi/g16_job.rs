@@ -17,7 +17,7 @@ pub(crate) struct Compute {
     preemption: Buffer,
     auxiliary: Buffer,
     context_store: Buffer,
-    private_memory: Buffer,
+    private_memory: g16_memory::GpuBuffer,
     pool_state: Buffer,
     page_list: Buffer,
     counter: Buffer,
@@ -57,7 +57,9 @@ impl Compute {
             // Initial 32 MiB pool for qualification across the resident cores.
             // Metadata capacity is an initial allocation policy, not a driver
             // submission or lifetime limit. No captured block is retained.
-            private_memory: gpu(PRIVATE_BYTES)?,
+            // Only client GPU addresses enter the private-memory page lists.
+            // Firmware has no pointer to a canonical alias of this storage.
+            private_memory: g16_memory::GpuBuffer::new(dev, vm, PRIVATE_BYTES)?,
             pool_state: gpu(0x20000)?,
             page_list: gpu(0x4000)?,
             counter: gpu(8)?,
@@ -85,7 +87,7 @@ impl Compute {
             g16_compute::encode(&mut bytes[..], addresses, 0x4000,
                 PRIVATE_PAGES as u32).map_err(|_| EINVAL)?;
         }
-        let private_base = job.private_memory.gpu_va()?;
+        let private_base = job.private_memory.va();
         for page in 0..PRIVATE_PAGES {
             job.pool_state.u64(page * 8, private_base + page as u64 * 0x1000)?;
         }

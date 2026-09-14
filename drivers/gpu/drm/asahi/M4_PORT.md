@@ -882,3 +882,26 @@ not qualify a correct Eevee image or arbitrary layered color rendering.
 The offline helper `tools/g16-layer-state-test.py --kernel CHECKOUT --output
 NEW_DIRECTORY` compares native-derived C/Rust layer registers and mirrors.
 It reports264 checks and retains binaries; this is separate from GPU evidence.
+
+### Compute private storage without an unused firmware alias (2026-09-15)
+
+The compute private pool enters firmware command records only through client
+GPU addresses in pool_state/page_list; no canonical firmware address to the
+pool is published. GpuBuffer now retains its fresh GEM allocation and client
+mapping without constructing a second 32 MiB mapping in the firmware VM.
+Shared command/metrics/preemption/page-list objects retain their existing
+firmware mappings. Allocation size, fresh zero-filled backing, GPU permissions,
+retirement ownership and failure retention remain unchanged; no pool reuse.
+
+The ordered CTS trim_command_pool timeout submitted 6000 GPU event-write jobs.
+Before: 48.7837s isolated, including 33.4601s preparation, 4.7523s active and
+9.9686s cleanup. After: 43.7790s, including 28.4505s preparation, 4.7774s active
+and 9.9077s cleanup. Both performed 6000 real compute allocations/jobs. The
+original concurrent sample timed out at 60.0563s; the 60s limit was retained.
+
+Evidence: cts-b1-trim-baseline (20260914T222530175224Z) and
+cts-b1-trim-private-map (20260914T223314059787Z), mandatory watchdog/thermals,
+peak59.5 C /59.25 C. Module SHA256:
+597b9033e8277880abdac4f6c0737887e0a77f074ebfc0a2488bf4d0be08d4fd.
+This removes avoidable CPU preparation work, not the larger fresh-allocation
+cost. No broad regression run was performed.

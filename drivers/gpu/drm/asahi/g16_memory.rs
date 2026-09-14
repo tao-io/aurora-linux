@@ -22,6 +22,24 @@ pub(crate) struct Buffer {
     size: usize,
 }
 
+/// Storage whose addresses are published only in client GPU page lists.
+/// Retain its GEM backing and client mapping without an unused firmware alias.
+pub(crate) struct GpuBuffer {
+    mapping: mmu::KernelMapping,
+    _object: gem::ObjectRef,
+}
+
+impl GpuBuffer {
+    pub(crate) fn new(dev: &driver::AsahiDevice, vm: &mmu::Vm, size: usize) -> Result<Self> {
+        if size == 0 || size.checked_add(mmu::UAT_PGMSK).is_none() { return Err(EINVAL); }
+        let mut object = gem::new_kernel_object_wc(dev, size)?;
+        let mapping = object.map_into_range(vm, 0x71_0000_0000..0x80_0000_0000,
+            mmu::UAT_PGSZ as u64, prot::PROT_GPU_SHARED_RW, true)?;
+        Ok(Self { mapping, _object: object })
+    }
+    pub(crate) fn va(&self) -> u64 { self.mapping.iova() }
+}
+
 impl Buffer {
     pub(crate) fn new(dev: &driver::AsahiDevice, vm: &mmu::Vm, size: usize) -> Result<Self> {
         Self::allocate(dev, vm, size, prot::PROT_FW_SHARED_RW)
