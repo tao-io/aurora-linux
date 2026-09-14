@@ -46,4 +46,20 @@ compute1/1 completion counts. Six-channel monitoring peaked at59.5C with the
 60-second watchdog. The initial MRT4/mixed attempt had no GPU fault but failed
 its pixel oracle: its floating-point clear of integer RT1 was undefined.
 The probe was corrected to use an integer clear and passed host llvmpipe.
-Normal login validation remains pending recovery from another watchdog lease.
+
+Normal SDDM keyboard login and Foot passed in
+uma-count-normal-login-20260914-1752. Hyprland and Quickshell both mapped the
+installed Asahi Vulkan driver; the normal session configuration and panel/
+background layers were checked. Native scanout screenshots show the correct
+desktop and terminal. Across 329 render jobs and65 observed render ASID
+transitions, firmware counts were2/2 (render) and1/1 (compute), with no GPU
+fault. All23 thermal samples were valid; peak62C. Watchdog60s. Test CPU caps
+were restored after login. Other DisplayPort experiments caused intervening
+watchdog recoveries; the rejected login lease is not counted as a GPU test.
+
+Corrected MRT check20260914T175255645049Z-uma-submitted-mrt-typed-clients
+also passes8 paired rounds (16 processes) alongside that desktop:240 per-
+attachment pixel checks,193 render jobs and160 observed render ASID changes,
+with matching engine counts and no GPU fault. Peak60.25C, watchdog60s.
+This is targeted owner-handoff and real-login validation, not a full CTS
+regression or a claim that the earlier concurrent CTS fault has been resolved.
