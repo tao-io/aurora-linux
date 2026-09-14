@@ -40,11 +40,15 @@ pub(crate) enum Payload {
 pub(crate) struct Command {
     pub(crate) payload: Payload,
     pub(crate) attachments: [crate::g16_attachments::Attachments; 2],
-    timestamps: [Option<Destination>; 2],
+    timestamps: [Option<Destination>; 4],
 }
 impl Command {
     pub(crate) fn timestamp_addresses(&self) -> [u64; 2] {
         core::array::from_fn(|i| self.timestamps[i].as_ref().map_or(0, Destination::firmware_address))
+    }
+    pub(crate) fn render_timestamp_addresses(&self) -> [[u64; 2]; 2] {
+        core::array::from_fn(|stage| core::array::from_fn(|i|
+            self.timestamps[stage * 2 + i].as_ref().map_or(0, Destination::firmware_address)))
     }
 }
 
@@ -160,7 +164,10 @@ impl queue::Queue for Queue {
                 commands.push(Command { payload: Payload::Render { command:payload, usc:self.usc },
                     attachments: [encode_attachments(&self.vm, &vertex_attachments)?,
                                   encode_attachments(&self.vm, &fragment_attachments)?],
-                    timestamps:[None,None] }, GFP_KERNEL)?;
+                    timestamps:[Destination::resolve(objects, payload.vertex_timestamps.start)?,
+                        Destination::resolve(objects, payload.vertex_timestamps.end)?,
+                        Destination::resolve(objects, payload.fragment_timestamps.start)?,
+                        Destination::resolve(objects, payload.fragment_timestamps.end)?] }, GFP_KERNEL)?;
                 continue;
             }
             let g17_uapi::ParsedHardwareCommand::Compute { payload, attachments, .. } = command
@@ -180,7 +187,7 @@ impl queue::Queue for Queue {
                 attachments: [encode_attachments(&self.vm, &cmd.attachments)?,
                               crate::g16_attachments::Attachments::EMPTY],
                 timestamps: [Destination::resolve(objects, cmd.timestamps.start)?,
-                    Destination::resolve(objects, cmd.timestamps.end)?],
+                    Destination::resolve(objects, cmd.timestamps.end)?, None, None],
             }, GFP_KERNEL)?;
         }
         parser.finish().map_err(|_| EINVAL)?;
@@ -226,12 +233,6 @@ fn validate_render(r: g17_uapi::UapiRenderCommand, usc: u64, space: &AddressSpac
         || r.depth.compression_base != 0 || r.stencil.compression_base != 0
         || r.depth.compression_stride != 0 || r.stencil.compression_stride != 0
         || r.ppp_control & !0x203 != 0 { return Err(ENOTSUPP); }
-    // The initial render SKU has no timestamp opcodes. Reject requests until
-    // the genuine GPU timestamp sequence is ported; never substitute CPU time.
-    for t in [r.vertex_timestamps.start,r.vertex_timestamps.end,
-        r.fragment_timestamps.start,r.fragment_timestamps.end] {
-        if t.handle != 0 { return Err(ENOTSUPP); }
-    }
     // sample_size describes color tilebuffer storage. Depth/stencil-only
     // passes legitimately require zero bytes of color storage.
     if r.layers == 0 || r.layers > 2048 || r.width == 0 || r.height == 0 || r.width > 16384 || r.height > 16384

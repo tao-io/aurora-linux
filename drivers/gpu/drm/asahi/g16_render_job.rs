@@ -311,6 +311,23 @@ impl Render {
             self.commands[i].read_u32(if i==0 {0x918} else {0xc60})? as u64,
             self.manager.read_u32(0x54)? as u64])
     }
+    pub(crate) fn set_user_timestamps(&mut self, addresses: [[u64; 2]; 2]) -> Result {
+        for (i, pair) in addresses.into_iter().enumerate() {
+            // Timestamp+24 is the optional user pointer pair, as in compute.
+            // Keep the internal timestamps separate for retirement diagnostics.
+            // The packet retains each validated TimestampBuffer mapping until
+            // both engines retire, including failed jobs.
+            let offset = 0x610 + i * 0x20;
+            self.metadata.u64(offset, pair[0])?;
+            self.metadata.u64(offset + 8, pair[1])?;
+            let pointer = if pair == [0, 0] { 0 } else { self.metadata.va() + offset as u64 };
+            let start = if i == 0 { 0x1cc } else { 0x1ec };
+            self.sequences[i].u64(start + 0x24, pointer)?;
+            self.sequences[i].u64(start + 0x50 + 0x24, pointer)?;
+        }
+        g16_memory::publish();
+        Ok(())
+    }
     pub(crate) fn timestamps(&mut self) -> Result<[[u64; 2]; 2]> {
         Ok([[self.metadata.read_u64(0x600)?, self.metadata.read_u64(0x608)?],
             [self.metadata.read_u64(0x620)?, self.metadata.read_u64(0x628)?]])

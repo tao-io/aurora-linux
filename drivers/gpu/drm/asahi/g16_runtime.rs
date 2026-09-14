@@ -171,7 +171,10 @@ impl Runtime {
                 compute.set_attachments(&attachments[0])?;
                 compute.set_user_timestamps(packet.commands[index].timestamp_addresses())?;
             }
-            Work::Render(render) => render.set_attachments(attachments)?,
+            Work::Render(render) => {
+                render.set_attachments(attachments)?;
+                render.set_user_timestamps(packet.commands[index].render_timestamp_addresses())?;
+            }
         }
         inner.user_generation = generation;
         inner.device.check_pstate()?;
