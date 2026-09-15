@@ -79,6 +79,8 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
         command[0xc84] = RENDER_MODE;
     }
     put(sku, 0, if ta { 5 } else { 7 }, 4);
+    // Completion must flush the same cache generation that starts this work.
+    put(sku, if ta { 0x4c } else { 0x64 }, crate::g16_compute::EVENT_GENERATION as u64, 4);
     put(sku, 0x14, a.command + if ta { 0x40 } else { 0x80 }, 8);
     put(sku, uma, a.uma, 8);
     put(sku, uma + 0x18, a.uma_aux, 8);

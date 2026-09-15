@@ -68,7 +68,10 @@ impl Queue {
             stamp: Buffer::new(dev, vm, 8)?,
         };
         queue.notification.u64(0, queue.threshold.va())?;
-        queue.notification.u32(8, 1)?;
+        // Match the zero event_generation in StartCompute/StartVertex/
+        // StartFragment. The 25G83 notifier flush selects this generation;
+        // a different tag leaves the dispatched work's cache lines dirty.
+        queue.notification.u32(8, crate::g16_compute::EVENT_GENERATION)?;
         queue.notification.u32(0x10, 0x50)?;
         queue.notification.write(0xa8, &[255; 8])?;
         queue.notification.u32(0x114, 1)?;

@@ -26,6 +26,11 @@ pub(crate) const SIZE: usize = 0x1000;
 pub(crate) const SLOT: u8 = 15;
 pub(crate) const STAMP: u32 = 0x100;
 
+/// Cache tag shared by engine starts and their completion notifiers. Native
+/// J713/25G83 uses zero for these persistent queues. This is independent of
+/// the RunCommand ASID generation, which changes when a context is rebound.
+pub(crate) const EVENT_GENERATION: u32 = 0;
+
 /// Userspace supplies a complete CDM byte range; its terminating word is
 /// exclusive-end minus four. USC addresses remain in the client's 4 GiB window.
 #[derive(Clone, Copy)]
@@ -130,6 +135,7 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     u32_at(out, 0x92c, a.context);
     // Context-control flag, separate from RunCompute ASID generation.
     u32_at(out, 0x930, 1);
+    u32_at(out, 0x934, EVENT_GENERATION);
     u32_at(out, 0x950, 1);
     u64_at(out, 0xa78, a.auxiliary_gpu);
     for (i, delta) in [0, 0xf400, 0x1e800, 0x1f000].iter().enumerate() {
@@ -156,7 +162,7 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     u32_at(out, 0xbd4, 0x40000002);
     // Independently consumed notifier and retirement stamps.
     u64_at(out, 0xc00, threshold);
-    u32_at(out, 0xc08, 1);
+    u32_at(out, 0xc08, EVENT_GENERATION);
     u32_at(out, 0xc10, 0x50);
     out[0xca8..0xcb0].fill(255);
     u32_at(out, 0xd14, 1);
@@ -217,8 +223,14 @@ mod tests {
     fn dispatch_and_finish_carry_the_same_event_value() {
         let mut a = addresses();
         a.stamp = 0x12300;
+        a.generation = 7;
         let mut bytes = [0; SIZE];
         encode(&mut bytes, a, 16384, 512).unwrap();
+        // Native 25G83 completion capture: generation0 in both the
+        // dispatch and notifier; RunCommand ASID generation is separate.
+        assert_eq!(bytes[0x88b], 7);
+        assert_eq!(&bytes[0x934..0x938], &[0; 4]);
+        assert_eq!(&bytes[0xc08..0xc0c], &[0; 4]);
         for offset in [0x810, 0xb8c] {
             assert_eq!(&bytes[offset..offset + 4], &0x12300u32.to_le_bytes());
         }

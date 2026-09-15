@@ -191,10 +191,10 @@ impl Config {
         // the J713 producer. A zero-filled timer is not a disabled timer.
         // Globals+0x9b8 is the idle power-off delay (the common driver's
         // idle_off_delay_ms; its default is 2 and 0 means immediately).
-        // Retired results become CPU-visible only when the GPU powers off
-        // after going idle, so power off as soon as the engine is idle.
+        // Completion flushes use matching event generations, so CPU
+        // visibility no longer depends on immediate power-off.
         for (offset, value) in [(0x24, 3000), (0x998, 40), (0x99c, 10),
-            (0x9a0, 250), (0x9b8, 0), (0x9bc, 40), (0x9c0, 5),
+            (0x9a0, 250), (0x9b8, 2), (0x9bc, 40), (0x9c0, 5),
             (0x9c8, 40), (0x9cc, 50)] {
             self.object(Globals).u32(offset, value)?;
         }

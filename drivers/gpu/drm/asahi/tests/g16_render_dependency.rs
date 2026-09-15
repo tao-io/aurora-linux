@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // rustc --edition=2021 --test tests/g16_render_dependency.rs -o /tmp/g16-render-dependency
 #![allow(dead_code)]
+#[path = "../g16_compute.rs"] mod g16_compute;
 #[path = "../g16_render.rs"]
 mod g16_render;
 #[path = "../g16_render_command.rs"]
@@ -28,6 +29,8 @@ fn native_start_and_command_counters_agree_without_truncation() {
         let mut command = [0;0xca0];
         let mut sku = [0;0x400];
         g16_render_command::encode(&mut command,&mut sku,stage,a).unwrap();
+        let event_generation = if stage == Stage::Tiling { 0x4c } else { 0x64 };
+        assert_eq!(&sku[event_generation..event_generation+4], &[0; 4]);
         assert_eq!(&command[4..12], &counter.to_le_bytes());
         assert_eq!(&sku[offset..offset+8], &counter.to_le_bytes());
         assert_eq!(&sku[offset+8..offset+12], &0x70u32.to_le_bytes());

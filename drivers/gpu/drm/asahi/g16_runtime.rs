@@ -31,17 +31,7 @@ struct Inner {
     render_counter: u64,
     compute_stamp: u32,
     active: Option<Active>,
-    /// Retired packets whose fences wait for the visibility window.
-    settling: KVec<(Arc<crate::g16_submit::Packet>, kernel::time::Instant<kernel::time::Monotonic>)>,
 }
-
-/// Results of a retired command become visible to the CPU only about a
-/// millisecond after its stamps, queue indices and event notification are
-/// published; no shared firmware record changes in that interval (measured
-/// on J713/25G83, 2026-09-15). Reading earlier returned stale data. The
-/// earlier driver hid this behind the teardown of a fresh owner per job.
-/// Hold each fence for a measured window instead, without holding the GPU.
-const SETTLE: Delta = Delta::from_micros(1000);
 
 enum Work {
     Compute(KBox<crate::g16_job::Compute>),
@@ -218,8 +208,7 @@ impl Runtime {
     /// Poll one completion snapshot. The worker drops the runtime mutex between
     /// snapshots, so queued ioctls and device removal can make progress.
     pub(crate) fn service_job(&mut self) -> bool {
-        let settling = self.signal_settled();
-        if self.inner.state.health.failed() { return settling; }
+        if self.inner.state.health.failed() { return false; }
         if self.inner.active.is_none() {
             let inner = &mut *self.inner;
             if let Err(error) = inner.config.drain(&inner.drm) {
@@ -228,38 +217,20 @@ impl Runtime {
                 let _ = inner.device.log_engine_state();
                 dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven after idle firmware error {:?}; retaining DMA owners\n", error);
             }
-            return settling;
+            return false;
         }
         let id = self.inner.active.as_ref().unwrap().packet.id;
         match self.poll_job() {
-            Ok(pending) => pending || settling,
+            Ok(pending) => pending,
             Err(error) => {
                 let _ = self.inner.device.log_engine_state();
                 #[cfg(CONFIG_DEV_COREDUMP)]
                 self.capture_active_fault();
-                self.fail_job(id, error); settling
+                self.fail_job(id, error); false
             }
         }
     }
 
-    /// Signal fences of retired packets whose visibility window has passed.
-    /// Returns whether any packet is still settling.
-    fn signal_settled(&mut self) -> bool {
-        let inner = &mut *self.inner;
-        let now = kernel::time::Instant::<kernel::time::Monotonic>::now();
-        let mut index = 0;
-        while index < inner.settling.len() {
-            if now - inner.settling[index].1 >= SETTLE {
-                match inner.settling.remove(index) {
-                    Ok((packet, _)) => packet.finish(Ok(())),
-                    Err(_) => break,
-                }
-            } else {
-                index += 1;
-            }
-        }
-        !inner.settling.is_empty()
-    }
     fn poll_job(&mut self) -> Result<bool> {
         let inner = &mut *self.inner;
         inner.config.drain(&inner.drm)?;
@@ -349,12 +320,10 @@ impl Runtime {
             }
             if index == packet.commands.len() {
                 dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} last_prepare_ns={} last_active_ns={} last_cleanup_ns={} last_gpu_ns={}\n", packet.id, index, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), active.preparation_ns, active_ns, cleanup.elapsed().as_nanos(), gpu_ns);
-                let now = kernel::time::Instant::<kernel::time::Monotonic>::now();
-                if inner.settling.push((packet.clone(), now), GFP_KERNEL).is_err() {
-                    // Never lose a completion: wait inline instead.
-                    fsleep(SETTLE);
-                    packet.finish(Ok(()));
-                }
+                // Matching engine/notifier generations make the user stamp
+                // follow the firmware's cache flush. No idle-time delay is
+                // needed to make the command's writes visible to the CPU.
+                packet.finish(Ok(()));
                 return Ok(false);
             }
             if let Err(error) = self.start_command(packet.clone(), index) {
@@ -424,7 +393,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, active: None, settling: KVec::new() }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, active: None }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

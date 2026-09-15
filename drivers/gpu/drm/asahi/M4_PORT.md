@@ -943,3 +943,53 @@ window, 18.1 s with immediate idle-off and a 1 ms window, all 2000/2000.
 trim_command_pool isolated: 43.8 s before, 13.3 s now. Evidence:
 claude-perf-baseline1, claude-perf-kernel20, claude-perf-kernel25,
 claude-perf-kernel27b (300 us calibration), claude-perf-trim1/trim25.
+
+### Match dispatch and notifier cache generations (2026-09-15)
+
+The completion visibility delay above was compensating for a mismatched cache
+flush tag. The persistent queue notifier initialized its generation (+8) to1,
+but StartCompute+0x34, StartVertex+0x4c and StartFragment+0x64 remained zero.
+The qualified 25G83 firmware issues work with this six-bit event generation and
+uses the notifier generation for its completion flush (TEXT+0x23df8/+0x23e48),
+before publishing the user stamp. This is separate from the RunCommand's ASID
+rebinding generation. Flushing generation1 does not retire generation0's dirty
+cache lines; waiting for power-off happened to conceal the mismatch.
+
+Fresh native J713/25G83 compute capture `20260915T030333Z-fill-dispatches1-active-fwtrace`
+retains notifier/stamps/SKU both during execution and after completion. Its
+notifier generation and StartCompute generation are both zero. The native
+render capture `20260915T030432Z-fragment-128-loop4096-repeat128-render-active-fwtrace`
+has zero in both canonical render start fields. Both probes pass immediate and
+100ms-delayed complete output comparisons. Captures are retained privately under
+`_provenance/asahi-0ad-20260910-native-traces/`; exact firmware text was qualified
+with normalized SHA256 `5f65f61458725470b4b0c02028477bf2ea573afb4e0c496ef995e96affb0d86c`.
+Two native compute encoders coalesced into one RunCompute, so that capture is not
+evidence about intermediate commands in a multi-command notifier batch.
+
+All three engine starts and both persistent/embedded notifier constructors now
+share EVENT_GENERATION=0. Signal completion directly after the existing stamp,
+queue and pipe retirement checks; remove the settling queue and 1ms delay.
+Restore the normal 2ms idle-off timer: power-off is no longer the coherence path.
+The global one-credit scheduler and retained-owner lifetime rules remain.
+
+Validation: 13 host encoding checks pass, including native zero generation
+independent of ASID generation7; both captured render timestamp/WFI sequences
+and event-generation fields match the encoder. Kernel module builds. Initial
+hardware variant (zero settle, immediate idle-off) passed all2000 cases in
+7.641s versus18.1s before; isolated trim passed in5.133s versus13.3s, and the
+16384x6 packed-format copy failure passed. The final direct-completion/2ms-idle
+module SHA256 is `5f4290240f83d7d5cc831cbc95a275d4d94a5bcfcb567b957ded00830d53ae6c`.
+It passes all2000 cases in7.646s; the retained 50-case contention group completes
+in6.047s (16Pass/34NotSupported), with trim taking5.601s. Watchdog60s and six-channel
+0.5s thermal guards passed, maximum56C. These are targeted throughput/coherence
+results, not completion of the pending400k campaign. Details and immutable
+first-attempt outcomes: `build/g16-completion-generation/` and the corresponding
+`_provenance/experiments/20260915T03*-generation-*` directories.
+
+Final contention check: the unchanged first10000-case segment completed in
+59.095s (3928Pass/6072NotSupported, no failures/crashes/timeouts). Its trim case
+passed in41.027s under20 workers, versus the preceding60s timeout. Peak57C.
+Evidence: `20260915T032343645117Z-generation-immediate-prefix10k`; case-list
+SHA256 `fd57f82b4ff66da0679c4e0e689ee0083b08419a0e78ea361f95fc6e89659d89`.
+The earlier interrupted segment's outcomes remain unchanged. The display manager
+was restored under a bounded guard afterwards (`20260915T032509713543Z-generation-restore-display`).
