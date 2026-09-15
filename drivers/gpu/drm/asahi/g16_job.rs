@@ -24,6 +24,9 @@ pub(crate) struct Compute {
     binding: mmu::VmBind,
     stamp: u32,
     consumed_pages: usize,
+    /// Pool-state and page-list bytes for this owner's private pool.
+    freelist: KVec<u8>,
+    page_list_image: KVec<u8>,
 }
 
 const PRIVATE_BYTES: usize = 0x2000000;
@@ -47,10 +50,17 @@ impl Compute {
             let owner: &mut Self = &mut *job;
             // Every firmware- or GPU-written record is reset before the new
             // command is encoded. The pool keeps its contents except the
-            // pages the retired dispatch consumed from the freelist.
+            // pages the retired dispatch consumed from the freelist. The
+            // freelist ring and page list are rewritten in full below, so
+            // only their tails are cleared. The context store is written by
+            // a preemption and read back only through the preemption record,
+            // which is rebuilt from zero here.
             for buffer in [&mut owner.command, &mut owner.output, &mut owner.preemption,
-                &mut owner.auxiliary, &mut owner.context_store, &mut owner.pool_state,
-                &mut owner.page_list, &mut owner.counter] { buffer.clear()?; }
+                &mut owner.auxiliary, &mut owner.counter] { buffer.clear()?; }
+            let pool_len = owner.freelist.len();
+            owner.pool_state.clear_range(pool_len, owner.pool_state.size() - pool_len)?;
+            let list_len = owner.page_list_image.len();
+            owner.page_list.clear_range(list_len, owner.page_list.size() - list_len)?;
             let bytes = owner.consumed_pages.min(PRIVATE_PAGES) * 0x1000;
             owner.private_memory.clear_range(0, bytes)?;
             owner.stamp = stamp;
@@ -63,7 +73,9 @@ impl Compute {
         // contexts; no user mappings or unrelated bootstrap pages are mirrored.
         let mut command = Buffer::new_command(dev, uat.kernel_vm(), uat.kernel_lower_vm(), g16_compute::SIZE)?;
         let command_client = command.map_gpu_view(&vm)?;
-        KBox::new(Self {
+        let private_memory = g16_memory::GpuBuffer::new(dev, vm, PRIVATE_BYTES)?;
+        let (freelist, page_list_image) = g16_memory::freelist_images(private_memory.va(), PRIVATE_PAGES)?;
+        let mut job = KBox::new(Self {
             _command_client: command_client,
             _uma_client: uma_client,
             command,
@@ -79,14 +91,21 @@ impl Compute {
             // submission or lifetime limit. No captured block is retained.
             // Only client GPU addresses enter the private-memory page lists.
             // Firmware has no pointer to a canonical alias of this storage.
-            private_memory: g16_memory::GpuBuffer::new(dev, vm, PRIVATE_BYTES)?,
+            private_memory,
             pool_state: gpu(0x20000)?,
             page_list: gpu(0x4000)?,
             counter: gpu(8)?,
             binding: uat.bind(&vm)?,
             stamp,
             consumed_pages: PRIVATE_PAGES,
-        }, GFP_KERNEL)?
+            freelist,
+            page_list_image,
+        }, GFP_KERNEL)?;
+        dev_info!(dev.as_ref(), "G16G compute memory: command={:#x} preemption={:#x} auxiliary={:#x} context={:#x} private={:#x}+{:#x} pool={:#x} pages={:#x}\n",
+            job.command.gpu_va()?, job.preemption.gpu_va()?, job.auxiliary.gpu_va()?,
+            job.context_store.gpu_va()?, job.private_memory.va(), PRIVATE_BYTES,
+            job.pool_state.gpu_va()?, job.page_list.gpu_va()?);
+        job
         };
         let job: &mut Self = &mut *boxed;
         let mut bytes = KBox::new([0; g16_compute::SIZE], GFP_KERNEL)?;
@@ -110,8 +129,8 @@ impl Compute {
             g16_compute::encode(&mut bytes[..], addresses, 0x4000,
                 PRIVATE_PAGES as u32).map_err(|_| EINVAL)?;
         }
-        let private_base = job.private_memory.va();
-        g16_memory::write_freelist(&mut job.pool_state, &mut job.page_list, private_base, PRIVATE_PAGES)?;
+        job.pool_state.write(0, &job.freelist)?;
+        job.page_list.write(0, &job.page_list_image)?;
         job.command.write(0, &bytes[..])?;
         // One submitted engine uses this freshly initialized UMA owner.
         // Match firmware's UMA+54 completion count so TEXT 2b518 drains the
@@ -122,13 +141,7 @@ impl Compute {
         job.cdm.write(0, &g16_dispatch::cdm(job.esl.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.output.u32(0, g16_dispatch::SENTINEL)?;
         g16_memory::publish();
-        {
-            job.log_context(dev)?;
-            dev_info!(dev.as_ref(), "G16G compute memory: command={:#x} preemption={:#x} auxiliary={:#x} context={:#x} private={:#x}+{:#x} pool={:#x} pages={:#x}\n",
-                job.command.gpu_va()?, job.preemption.gpu_va()?, job.auxiliary.gpu_va()?,
-                job.context_store.gpu_va()?, private_base, PRIVATE_BYTES,
-                job.pool_state.gpu_va()?, job.page_list.gpu_va()?);
-        }
+        job.log_context(dev)?;
         Ok(boxed)
     }
     pub(crate) fn set_user_timestamps(&mut self, addresses: [u64; 2]) -> Result {

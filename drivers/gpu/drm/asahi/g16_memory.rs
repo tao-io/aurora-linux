@@ -196,6 +196,25 @@ impl Buffer {
 
 /// Populate a USC private-memory freelist and its 2 MiB block list for
 /// `pages` pages of storage at `base`, with one staged copy per list.
+/// The freelist ring and the block page list for a private pool, as the
+/// bytes written at pool-state +0 and page-list +0. Owners keep both images
+/// so a recycled owner rewrites its pool with two bulk copies.
+pub(crate) fn freelist_images(base: u64, pages: usize) -> Result<(KVec<u8>, KVec<u8>)> {
+    let mut pool = KVec::new();
+    pool.reserve(pages * 8, GFP_KERNEL)?;
+    for page in 0..pages {
+        pool.extend_from_slice(&(base + page as u64 * 0x1000).to_le_bytes(), GFP_KERNEL)?;
+    }
+    let mut list = KVec::new();
+    let blocks = pages * 0x1000 / 0x200000;
+    list.reserve(blocks * 64, GFP_KERNEL)?;
+    for block in 0..blocks {
+        list.extend_from_slice(&((1u64 << 61) | (base + block as u64 * 0x200000)).to_le_bytes(), GFP_KERNEL)?;
+        list.extend_from_slice(&[0; 56], GFP_KERNEL)?;
+    }
+    Ok((pool, list))
+}
+
 pub(crate) fn write_freelist(pool_state: &mut Buffer, page_list: &mut Buffer,
     base: u64, pages: usize) -> Result {
     let mut pool = KVec::new();
