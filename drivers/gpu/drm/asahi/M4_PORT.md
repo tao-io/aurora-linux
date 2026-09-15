@@ -1068,3 +1068,30 @@ What is left for tiny-command throughput is firmware behaviour: the 300 us
 per group of four and the 1.1-1.8 ms turnaround when a run drains. A macOS
 capture of many small command buffers in flight would show whether the native
 driver ever extends a run, or whether it accepts the same turnaround.
+
+### Cross-engine barrier chaining experiment (2026-09-15)
+
+`build/claude-perf/drafts/compute-behind-render-barrier.patch` (applies to
+`70992a1fbd82`) publishes a compute command while a render of the same
+client is in flight, with a type-4 barrier ring entry ahead of it that waits
+on the render's fragment stamp cell (metadata+0x418, scheduler slot 0x71),
+and a render behind in-flight compute with a barrier ahead of InitPB/TA on
+the compute queue's shared completion word (slot 15). Findings:
+
+- Compute behind render works: the 1,001-case regression list is unchanged
+  and the chained commands retire in order. It did not shorten the
+  dual-source multi-attachment CTS case (23.7 s vs 22 s) or trim (2.6 s vs
+  2.4 s): each command still costs about 1 ms of firmware turnaround whether
+  the host or a barrier releases it.
+- Render behind compute timed out on the first desktop frames (job 16,
+  status `[0, 0, 0, 7f]`, TA queue fully consumed at 48 without stamps). The
+  barrier position ([dep, init, ta]) or the compute slot as a TA wait source
+  is wrong in some way not investigated; not applied.
+- The barrier's +4/+0xc address is the stamp cell the wait compares against
+  (the fragment dependency points at the TA's cell 0x408), +0x14 the value,
+  +0x20 the producer's scheduler slot, +0x24 the waiter's own stamp.
+
+The 5-command packets of that CTS case (render, copies, render, copies)
+therefore keep about 5 ms of GPU-side latency per iteration; the CPU side
+is 0.8 ms of epilog compilation per unique blend state and 0.46 ms per
+command buffer begin.
