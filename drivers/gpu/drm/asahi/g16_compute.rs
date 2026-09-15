@@ -42,6 +42,8 @@ pub(crate) const EVENT_GENERATION: u32 = 0;
 pub(crate) struct Notification {
     pub address: u64,
     pub threshold: u64,
+    /// Shared user stamp address for every command of the queue.
+    pub stamp: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -119,7 +121,7 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     u64_at(out, 0x7a0, control.end - 4);
     u64_at(out, 0x7c8, 0x154024201);
     u32_at(out, 0x7e8, u32::MAX);
-    u64_at(out, 0x800, c + 0xee4);
+    u64_at(out, 0x800, notification.map_or(c + 0xee4, |n| n.stamp));
     u64_at(out, 0x808, c + 0xee0);
     if a.event_slot >= 4 { return Err(()); }
     u32_at(out, 0x810, a.stamp);
@@ -216,7 +218,7 @@ mod tests {
     #[test]
     fn engine_state_queue_and_notifier_are_distinct() {
         let a = addresses();
-        let n = Notification { address: 0xfffffc2000070000, threshold: 0xfffffc2000074000 };
+        let n = Notification { address: 0xfffffc2000070000, threshold: 0xfffffc2000074000, stamp: 0xfffffc2000078000 };
         let mut bytes = [0; SIZE];
         encode_dispatch(&mut bytes, a, 16384, 512,
             Control { base: a.cdm_gpu, end: a.cdm_gpu + 0x30, usc_base: 0 }, Some(n)).unwrap();

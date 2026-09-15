@@ -47,6 +47,11 @@ pub(crate) struct Queue {
     notifier: Buffer,
     command: Buffer,
     stamp: Buffer,
+    /// User completion stamp shared by every command of this queue. The
+    /// firmware's ready-notifier path stores each command's stamp value
+    /// here through the job metadata slot, which all in-flight commands
+    /// share; the values advance monotonically, as on G13/G14.
+    completion: Buffer,
 }
 
 impl Queue {
@@ -66,6 +71,7 @@ impl Queue {
             notifier: Buffer::new(dev, vm, 0x18)?,
             command: Buffer::new(dev, vm, 0x40)?,
             stamp: Buffer::new(dev, vm, 8)?,
+            completion: Buffer::new(dev, vm, 8)?,
         };
         queue.notification.u64(0, queue.threshold.va())?;
         // Match the zero event_generation in StartCompute/StartVertex/
@@ -97,7 +103,12 @@ impl Queue {
     }
 
     pub(crate) fn notification(&self) -> crate::g16_compute::Notification {
-        crate::g16_compute::Notification { address: self.notification.va(), threshold: self.threshold.va() }
+        crate::g16_compute::Notification { address: self.notification.va(), threshold: self.threshold.va(),
+            stamp: self.completion.va() }
+    }
+    /// Latest user completion stamp the firmware stored for this queue.
+    pub(crate) fn completion_stamp(&mut self) -> Result<u32> {
+        self.completion.read_u32(0)
     }
     pub(crate) fn set_render_context(&mut self, context: u32) -> Result {
         if context >= 64 { return Err(EINVAL); }

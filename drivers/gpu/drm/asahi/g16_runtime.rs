@@ -32,7 +32,6 @@ struct Inner {
     compute_stamp: u32,
     /// Next notifier job slot for a compute publication (round robin over
     /// the notifier's four records; in-flight commands hold distinct slots).
-    compute_event_slot: u8,
     /// Commands published to the firmware, oldest first. The firmware
     /// executes each queue in order, so retirement is checked at the front.
     inflight: KVec<Active>,
@@ -53,8 +52,11 @@ struct Inner {
 /// recovery snapshot. Renders keep the firmware's parameter-buffer slot for
 /// their binding until they retire and remain exclusive: nothing is
 /// published while a render is in flight and a render waits for an empty
-/// engine.
-const COMPUTE_DEPTH: usize = 4;
+/// engine. The firmware dispatches the commands it finds at once and starts
+/// commands published during a run only about 1.1 ms after that run ends,
+/// so a deeper window amortizes that turnaround. Each in-flight command
+/// holds one owner (a 32 MiB private pool), which bounds the depth.
+const COMPUTE_DEPTH: usize = 8;
 
 /// Outcome of one completion snapshot.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -230,7 +232,10 @@ impl Runtime {
             crate::g16_submit::Payload::Compute(control) => Work::Compute(crate::g16_job::Compute::in_vm(
                 &inner.drm,&inner.uat,&mut inner.config,&packet.vm,inner.compute_queue.address(),Some(control),
                 Some(inner.compute_queue.notification()),generation,inner.compute_stamp,
-                packet.compute_cache.lock().pop(), { let slot = inner.compute_event_slot; inner.compute_event_slot = (slot + 1) % 4; slot })?),
+                // All commands share job metadata slot 0 and the queue's
+                // user stamp, as G13/G14 do; per-command slots collide once
+                // more than four commands are dispatched together.
+                packet.compute_cache.lock().pop(), 0)?),
             crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
                 &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,inner.render_counter - 2,
                 [inner.queue.address(),inner.fragment_queue.address()],
@@ -326,8 +331,16 @@ impl Runtime {
         inner.device.check_pstate()?;
         let alone = inner.inflight.len() == 1;
         let active = inner.inflight.first_mut().ok_or(EIO)?;
-        let status = active.work.status()?;
+        let mut status = active.work.status()?;
         let pipe_index = active.work.pipe();
+        if pipe_index == 2 {
+            // The shared user stamp holds the newest retired value; this
+            // command is retired once it has reached or passed its own.
+            let shared = inner.compute_queue.completion_stamp()?;
+            if shared.wrapping_sub(active.work.stamp()) as i32 >= 0 {
+                status[1] = active.work.stamp() as u64;
+            }
+        }
         let engine = match pipe_index { 0=>&mut inner.queue,1=>&mut inner.fragment_queue,_=>&mut inner.compute_queue };
         let queue = engine.status()?;
         let pipe = inner.config.pipe_indices(pipe_index)?;
@@ -486,7 +499,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, compute_event_slot: 0, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0 }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0 }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {
