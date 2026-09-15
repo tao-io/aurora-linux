@@ -993,3 +993,78 @@ Evidence: `20260915T032343645117Z-generation-immediate-prefix10k`; case-list
 SHA256 `fd57f82b4ff66da0679c4e0e689ee0083b08419a0e78ea361f95fc6e89659d89`.
 The earlier interrupted segment's outcomes remain unchanged. The display manager
 was restored under a bounded guard afterwards (`20260915T032509713543Z-generation-restore-display`).
+
+### Compute pipelining, notification-driven completion and firmware dispatch cadence (2026-09-15)
+
+Follow-up to the two sections above, measured on the isolated
+`dEQP-VK.api.command_buffers.trim_command_pool` case (6,000 sequential tiny
+compute commands in packets of 10, 36 and 64) and the 1,001-case regression
+list `build/claude-perf/reg1000/cases.txt` (catalog [4000,4500) + [30000,30500)
++ trim; 815 Pass / 186 NotSupported throughout, 20 workers). Commits, oldest
+first, each validated on that list before the next:
+
+| Commit | Change | Isolated trim | reg1000 runner |
+| --- | --- | --- | --- |
+| (Codex `92d74107630e`, start) | notifier generation fix | 4.2 s (depth 2 in flight) | 6.8 s |
+| `3fbc1636410c` | queue a packet's next command at admission, depth 4 | 3.2 s | 5.4 s |
+| `4a900727d0b6` | recycled owners keep freelist/page-list images; no context-store clear | (prep 170 to 85 us/cmd) | |
+| `84550ff4e354` | completion worker wakes on ep 0x20 message 0x0042 (CondVar), re-polls at once after progress, 4 trailing 20 us polls, 1-jiffy fallback | 2.8 s | 4.8 s |
+| `70992a1fbd82` | one shared user stamp per compute queue, JobMeta slot 0 for all, depth 8 | 2.4 s | 4.4 s |
+
+Mesa `581ec0c7917` (one kernel packet per vkQueueSubmit, up to 64 commands)
+preceded these.
+
+Findings, all from the command GPU timestamps (+0x8c0/+0x8c8, 24 MHz) and the
+kernel log timeline (`_provenance/experiments/20260915T04*-claude-trim-*`):
+
+- A tiny compute command executes in 3.4 us of GPU time; consecutive commands
+  the firmware has already dispatched start 75-80 us apart. That 75 us is the
+  firmware/hardware per-command overhead, not the driver.
+- The firmware hardware-enqueues four commands at a time. After a group of
+  four completes, the next four (already dispatched) start about 300 us later.
+  This is the same 300 us whether the next group belongs to the same queue or
+  to a second compute queue with its own scheduler slot (tested, see below).
+- Pipe entries published while the queue runs are not started when the
+  current run ends. They start 1.1-1.8 ms after the queue drains. Publishing
+  ring entries and the write pointer without a pipe entry does not work: the
+  firmware only runs up to the last pipe entry's `wptr` (tested, 2 s timeout
+  with queue consumer 5 and ring write pointer 9). So a run consists of the
+  commands present when the firmware dispatched, and the host cannot extend
+  it. Depth 8 gives 8 commands per (8 x 77 us + 300 us + ~1.7 ms); depth 16
+  did not improve trim (2.41 s both) and produced irregular 0.5-2.5 ms gaps.
+  Each in-flight command holds one owner with a 32 MiB private pool, so
+  depth 8 also bounds memory (256 MiB per busy client).
+- Per-command JobMeta event_control_index (notifier job records 0..3) is
+  wrong on this firmware once more than four commands are dispatched
+  together: the record is overwritten and the earlier command's user stamp
+  is never written (status `[d00, ffffffff, ...]`). G13/G14 use index 0 for
+  every command with one stamp address per queue and monotonically
+  increasing values; doing the same here lifted the depth-4 limit. The
+  per-command firmware stamp (+0xee0, opcode 0xc retirement) stays exact.
+- The firmware's ep 0x20 message 0x0042... arrives about once per command
+  (5,864 messages for 6,000 commands; some coalesce). In 2.5 % of retirements
+  the user stamp trails the message, and 3 of 6,000 needed the 1-jiffy
+  fallback; the four 20 us trailing polls cover the rest. The RTKit mailbox
+  callback runs from the RTKit rx workqueue, so the counter is kept under a
+  Mutex with a CondVar (no IRQ-safe spinlock in this Rust tree).
+- Owner recycling cost was 170 us per command: 65 us rebuilding the 64 KiB
+  freelist eight bytes at a time and 40 us clearing 420 KiB of WC memory
+  (context store 256 KiB, pool state 128 KiB). Cached images and tail-only
+  clears cut it to 85 us; what remains is the encode, attachments and the
+  three per-command log lines.
+
+Experiments that did not help and were reverted:
+
+- Two compute queues (scheduler slots 15 and 16, batches of four
+  alternating): the first 64-command packet ran with the same 4/300 us/4/
+  1.7 ms cadence, and the firmware crashed on the next packet
+  (`20260915T050520921200Z-claude-trim-twoqueues`, crashlog retained,
+  devcoredump M4FWD001). Not investigated further because the cadence showed
+  the drain turnaround is per engine, not per queue.
+- Depth 16 (above). Depth 3 confirmed the stall tracks the in-flight window
+  (2 fast, 1 slow).
+
+What is left for tiny-command throughput is firmware behaviour: the 300 us
+per group of four and the 1.1-1.8 ms turnaround when a run drains. A macOS
+capture of many small command buffers in flight would show whether the native
+driver ever extends a run, or whether it accepts the same turnaround.
