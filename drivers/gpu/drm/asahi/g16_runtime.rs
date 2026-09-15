@@ -47,7 +47,7 @@ struct Inner {
 /// their binding until they retire and remain exclusive: nothing is
 /// published while a render is in flight and a render waits for an empty
 /// engine.
-const COMPUTE_DEPTH: usize = 2;
+const COMPUTE_DEPTH: usize = 4;
 
 enum Work {
     Compute(KBox<crate::g16_job::Compute>),
@@ -175,6 +175,13 @@ impl Runtime {
             if let Err(error) = self.start_command(packet.clone(), index) {
                 packet.finish(Err(error));
                 return Err(error);
+            }
+            // The packet's next command follows immediately, ahead of other
+            // pending work, so one submission fills the in-flight depth
+            // instead of waiting for each predecessor to retire.
+            if index + 1 < packet.commands.len() {
+                self.inner.pending.push((packet, index + 1), GFP_KERNEL)?;
+                self.inner.pending.rotate_right(1);
             }
         }
         Ok(())
@@ -383,10 +390,6 @@ impl Runtime {
                 // follow the firmware's cache flush. No idle-time delay is
                 // needed to make the command's writes visible to the CPU.
                 packet.finish(Ok(()));
-            } else {
-                // The packet's next command goes ahead of other pending work.
-                self.inner.pending.push((packet, index), GFP_KERNEL)?;
-                self.inner.pending.rotate_right(1);
             }
             self.pump()?;
             return Ok(!self.inner.inflight.is_empty());
