@@ -145,7 +145,17 @@ impl DrmGpu for Backend {
     }
     fn user_range(&self) -> Result<Range<u64>> { Ok(mmu::UAT_PGSZ as u64..USER_TOP) }
     fn unknown_page(&self) -> Result<u64> { Ok(USER_TOP) }
-    fn base_clock_hz(&self) -> u32 { 24_000_000 }
+    /// The get_time ioctl converts the architected counter this reports.
+    /// M4 runs it at 1 GHz, not the 24 MHz of earlier Apple silicon, so
+    /// read CNTFRQ_EL0 instead of assuming the older rate: with 24 MHz the
+    /// calibrated device clock ran 41.67x fast and
+    /// pipeline.*.timestamp.calibrated.* failed against vkCmdWriteTimestamp.
+    fn base_clock_hz(&self) -> u32 {
+        let frequency: u64;
+        // SAFETY: Reads the architected counter frequency register only.
+        unsafe { core::arch::asm!("mrs {x}, CNTFRQ_EL0", x = out(reg) frequency) };
+        u32::try_from(frequency & 0xffff_ffff).unwrap_or(24_000_000)
+    }
     fn new_vm(&self, range: Range<u64>) -> Result<mmu::Vm> {
         Option::as_mut(&mut *self.shared.lock()).ok_or(ENODEV)?.new_user_vm(self.ids.vm.next(), range)
     }
