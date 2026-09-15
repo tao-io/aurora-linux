@@ -1095,3 +1095,39 @@ The 5-command packets of that CTS case (render, copies, render, copies)
 therefore keep about 5 ms of GPU-side latency per iteration; the CPU side
 is 0.8 ms of epilog compilation per unique blend state and 0.46 ms per
 command buffer begin.
+
+### Timestamp commands and the compute pipeline (2026-09-16)
+
+Catalog segment [1560000,1570000) hung the GPU three times under 20
+workers in `dEQP-VK.pipeline.monolithic.timestamp.transfer_tests.*`, with
+the segment-24 signature: a compute command of the same packet published
+behind an in-flight command was consumed by the firmware but never executed
+(job status all-ones, queue and pipe consumed, no timestamps, kernel
+`userspace GPU timeout` after 2 s). The 262-case timestamp list reproduced
+it every time at 20 workers, never alone, and passed twice with
+`COMPUTE_DEPTH` forced to one. The commands involved carry user timestamps;
+the firmware writes those cells after the command completes.
+`05fa7e2b200d` keeps such commands out of the pipeline in both directions
+(a command with timestamps waits for the engine to drain, and nothing is
+published behind one); ordinary packets keep the depth of four. The
+timestamp list then passed three times (236 Pass / 26 NotSupported) and the
+1,001-case regression list is unchanged. Evidence:
+`20260915T214413108699Z-cts-2m-r5-s37` (fault dump job 772781),
+`20260915T214831561089Z-cts-2m-r5-s37-recover` (job 1665),
+`claude-tsrepro-depth1{,b}`, `claude-tsrepro-nots{1,2}`,
+`claude-tsrepro-final`.
+
+### M4 architected counter frequency (2026-09-16)
+
+`get_time` converted CNTPCT_EL0 with the 24 MHz base clock of earlier
+Apple silicon, but the M4 counter runs at 1 GHz (`arch_timer: cp15 timer
+running at 1000.00MHz`), so the calibrated device clock ran 41.67 times
+fast: `pipeline.monolithic.timestamp.calibrated.calibration_test` saw
+8.1e9 device ticks for a 200 ms sleep and `dev_domain_test` found
+`vkCmdWriteTimestamp` values outside the calibrated bracket.
+`bdee16c17ebe` reads CNTFRQ_EL0. The engine timestamps the firmware writes
+for queries are already in the same 1 GHz domain: a probe measured a
+200.07 ms device delta for a 200 ms sleep and query timestamps 8.9 ms after
+each calibrated read (`claude-caltsprobe`); the three calibrated cases pass.
+The `command_timestamp_frequency_hz` of 1 GHz reported to userspace was
+therefore already right for M4.
