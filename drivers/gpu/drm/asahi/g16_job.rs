@@ -32,12 +32,12 @@ const PRIVATE_PAGES: usize = PRIVATE_BYTES / 0x1000;
 impl Compute {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, config: &mut crate::g16_config::Config, work_queue: u64) -> Result<KBox<Self>> {
         let vm = uat.new_vm(0x81320020, 0x70_0000_0000..0x80_0000_0000)?;
-        Self::in_vm(dev, uat, config, &vm, work_queue, None, None, 1, g16_compute::STAMP, None)
+        Self::in_vm(dev, uat, config, &vm, work_queue, None, None, 1, g16_compute::STAMP, None, 0)
     }
     pub(crate) fn in_vm(dev: &driver::AsahiDevice, uat: &mmu::Uat,
         config: &mut crate::g16_config::Config, vm: &mmu::Vm, work_queue: u64,
         control: Option<g16_compute::Control>, notification: Option<g16_compute::Notification>, generation: u8, stamp: u32,
-        reusable: Option<KBox<Self>>) -> Result<KBox<Self>> {
+        reusable: Option<KBox<Self>>, event_slot: u8) -> Result<KBox<Self>> {
         // Only an owner displaced by a completely retired replacement may be
         // recycled, and only inside the same client GPUVM. Its GEM backing,
         // both command aliases, the 32 MiB private pool and the ASID lease
@@ -101,7 +101,7 @@ impl Compute {
             work_queue, stats: config.compute_stats(), context_store_gpu: job.context_store.gpu_va()?,
             pool_state_gpu: job.pool_state.gpu_va()?, page_list_gpu: job.page_list.gpu_va()?,
             counter: job.counter.va(),
-            context: job.binding.slot(), generation, stamp,
+            context: job.binding.slot(), generation, stamp, event_slot,
         };
         if let Some(control) = control {
             g16_compute::encode_dispatch(&mut bytes[..], addresses, 0x4000,
@@ -195,6 +195,7 @@ impl Compute {
         self.consumed_pages = g16_memory::consumed_pages(&mut self.command, 0xe00, PRIVATE_PAGES)?;
         Ok(())
     }
+    pub(crate) fn same_vm(&self, vm: &mmu::Vm) -> bool { self.binding.matches(vm) }
     pub(crate) fn stamp(&self) -> u32 { self.stamp }
     pub(crate) fn address(&self) -> u64 { self.command.va() }
     pub(crate) fn status(&mut self) -> Result<[u64; 10]> {

@@ -160,6 +160,37 @@ impl Queue {
         Ok((self.info.va(), next))
     }
 
+    /// Append behind commands the firmware may still be executing. Every
+    /// consumer index must leave room for the batch plus one guard slot, so
+    /// the ring never wraps onto unretired entries. Returns the queue address
+    /// and the write index after the batch, which identifies its retirement.
+    pub(crate) fn append_batch(&mut self, commands: &[u64]) -> Result<(u64, u32)> {
+        if commands.is_empty() || commands.len() >= self.capacity as usize
+            || commands.iter().any(|p| *p & 7 != 0) { return Err(EINVAL); }
+        let status = self.status()?;
+        let write = status[4];
+        let mask = self.capacity - 1;
+        for index in &status[..4] {
+            if *index >= self.capacity { return Err(EIO); }
+            let free = index.wrapping_sub(write).wrapping_sub(1) & mask;
+            if (free as usize) < commands.len() { return Err(EBUSY); }
+        }
+        let mut next = write;
+        for command in commands {
+            self.ring.u64(next as usize * 8, *command)?;
+            next = (next + 1) & mask;
+        }
+        g16_memory::publish();
+        self.ring_state.u32(0x40, next)?;
+        g16_memory::publish();
+        Ok((self.info.va(), next))
+    }
+    /// Whether every consumer index has reached `next` (modular, half-ring
+    /// window): the entries before it have been consumed by the firmware.
+    pub(crate) fn consumed_through(&self, status: &[u32; 6], next: u32) -> bool {
+        let mask = self.capacity - 1;
+        status[..4].iter().all(|index| (index.wrapping_sub(next) & mask) < self.capacity / 2)
+    }
     pub(crate) fn info_snapshot(&mut self, out: &mut [u32]) -> Result {
         for (i, word) in out.iter_mut().enumerate() { *word = self.info.read_u32(i * 4)?; }
         Ok(())

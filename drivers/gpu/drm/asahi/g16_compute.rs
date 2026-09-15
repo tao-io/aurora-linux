@@ -20,6 +20,11 @@ pub(crate) struct Addresses {
     pub context: u32,
     pub generation: u8,
     pub stamp: u32,
+    /// Notifier job slot (JobMeta event_control_index). The notifier keeps
+    /// four job records per engine; commands in flight together must use
+    /// distinct slots or the later dispatch replaces the earlier record and
+    /// its user stamp is never stored.
+    pub event_slot: u8,
 }
 
 pub(crate) const SIZE: usize = 0x1000;
@@ -116,8 +121,10 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     u32_at(out, 0x7e8, u32::MAX);
     u64_at(out, 0x800, c + 0xee4);
     u64_at(out, 0x808, c + 0xee0);
+    if a.event_slot >= 4 { return Err(()); }
     u32_at(out, 0x810, a.stamp);
     u32_at(out, 0x814, SLOT as u32);
+    u32_at(out, 0x818, a.event_slot as u32);
     u32_at(out, 0x820, 1);
     u64_at(out, 0x834, c + 0x8c0);
     u64_at(out, 0x83c, c + 0x8c8);
@@ -180,7 +187,7 @@ mod tests {
         Addresses { command: 0xfffffc2000014000, command_gpu: 0x7000100000, cdm_gpu: 0x7000500000, preemption_gpu: 0x7000600000, metrics: 0xfffffc2000050000, auxiliary_gpu: 0x7000700000,
             work_queue: 0xfffffc2000030000, stats: 0xfffffc2000060000, context_store_gpu: 0x7000800000,
             pool_state_gpu: 0x7000200000, page_list_gpu: 0x7000300000,
-            counter: 0xfffffc2000040000, context: 1, generation: 1, stamp: STAMP }
+            counter: 0xfffffc2000040000, context: 1, generation: 1, stamp: STAMP, event_slot: 0 }
     }
     #[test]
     fn packed_abi_roles_and_end_record() {
