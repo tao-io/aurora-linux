@@ -57,12 +57,16 @@ impl Command {
 // This avoids losing every game allocation when the compositor submits next.
 // Queue/packet ownership bounds lifetime without a global VM-pinning cache.
 pub(crate) type RenderCache = Arc<Mutex<KVec<KBox<crate::g16_render_job::Render>>>>;
+// Same displacement rule for compute owners: firmware caches the UMA
+// descriptor, so only the predecessor of a retired replacement returns.
+pub(crate) type ComputeCache = Arc<Mutex<KVec<KBox<crate::g16_job::Compute>>>>;
 
 pub(crate) struct Packet {
     pub(crate) id: u64,
     pub(crate) vm: mmu::Vm,
     pub(crate) commands: KVec<Command>,
     pub(crate) render_cache: RenderCache,
+    pub(crate) compute_cache: ComputeCache,
     pub(crate) completion: UserFence<Completion>,
     _vm_job: mmu::T8140VmJobGuard,
 }
@@ -132,6 +136,7 @@ pub(crate) struct Queue {
     usc: u64,
     fences: FenceContexts,
     render_cache: RenderCache,
+    compute_cache: ComputeCache,
 }
 
 impl Queue {
@@ -147,6 +152,7 @@ impl Queue {
         Ok(Self { entity: sched::Entity::new(&scheduler, priority)?, _scheduler: scheduler,
             shared, dev, vm, usc,
             render_cache: Arc::pin_init(new_mutex!(KVec::new()), GFP_KERNEL)?,
+            compute_cache: Arc::pin_init(new_mutex!(KVec::new()), GFP_KERNEL)?,
             fences: FenceContexts::new(1, c_str!("asahi_m4_queue"), kernel::static_lock_class!())? })
     }
 }
@@ -193,6 +199,7 @@ impl queue::Queue for Queue {
         parser.finish().map_err(|_| EINVAL)?;
         let packet = Arc::new(Packet { id, vm: self.vm.clone(), commands,
             render_cache: self.render_cache.clone(),
+            compute_cache: self.compute_cache.clone(),
             completion: self.fences.new_fence(0, Completion)?.into(), _vm_job: vm_job }, GFP_KERNEL)?;
         let mut job = self.entity.new_job(1, Job { shared: self.shared.clone(), packet, dev: self.dev.clone() })?;
         for sync in syncs.drain(0..in_sync_count) {

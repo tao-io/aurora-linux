@@ -157,6 +157,10 @@ impl Queue {
         Ok((self.info.va(), next))
     }
 
+    pub(crate) fn info_snapshot(&mut self, out: &mut [u32]) -> Result {
+        for (i, word) in out.iter_mut().enumerate() { *word = self.info.read_u32(i * 4)?; }
+        Ok(())
+    }
     pub(crate) fn status(&mut self) -> Result<[u32; 6]> {
         Ok([self.info.read_u32(0x20)?, self.info.read_u32(0x24)?, self.info.read_u32(0x28)?,
             self.ring_state.read_u32(0x30)?, self.ring_state.read_u32(0x40)?,

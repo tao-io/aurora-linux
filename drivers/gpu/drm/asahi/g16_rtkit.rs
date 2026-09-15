@@ -4,7 +4,7 @@
 //! its crash storage by physical address inside the reserved data segment.
 
 use crate::g16_resources::Region;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use kernel::{
     c_str,
     device::Core,
@@ -22,6 +22,9 @@ pub(crate) struct State {
     data: Region,
     pub(crate) health: Arc<Health>,
     claimed: AtomicBool,
+    /// Firmware event notifications received on the application endpoint.
+    /// The firmware sends one after a command's completion processing.
+    pub(crate) event_messages: AtomicU64,
 }
 
 /// Shared status contains no device references, so DRM files may retain it
@@ -57,6 +60,7 @@ impl State {
                     failed: AtomicBool::new(false),
                 }, GFP_KERNEL)?,
                 claimed: AtomicBool::new(false),
+                event_messages: AtomicU64::new(0),
             },
             GFP_KERNEL,
         )?)
@@ -158,6 +162,7 @@ impl rtkit::Operations for Operations {
         // drained, including after the final userspace job. Never take the
         // runtime mutex in the RTKit callback: enqueue the serialized worker.
         if endpoint == 0x20 && message == 0x0042_0000_0000_0000 {
+            state.event_messages.fetch_add(1, Ordering::Release);
             crate::driver::queue_g16_completion_worker(state.drm.clone());
             return;
         }

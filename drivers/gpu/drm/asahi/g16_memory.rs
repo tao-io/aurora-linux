@@ -26,7 +26,8 @@ pub(crate) struct Buffer {
 /// Retain its GEM backing and client mapping without an unused firmware alias.
 pub(crate) struct GpuBuffer {
     mapping: mmu::KernelMapping,
-    _object: gem::ObjectRef,
+    object: gem::ObjectRef,
+    size: usize,
 }
 
 impl GpuBuffer {
@@ -35,9 +36,18 @@ impl GpuBuffer {
         let mut object = gem::new_kernel_object_wc(dev, size)?;
         let mapping = object.map_into_range(vm, 0x71_0000_0000..0x80_0000_0000,
             mmu::UAT_PGSZ as u64, prot::PROT_GPU_SHARED_RW, true)?;
-        Ok(Self { mapping, _object: object })
+        Ok(Self { mapping, object, size })
     }
     pub(crate) fn va(&self) -> u64 { self.mapping.iova() }
+    /// Zero `len` bytes from `offset` through a retained WC CPU alias, for
+    /// an owner whose engine consumers have provably retired.
+    pub(crate) fn clear_range(&mut self, offset: usize, len: usize) -> Result {
+        if offset.checked_add(len).ok_or(EOVERFLOW)? > self.size { return Err(ERANGE); }
+        let vmap = self.object.cached_vmap()?;
+        // SAFETY: checked range inside the retained page-aligned GEM vmap.
+        unsafe { core::ptr::write_bytes(vmap.as_mut_ptr().add(offset), 0, len) };
+        Ok(())
+    }
 }
 
 impl Buffer {
@@ -121,6 +131,13 @@ impl Buffer {
         self.object.cached_vmap()?.memset(0);
         Ok(())
     }
+    pub(crate) fn clear_range(&mut self, offset: usize, len: usize) -> Result {
+        if offset.checked_add(len).ok_or(EOVERFLOW)? > self.size { return Err(ERANGE); }
+        let vmap = self.object.cached_vmap()?;
+        // SAFETY: checked range inside the retained page-aligned GEM vmap.
+        unsafe { core::ptr::write_bytes(vmap.as_mut_ptr().add(offset), 0, len) };
+        Ok(())
+    }
     pub(crate) fn write(&mut self, offset: usize, bytes: &[u8]) -> Result {
         if offset.checked_add(bytes.len()).ok_or(EOVERFLOW)? > self.size { return Err(ERANGE); }
         self.object.cached_vmap()?.write(bytes, offset)
@@ -175,6 +192,36 @@ impl Buffer {
         acquire();
         Ok(u32::from_le(value))
     }
+}
+
+/// Populate a USC private-memory freelist and its 2 MiB block list for
+/// `pages` pages of storage at `base`, with one staged copy per list.
+pub(crate) fn write_freelist(pool_state: &mut Buffer, page_list: &mut Buffer,
+    base: u64, pages: usize) -> Result {
+    let mut pool = KVec::new();
+    pool.reserve(pages * 8, GFP_KERNEL)?;
+    for page in 0..pages {
+        pool.extend_from_slice(&(base + page as u64 * 0x1000).to_le_bytes(), GFP_KERNEL)?;
+    }
+    pool_state.write(0, &pool)?;
+    let mut list = KVec::new();
+    let blocks = pages * 0x1000 / 0x200000;
+    list.reserve(blocks * 64, GFP_KERNEL)?;
+    for block in 0..blocks {
+        list.extend_from_slice(&((1u64 << 61) | (base + block as u64 * 0x200000)).to_le_bytes(), GFP_KERNEL)?;
+        list.extend_from_slice(&[0; 56], GFP_KERNEL)?;
+    }
+    page_list.write(0, &list)
+}
+
+/// Pages handed out from a retired owner's freelist, from the descriptor's
+/// consumer index at +0x20. The rebuilt ring lists pages in address order,
+/// so the first `consumed` entries are the first `consumed` pages of the
+/// pool. A consumer beyond the populated count means recycled entries were
+/// reused; report the whole pool so the caller clears everything.
+pub(crate) fn consumed_pages(descriptor: &mut Buffer, offset: usize, pages: usize) -> Result<usize> {
+    let consumed = descriptor.read_u32(offset + 0x20)? as usize;
+    Ok(if consumed <= pages { consumed } else { pages })
 }
 
 pub(crate) fn publish() {

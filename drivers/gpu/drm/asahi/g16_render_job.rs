@@ -40,6 +40,7 @@ pub(crate) struct Render {
     pub(crate) stage: Stage,
     stamp: u32,
     layout: [u32; 4],
+    consumed_pages: usize,
 }
 impl Render {
     #[cfg(CONFIG_DEV_COREDUMP)]
@@ -133,11 +134,14 @@ impl Render {
                 uma:gpu(0x4000)?,private_memory:gpu(PRIVATE_BYTES)?,
                 pool_state:gpu(PRIVATE_QWORDS*8)?,page_list:gpu(0x4000)?,
                 binding:uat.bind(vm)?,stage:Stage::Tiling,stamp,layout,
+                consumed_pages:PRIVATE_PAGES,
             }, GFP_KERNEL)?
         };
         let base = job.private_memory.gpu_va()?;
-        for i in 0..PRIVATE_PAGES { job.pool_state.u64(i*8,base+i as u64*4096)?; }
-        for i in 0..PRIVATE_BYTES/0x200000 { job.page_list.u64(i*64,(1u64<<61)|(base+i as u64*0x200000))?; }
+        {
+            let owner: &mut Self = &mut *job;
+            g16_memory::write_freelist(&mut owner.pool_state, &mut owner.page_list, base, PRIVATE_PAGES)?;
+        }
         let mut uma = [0;0xa0];
         crate::g16_compute::encode_uma(&mut uma,job.pool_state.gpu_va()?,PRIVATE_QWORDS as u32,
             PRIVATE_PAGES as u32,job.page_list.gpu_va()?,job.metadata.va()+0x500,
@@ -151,8 +155,23 @@ impl Render {
         // carry the preceding client's freelist into the next ASID.
         job.metadata.u64(0x500, 2)?;
         let pb_base = state::compact(job.pb_memory.gpu_va()?).map_err(|_| EINVAL)?;
-        for i in 0..page_count { job.pages.u32(i*4,((pb_base+i as u64*32768)>>15).try_into()?)?; }
-        for i in 0..block_count { job.blocks.u32(i*8,((pb_base+i as u64*PB_BLOCK_BYTES as u64)>>15).try_into()?)?; }
+        {
+            // One staged copy per list instead of a bounds-checked WC store
+            // per entry; the parameter page list has thousands of entries.
+            let mut pages = KVec::new();
+            for i in 0..page_count {
+                let page: u32 = ((pb_base+i as u64*32768)>>15).try_into()?;
+                pages.extend_from_slice(&page.to_le_bytes(), GFP_KERNEL)?;
+            }
+            job.pages.write(0, &pages)?;
+            let mut blocks = KVec::new();
+            for i in 0..block_count {
+                let block: u32 = ((pb_base+i as u64*PB_BLOCK_BYTES as u64)>>15).try_into()?;
+                blocks.extend_from_slice(&block.to_le_bytes(), GFP_KERNEL)?;
+                blocks.extend_from_slice(&[0; 4], GFP_KERNEL)?;
+            }
+            job.blocks.write(0, &blocks)?;
+        }
         job.block_ring.u32(0,block_count.try_into()?)?;
         job.block_ring.u32(4,block_count.try_into()?)?;
         let mut manager = [0;0xc0];
@@ -258,13 +277,24 @@ impl Render {
         for buffer in &mut self.commands { buffer.clear()?; }
         for buffer in &mut self.sequences { buffer.clear()?; }
         for buffer in &mut self.preemption { buffer.clear()?; }
+        // The 32 MiB USC private pool holds firmware/GPU allocator state in
+        // the pages it handed out. Only those pages, recorded from the
+        // retired descriptor, can be stale; clearing the whole pool through
+        // the WC alias cost more than the GPU work of a typical pass.
+        let bytes = self.consumed_pages.min(PRIVATE_PAGES) * 4096;
+        self.private_memory.clear_range(0, bytes)?;
         for buffer in [
             &mut self.metadata, &mut self.manager, &mut self.pages,
             &mut self.blocks, &mut self.block_ring,
             &mut self.scratch, &mut self.scene_list, &mut self.tilemap, &mut self.tpc,
             &mut self.unknown, &mut self.auxiliary, &mut self.uma,
-            &mut self.private_memory, &mut self.pool_state, &mut self.page_list,
+            &mut self.pool_state, &mut self.page_list,
         ] { buffer.clear()?; }
+        Ok(())
+    }
+    /// Record the retired pass's private-page consumption for recycling.
+    pub(crate) fn record_consumption(&mut self) -> Result {
+        self.consumed_pages = crate::g16_memory::consumed_pages(&mut self.uma, 0, PRIVATE_PAGES)?;
         Ok(())
     }
     pub(crate) fn stamp(&self) -> u32 { self.stamp }

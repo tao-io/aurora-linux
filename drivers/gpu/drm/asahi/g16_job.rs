@@ -23,19 +23,39 @@ pub(crate) struct Compute {
     counter: Buffer,
     binding: mmu::VmBind,
     stamp: u32,
+    consumed_pages: usize,
 }
 
 const PRIVATE_BYTES: usize = 0x2000000;
 const PRIVATE_PAGES: usize = PRIVATE_BYTES / 0x1000;
 
 impl Compute {
-    pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, config: &mut crate::g16_config::Config, work_queue: u64) -> Result<Self> {
+    pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, config: &mut crate::g16_config::Config, work_queue: u64) -> Result<KBox<Self>> {
         let vm = uat.new_vm(0x81320020, 0x70_0000_0000..0x80_0000_0000)?;
-        Self::in_vm(dev, uat, config, &vm, work_queue, None, None, 1, g16_compute::STAMP)
+        Self::in_vm(dev, uat, config, &vm, work_queue, None, None, 1, g16_compute::STAMP, None)
     }
     pub(crate) fn in_vm(dev: &driver::AsahiDevice, uat: &mmu::Uat,
         config: &mut crate::g16_config::Config, vm: &mmu::Vm, work_queue: u64,
-        control: Option<g16_compute::Control>, notification: Option<g16_compute::Notification>, generation: u8, stamp: u32) -> Result<Self> {
+        control: Option<g16_compute::Control>, notification: Option<g16_compute::Notification>, generation: u8, stamp: u32,
+        reusable: Option<KBox<Self>>) -> Result<KBox<Self>> {
+        // Only an owner displaced by a completely retired replacement may be
+        // recycled, and only inside the same client GPUVM. Its GEM backing,
+        // both command aliases, the 32 MiB private pool and the ASID lease
+        // are retained; every firmware-visible record is rebuilt below.
+        let reusable = reusable.filter(|job| control.is_some() && job.binding.matches(vm));
+        let mut boxed = if let Some(mut job) = reusable {
+            let owner: &mut Self = &mut *job;
+            // Every firmware- or GPU-written record is reset before the new
+            // command is encoded. The pool keeps its contents except the
+            // pages the retired dispatch consumed from the freelist.
+            for buffer in [&mut owner.command, &mut owner.output, &mut owner.preemption,
+                &mut owner.auxiliary, &mut owner.context_store, &mut owner.pool_state,
+                &mut owner.page_list, &mut owner.counter] { buffer.clear()?; }
+            let bytes = owner.consumed_pages.min(PRIVATE_PAGES) * 0x1000;
+            owner.private_memory.clear_range(0, bytes)?;
+            owner.stamp = stamp;
+            job
+        } else {
         let uma_client = if control.is_none() { Some(config.bind_uma_table(vm)?) } else { None };
         let gpu = |size| Buffer::new_gpu(dev, uat.kernel_vm(), &vm, size);
         // The engine fetches the register list in bootstrap context zero, then
@@ -43,7 +63,7 @@ impl Compute {
         // contexts; no user mappings or unrelated bootstrap pages are mirrored.
         let mut command = Buffer::new_command(dev, uat.kernel_vm(), uat.kernel_lower_vm(), g16_compute::SIZE)?;
         let command_client = command.map_gpu_view(&vm)?;
-        let mut job = Self {
+        KBox::new(Self {
             _command_client: command_client,
             _uma_client: uma_client,
             command,
@@ -65,7 +85,10 @@ impl Compute {
             counter: gpu(8)?,
             binding: uat.bind(&vm)?,
             stamp,
+            consumed_pages: PRIVATE_PAGES,
+        }, GFP_KERNEL)?
         };
+        let job: &mut Self = &mut *boxed;
         let mut bytes = KBox::new([0; g16_compute::SIZE], GFP_KERNEL)?;
         let addresses = Addresses {
             command: job.command.va(), command_gpu: job.command.gpu_va()?,
@@ -88,12 +111,7 @@ impl Compute {
                 PRIVATE_PAGES as u32).map_err(|_| EINVAL)?;
         }
         let private_base = job.private_memory.va();
-        for page in 0..PRIVATE_PAGES {
-            job.pool_state.u64(page * 8, private_base + page as u64 * 0x1000)?;
-        }
-        for block in 0..PRIVATE_BYTES / 0x200000 {
-            job.page_list.u64(block * 64, (1u64 << 61) | (private_base + block as u64 * 0x200000))?;
-        }
+        g16_memory::write_freelist(&mut job.pool_state, &mut job.page_list, private_base, PRIVATE_PAGES)?;
         job.command.write(0, &bytes[..])?;
         // One submitted engine uses this freshly initialized UMA owner.
         // Match firmware's UMA+54 completion count so TEXT 2b518 drains the
@@ -104,12 +122,14 @@ impl Compute {
         job.cdm.write(0, &g16_dispatch::cdm(job.esl.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.output.u32(0, g16_dispatch::SENTINEL)?;
         g16_memory::publish();
-        job.log_context(dev)?;
-        dev_info!(dev.as_ref(), "G16G compute memory: command={:#x} preemption={:#x} auxiliary={:#x} context={:#x} private={:#x}+{:#x} pool={:#x} pages={:#x}\n",
-            job.command.gpu_va()?, job.preemption.gpu_va()?, job.auxiliary.gpu_va()?,
-            job.context_store.gpu_va()?, private_base, PRIVATE_BYTES,
-            job.pool_state.gpu_va()?, job.page_list.gpu_va()?);
-        Ok(job)
+        {
+            job.log_context(dev)?;
+            dev_info!(dev.as_ref(), "G16G compute memory: command={:#x} preemption={:#x} auxiliary={:#x} context={:#x} private={:#x}+{:#x} pool={:#x} pages={:#x}\n",
+                job.command.gpu_va()?, job.preemption.gpu_va()?, job.auxiliary.gpu_va()?,
+                job.context_store.gpu_va()?, private_base, PRIVATE_BYTES,
+                job.pool_state.gpu_va()?, job.page_list.gpu_va()?);
+        }
+        Ok(boxed)
     }
     pub(crate) fn set_user_timestamps(&mut self, addresses: [u64; 2]) -> Result {
         if addresses == [0, 0] { return Ok(()); }
@@ -169,6 +189,11 @@ impl Compute {
     #[cfg(CONFIG_DEV_COREDUMP)]
     pub(crate) fn capture_retired_command(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
         dump.buffer("compute-retired-command", &mut self.command, g16_compute::SIZE)
+    }
+    /// Record the retired dispatch's private-page consumption for recycling.
+    pub(crate) fn record_consumption(&mut self) -> Result {
+        self.consumed_pages = g16_memory::consumed_pages(&mut self.command, 0xe00, PRIVATE_PAGES)?;
+        Ok(())
     }
     pub(crate) fn stamp(&self) -> u32 { self.stamp }
     pub(crate) fn address(&self) -> u64 { self.command.va() }

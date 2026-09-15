@@ -18,8 +18,8 @@ struct Inner {
     queue_context: crate::g16_queue::Context,
     fragment_registered: bool,
     retired_render: Option<(KBox<crate::g16_render_job::Render>, crate::g16_submit::RenderCache)>,
-    retired_compute: Option<KBox<crate::g16_job::Compute>>,
-    compute: crate::g16_job::Compute,
+    retired_compute: Option<(KBox<crate::g16_job::Compute>, crate::g16_submit::ComputeCache)>,
+    compute: KBox<crate::g16_job::Compute>,
     config: crate::g16_config::Config,
     uat: mmu::Uat,
     drm: driver::AsahiDevRef,
@@ -31,7 +31,17 @@ struct Inner {
     render_counter: u64,
     compute_stamp: u32,
     active: Option<Active>,
+    /// Retired packets whose fences wait for the visibility window.
+    settling: KVec<(Arc<crate::g16_submit::Packet>, kernel::time::Instant<kernel::time::Monotonic>)>,
 }
+
+/// Results of a retired command become visible to the CPU only about a
+/// millisecond after its stamps, queue indices and event notification are
+/// published; no shared firmware record changes in that interval (measured
+/// on J713/25G83, 2026-09-15). Reading earlier returned stale data. The
+/// earlier driver hid this behind the teardown of a fresh owner per job.
+/// Hold each fence for a measured window instead, without holding the GPU.
+const SETTLE: Delta = Delta::from_micros(2000);
 
 enum Work {
     Compute(KBox<crate::g16_job::Compute>),
@@ -156,9 +166,10 @@ impl Runtime {
             inner.compute_stamp = inner.compute_stamp.wrapping_add(0x100).max(0x100);
         }
         let mut work = match payload {
-            crate::g16_submit::Payload::Compute(control) => Work::Compute(KBox::new(crate::g16_job::Compute::in_vm(
+            crate::g16_submit::Payload::Compute(control) => Work::Compute(crate::g16_job::Compute::in_vm(
                 &inner.drm,&inner.uat,&mut inner.config,&packet.vm,inner.compute_queue.address(),Some(control),
-                Some(inner.compute_queue.notification()),generation,inner.compute_stamp)?, GFP_KERNEL)?),
+                Some(inner.compute_queue.notification()),generation,inner.compute_stamp,
+                packet.compute_cache.lock().pop())?),
             crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
                 &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,inner.render_counter - 2,
                 [inner.queue.address(),inner.fragment_queue.address()],
@@ -207,7 +218,8 @@ impl Runtime {
     /// Poll one completion snapshot. The worker drops the runtime mutex between
     /// snapshots, so queued ioctls and device removal can make progress.
     pub(crate) fn service_job(&mut self) -> bool {
-        if self.inner.state.health.failed() { return false; }
+        let settling = self.signal_settled();
+        if self.inner.state.health.failed() { return settling; }
         if self.inner.active.is_none() {
             let inner = &mut *self.inner;
             if let Err(error) = inner.config.drain(&inner.drm) {
@@ -216,18 +228,37 @@ impl Runtime {
                 let _ = inner.device.log_engine_state();
                 dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven after idle firmware error {:?}; retaining DMA owners\n", error);
             }
-            return false;
+            return settling;
         }
         let id = self.inner.active.as_ref().unwrap().packet.id;
         match self.poll_job() {
-            Ok(pending) => pending,
+            Ok(pending) => pending || settling,
             Err(error) => {
                 let _ = self.inner.device.log_engine_state();
                 #[cfg(CONFIG_DEV_COREDUMP)]
                 self.capture_active_fault();
-                self.fail_job(id, error); false
+                self.fail_job(id, error); settling
             }
         }
+    }
+
+    /// Signal fences of retired packets whose visibility window has passed.
+    /// Returns whether any packet is still settling.
+    fn signal_settled(&mut self) -> bool {
+        let inner = &mut *self.inner;
+        let now = kernel::time::Instant::<kernel::time::Monotonic>::now();
+        let mut index = 0;
+        while index < inner.settling.len() {
+            if now - inner.settling[index].1 >= SETTLE {
+                match inner.settling.remove(index) {
+                    Ok((packet, _)) => packet.finish(Ok(())),
+                    Err(_) => break,
+                }
+            } else {
+                index += 1;
+            }
+        }
+        !inner.settling.is_empty()
     }
     fn poll_job(&mut self) -> Result<bool> {
         let inner = &mut *self.inner;
@@ -240,6 +271,7 @@ impl Runtime {
         let queue = match pipe_index { 0=>inner.queue.status()?,1=>inner.fragment_queue.status()?,_=>inner.compute_queue.status()? };
         let pipe = inner.config.pipe_indices(pipe_index)?;
         let next = active.queue_next[pipe_index];
+        let mut gpu_span = [0u64; 2];
         if status[0] == active.work.stamp() as u64
             && status[1] == active.work.stamp() as u64
             && (pipe_index != 2 || (status[2] != 0 && status[3] > status[2]))
@@ -259,14 +291,26 @@ impl Runtime {
                     return self.poll_job();
                 }
                 // Preserve both stages' GPU timings once per completed pass.
-                dev_info!(inner.drm.as_ref(), "G16G: render GPU timestamps={:x?} UMA completed={}/2\n", render.timestamps()?, render.uma_completed()?);
+                let timestamps = render.timestamps()?;
+                gpu_span = [timestamps[0][0], timestamps[1][1]];
+                dev_info!(inner.drm.as_ref(), "G16G: render GPU timestamps={:x?} UMA completed={}/2\n", timestamps, render.uma_completed()?);
             } else {
                 if let Work::Compute(compute) = &mut active.work {
+                    gpu_span = [status[2], status[3]];
                     dev_info!(inner.drm.as_ref(), "G16G: compute completion status={:x?} UMA completed={}/1\n", compute.status()?, compute.uma_completed()?);
                 }
             }
+            // Exact retirement: the descriptor's consumer index is final.
+            match &mut active.work {
+                Work::Render(r) => r.record_consumption()?,
+                Work::Compute(c) => c.record_consumption()?,
+            }
             let active = inner.active.take().ok_or(EIO)?;
             let active_ns = active.published.elapsed().as_nanos();
+            // Firmware pickup, GPU execution and host observation latency in
+            // the shared 24 MHz counter, for the retained progress record.
+            // GPU execution time from the command's own 24 MHz timestamps.
+            let gpu_ns = gpu_span[1].wrapping_sub(gpu_span[0]).saturating_mul(1000) / 24;
             let cleanup = kernel::time::Instant::<kernel::time::Monotonic>::now();
             inner.gpu_pending = false;
             let packet = active.packet.clone();
@@ -295,13 +339,22 @@ impl Runtime {
                     // Reusing a freed command at that VA can retain the prior
                     // client's pool address after the ASID changes. Keep its
                     // descriptor and backing until a distinct replacement has
-                    // retired, just as for the render parameter manager.
-                    inner.retired_compute = Some(compute);
+                    // retired, just as for the render parameter manager. The
+                    // displaced predecessor returns to its queue for reuse.
+                    if let Some((previous, cache)) = inner.retired_compute.replace(
+                        (compute, packet.compute_cache.clone())) {
+                        let _ = cache.lock().push(previous, GFP_KERNEL);
+                    }
                 }
             }
             if index == packet.commands.len() {
-                dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} last_prepare_ns={} last_active_ns={} last_cleanup_ns={}\n", packet.id, index, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), active.preparation_ns, active_ns, cleanup.elapsed().as_nanos());
-                packet.finish(Ok(()));
+                dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} last_prepare_ns={} last_active_ns={} last_cleanup_ns={} last_gpu_ns={}\n", packet.id, index, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), active.preparation_ns, active_ns, cleanup.elapsed().as_nanos(), gpu_ns);
+                let now = kernel::time::Instant::<kernel::time::Monotonic>::now();
+                if inner.settling.push((packet.clone(), now), GFP_KERNEL).is_err() {
+                    // Never lose a completion: wait inline instead.
+                    fsleep(SETTLE);
+                    packet.finish(Ok(()));
+                }
                 return Ok(false);
             }
             if let Err(error) = self.start_command(packet.clone(), index) {
@@ -345,7 +398,7 @@ impl Runtime {
                 Work::Compute(compute) => compute.capture_fault(&mut dump,
                     inner.uat.kernel_lower_vm())?,
             }
-            if let Some(compute) = &mut inner.retired_compute {
+            if let Some((compute, _)) = &mut inner.retired_compute {
                 compute.capture_retired_command(&mut dump)?;
             }
             dump.publish(inner.drm.as_ref())
@@ -371,7 +424,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, active: None }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, active: None, settling: KVec::new() }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

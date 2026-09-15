@@ -453,6 +453,21 @@ impl Config {
         g16_memory::publish();
         Ok(next)
     }
+    /// Diagnostic: word snapshot of shared firmware objects that the
+    /// completion processing may update after the stamps are visible.
+    pub(crate) fn late_snapshot(&mut self, out: &mut [u32]) -> Result<usize> {
+        let mut n = 0;
+        for (object, words) in [(Object::Activity254, 0xc18 / 4), (Object::Activity25c, 0x1248 / 4),
+            (Object::Activity264, 0xe10 / 4), (Object::PowerPerformance, 0x60 / 4),
+            (Object::Runtime, 0x4b8 / 4), (Object::Globals, 0xe48 / 4)] {
+            for i in 0..words {
+                if n >= out.len() { return Ok(n); }
+                out[n] = self.object(object).read_u32(i * 4)?;
+                n += 1;
+            }
+        }
+        Ok(n)
+    }
     pub(crate) fn pipe_indices(&mut self, pipe: usize) -> Result<[u32; 3]> {
         if pipe >= 12 { return Err(EINVAL); }
         let state = &mut self.pipes[pipe * 2];
