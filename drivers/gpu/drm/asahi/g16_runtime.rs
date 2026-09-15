@@ -38,6 +38,13 @@ struct Inner {
     inflight: KVec<Active>,
     /// Packet commands admitted by the scheduler but not yet published.
     pending: KVec<(Arc<crate::g16_submit::Packet>, usize)>,
+    /// Firmware event messages counted at the last snapshot that found the
+    /// front command unretired, and snapshots that retired a command without
+    /// any newer message: retirements a message-driven worker would miss.
+    messages_at_wait: u64,
+    waits: u64,
+    late_retirements: u64,
+    wait_timeouts: u64,
 }
 
 /// Compute commands the compute queue may hold at once, all from one client
@@ -48,6 +55,18 @@ struct Inner {
 /// published while a render is in flight and a render waits for an empty
 /// engine.
 const COMPUTE_DEPTH: usize = 4;
+
+/// Outcome of one completion snapshot.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Service {
+    /// Nothing is in flight; the worker may stop.
+    Idle,
+    /// A command retired (and successors were published): poll again at once.
+    Progress,
+    /// The front command has not retired: wait for the firmware. Carries
+    /// the event notification count observed before the snapshot.
+    Waiting(u64),
+}
 
 enum Work {
     Compute(KBox<crate::g16_job::Compute>),
@@ -125,6 +144,9 @@ impl Runtime {
     pub(crate) fn drm(&self) -> driver::AsahiDevRef { self.inner.drm.clone() }
     pub(crate) fn core_mask(&self) -> u32 { self.inner.device.core_mask() }
     pub(crate) fn health(&self) -> Arc<g16_rtkit::Health> { self.inner.state.health.clone() }
+    pub(crate) fn events(&self) -> Arc<g16_rtkit::EventWait> { self.inner.state.events.clone() }
+    /// A bounded wait for a firmware notification expired without one.
+    pub(crate) fn note_wait_timeout(&mut self) { self.inner.wait_timeouts += 1; }
 
     pub(crate) fn healthy(&self) -> bool { self.inner.state.healthy() }
     pub(crate) fn new_user_vm(&mut self, id: u64, range: core::ops::Range<u64>) -> Result<mmu::Vm> {
@@ -264,8 +286,8 @@ impl Runtime {
 
     /// Poll one completion snapshot. The worker drops the runtime mutex between
     /// snapshots, so queued ioctls and device removal can make progress.
-    pub(crate) fn service_job(&mut self) -> bool {
-        if self.inner.state.health.failed() { return false; }
+    pub(crate) fn service_job(&mut self) -> Service {
+        if self.inner.state.health.failed() { return Service::Idle; }
         if self.inner.inflight.is_empty() {
             let inner = &mut *self.inner;
             if let Err(error) = inner.config.drain(&inner.drm) {
@@ -274,16 +296,25 @@ impl Runtime {
                 let _ = inner.device.log_engine_state();
                 dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven after idle firmware error {:?}; retaining DMA owners\n", error);
             }
-            return false;
+            return Service::Idle;
         }
         let id = self.inner.inflight[0].packet.id;
+        let messages = self.inner.state.event_messages.load(core::sync::atomic::Ordering::Acquire);
         match self.poll_job() {
-            Ok(pending) => pending,
+            Ok(true) => {
+                if messages == self.inner.messages_at_wait { self.inner.late_retirements += 1; }
+                if self.inner.inflight.is_empty() { Service::Idle } else { Service::Progress }
+            }
+            Ok(false) => {
+                self.inner.messages_at_wait = messages;
+                self.inner.waits += 1;
+                Service::Waiting(messages)
+            }
             Err(error) => {
                 let _ = self.inner.device.log_engine_state();
                 #[cfg(CONFIG_DEV_COREDUMP)]
                 self.capture_active_fault();
-                self.fail_job(id, error); false
+                self.fail_job(id, error); Service::Idle
             }
         }
     }
@@ -385,14 +416,14 @@ impl Runtime {
                 }
             }
             if index == packet.commands.len() {
-                dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} last_prepare_ns={} last_active_ns={} last_cleanup_ns={} last_gpu_ns={}\n", packet.id, index, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), active.preparation_ns, active_ns, cleanup.elapsed().as_nanos(), gpu_ns);
+                dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} last_prepare_ns={} last_active_ns={} last_cleanup_ns={} last_gpu_ns={} messages={} waits={} late={} timeouts={}\n", packet.id, index, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), active.preparation_ns, active_ns, cleanup.elapsed().as_nanos(), gpu_ns, inner.state.event_messages.load(core::sync::atomic::Ordering::Acquire), inner.waits, inner.late_retirements, inner.wait_timeouts);
                 // Matching engine/notifier generations make the user stamp
                 // follow the firmware's cache flush. No idle-time delay is
                 // needed to make the command's writes visible to the CPU.
                 packet.finish(Ok(()));
             }
             self.pump()?;
-            return Ok(!self.inner.inflight.is_empty());
+            return Ok(true);
         }
         if active.started.elapsed() >= Delta::from_secs(2) {
             dev_err!(inner.drm.as_ref(), "G16G: userspace GPU timeout job={} status={:x?} queue={:?} pipe={:?}\n",
@@ -405,7 +436,7 @@ impl Runtime {
             inner.config.log_firmware_state(&inner.drm)?;
             return Err(ETIMEDOUT);
         }
-        Ok(true)
+        Ok(false)
     }
 
     /// Preserve non-timeout firmware/MMU failures as well as slow jobs.
@@ -455,7 +486,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, compute_event_slot: 0, inflight: KVec::new(), pending: KVec::new() }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, compute_event_slot: 0, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0 }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

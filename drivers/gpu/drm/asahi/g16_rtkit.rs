@@ -8,6 +8,8 @@ use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use kernel::{
     c_str,
     device::Core,
+    new_condvar, new_mutex,
+    sync::{CondVar, Mutex},
     io::mem::{Mem, MemFlag},
     iosys_map::IoSysMapRef,
     platform,
@@ -15,6 +17,44 @@ use kernel::{
     soc::apple::rtkit,
     sync::{aref::ARef, Arc, ArcBorrow},
 };
+
+/// Firmware event notifications counted under a lock, so the completion
+/// worker can sleep until one arrives instead of polling blindly.
+#[pin_data]
+pub(crate) struct EventWait {
+    #[pin]
+    count: Mutex<u64>,
+    #[pin]
+    arrived: CondVar,
+}
+
+impl EventWait {
+    fn new() -> Result<Arc<Self>> {
+        Arc::pin_init(
+            pin_init!(EventWait {
+                count <- new_mutex!(0, "G16G::EventWait::count"),
+                arrived <- new_condvar!("G16G::EventWait::arrived"),
+            }),
+            GFP_KERNEL,
+        )
+    }
+
+    fn record(&self) {
+        *self.count.lock() += 1;
+        self.arrived.notify_all();
+    }
+
+    /// Sleep until a notification later than `seen` has been recorded or
+    /// `jiffies` elapse. Returns whether a notification arrived.
+    pub(crate) fn wait_past(&self, seen: u64, jiffies: kernel::time::Jiffies) -> bool {
+        let mut count = self.count.lock();
+        if *count != seen {
+            return true;
+        }
+        let _ = self.arrived.wait_interruptible_timeout(&mut count, jiffies);
+        *count != seen
+    }
+}
 
 pub(crate) struct State {
     dev: ARef<platform::Device>,
@@ -25,6 +65,7 @@ pub(crate) struct State {
     /// Firmware event notifications received on the application endpoint.
     /// The firmware sends one after a command's completion processing.
     pub(crate) event_messages: AtomicU64,
+    pub(crate) events: Arc<EventWait>,
 }
 
 /// Shared status contains no device references, so DRM files may retain it
@@ -61,6 +102,7 @@ impl State {
                 }, GFP_KERNEL)?,
                 claimed: AtomicBool::new(false),
                 event_messages: AtomicU64::new(0),
+                events: EventWait::new()?,
             },
             GFP_KERNEL,
         )?)
@@ -162,6 +204,10 @@ impl rtkit::Operations for Operations {
         // drained, including after the final userspace job. Never take the
         // runtime mutex in the RTKit callback: enqueue the serialized worker.
         if endpoint == 0x20 && message == 0x0042_0000_0000_0000 {
+            // Count under the wait lock first: a worker that read the
+            // atomic count before this message then either sees the moved
+            // locked count or is already on the wait queue when notified.
+            state.events.record();
             state.event_messages.fetch_add(1, Ordering::Release);
             crate::driver::queue_g16_completion_worker(state.drm.clone());
             return;

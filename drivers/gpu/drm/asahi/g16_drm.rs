@@ -93,11 +93,39 @@ impl DrmGpu for Backend {
     fn supports_scheduled_queues(&self) -> bool { true }
     fn submission_error(&self) -> i32 { if self.is_crashed() { EIO.to_errno() } else { 0 } }
     fn service_g16_jobs(&self) {
+        use crate::g16_runtime::Service;
+        // Snapshots taken after a notification before sleeping for the next
+        // one: the user stamp can trail the firmware's event message.
+        const TRAILING_POLLS: u32 = 4;
+        let mut trailing = 0;
+        let mut waited_at = u64::MAX;
+        let mut timed_out = false;
         loop {
-            let pending = Option::as_mut(&mut *self.shared.lock())
-                .is_some_and(|runtime| runtime.service_job());
-            if !pending { break; }
-            kernel::time::delay::fsleep(kernel::time::Delta::from_micros(100));
+            let (outcome, events) = {
+                let mut guard = self.shared.lock();
+                let Some(runtime) = Option::as_mut(&mut *guard) else { return; };
+                if timed_out { runtime.note_wait_timeout(); timed_out = false; }
+                (runtime.service_job(), runtime.events())
+            };
+            match outcome {
+                Service::Idle => break,
+                // Successors were published while retiring: snapshot again
+                // without yielding, the firmware runs commands 80 us apart.
+                Service::Progress => { trailing = 0; waited_at = u64::MAX; }
+                Service::Waiting(messages) => {
+                    if messages != waited_at { waited_at = messages; trailing = 0; }
+                    if trailing < TRAILING_POLLS {
+                        trailing += 1;
+                        kernel::time::delay::fsleep(kernel::time::Delta::from_micros(20));
+                    } else {
+                        // Sleep until the firmware's next event notification.
+                        // The bounded fallback keeps the timeout check alive
+                        // and covers a stamp that trails its message further.
+                        timed_out = !events.wait_past(messages, 1);
+                        trailing = 0;
+                    }
+                }
+            }
         }
     }
     fn params(&self) -> Result<DrmGpuParams> {
