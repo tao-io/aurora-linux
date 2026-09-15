@@ -95,17 +95,28 @@ impl Work {
 }
 impl Inner {
     /// Whether the front pending command may be published now.
-    fn admits(&self, packet: &crate::g16_submit::Packet, payload: &crate::g16_submit::Payload) -> bool {
+    fn admits(&self, packet: &crate::g16_submit::Packet, index: usize, payload: &crate::g16_submit::Payload) -> bool {
         if self.inflight.is_empty() { return true; }
         // Only commands of one submission are pipelined. A command of a
         // later packet published while the previous packet's long compute
         // command (2-25 ms) still ran was consumed by the firmware without
         // running (catalog segment [230000,240000), twice), so a packet
         // waits for the engine to drain before it starts.
+        //
+        // Commands carrying user timestamps are never pipelined either way:
+        // the firmware writes the timestamp cells after the command completes,
+        // and a follower published meanwhile was consumed without running
+        // (pipeline.*.timestamp.transfer_tests under 20 workers, three times;
+        // the same cases pass alone and with a depth of one).
+        let has_timestamps = |p: &crate::g16_submit::Packet, i: usize| {
+            p.commands.get(i).map_or(false, |c| c.timestamp_addresses() != [0, 0])
+        };
         matches!(payload, crate::g16_submit::Payload::Compute(_))
             && self.inflight.len() < COMPUTE_DEPTH
+            && !has_timestamps(packet, index)
             && self.inflight.iter().all(|entry| match &entry.work {
-                Work::Compute(c) => c.same_vm(&packet.vm) && entry.packet.id == packet.id,
+                Work::Compute(c) => c.same_vm(&packet.vm) && entry.packet.id == packet.id
+                    && !has_timestamps(&entry.packet, entry.index),
                 Work::Render(_) => false,
             })
     }
@@ -209,7 +220,7 @@ impl Runtime {
     fn pump(&mut self) -> Result {
         while let Some((packet, index)) = self.inner.pending.first().map(|(p, i)| (p.clone(), *i)) {
             let payload = packet.commands.get(index).ok_or(EINVAL)?.payload;
-            if !self.inner.admits(&packet, &payload) { break; }
+            if !self.inner.admits(&packet, index, &payload) { break; }
             let _ = self.inner.pending.remove(0);
             if let Err(error) = self.start_command(packet.clone(), index) {
                 packet.finish(Err(error));
