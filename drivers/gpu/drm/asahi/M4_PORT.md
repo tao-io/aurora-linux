@@ -905,3 +905,41 @@ peak59.5 C /59.25 C. Module SHA256:
 597b9033e8277880abdac4f6c0737887e0a77f074ebfc0a2488bf4d0be08d4fd.
 This removes avoidable CPU preparation work, not the larger fresh-allocation
 cost. No broad regression run was performed.
+
+### Serialized submission throughput and completion visibility (2026-09-15)
+
+The remaining 70k ordered CTS run spent about 4.7 ms of serialized runtime
+per GPU job against 15 us of GPU time: every compute dispatch allocated,
+mapped and later freed a fresh 32 MiB private pool, and every reused render
+cleared its 32 MiB pool through the write-combined alias. Displaced compute
+owners are now recycled per queue under the render rule (only after a
+distinct replacement retired), only the private pages the retired descriptor
+reports consumed (+0x20 of the UMA descriptor, 0x60 per trivial dispatch)
+are cleared, and the freelist and parameter page lists are staged copies.
+Preparation fell from 4.0 ms to 0.13-0.24 ms per job.
+
+Twelve hardware bisect cycles then showed that every fast variant returned
+stale copies (destination images with their pre-copy contents) while all
+firmware records looked retired. Results of a retired command reach
+CPU-visible memory only when the GPU powers off after idling: keeping it
+busy (publishing the next command at retirement), invalidating the client
+ASID, setting the job metadata flush_stamps word (+0x81c) or raising the
+idle-off delay to 50 ms all left readbacks stale, and flush_stamps produced
+a type 0x16 recovery snapshot. Globals+0x9b8 is the idle power-off delay
+(the common driver's idle_off_delay_ms, default 2). The old per-job teardown
+had covered the window by accident. The runtime now sets that delay to 0,
+holds each retired packet's fence in the completion worker for a 1 ms
+settle window without holding the GPU, and publishes the next command only
+after the fence (the DRM credit); a 300 us window failed 2 of 2,000 cases,
+2 ms and 1 ms passed 2000/2000. The firmware's per-command flush semantics
+are unqualified; this is the measured safe configuration, not a proof.
+
+Separately publishing the next command at retirement with a split fence is
+retained as a draft: it ran the 6,000-job trim_command_pool case in 6.2 s
+but returned stale results and twice preceded a recovery snapshot.
+
+Ordered slice [30000,32000): 59.2 s before, 26.3 s with recycling and a 2 ms
+window, 18.1 s with immediate idle-off and a 1 ms window, all 2000/2000.
+trim_command_pool isolated: 43.8 s before, 13.3 s now. Evidence:
+claude-perf-baseline1, claude-perf-kernel20, claude-perf-kernel25,
+claude-perf-kernel27b (300 us calibration), claude-perf-trim1/trim25.
