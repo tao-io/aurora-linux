@@ -41,7 +41,7 @@ struct Inner {
 /// on J713/25G83, 2026-09-15). Reading earlier returned stale data. The
 /// earlier driver hid this behind the teardown of a fresh owner per job.
 /// Hold each fence for a measured window instead, without holding the GPU.
-const SETTLE: Delta = Delta::from_micros(2000);
+const SETTLE: Delta = Delta::from_micros(1000);
 
 enum Work {
     Compute(KBox<crate::g16_job::Compute>),
