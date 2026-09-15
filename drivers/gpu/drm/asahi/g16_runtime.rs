@@ -18,7 +18,9 @@ struct Inner {
     queue_context: crate::g16_queue::Context,
     fragment_registered: bool,
     retired_render: Option<(KBox<crate::g16_render_job::Render>, crate::g16_submit::RenderCache)>,
-    retired_compute: Option<(KBox<crate::g16_job::Compute>, crate::g16_submit::ComputeCache)>,
+    /// Recently retired compute owners, oldest first, parked until enough
+    /// later commands have retired for the firmware to be done with them.
+    retired_computes: KVec<(KBox<crate::g16_job::Compute>, crate::g16_submit::ComputeCache)>,
     compute: KBox<crate::g16_job::Compute>,
     config: crate::g16_config::Config,
     uat: mmu::Uat,
@@ -56,7 +58,15 @@ struct Inner {
 /// commands published during a run only about 1.1 ms after that run ends,
 /// so a deeper window amortizes that turnaround. Each in-flight command
 /// holds one owner (a 32 MiB private pool), which bounds the depth.
-const COMPUTE_DEPTH: usize = 8;
+const COMPUTE_DEPTH: usize = 4;
+/// Retired compute owners parked before they may be recycled. With several
+/// commands dispatched together the firmware still references a retired
+/// command's page (UMA descriptor, completion records) while it finishes the
+/// batch; recycling the page after a single later retirement let the
+/// firmware consume a rewritten entry without running it (catalog segment
+/// [230000,240000): job 655831, status all-ones, queue consumed, no
+/// timestamps). Park at least one hardware batch of four.
+const COMPUTE_PARKED: usize = 4;
 
 /// Outcome of one completion snapshot.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -87,10 +97,15 @@ impl Inner {
     /// Whether the front pending command may be published now.
     fn admits(&self, packet: &crate::g16_submit::Packet, payload: &crate::g16_submit::Payload) -> bool {
         if self.inflight.is_empty() { return true; }
+        // Only commands of one submission are pipelined. A command of a
+        // later packet published while the previous packet's long compute
+        // command (2-25 ms) still ran was consumed by the firmware without
+        // running (catalog segment [230000,240000), twice), so a packet
+        // waits for the engine to drain before it starts.
         matches!(payload, crate::g16_submit::Payload::Compute(_))
             && self.inflight.len() < COMPUTE_DEPTH
             && self.inflight.iter().all(|entry| match &entry.work {
-                Work::Compute(c) => c.same_vm(&packet.vm),
+                Work::Compute(c) => c.same_vm(&packet.vm) && entry.packet.id == packet.id,
                 Work::Render(_) => false,
             })
     }
@@ -422,9 +437,11 @@ impl Runtime {
                     // descriptor and backing until a distinct replacement has
                     // retired, just as for the render parameter manager. The
                     // displaced predecessor returns to its queue for reuse.
-                    if let Some((previous, cache)) = inner.retired_compute.replace(
-                        (compute, packet.compute_cache.clone())) {
-                        let _ = cache.lock().push(previous, GFP_KERNEL);
+                    inner.retired_computes.push((compute, packet.compute_cache.clone()), GFP_KERNEL)?;
+                    if inner.retired_computes.len() > COMPUTE_PARKED {
+                        if let Ok((previous, cache)) = inner.retired_computes.remove(0) {
+                            let _ = cache.lock().push(previous, GFP_KERNEL);
+                        }
                     }
                 }
             }
@@ -473,7 +490,7 @@ impl Runtime {
                 Work::Compute(compute) => compute.capture_fault(&mut dump,
                     inner.uat.kernel_lower_vm())?,
             }
-            if let Some((compute, _)) = &mut inner.retired_compute {
+            if let Some((compute, _)) = inner.retired_computes.last_mut() {
                 compute.capture_retired_command(&mut dump)?;
             }
             dump.publish(inner.drm.as_ref())
@@ -499,7 +516,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_compute:None, compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0 }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0 }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {
