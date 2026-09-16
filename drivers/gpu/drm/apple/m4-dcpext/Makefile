@@ -1,0 +1,12 @@
+# SPDX-License-Identifier: GPL-2.0-only OR MIT
+# J713 external DisplayPort (DCPEXT) driver: explicit obj-m, explicit load,
+# no MODULE_ALIAS, like ../tools/rtkit-probe. Build against the prepared
+# build/linux-displayport-modules output directory with a separate module
+# output directory, e.g. from the workspace root:
+#   make -C build/linux-displayport-modules ARCH=arm64 LLVM=1 \
+#     M="$PWD/linux/linux-displayport/drivers/gpu/drm/apple/m4-dcpext" \
+#     MO="$PWD/build/m4-dcpext-modules" modules
+# Without MO= this kbuild writes its generated stub Makefile into the module
+# source directory (this file) and every later build recurses.
+obj-m += m4_dcpext.o
+m4_dcpext-y := m4_dcpext_afk.o
