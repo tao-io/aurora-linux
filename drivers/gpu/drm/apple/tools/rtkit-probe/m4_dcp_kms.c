@@ -400,6 +400,15 @@ static int m4_status(struct seq_file *seq, void *unused)
 	return 0;
 }
 
+static int m4_analytics(struct seq_file *seq, void *unused)
+{
+	struct drm_debugfs_entry *entry = seq->private;
+	struct m4_kms *m4 = to_m4(entry->dev);
+
+	m4_dcp_native_analytics_show(m4->native, seq);
+	return 0;
+}
+
 static int m4_present_history(struct seq_file *seq, void *unused)
 {
 	struct drm_debugfs_entry *entry = seq->private;
@@ -611,6 +620,7 @@ int m4_dcp_kms_register(struct m4_dcp_native *native, bool takeover)
 			return ret;
 	}
 	drm_debugfs_add_file(drm, "m4_status", m4_status, NULL);
+	drm_debugfs_add_file(drm, "m4_analytics", m4_analytics, NULL);
 	drm_debugfs_add_file(drm, "m4_present_history", m4_present_history, NULL);
 	ret = drm_dev_register(drm, 0);
 	if (!ret)

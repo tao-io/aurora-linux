@@ -105,3 +105,35 @@ position on success. The check is specific to the qualified 2560x1664 panel,
 scale 2, and current greeter theme; it never types into the password field.
 A test error saves evidence and leaves recovery armed. This does not establish
 optical panel scanout order or validate arbitrary themes.
+
+### J713 periodic analytics callback D114
+
+D114 on the qualified J713 firmware is CoreAnalyticsSendEvent, with 4164-byte
+input (64-byte event name, 4096-byte serialized dictionary, nullable flag) and
+4100-byte output (dictionary and method status). It is not the older D114
+get-tiling-state ABI. Treating it as unknown latched the RPC failure after one
+hour and stopped native flips while GPU jobs continued.
+
+The handler retains the latest event locally, counts accepted events and echoes
+the unmodified dictionary with success. No data is sent to an external service.
+`m4_analytics` in DRM debugfs exposes the count, last event name and dictionary.
+The firmware parses the returned dictionary before checking status, so replying
+with zeros would still be invalid. Other unknown callbacks continue to fail.
+
+Offline identification: saved DCP segment SHA256
+25b095cc293adb48c2c507a578b94810e5e06e7607eb13e5d64a6221e2c29793,
+wrapper offset0x272598, D114 calls0x27264c/0x272714. Callers include event names
+com.apple.iomfb.lth_corruption (0x19a438) and com.apple.iomfb.IRDCReset
+(0x2900cc). The matching native UnifiedPipeline2::CoreAnalyticsSendEvent
+symbol corroborates the service identity. Only the Linux implementation and
+provenance are retained here; firmware binaries are not source artifacts.
+
+ASan/UBSan: 257 captured startup callbacks and514 wrong-shape rejections pass,
+plus D114 dictionary roundtrip, null input and malformed name/tag-shape tests.
+Build uses build/linux-asahi-j713 and the four unversioned drm_dma_helper
+exports from build/linux-alpha-j713/Module.symvers (the incremental Asahi
+symvers lacks these existing runtime exports). Installed candidate module
+SHA256920df6487c1ac06fb0bc90897413b08ec132ce829a81f26a585111bd40391e7d.
+Boot db3f9bcc-d2ab-4665-a471-b9144ef66931 starts SDDM with zero failed flips.
+At installation the actual hourly callback is still awaiting live validation;
+a successful module load or synthetic callback test is not that validation.

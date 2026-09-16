@@ -68,6 +68,29 @@ int main(int argc,char **argv) {
     struct m4_dcp_native *d=calloc(1,sizeof(*d));d->stride=10240;
     u8 invalid_output[4]={0};
     assert(callback(NULL,d,0x4431303a,NULL,0,invalid_output,4)<0);
+    /* Analytics dictionaries are opaque in/out payloads. Preserve every byte
+     * and never accept malformed callback shapes or nullable flags. */
+    u8 analytics[4164]={0}, reply[4100]={0};
+    memcpy(analytics,"com.apple.iomfb.test",20);
+    analytics[64]='d';
+    for (u32 i=65;i<4160;i++) analytics[i]=(u8)i;
+    assert(callback(NULL,d,D(114),analytics,sizeof(analytics)-1,reply,sizeof(reply))<0);
+    assert(callback(NULL,d,D(114),analytics,sizeof(analytics),reply,sizeof(reply)-1)<0);
+    assert(d->analytics_count==0);
+    assert(callback(NULL,d,D(114),analytics,sizeof(analytics),reply,sizeof(reply))==0);
+    assert(d->analytics_count==1 && !memcmp(reply,analytics+64,4096));
+    assert(!memcmp(d->analytics_last,analytics,sizeof(analytics)));
+    assert(get_unaligned_le32(reply+4096)==0);
+    analytics[4160]=2;
+    assert(callback(NULL,d,D(114),analytics,sizeof(analytics),reply,sizeof(reply))<0);
+    analytics[4160]=0;analytics[64]='s';
+    assert(callback(NULL,d,D(114),analytics,sizeof(analytics),reply,sizeof(reply))<0);
+    analytics[4160]=1;memset(reply,0,sizeof(reply));
+    assert(callback(NULL,d,D(114),analytics,sizeof(analytics),reply,sizeof(reply))==0);
+    assert(d->analytics_count==2 && get_unaligned_le32(reply+4096)==0);
+    memset(analytics,1,64);
+    assert(callback(NULL,d,D(114),analytics,sizeof(analytics),reply,sizeof(reply))<0);
+    assert(d->analytics_count==2);
     FILE *f=fopen(argv[1],"rb");assert(f);u32 h[3],cases=0;
     while (fread(h,sizeof(h),1,f)==1) {
         u8 *in=malloc(h[1]+1),*out=calloc(1,h[2]+1);assert(in && out);

@@ -4,6 +4,7 @@
 #include <linux/err.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
+#include <linux/seq_file.h>
 #include <linux/slab.h>
 #include <linux/unaligned.h>
 #include <linux/vmalloc.h>
@@ -35,6 +36,8 @@ struct m4_dcp_native {
 	u32 raw_count, raw_bytes;
 	void *chunk;
 	u32 chunk_size, chunk_offset;
+	u64 analytics_count;
+	u8 analytics_last[4164];
 };
 
 static void idle_callbacks(struct work_struct *work);
@@ -136,6 +139,25 @@ static int callback(struct m4_dcp_bridge *b, void *cookie, u32 tag,
 
 #define SHAPE(i, o) (in_size == (i) && out_size == (o))
 	/* The transport zeroes output, so absent optional metadata stays absent. */
+	if (tag == D(114) && SHAPE(4164, 4100)) {
+		/* J713 CoreAnalyticsSendEvent: name[64], serialized dictionary[4096],
+		 * nullable flag. Retain the latest event locally. The dictionary is
+		 * in/out: firmware parses it even on failure, so a zero-filled reply
+		 * is invalid. Return its own serialized dictionary without changes.
+		 * The final u32 is the method status (zero = accepted).
+		 */
+		if (!memchr(in, 0, 64) || in[4160] > 1 ||
+		    (!in[4160] && in[64] != 'd'))
+			return -EINVAL;
+		memcpy(dcp->analytics_last, in, sizeof(dcp->analytics_last));
+		dcp->analytics_count++;
+		if (!in[4160])
+			memcpy(out, in + 64, 4096);
+		put_unaligned_le32(0, out + 4096);
+		dev_info(dcp->dev, "M4 analytics event %llu: %.64s (retained locally)\n",
+			 dcp->analytics_count, in);
+		return 0;
+	}
 	if ((tag == D(588) && SHAPE(0, 0)) || (tag == D(590) && SHAPE(0x730, 0)))
 		return 0;
 	if (tag == D(599) && SHAPE(0, 0))
@@ -450,6 +472,20 @@ void *m4_dcp_native_property(struct m4_dcp_native *dcp, const char *key, u32 *si
 	}
 	mutex_unlock(&dcp->lock);
 	return copy;
+}
+
+void m4_dcp_native_analytics_show(struct m4_dcp_native *dcp, struct seq_file *seq)
+{
+	mutex_lock(&dcp->lock);
+	seq_printf(seq, "events %llu\n", dcp->analytics_count);
+	if (dcp->analytics_count) {
+		seq_printf(seq, "last_event %.64s\ndictionary_present %u\n",
+			   dcp->analytics_last, !dcp->analytics_last[4160]);
+		if (!dcp->analytics_last[4160])
+			seq_hex_dump(seq, "", DUMP_PREFIX_OFFSET, 16, 1,
+				     dcp->analytics_last + 64, 4096, false);
+	}
+	mutex_unlock(&dcp->lock);
 }
 
 static void idle_callbacks(struct work_struct *work)
