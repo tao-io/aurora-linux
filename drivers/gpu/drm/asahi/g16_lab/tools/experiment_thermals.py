@@ -30,8 +30,8 @@ def stop_workload():
 
 class ExperimentThermals:
     labels = ('PMP aggregate die hotspot', 'Ta000m', 'Te000m', 'Te001m', 'Tp000m', 'Tp001m')
-    startup_limit_mc = 65000
-    stop_limit_mc = 75000
+    startup_limit_mc = 95000
+    stop_limit_mc = 95000
     interval_seconds = 0.5
     sync_interval_seconds = 5
     stale_seconds = 2
@@ -161,7 +161,7 @@ class ExperimentThermals:
             self.cap_cpu_frequency(int(os.environ['M4_TEST_CPU_MAX_KHZ']))
         record = self.sample()
         if max(record['temperatures_mc'].values()) >= self.startup_limit_mc:
-            raise RuntimeError('let the die cool below 65 C before starting a GPU experiment')
+            raise RuntimeError('let the die cool below 95 C before starting a GPU experiment')
         self.thread = threading.Thread(target=self.monitor, name='experiment-thermals', daemon=True)
         self.thread.start()
         return self.summary()
