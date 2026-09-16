@@ -1,0 +1,22 @@
+{
+  "id": "20260916T154230554149Z-dx-image64-formatless-memory-fixed-r1",
+  "verdict": "pass",
+  "transport_returncode": 0,
+  "evidence_fetched": true,
+  "directory": "/home/council/dev/dirtyroom_m4/_provenance/experiments/20260916T154230554149Z-dx-image64-formatless-memory-fixed-r1",
+  "observations": {
+    "pixel_results": [],
+    "pixel_result_count": 0,
+    "thermal_samples": 75,
+    "malformed_thermal_samples": 0,
+    "peak_temperature_c": 64.75,
+    "channel_peaks_c": {
+      "PMP aggregate die hotspot": 64.75,
+      "Ta000m": 60.75,
+      "Te000m": 59.75,
+      "Te001m": 64.25,
+      "Tp000m": 64.75,
+      "Tp001m": 63.25
+    }
+  }
+}
