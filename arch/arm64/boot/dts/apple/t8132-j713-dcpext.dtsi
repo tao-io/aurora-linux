@@ -1,0 +1,154 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * J713 external display (DCPEXT0 over USB-C DisplayPort Alt Mode) resources
+ * from its live T8132 ADT (capture 2026-09-08, see
+ * m1n1 tests/kboot/fixtures/j713-dcpext.json for the qualified subset).
+ *
+ * Every node here stays disabled. The m1n1 reservations-only handoff
+ * (apple,j713-dcpext-reserve on the controller, contract version
+ * apple,j713-dcpext-reservations = <1>) validates these nodes as disabled,
+ * publishes the firmware/page-table reservations into memory-region and
+ * leaves activation to the kernel driver that adopts the inherited DARTs.
+ * Extending that contract requires a new version, not a silent change.
+ *
+ * Controller/PHY identity for the qualified route: DCPEXT0 scans out
+ * through the display crossbar to ATC PHY1, which is the port Linux
+ * Type-C exposes as port0 (hpm0, "USB-C native client"). The crossbar
+ * selector derives from the ADT dp-switch-ufp-endpoint/port pair (1, 0).
+ * DCPEXT1 has no qualified route and is not described.
+ */
+
+/ {
+	aliases {
+		dcpext0 = &dcpext0;
+		dispext0 = &dispext0;
+		dispext0_piodma = &dispext0_piodma;
+	};
+};
+
+&soc {
+	dcpext0_mbox: mailbox@286e08000 {
+		compatible = "apple,t8132-asc-mailbox", "apple,asc-mailbox-v4";
+		reg = <0x2 0x86e08000 0x0 0x4000>;
+		interrupt-parent = <&aic>;
+		/* ADT pairs are not-empty/empty: [732, 731, 734, 733]. */
+		interrupts = <AIC_IRQ 731 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 732 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 733 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 734 IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "send-empty", "send-not-empty",
+				  "recv-empty", "recv-not-empty";
+		power-domains = <&ps_dispext0_cpu>;
+		#mbox-cells = <0>;
+		status = "disabled";
+	};
+
+	dcpext0: dcp@286e00000 {
+		compatible = "apple,t8132-dcpext";
+		/* Reservations-only handoff opt-in; see kboot_display_m4.c. */
+		apple,j713-dcpext-reserve;
+		mboxes = <&dcpext0_mbox>;
+		mbox-names = "mbox";
+		iommus = <&dcpext0_dart 23>;
+		/* The coproc window must stay first for the handoff check. */
+		reg-names = "coproc", "disp-0", "disp-1", "disp-2",
+			    "disp-3", "disp-4", "iop-vbar";
+		reg = <0x2 0x86e00000 0x0 0x4000>,
+		      <0x2 0x84000000 0x0 0xc20000>,
+		      <0x2 0x86240000 0x0 0x10000>,
+		      <0x2 0x863a8000 0x0 0x4000>,
+		      <0x2 0x86800000 0x0 0x800000>,
+		      <0x3 0x82800000 0x0 0xbc000>,
+		      <0x2 0x86850000 0x0 0x4000>;
+		power-domains = <&ps_dispext0_cpu>;
+
+		/* DisplayPort source path: ATC PHY1 main link, crossbar route. */
+		phys = <&atcphy1 PHY_TYPE_DP>;
+		phy-names = "dp-phy";
+		mux-controls = <&atcphy1_xbar 0>;
+		mux-control-names = "dp-xbar";
+		/* DPTX remote-port unit and ADT dp-switch-ufp-{endpoint,port}. */
+		apple,j713-dptx-port = <0>;
+		apple,j713-dp-switch-ufp = <1 0>;
+		status = "disabled";
+
+		#address-cells = <2>;
+		#size-cells = <2>;
+
+		dispext0_piodma: piodma {
+			iommus = <&dispext0_dart 16>;
+			status = "disabled";
+		};
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@1 {
+				reg = <1>;
+				dcpext0_dpout: endpoint {
+					remote-endpoint = <&atcphy1_dp>;
+				};
+			};
+		};
+	};
+
+	dispext0: ext-display-subsystem {
+		/* Scanout consumer (FE SID0) for the external KMS device. */
+		compatible = "apple,t8132-dispext";
+		iommus = <&dispext0_dart 0>;
+		power-domains = <&ps_dispext0_fe>;
+		status = "disabled";
+	};
+
+	dcpext0_dart: iommu@286340000 {
+		compatible = "apple,t8132-dart", "apple,t8110-dart";
+		reg = <0x2 0x86340000 0x0 0x20000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 750 IRQ_TYPE_LEVEL_HIGH>;
+		#iommu-cells = <1>;
+		/* External firmware wire addresses carry the 1 TiB alias. */
+		apple,dma-range = <0x100 0x0 0x10 0x0>;
+		power-domains = <&ps_dispext0_cpu>;
+		status = "disabled";
+	};
+
+	dispext0_dart: iommu@286300000 {
+		compatible = "apple,t8132-dart", "apple,t8110-dart";
+		reg = <0x2 0x86300000 0x0 0xc000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 750 IRQ_TYPE_LEVEL_HIGH>;
+		#iommu-cells = <1>;
+		apple,dma-range = <0x100 0x0 0x10 0x0>;
+		power-domains = <&ps_dispext0_fe>;
+		status = "disabled";
+	};
+
+	/* ADT atc1-dpxbar; lives inside the ATC PHY1 core window. */
+	atcphy1_xbar: mux@40b04c000 {
+		compatible = "apple,t8132-display-crossbar";
+		reg = <0x4 0x0b04c000 0x0 0x4000>;
+		#mux-control-cells = <1>;
+		power-domains = <&ps_atc1_common>;
+		status = "disabled";
+	};
+};
+
+/* ATC PHY1 gains its core window (ADT reg[2]); the DP path stays dormant
+ * until the driver's T8132 generation enables it explicitly.
+ */
+&atcphy1 {
+	reg = <0x4 0x0aa90000 0x0 0x4000>,
+	      <0x4 0x0aa84000 0x0 0x4000>,
+	      <0x4 0x0b000000 0x0 0x58000>;
+	reg-names = "usb2phy", "pipehandler", "core";
+
+	ports {
+		port@1 {
+			reg = <1>;
+			atcphy1_dp: endpoint {
+				remote-endpoint = <&dcpext0_dpout>;
+			};
+		};
+	};
+};
