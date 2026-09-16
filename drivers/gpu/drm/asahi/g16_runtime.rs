@@ -58,7 +58,15 @@ struct Inner {
 /// commands published during a run only about 1.1 ms after that run ends,
 /// so a deeper window amortizes that turnaround. Each in-flight command
 /// holds one owner (a 32 MiB private pool), which bounds the depth.
-const COMPUTE_DEPTH: usize = 4;
+///
+/// Held at one: a follower published behind an in-flight compute command
+/// of the same packet is occasionally consumed by the firmware without
+/// running, even without user timestamps (catalog segments [2270000,2280000)
+/// and [2290000,2300000), renderpasses under 20 workers, job status all-ones
+/// after 2 s; the in-flight cases pass alone and together at 20 workers).
+/// Restore the window of four once the lost follower is detected and
+/// re-published instead of faulting.
+const COMPUTE_DEPTH: usize = 1;
 /// Retired compute owners parked before they may be recycled. With several
 /// commands dispatched together the firmware still references a retired
 /// command's page (UMA descriptor, completion records) while it finishes the

@@ -1131,3 +1131,18 @@ for queries are already in the same 1 GHz domain: a probe measured a
 each calibrated read (`claude-caltsprobe`); the three calibrated cases pass.
 The `command_timestamp_frequency_hz` of 1 GHz reported to userspace was
 therefore already right for M4.
+
+### Lost pipelined compute followers without timestamps (2026-09-16)
+
+Catalog segments [2270000,2280000) and [2290000,2300000) (renderpasses,
+20 workers) hung the GPU with the same signature as the timestamp hang:
+job status all-ones, queue and pipe consumed, no timestamps, `userspace
+GPU timeout` after 2 s (jobs 793661 and 38823, evidence
+`20260915T234819069939Z-cts-3m-r6-s28` and
+`20260916T001435601061Z-cts-3m-r6-s30`). Neither job carried user
+timestamps, and the in-flight cases pass alone and together at 20 workers
+(`r6hang2`, 35 Pass), so the lost follower is not tied to one command.
+`COMPUTE_DEPTH` is held at one for the campaign: the 1,001-case regression
+list is unchanged (815 Pass / 186 NotSupported, `r6reg1000`). Restoring the
+window of four needs the lost follower to be detected (status still
+all-ones once the leader retired) and re-published instead of faulting.
