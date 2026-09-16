@@ -209,6 +209,11 @@ impl rtkit::Operations for Operations {
             // locked count or is already on the wait queue when notified.
             state.events.record();
             state.event_messages.fetch_add(1, Ordering::Release);
+            if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitTiming) {
+                dev_info!(state.dev.as_ref(), "G16G_TIMING event monotonic_ns={} messages={}\n",
+                    <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(),
+                    state.event_messages.load(Ordering::Acquire));
+            }
             crate::driver::queue_g16_completion_worker(state.drm.clone());
             return;
         }

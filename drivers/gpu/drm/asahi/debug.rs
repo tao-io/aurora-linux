@@ -54,6 +54,9 @@ pub(crate) enum DebugFlags {
     DeviceControlCh = 21,
     FwCtlCh = 22,
 
+    // Host submission/completion timestamps without verbose firmware tracing.
+    SubmitTiming = 23,
+
     // 32-35: Allocator debugging
     FillAllocations = 32,
     DebugAllocations = 33,

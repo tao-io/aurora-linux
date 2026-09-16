@@ -77,7 +77,13 @@ impl Packet {
             self.completion.set_error(error);
         }
         crate::g16_memory::publish();
+        let timing = crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitTiming);
+        let start = if timing { <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get() } else { 0 };
         self.completion.signal();
+        if timing {
+            pr_info!("G16G_TIMING fence job={} start_ns={} end_ns={}\n", self.id,
+                start, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get());
+        }
     }
 }
 

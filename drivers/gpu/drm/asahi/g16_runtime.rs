@@ -422,6 +422,12 @@ impl Runtime {
             }
             let active = inner.inflight.remove(0).map_err(|_| EIO)?;
             let active_ns = active.published.elapsed().as_nanos();
+            if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitTiming) {
+                dev_info!(inner.drm.as_ref(), "G16G_TIMING command job={} index={} pipe={} monotonic_ns={} prepare_ns={} active_ns={}\n",
+                    active.packet.id, active.index, pipe_index,
+                    <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(),
+                    active.preparation_ns, active_ns);
+            }
             // Firmware pickup, GPU execution and host observation latency in
             // the shared 24 MHz counter, for the retained progress record.
             // GPU execution time from the command's own 24 MHz timestamps.
