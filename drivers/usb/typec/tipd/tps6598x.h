@@ -372,6 +372,9 @@ struct cd321x {
 	struct cd321x_status update_status;
 	struct delayed_work update_work;
 	struct usb_pd_identity cur_partner_identity;
+	/* Last successfully delivered DP status/configuration, not just pin mode. */
+	u32 mux_dp_status;
+	u32 mux_dp_conf;
 };
 
 struct sn201202x {

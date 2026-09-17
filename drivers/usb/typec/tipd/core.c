@@ -554,7 +554,9 @@ static void cd321x_typec_update_mode(struct tps6598x *tps, struct cd321x_status 
 		typec_mux_set(cd321x->mux, &cd321x->state);
 	} else if (st->data_status & TPS_DATA_STATUS_DP_CONNECTION) {
 		struct typec_displayport_data dp_data;
+		struct typec_mux_state state;
 		unsigned long mode;
+		int ret;
 
 		switch (TPS_DATA_STATUS_DP_SPEC_PIN_ASSIGNMENT(st->data_status)) {
 		case TPS_DATA_STATUS_DP_SPEC_PIN_ASSIGNMENT_A:
@@ -580,17 +582,33 @@ static void cd321x_typec_update_mode(struct tps6598x *tps, struct cd321x_status 
 			return;
 		}
 
+		dp_data.status = le32_to_cpu(st->dp_sid_status.status_rx);
+		dp_data.conf = le32_to_cpu(st->dp_sid_status.configure);
+		/* HPD can change while the cable and pin assignment stay the same.
+		 * An IRQ is an event: identical consecutive IRQ status words must
+		 * still reach the display consumer.
+		 */
 		if (cd321x->state.alt == cd321x->port_altmode_dp &&
-		   cd321x->state.mode == mode) {
+		    cd321x->state.mode == mode &&
+		    cd321x->mux_dp_status == dp_data.status &&
+		    cd321x->mux_dp_conf == dp_data.conf &&
+		    !(dp_data.status & DP_STATUS_IRQ_HPD)) {
 			return;
 		}
 
-		dp_data.status = le32_to_cpu(st->dp_sid_status.status_rx);
-		dp_data.conf = le32_to_cpu(st->dp_sid_status.configure);
-		cd321x->state.alt = cd321x->port_altmode_dp;
-		cd321x->state.data = &dp_data;
-		cd321x->state.mode = mode;
-		typec_mux_set(cd321x->mux, &cd321x->state);
+		state.alt = cd321x->port_altmode_dp;
+		state.data = &dp_data;
+		state.mode = mode;
+		ret = typec_mux_set(cd321x->mux, &state);
+		if (ret) {
+			dev_err(tps->dev, "Failed to update DP mux: %d\n", ret);
+			return;
+		}
+		/* Failed deliveries must not suppress the next status update. */
+		cd321x->mux_dp_status = dp_data.status;
+		cd321x->mux_dp_conf = dp_data.conf;
+		state.data = NULL;
+		cd321x->state = state;
 	} else if (st->data_status & TPS_DATA_STATUS_TBT_CONNECTION) {
 		struct typec_thunderbolt_data tbt_data;
 
