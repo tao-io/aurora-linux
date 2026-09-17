@@ -3,6 +3,8 @@ set -eu
 set -a
 . /etc/environment.d/90-omarchy-j713-rendering.conf
 . /run/m4-graphics/environment
+# A connected external card may have appeared after graphics initialization.
+AQ_DRM_DEVICES=$(/usr/local/libexec/m4-drm-devices.py)
 set +a
 unset QT_QUICK_BACKEND QSG_RHI_PREFER_SOFTWARE_RENDERER
 export PATH="/opt/m4-hyprland/bin:$PATH"

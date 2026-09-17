@@ -51,12 +51,35 @@ struct apple_pmgr_ps {
 	bool externally_clocked;
 	bool no_auto_enable;
 	bool inherited_on;
+	bool retained_display;
 	bool needs_reset_idle_wait;
 	u32 reset_time_us;
 };
 
 #define genpd_to_apple_pmgr_ps(_genpd) container_of(_genpd, struct apple_pmgr_ps, genpd)
 #define rcdev_to_apple_pmgr_ps(_rcdev) container_of(_rcdev, struct apple_pmgr_ps, rcdev)
+
+static bool apple_pmgr_j713_display_domain(u32 offset)
+{
+	/* Only the DISPEXT0 SYS/FE/CPU and ATC1 common domains exercised by
+	 * the J713 external-display path. This does not qualify transitions.
+	 */
+	return offset == 0x1d8 || offset == 0x1e0 || offset == 0x1e8 || offset == 0x428;
+}
+
+static int apple_pmgr_display_active(struct apple_pmgr_ps *ps)
+{
+	u32 reg;
+	int ret = regmap_read(ps->regmap, ps->offset, &reg);
+
+	if (ret)
+		return ret;
+	if ((reg & (APPLE_PMGR_PS_ACTUAL | APPLE_PMGR_PS_TARGET)) != 0xff ||
+	    reg & (APPLE_PMGR_RESET | APPLE_PMGR_AUTO_ENABLE | APPLE_PMGR_PS_RESET |
+		   APPLE_PMGR_BUSY | APPLE_PMGR_DEV_DISABLE))
+		return -EHOSTDOWN;
+	return 0;
+}
 
 static int apple_pmgr_ps_set(struct generic_pm_domain *genpd, u32 pstate, bool auto_enable)
 {
@@ -149,6 +172,8 @@ static int apple_pmgr_ps_power_on(struct generic_pm_domain *genpd)
 {
 	struct apple_pmgr_ps *ps = genpd_to_apple_pmgr_ps(genpd);
 
+	if (ps->retained_display)
+		return apple_pmgr_display_active(ps);
 	if (ps->inherited_on)
 		return 0;
 
@@ -160,6 +185,8 @@ static int apple_pmgr_ps_power_off(struct generic_pm_domain *genpd)
 {
 	struct apple_pmgr_ps *ps = genpd_to_apple_pmgr_ps(genpd);
 
+	if (ps->retained_display)
+		return -EBUSY;
 	if (ps->inherited_on)
 		return 0;
 
@@ -173,6 +200,8 @@ static int apple_pmgr_reset_assert(struct reset_controller_dev *rcdev, unsigned 
 	int ret;
 	u32 reg;
 
+	if (ps->retained_display)
+		return -EOPNOTSUPP;
 	spin_lock_irqsave(&ps->genpd.slock, flags);
 
 	if (ps->genpd.status == GENPD_STATE_OFF)
@@ -207,6 +236,8 @@ static int apple_pmgr_reset_deassert(struct reset_controller_dev *rcdev, unsigne
 	struct apple_pmgr_ps *ps = rcdev_to_apple_pmgr_ps(rcdev);
 	unsigned long flags;
 
+	if (ps->retained_display)
+		return -EOPNOTSUPP;
 	/* Split assert/deassert callers must also meet the T8132 pulse width. */
 	if (ps->reset_time_us == APPLE_PMGR_T8132_RESET_TIME)
 		usleep_range(ps->reset_time_us, 2 * ps->reset_time_us);
@@ -272,7 +303,7 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 	struct of_phandle_iterator it;
 	int ret;
 	const char *name;
-	bool active, t8132, gfx;
+	bool active, t8132, gfx, retained_display;
 	u32 offset;
 
 	/*
@@ -283,6 +314,10 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 	 */
 	t8132 = of_device_is_compatible(node,
 					"apple,t8132-pmgr-pwrstate");
+	retained_display = t8132 && of_machine_is_compatible("apple,j713") &&
+		!of_property_read_u32(node, "reg", &offset) &&
+		apple_pmgr_j713_display_domain(offset) &&
+		of_property_read_bool(node, "apple,inherited-on");
 	gfx = t8132 && of_machine_is_compatible("apple,j713") &&
 		!of_property_read_u32(node, "reg", &offset) && offset == 0x250;
 	if (gfx) {
@@ -298,7 +333,7 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 	if (t8132 &&
 	    (of_property_read_u32(node, "reg", &offset) ||
 	     (offset != 0x188 && offset != 0x190 &&
-	      !gfx &&
+	      !gfx && !retained_display &&
 	      offset != 0x278 && /* fpwm1 */
 	      offset != 0x2d8 && /* uart_p */
 	      offset != 0x3d8 && /* uart0 */
@@ -328,6 +363,7 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 	/* m1n1 leaves automatic power gating disabled on T8132 domains. */
 	ps->no_auto_enable = t8132 && !gfx;
 	ps->inherited_on = of_property_read_bool(node, "apple,inherited-on");
+	ps->retained_display = retained_display;
 
 	ret = of_property_read_string(node, "label", &name);
 	if (ret < 0) {
@@ -339,6 +375,12 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 	if (ret < 0) {
 		dev_err(dev, "missing reg property\n");
 		return ret;
+	}
+	if (ps->retained_display) {
+		ret = apple_pmgr_display_active(ps);
+		if (ret)
+			return dev_err_probe(dev, ret, "display domain %s is not inherited active\n",
+					     name);
 	}
 
 	ps->genpd.flags |= GENPD_FLAG_IRQ_SAFE;

@@ -1,0 +1,15 @@
+/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
+#ifndef APPLE_ATCPHY_T8132_REGISTERS_H
+#define APPLE_ATCPHY_T8132_REGISTERS_H
+/* All 35 written main-link registers for pair0 plus PLL ready status.
+ * Snapshot before common/PHY power-up; compare after reset before unpinning.
+ * Derived from the retained native HBR trace, not a whole-MMIO dump.
+ */
+static const u32 apple_t8132_atc_main_offsets[] = {
+	8, 0xc, 0x10c, 0x2000, 0x2080, 0x2084, 0x2088, 0x2200,
+	0x2208, 0x2218, 0x2234, 0x7000, 0x7034, 0x9160, 0x91d4, 0x91dc,
+	0x9210, 0x9244, 0x9248, 0xb030, 0xb064, 0xb068, 0xb06c,
+	0xb0a4, 0xb0a8, 0xb0d4, 0xb0d8, 0xb0dc, 0xc050, 0xc0d0,
+	0xc0d4, 0xd004, 0xd00c, 0xd010, 0xd01c, 0xd044,
+};
+#endif

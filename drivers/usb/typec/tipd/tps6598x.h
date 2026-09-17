@@ -373,6 +373,7 @@ struct cd321x {
 
 	struct typec_mux *mux;
 	struct typec_mux_state state;
+	/* Last successfully delivered DP status/configuration, not just pin mode. */
 	u32 mux_dp_status;
 	u32 mux_dp_conf;
 

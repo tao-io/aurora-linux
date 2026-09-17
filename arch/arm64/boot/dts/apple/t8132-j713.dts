@@ -536,3 +536,6 @@
 &ps_pms_sram {
 	apple,inherited-on;
 };
+
+/* External DisplayPort resources; needs atcphy1 and PHY_TYPE_DP above. */
+#include "t8132-j713-dcpext.dtsi"

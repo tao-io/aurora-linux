@@ -43,6 +43,7 @@
 #include <linux/usb/typec_dp.h>
 #include <linux/usb/typec_mux.h>
 #include <linux/usb/typec_tbt.h>
+#include "atc-t8132-dp.h"
 
 #define AUSPLL_FSM_CTRL 0x1014
 
@@ -643,6 +644,7 @@ struct atcphy_hw {
  * @lock: Mutex for synchronizing register access across PHY, Type-C switch/mux and reset controller
  */
 struct apple_atcphy {
+	struct apple_t8132_dp *t8132_dp;
 	struct device_node *np;
 	struct device *dev;
 
@@ -2274,6 +2276,8 @@ static int atcphy_sw_set(struct typec_switch_dev *sw, enum typec_orientation ori
 	struct apple_atcphy *atcphy = typec_switch_get_drvdata(sw);
 
 	guard(mutex)(&atcphy->lock);
+	if (atcphy->t8132_dp)
+		apple_t8132_dp_orientation(atcphy->t8132_dp, orientation);
 
 	switch (orientation) {
 	case TYPEC_ORIENTATION_NONE:
@@ -2316,6 +2320,18 @@ static int atcphy_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *sta
 	enum atcphy_mode target_mode;
 
 	guard(mutex)(&atcphy->lock);
+	if (atcphy->t8132_dp) {
+		bool dp_mode = state->alt && state->alt->svid == USB_TYPEC_DP_SID &&
+			state->mode != TYPEC_STATE_SAFE && state->mode != TYPEC_STATE_USB;
+		int ret = apple_t8132_dp_route(atcphy->t8132_dp,
+					      dp_mode && state->mode == TYPEC_DP_STATE_D,
+					      dp_mode ? state->data : NULL);
+
+		if (ret)
+			return ret;
+		if (dp_mode)
+			return state->mode == TYPEC_DP_STATE_D ? 0 : -EOPNOTSUPP;
+	}
 
 	if (state->mode == TYPEC_STATE_SAFE) {
 		target_mode = APPLE_ATCPHY_MODE_OFF;
@@ -2533,6 +2549,11 @@ static int atcphy_probe(struct platform_device *pdev)
 	ret = atcphy_load_tunables(atcphy);
 	if (ret)
 		return ret;
+	if (atcphy->hw->gen == ATCPHY_GENERATION_T8132) {
+		atcphy->t8132_dp = apple_t8132_dp_create(pdev, &atcphy->lock, &atcphy->phys.dp);
+		if (IS_ERR(atcphy->t8132_dp))
+			return dev_err_probe(dev, PTR_ERR(atcphy->t8132_dp), "DP provider setup failed\n");
+	}
 
 	atcphy->mode = APPLE_ATCPHY_MODE_OFF;
 	atcphy->pipehandler_up = false;
@@ -2570,10 +2591,22 @@ static const struct of_device_id atcphy_match[] = {
 };
 MODULE_DEVICE_TABLE(of, atcphy_match);
 
+static int atcphy_suspend(struct device *dev)
+{
+	struct apple_atcphy *atcphy = dev_get_drvdata(dev);
+
+	return atcphy->t8132_dp ? apple_t8132_dp_suspend(atcphy->t8132_dp) : 0;
+}
+
+static DEFINE_SIMPLE_DEV_PM_OPS(atcphy_pm_ops, atcphy_suspend, NULL);
+
 static struct platform_driver atcphy_driver = {
 	.driver = {
 		.name = "phy-apple-atc",
 		.of_match_table = atcphy_match,
+		/* A failed DP transition deliberately retains its MMIO and PM vote. */
+		.suppress_bind_attrs = true,
+		.pm = pm_sleep_ptr(&atcphy_pm_ops),
 	},
 	.probe = atcphy_probe,
 };

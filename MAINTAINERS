@@ -2596,6 +2596,7 @@ F:	drivers/watchdog/apple_wdt.c
 F:	include/dt-bindings/interrupt-controller/apple-aic.h
 F:	include/dt-bindings/pinctrl/apple.h
 F:	include/linux/mfd/macsmc.h
+F:	include/linux/phy/phy-apple-t8132.h
 F:	include/linux/soc/apple/*
 F:	include/uapi/drm/asahi_drm.h
 F:	net/bluetooth/brcm.c

@@ -92,6 +92,9 @@ properties:
       power up an inactive domain. Used for the T8132 storage fabric while
       Linux establishes ownership of the ANS controller through its separate
       reset provider. The ANS reset provider must not carry this property.
+      Also used for the J713 external display and ATC1 common domains when
+      adopting the firmware-powered display path. Their provider requires an
+      active inherited state and rejects reset and power-off operations.
     type: boolean
 
   apple,force-disable:
