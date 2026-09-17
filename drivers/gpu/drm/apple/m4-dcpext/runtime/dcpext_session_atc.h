@@ -349,6 +349,14 @@ static int session_atc_aux(bool enable)
 		    readl(atc_core + ATC_AUX_CFG) & 1)
 			return -EIO;
 	} else {
+		/* Discovery can fail before firmware ever configures a main-link
+		 * rate. A display release still requires the pre-discovery
+		 * crossbar route to be parked before AUX is disabled. */
+		if (session_dpxbar_selected) {
+			ret = dpxbar_down();
+			if (ret)
+				return ret;
+		}
 		if (link_training && session_link.rate) {
 			ret = dptx_link_set_rate(&session_link, 0);
 			if (ret)

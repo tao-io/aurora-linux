@@ -94,6 +94,43 @@ TODO: diagnose link failure and recovery; implement interrupt-driven DP SID
 notification. User explicitly accepts dev-branch progress with known failures.
 
 
+## Reconnect display release and bounded recovery (2026-09-17)
+
+Checkpoint `99fa985a855b` preserves the failed repeated reconnect above. The
+candidate now releases the firmware display request after every acknowledged
+HPD-low, including same-port HDMI removal. Return reconnects and requests the
+display before HPD-high, matching the ordinary DCP disconnect/connect lifecycle.
+The AUX-disable callback parks the crossbar even when discovery failed before
+any main-link rate was configured. No speculative PHY reset is introduced.
+
+Discovery timeout retains its five-second bound and permits at most two recovery
+attempts per physical connection, each after acknowledged HPD-low and display
+release. Lost command acknowledgments remain fatal; retries never discard
+uncertain ownership. A real cable/orientation loss resets the attempt budget.
+`desktop_hpd_retries` reports the total recovery attempts.
+
+`desktop-reconnect-release-1`, module SHA256
+`1beeb293992d63547aecf26deb16de4f93ff41821bfd05ca2ad8c76bcf917d54`, passed the
+W=1 build, actual-code ASan/UBSan lifecycle/AUX ordering tests, and guarded normal
+Wayland activation on boot `ba95e8f9-b0d8-4f07-8682-ad782b21db1b`. Both outputs
+were active, Philips identity/modes present, error counters zero and peak
+observed temperature 57.75 C. The module is installed and lifecycle service
+active. Physical HDMI removal and return passed in the same Hyprland session.
+The release ACK disabled AUX; reconnection acknowledged connect/request, enabled
+AUX, and published fresh modes/EDID 0.47 seconds after beginning the new route.
+DPTX error counters stayed 0/0/0 and no recovery retry was needed. These times
+start at driver detection, not at the operator's physical insertion. Evidence:
+`_provenance/displayport-v1-20260917/desktop-reconnect-release-1/`, plus
+`experiments/20260917T122356654833Z-reconnect-release-removal-1` and
+`experiments/20260917T122511499906Z-reconnect-release-return-1`. The automatic
+recovery branch has host fault-injection coverage; it was not needed in this
+physical cycle and is not yet hardware-qualified. Longer repeated-cycle
+reliability is not established by this single successful cycle.
+
+This is a lifecycle/recovery correction, not proof of the electrical cause of
+all device-not-responding notifications. Repeated reconnect reliability and
+DP-SID interrupt integration remain TODO; this build still uses 1 Hz refresh.
+
 ## TODO / qualification boundaries
 
 - Longer desktop use and repeated hotplug qualification.

@@ -15,6 +15,10 @@ static bool desktop_irq_initialized, desktop_sink_initialized;
 static unsigned int desktop_hpd_irqs;
 module_param(desktop_hpd_irqs, uint, 0400);
 static int desktop_hpd_failed_port = -1;
+static u64 desktop_hpd_retry_after;
+static unsigned int desktop_hpd_attempts, desktop_hpd_retries;
+module_param(desktop_hpd_retries, uint, 0400);
+#define DESKTOP_HPD_MAX_RETRIES 2
 static unsigned int desktop_hpd_disconnects, desktop_hpd_connects;
 module_param(desktop_hpd_disconnects, uint, 0400);
 module_param(desktop_hpd_connects, uint, 0400);
@@ -82,17 +86,29 @@ static int native_kms_hotplug_tick(void)
 		desktop_hpd_phase = DESKTOP_HPD_SINK_WAIT;
 		desktop_hpd_deadline = 0;
 	}
-	if (!hpd && desktop_hpd_failed_port == (int)session_atc_port)
-		desktop_hpd_failed_port = -1;
+	if (!hpd) {
+		/* Only a real cable/orientation loss resets the attempt budget. */
+		desktop_hpd_attempts = 0;
+		desktop_hpd_retry_after = 0;
+		if (desktop_hpd_failed_port == (int)session_atc_port)
+			desktop_hpd_failed_port = -1;
+	}
 	if (desktop_hpd_deadline && now >= desktop_hpd_deadline &&
 	    (desktop_hpd_phase == DESKTOP_HPD_MODES || desktop_hpd_phase == DESKTOP_HPD_EDID) &&
-	    !dptx_runtime_hpd_pending && !dptx_runtime_route_pending) {
-		/* Discovery failure is not lost command ownership. Send an
-		 * acknowledged HPD-low and wait for a physical change instead of
-		 * killing the worker or endlessly retraining an attached sink. */
-		pr_warn("m4_dcpext_native: ATC%u sink discovery timed out; quiescing HPD and waiting for cable change\n",
-			session_atc_port);
+	    !dptx_runtime_hpd_pending && !dptx_runtime_route_pending && !dptx_runtime_irq_pending) {
+		/* Discovery is retryable only after HPD-low and display release
+		 * ACKs. Do not extend this deadline or retry uncertain commands. */
 		desktop_hpd_failed_port = session_atc_port;
+		if (desktop_hpd_attempts < DESKTOP_HPD_MAX_RETRIES) {
+			desktop_hpd_attempts++;
+			desktop_hpd_retry_after = now + 1000;
+			pr_warn("m4_dcpext_native: ATC%u discovery timeout; releasing before recovery %u/%u\n",
+				session_atc_port, desktop_hpd_attempts, DESKTOP_HPD_MAX_RETRIES);
+		} else {
+			desktop_hpd_retry_after = 0;
+			pr_warn("m4_dcpext_native: ATC%u recovery exhausted; releasing and waiting for cable change\n",
+				session_atc_port);
+		}
 		desktop_hpd_deadline = 0;
 	}
 	if (desktop_hpd_failed_port == (int)session_atc_port)
@@ -126,6 +142,13 @@ static int native_kms_hotplug_tick(void)
 		if (partner < 0) {
 			ret = partner == -ENOLINK ? 0 : partner;
 			goto unlock;
+		}
+		if (desktop_hpd_failed_port == partner) {
+			if (!desktop_hpd_retry_after || now < desktop_hpd_retry_after)
+				goto unlock;
+			desktop_hpd_failed_port = -1;
+			desktop_hpd_retry_after = 0;
+			desktop_hpd_retries++;
 		}
 		desktop_irq_initialized = false;
 		ret = session_atc_switch_port(partner);
@@ -161,9 +184,17 @@ static int native_kms_hotplug_tick(void)
 		goto unlock;
 	}
 	if (desktop_hpd_phase == DESKTOP_HPD_WAIT_LOW) {
-		desktop_hpd_phase = DESKTOP_HPD_OFFLINE;
-		desktop_hpd_deadline = 0;
-		pr_info("m4_dcpext_native: sink HPD low acknowledged; connector disconnected, DMA retained\n");
+		/* HPD-low alone leaves AUX and the display request owned. Match
+		 * the ordinary DCP disconnect path: release on every removal,
+		 * then connect/request again even when the Type-C port is unchanged.
+		 * This also clears a failed pre-training discovery transaction. */
+		ret = dptx_runtime_set_route(false);
+		if (!ret) {
+			desktop_hpd_phase = DESKTOP_HPD_ROUTE_OFF;
+			desktop_hpd_deadline = now + 5000;
+			pr_info("m4_dcpext_native: sink HPD low acknowledged; releasing display before reuse\n");
+		}
+		goto unlock;
 	}
 	if (desktop_hpd_phase == DESKTOP_HPD_OFFLINE && !hpd) {
 		partner = session_atc_find_partner();
