@@ -193,7 +193,8 @@ static int remove_private_mapping(void)
 	return 0;
 }
 
-static int __init probe_init(void)
+/* Built-in desktop startup runs after init memory has been freed. */
+static int probe_init(void)
 {
 	struct device_node *dcp = NULL, *dart = NULL, *ram = NULL;
 	struct resource resource, reservation;
@@ -430,6 +431,7 @@ static int __init probe_init(void)
 	if (native_kms_trial) {
 		struct task_struct *worker = kthread_run(session_kms_worker, NULL, "dcpext-kms");
 		ret = IS_ERR(worker) ? PTR_ERR(worker) : 0;
+		native_kms_worker_started = !ret;
 		goto done;
 	}
 	ret = session_capture_data(false);
@@ -482,6 +484,9 @@ done:
 	return ret;
 }
 
+#if defined(DCPEXT_DESKTOP) && !defined(MODULE)
+#include "dcpext_boot.h"
+#else
 static void __exit probe_exit(void)
 {
 #ifdef DCPEXT_WITH_SESSION
@@ -490,6 +495,7 @@ static void __exit probe_exit(void)
 }
 module_init(probe_init);
 module_exit(probe_exit);
+#endif
 MODULE_LICENSE("Dual MIT/GPL");
 #ifdef DCPEXT_WITH_SESSION
 MODULE_DESCRIPTION("J713 external RTKit system boot/quiesce with additive DART mapping");

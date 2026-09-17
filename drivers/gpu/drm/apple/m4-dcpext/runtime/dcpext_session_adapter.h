@@ -7,6 +7,7 @@
  * binary behavior is a reference; no Apple machine code is imported.
  */
 #include <linux/delay.h>
+#include <linux/completion.h>
 #include <linux/ktime.h>
 #include <linux/unaligned.h>
 #include <linux/vmalloc.h>
@@ -601,13 +602,17 @@ static int session_run(void)
  * execution pin only through module_put_and_kthread_exit, after all evidence
  * and ownership state are published. Errors retain every uncertain resource. */
 static bool native_kms_worker_done;
+static bool native_kms_worker_started;
+static DECLARE_COMPLETION(native_kms_worker_exited);
 module_param(native_kms_worker_done, bool, 0400);
 static int session_kms_worker(void *unused)
 {
 	int ret;
 
+#ifdef MODULE
 	while (READ_ONCE(THIS_MODULE->state) == MODULE_STATE_COMING)
 		usleep_range(1000, 2000);
+#endif
 	ret = session_run();
 	if (!ret)
 		ret = remove_private_mapping();
@@ -617,6 +622,7 @@ static int session_kms_worker(void *unused)
 	pr_info("m4_dcpext_native: bounded KMS worker ended %d, %u completed frames; resources %s\n",
 		ret, native_kms_frames, ret ? "retained" : "released");
 	WRITE_ONCE(native_kms_worker_done, true);
+	complete_all(&native_kms_worker_exited);
 	if (!ret) {
 		pinned = false;
 		module_put_and_kthread_exit(0);

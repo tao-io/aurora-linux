@@ -1,4 +1,19 @@
 # SPDX-License-Identifier: GPL-2.0-only OR MIT
+config DRM_APPLE_M4_DCPEXT
+	bool "Apple M4 J713 external DisplayPort"
+	depends on DRM=y && ARM64 && ARCH_APPLE && OF && ARM64_16K_PAGES
+	depends on TYPEC_SN201202X=y
+	select MFD_SYSCON
+	select DRM_KMS_HELPER
+	select DRM_GEM_DMA_HELPER
+	help
+	  Build the J713 external display runtime into the kernel. Requires the
+	  reserved firmware and DART handoff from the M4 bootloader. The driver
+	  waits for a supported USB-C display connection without blocking boot,
+	  then publishes a DRM connector with monitor identity and modes.
+	  Shutdown is handled by the kernel; no explicit module load is needed.
+	  Sleep, firmware restart and broader display features remain unsupported.
+
 config DRM_APPLE
 	tristate "DRM Support for Apple display controllers"
 	depends on DRM && OF && ARM64
