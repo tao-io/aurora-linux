@@ -19,6 +19,7 @@ static bool afk_display_dirty;
 static bool afk_hpd_dirty;
 static u64 dptx_trial_observe_until;
 static bool native_route_pending;
+static bool dptx_runtime_hpd_pending;
 static unsigned int dptx_trial_callbacks;
 static struct m4_dcpext_dptx_errors dptx_errors;
 module_param_named(link_error_last, dptx_errors.last_command, uint, 0400);
@@ -245,8 +246,27 @@ static int dptx_trial_receive(const u8 *p, u32 bytes)
 	return 0;
 }
 
+/* Keep the service and route alive across sink-only HPD changes. */
+static int dptx_runtime_set_hpd(bool on)
+{
+	if (!desktop || !session.runtime || dptx_runtime_hpd_pending ||
+	    dptx_trial_phase != DPTX_TRIAL_HPD_WAIT)
+		return -EBUSY;
+	dptx_runtime_hpd_pending = true;
+	dptx_trial_phase = on ? DPTX_TRIAL_HPD_ON : DPTX_TRIAL_HPD_OFF;
+	afk_query_sent = afk_query_replied = false;
+	return 0;
+}
+
 static int dptx_trial_progress(void)
 {
+	if (dptx_runtime_hpd_pending && afk_query_replied) {
+		if (afk_query_result)
+			return afk_query_result;
+		dptx_runtime_hpd_pending = false;
+		dptx_trial_phase = DPTX_TRIAL_HPD_WAIT;
+		return 0;
+	}
 	if (dptx_quiesce_handoff)
 		return 0;
 	if (dptx_trial_phase == DPTX_TRIAL_HPD_WAIT) {

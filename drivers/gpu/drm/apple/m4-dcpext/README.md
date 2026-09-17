@@ -45,17 +45,31 @@ Hardware evidence (2026-09-17): desktop-wayland-4 passed 20 seconds; the maintai
 build desktop-maintained-1 passed guarded activation with no lifetime timeout,
 live Philips PHL 237E7 identity, both outputs active, 720p/1080p mode switches,
 DPMS off/on and acknowledged frame completions. A later external-output Wayland
-screenshot contains the Omarchy greeter. This is compositor readback, not physical
-confirmation of the monitor image. See workspace _provenance/displayport-v1-20260917
+screenshot contains the Omarchy greeter. The user subsequently physically confirmed
+the persistent image and HDMI-side reconnection. See workspace _provenance/displayport-v1-20260917
 and experiments/20260917T094535332101Z-external-wayland-screenshot-2.
+
+Runtime HDMI HPD now follows the locked controller cache. Removal invalidates
+connector identity and powers down the sink without retiring transport/DMA.
+Reconnection restores the parked crossbar before HPD-high, accepts firmware AV
+service retirement/republication, and publishes only fresh native modes/EDID.
+Each command/discovery wait is bounded; outstanding HPD commands cannot be
+replaced by rapid cable edges. Offline sanitizer tests and guarded physical
+HDMI removal/return passed with desktop-hdmi-hotplug-4 on 2026-09-17.
+
+The first physical cycle exposed Aquamarine terminating a shared EGLDisplay,
+causing Hyprland to restart in safe mode. The workspace Aquamarine fix uses
+independent GBM displays when EGL reference tracking is absent; kernel hotplug
+success alone does not prove compositor continuity. See the workspace handoff
+for separate driver and userspace evidence.
 
 ## TODO / qualification boundaries
 
-- Physical visibility confirmation for this sustained desktop and longer use.
+- Longer desktop use and repeated hotplug qualification.
 - Automatic boot loading and startup recovery. The installed lifecycle service
   requests bounded acknowledged shutdown on system stop; this service wiring
   has not yet been exercised through a reboot.
-- Repeated physical unplug/replug and HPD IRQ handling through the normal Type-C
+- Physical USB-C unplug/replug and HPD IRQ handling through the normal Type-C
   provider; additional USB-C ports, orientations, adapters and monitors.
 - Replace explicit handoff/MMIO ownership with the normal platform/RTKit, PHY,
   crossbar, PMGR and IOMMU consumer integration already being developed.

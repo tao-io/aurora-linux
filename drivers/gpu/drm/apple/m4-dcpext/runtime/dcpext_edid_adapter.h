@@ -6,6 +6,7 @@
 #include "dcpext_edid_trial.h"
 static struct afkc edid_channel;
 static struct edid_trial edid_state;
+static u16 edid_retired_interface;
 static u64 edid_stop_at_ms;
 static int edid_result = -ENODATA;
 module_param(edid_result, int, 0400);
@@ -45,6 +46,30 @@ static int edid_adapter_record(void *cookie, const u8 *p, u32 bytes)
 		edid_state.interface = interface;
 		return 0;
 	}
+	/* AFKEPInterfaceKextV2::handleUnknown maps report0x14 to
+	 * enqueueTerminateEvent(interface). HDMI HPD-low retires the old
+	 * AV service; HPD-high publishes a new interface on the same channel.
+	 * Keep transport sequence/tag counters, invalidate all sink data, and
+	 * reopen the newly published service before requesting its EDID.
+	 */
+	if (p[16] == 0x14 && !p[17] && interface == edid_state.interface) {
+		if (bytes != 25 || p[24])
+			return -EPROTO;
+		edid_retired_interface = interface;
+		edid_state.interface = 0;
+		edid_state.opened = edid_state.pending = edid_state.received = false;
+		edid_state.close_sent = false;
+		edid_state.bytes = 0;
+		edid_state.error = 0;
+		edid_stop_at_ms = 0;
+		edid_result = -ENODATA;
+		return 0;
+	}
+	/* A late inline reply belongs to the retired service, never the new
+	 * sink. No DMA buffer is freed or reused on service retirement. */
+	if (edid_retired_interface && interface == edid_retired_interface &&
+	    interface != edid_state.interface)
+		return 0;
 	/* This channel also carries reports for unselected AV services. */
 	if (!p[17] && interface != edid_state.interface)
 		return 0;
@@ -106,6 +131,10 @@ static int edid_adapter_progress(void)
 	if (!edid_cancel && edid_state.opened && (edid_native_ready || iboot_state.phase == M4_DCPEXT_IBOOT_POWER_OFF) &&
 	    !edid_state.pending && !edid_state.received)
 		return edid_trial_send(&edid_state, NULL, true, 0);
+	/* Sink unplug is not endpoint shutdown. Keep its sequence/tag state so
+	 * an outstanding old query can drain before the next connection query. */
+	if (desktop && session.runtime)
+		return 0;
 	/* Native client keeps the AV service available throughout link teardown.
 	 * Closing it immediately after the read was unsafe in the iBoot trial. */
 	if ((edid_native_ready || edid_cancel) && (afk_hpd_dirty || afk_display_dirty || afk_route_dirty))

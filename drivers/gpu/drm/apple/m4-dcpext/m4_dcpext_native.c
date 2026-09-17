@@ -723,6 +723,15 @@ struct m4_dcpext_native_mode *m4_dcpext_native_modes(struct m4_dcpext_native *dc
 	return copy;
 }
 
+void m4_dcpext_native_invalidate_sink(struct m4_dcpext_native *dcp)
+{
+	mutex_lock(&dcp->lock);
+	dcp->connected = false;
+	dcp->powered_mode_generation = 0;
+	remove_raw_property(dcp, "TimingElements");
+	mutex_unlock(&dcp->lock);
+}
+
 static bool mode_request_valid(void *cookie)
 {
 	struct m4_dcpext_native *dcp = cookie;

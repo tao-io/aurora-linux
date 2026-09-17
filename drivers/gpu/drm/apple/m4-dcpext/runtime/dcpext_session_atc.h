@@ -27,7 +27,7 @@ MODULE_PARM_DESC(link_training, "Guarded HBR/two-lane/native-fallback-drive trai
 static struct dptx_link_state session_link;
 static int (*session_atc_protocol)(void);
 
-static int session_atc_check_partner(void)
+static int session_atc_read_partner(bool report)
 {
 	/* Cached TIPD state only, following m4_typec_probe. Private layout and
 	 * definitions: Intel/Heikki Krogerus and Asahi, tps6598x.h at fba91e5d9577.
@@ -38,6 +38,7 @@ static int session_atc_check_partner(void)
 	struct tps6598x *tps;
 	u32 status = 0, data = 0;
 	int ret = -ENODEV;
+	session_atc_hpd = false;
 	for_each_compatible_node(node, NULL, "apple,t8132-sn201202x") {
 		sdev = spmi_find_device_by_of_node(node);
 		if (!sdev)
@@ -62,11 +63,17 @@ static int session_atc_check_partner(void)
 		device_unlock(&sdev->dev);
 		spmi_device_put(sdev);
 		of_node_put(node);
-		pr_info("m4_dcpext_session: ATC1 cached Type-C status=%#x data=%#x pin-D/flipped admission=%d\n",
+		if (report)
+			pr_info("m4_dcpext_session: ATC1 cached Type-C status=%#x data=%#x pin-D/flipped admission=%d\n",
 			status, data, ret);
 		return ret;
 	}
 	return ret;
+}
+
+static int session_atc_check_partner(void)
+{
+	return session_atc_read_partner(true);
 }
 
 static int dptx_link_set_rate(struct dptx_link_state *s, u32 rate)

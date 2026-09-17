@@ -11,6 +11,7 @@ static unsigned int native_kms_frames;
 static u64 native_kms_until, native_kms_generation;
 static u32 native_kms_color, native_kms_timing;
 static bool native_kms_powered;
+static bool native_kms_connected;
 static unsigned int native_kms_slot;
 module_param(native_kms_ready, bool, 0400);
 module_param(native_kms_finished, bool, 0400);
@@ -28,12 +29,14 @@ static int native_kms_present(void *cookie,
 
 	lockdep_assert_held(&native_route_lock);
 	if (!mode) {
+		if (!native_kms_powered)
+			return 0;
 		ret = m4_dcpext_native_set_power(native_client, false, 0);
 		if (!ret)
 			native_kms_powered = false;
 		return ret;
 	}
-	if (native_kms_finished || !native_kms_ready || !frame_published ||
+	if (native_kms_finished || !native_kms_ready || !native_kms_connected || !frame_published ||
 	    !frame_registers_match())
 		return -ENODEV;
 	width = mode->geometry.width;
@@ -115,6 +118,7 @@ static int native_kms_publish(void)
 		edid_channel.streaming = true;
 	}
 	native_kms_until = session_now(NULL) + (desktop ? desktop_test_ms : 8000);
+	native_kms_connected = true;
 	native_kms_ready = true;
 	ret = m4_dcpext_kms_register(native_kms);
 	if (ret)
@@ -143,3 +147,5 @@ static void native_kms_unplug(void)
 	native_route_pending = false;
 	mutex_unlock(&native_route_lock);
 }
+
+#include "dcpext_hotplug.h"

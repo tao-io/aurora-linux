@@ -40,6 +40,9 @@ int m4_dcpext_native_set_power(struct m4_dcpext_native *dcp, bool on, u64 genera
 /* Caller owns the returned snapshot and must kfree it. */
 void *m4_dcpext_native_property(struct m4_dcpext_native *dcp, const char *key,
 				u32 *size);
+/* External HPD loss invalidates sink identity/modes, never DMA ownership.
+ * The owner serializes this with presentation and subsequent HPD requests. */
+void m4_dcpext_native_invalidate_sink(struct m4_dcpext_native *dcp);
 int m4_dcpext_native_poll(struct m4_dcpext_native *dcp);
 void m4_dcpext_native_destroy(struct m4_dcpext_native *dcp);
 #endif

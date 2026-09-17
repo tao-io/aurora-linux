@@ -447,6 +447,11 @@ static int session_run_protocol(void)
 	native_route_pending = native_mode_trial;
 	ret = dcpext_session_begin(&session, &ops, NULL);
 	while (!ret && session.phase != DCPEXT_QUIESCED) {
+		if (desktop && native_kms_ready && !native_kms_finished) {
+			ret = native_kms_hotplug_tick();
+			if (ret)
+				break;
+		}
 		if (native_kms_trial && native_kms_ready &&
 		    (((!desktop || desktop_test_ms) && session_now(NULL) >= native_kms_until) ||
 		     READ_ONCE(desktop_stop)))
