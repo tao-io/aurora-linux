@@ -20,10 +20,9 @@
  * list; the layer is 172 bytes (164 + the 8-byte extension), the setSurface
  * request 188 bytes before the 32-byte envelope; at most 64 records each.
  *
- * Limits carried over from the PoC fixture, to be replaced by validated
- * framebuffer state before KMS use: the selected mode is the advertised
- * 1920x1080@60 timing with the RGB SDR 32-bit color record; the surface is
- * one BGRA plane, stride 7,680, at frame_dva in both scanout DARTs.
+ * Mode and framebuffer geometry are explicit caller configuration, bounded
+ * by the current two-lane HBR RGB SDR policy and matched to firmware records.
+ * The mapped extent must cover the complete linear BGRA surface in both DARTs.
  * Acknowledgement of setSurface is a submission ack, not a vblank or
  * permission to free the previous framebuffer.
  *
@@ -33,6 +32,7 @@
 #ifndef M4_DCPEXT_IBOOT_H
 #define M4_DCPEXT_IBOOT_H
 #include "m4_dcpext_afk.h"
+#include "m4_dcpext_modes.h"
 
 #define M4_DCPEXT_IBOOT_RECORDS 64
 #define M4_DCPEXT_IBOOT_RECORD 24
@@ -58,7 +58,9 @@ struct m4_dcpext_iboot {
 	bool opened, pending, power_dirty, hpd;
 	bool image_enabled, mode_acked, surface_acked;
 	bool blank_requested;
-	u64 frame_dva;
+	u64 frame_dva, frame_bytes;
+	u32 stride;
+	struct m4_dcpext_mode mode;
 	u8 selected_mode[48];
 	u32 operation, timings_count, colors_count, count_attempts;
 	u8 timings[M4_DCPEXT_IBOOT_RECORDS * M4_DCPEXT_IBOOT_RECORD];
@@ -74,7 +76,12 @@ int m4_dcpext_iboot_progress(struct m4_dcpext_iboot *s, const struct m4_dcpext_i
 			     void *cookie, bool monitor_present);
 /* Every payload of the channel: publication selection, reports retained. */
 int m4_dcpext_iboot_receive(struct m4_dcpext_iboot *s, const u8 *p, u32 bytes);
-/* Picks the qualified timing/color pair into selected_mode. */
+/* Configure an idle, unpowered client. Mode must come from EDID; it will
+ * additionally be matched to fresh firmware records before setMode. */
+int m4_dcpext_iboot_configure(struct m4_dcpext_iboot *s,
+			    const struct m4_dcpext_mode *mode, u32 stride,
+			    u64 dva, u64 mapped_bytes);
+/* Picks a firmware timing and 8bpc RGB color pair into selected_mode. */
 int m4_dcpext_iboot_select_mode(struct m4_dcpext_iboot *s);
 /* Replace the qualified surface while powered and idle. The owner must map
  * the full surface in both DARTs and retain all submitted buffers. A reply

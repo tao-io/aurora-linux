@@ -48,11 +48,11 @@ static int iboot_packet(struct m4_dcpext_iboot *s, const struct m4_dcpext_iboot_
 			 */
 			put_unaligned_le32((u32)s->frame_dva, packet + 48 + 4);
 			put_unaligned_le32((u32)(s->frame_dva >> 32), packet + 48 + 8);
-			put_unaligned_le32(7680, packet + 48 + 16);
+			put_unaligned_le32(s->stride, packet + 48 + 16);
 			put_unaligned_le32(1, packet + 48 + 36); /* planar */
 			put_unaligned_le32(1, packet + 48 + 136); /* one plane */
-			put_unaligned_le32(1920, packet + 48 + 140);
-			put_unaligned_le32(1080, packet + 48 + 144);
+			put_unaligned_le32(s->mode.width, packet + 48 + 140);
+			put_unaligned_le32(s->mode.height, packet + 48 + 144);
 			put_unaligned_le32(1, packet + 48 + 148); /* BGRA */
 			put_unaligned_le32(1, packet + 48 + 152); /* sRGB */
 			put_unaligned_le32(1, packet + 48 + 156); /* SDR */
@@ -188,6 +188,32 @@ int m4_dcpext_iboot_receive(struct m4_dcpext_iboot *s, const u8 *p, u32 bytes)
 	return 0;
 }
 
+int m4_dcpext_iboot_configure(struct m4_dcpext_iboot *s,
+			    const struct m4_dcpext_mode *mode, u32 stride,
+			    u64 dva, u64 mapped_bytes)
+{
+	u32 fps;
+	int ret;
+
+	if (s->error)
+		return s->error;
+	if (s->pending || s->power_dirty ||
+	    (s->phase != M4_DCPEXT_IBOOT_SERVICE && s->phase != M4_DCPEXT_IBOOT_BLANK))
+		return -EBUSY;
+	ret = m4_dcpext_mode_validate(mode, &fps);
+	if (ret)
+		return ret;
+	ret = m4_dcpext_surface_validate(mode->width, mode->height, stride, dva, mapped_bytes);
+	if (ret)
+		return ret;
+	s->mode = *mode;
+	s->stride = stride;
+	s->frame_dva = dva;
+	s->frame_bytes = mapped_bytes;
+	s->image_enabled = true;
+	return 0;
+}
+
 int m4_dcpext_iboot_submit(struct m4_dcpext_iboot *s,
 			   const struct m4_dcpext_iboot_ops *ops,
 			   void *cookie, u64 dva)
@@ -199,7 +225,7 @@ int m4_dcpext_iboot_submit(struct m4_dcpext_iboot *s,
 	if (!s->opened || !s->image_enabled || !s->mode_acked ||
 	    !s->surface_acked || !s->power_dirty || !s->hpd)
 		return -EUCLEAN;
-	if (!dva || (dva & 0x3fff) || dva > (1ULL << 36) - 7680 * 1080)
+	if (m4_dcpext_surface_validate(s->mode.width, s->mode.height, s->stride, dva, s->frame_bytes))
 		return -EINVAL;
 	s->frame_dva = dva;
 	s->surface_acked = false;
@@ -242,23 +268,19 @@ int m4_dcpext_iboot_unblank(struct m4_dcpext_iboot *s)
 
 int m4_dcpext_iboot_select_mode(struct m4_dcpext_iboot *s)
 {
-	const u8 *timing = NULL, *color = NULL;
+	u8 timing[M4_DCPEXT_IBOOT_RECORD];
+	const u8 *color = NULL;
+	int ret;
 
-	if (!s->image_enabled || !s->frame_dva || s->frame_dva > (1ULL << 36) - 7680 * 1080 ||
-	    (s->frame_dva & 0x3fff) || !s->hpd || !s->power_dirty ||
-	    s->timings_count > M4_DCPEXT_IBOOT_RECORDS || s->colors_count > M4_DCPEXT_IBOOT_RECORDS)
+	if (!s->image_enabled || !s->hpd || !s->power_dirty ||
+	    s->timings_count > M4_DCPEXT_IBOOT_RECORDS ||
+	    s->colors_count > M4_DCPEXT_IBOOT_RECORDS ||
+	    m4_dcpext_surface_validate(s->mode.width, s->mode.height, s->stride,
+				      s->frame_dva, s->frame_bytes))
 		return -EINVAL;
-	/* Qualified fixture: timing (1,1920,1080,60<<16,0,0), color (1,1,1,1,32,0). */
-	for (u32 i = 0; i < s->timings_count; i++) {
-		const u8 *p = s->timings + i * M4_DCPEXT_IBOOT_RECORD;
-
-		if (get_unaligned_le32(p) == 1 && get_unaligned_le32(p + 4) == 1920 &&
-		    get_unaligned_le32(p + 8) == 1080 && get_unaligned_le32(p + 12) == (60U << 16) &&
-		    !get_unaligned_le32(p + 16) && !get_unaligned_le32(p + 20)) {
-			timing = p;
-			break;
-		}
-	}
+	ret = m4_dcpext_mode_select(&s->mode, s->timings, s->timings_count, timing);
+	if (ret)
+		return ret;
 	for (u32 i = 0; i < s->colors_count; i++) {
 		const u8 *p = s->colors + i * M4_DCPEXT_IBOOT_RECORD;
 
@@ -269,7 +291,7 @@ int m4_dcpext_iboot_select_mode(struct m4_dcpext_iboot *s)
 			break;
 		}
 	}
-	if (!timing || !color)
+	if (!color)
 		return -ENODATA;
 	memcpy(s->selected_mode, timing, M4_DCPEXT_IBOOT_RECORD);
 	memcpy(s->selected_mode + M4_DCPEXT_IBOOT_RECORD, color, M4_DCPEXT_IBOOT_RECORD);
