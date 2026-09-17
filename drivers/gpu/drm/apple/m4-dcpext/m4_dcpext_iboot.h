@@ -44,6 +44,7 @@ enum m4_dcpext_iboot_phase {
 	M4_DCPEXT_IBOOT_COLORS, M4_DCPEXT_IBOOT_SET_MODE, M4_DCPEXT_IBOOT_SURFACE,
 	M4_DCPEXT_IBOOT_HOLD, M4_DCPEXT_IBOOT_HOLD_COUNTS, M4_DCPEXT_IBOOT_POWER_OFF,
 	M4_DCPEXT_IBOOT_CLOSE, M4_DCPEXT_IBOOT_STOP, M4_DCPEXT_IBOOT_DONE,
+	M4_DCPEXT_IBOOT_BLANK,
 };
 
 struct m4_dcpext_iboot_ops {
@@ -56,6 +57,7 @@ struct m4_dcpext_iboot {
 	u8 sequence, tag;
 	bool opened, pending, power_dirty, hpd;
 	bool image_enabled, mode_acked, surface_acked;
+	bool blank_requested;
 	u64 frame_dva;
 	u8 selected_mode[48];
 	u32 operation, timings_count, colors_count, count_attempts;
@@ -74,4 +76,18 @@ int m4_dcpext_iboot_progress(struct m4_dcpext_iboot *s, const struct m4_dcpext_i
 int m4_dcpext_iboot_receive(struct m4_dcpext_iboot *s, const u8 *p, u32 bytes);
 /* Picks the qualified timing/color pair into selected_mode. */
 int m4_dcpext_iboot_select_mode(struct m4_dcpext_iboot *s);
+/* Replace the qualified surface while powered and idle. The owner must map
+ * the full surface in both DARTs and retain all submitted buffers. A reply
+ * acknowledges submission only; this API does not establish retirement.
+ */
+int m4_dcpext_iboot_submit(struct m4_dcpext_iboot *s,
+			   const struct m4_dcpext_iboot_ops *ops,
+			   void *cookie, u64 dva);
+/* Keep the service and all buffers owned while powered off. Unblank re-reads
+ * HPD/counts and timing/color records, then restores the mode and surface.
+ * Neither the power reply nor this API proves DMA retirement.
+ */
+int m4_dcpext_iboot_blank(struct m4_dcpext_iboot *s,
+			  const struct m4_dcpext_iboot_ops *ops, void *cookie);
+int m4_dcpext_iboot_unblank(struct m4_dcpext_iboot *s);
 #endif

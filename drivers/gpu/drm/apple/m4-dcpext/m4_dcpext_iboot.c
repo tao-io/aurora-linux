@@ -120,7 +120,7 @@ int m4_dcpext_iboot_receive(struct m4_dcpext_iboot *s, const u8 *p, u32 bytes)
 			return -EPROTO;
 		if (s->phase == M4_DCPEXT_IBOOT_POWER_OFF) {
 			s->power_dirty = false;
-			s->phase = M4_DCPEXT_IBOOT_CLOSE;
+			s->phase = s->blank_requested ? M4_DCPEXT_IBOOT_BLANK : M4_DCPEXT_IBOOT_CLOSE;
 		} else {
 			s->phase = M4_DCPEXT_IBOOT_TIMINGS;
 		}
@@ -185,6 +185,58 @@ int m4_dcpext_iboot_receive(struct m4_dcpext_iboot *s, const u8 *p, u32 bytes)
 		return -EPROTO;
 	}
 	s->pending = false;
+	return 0;
+}
+
+int m4_dcpext_iboot_submit(struct m4_dcpext_iboot *s,
+			   const struct m4_dcpext_iboot_ops *ops,
+			   void *cookie, u64 dva)
+{
+	if (s->error)
+		return s->error;
+	if (s->pending || s->phase != M4_DCPEXT_IBOOT_HOLD)
+		return -EBUSY;
+	if (!s->opened || !s->image_enabled || !s->mode_acked ||
+	    !s->surface_acked || !s->power_dirty || !s->hpd)
+		return -EUCLEAN;
+	if (!dva || (dva & 0x3fff) || dva > (1ULL << 36) - 7680 * 1080)
+		return -EINVAL;
+	s->frame_dva = dva;
+	s->surface_acked = false;
+	s->phase = M4_DCPEXT_IBOOT_SURFACE;
+	return iboot_packet(s, ops, cookie, 0, 1, -1);
+}
+
+int m4_dcpext_iboot_blank(struct m4_dcpext_iboot *s,
+			  const struct m4_dcpext_iboot_ops *ops, void *cookie)
+{
+	if (s->error)
+		return s->error;
+	if (s->pending || s->phase != M4_DCPEXT_IBOOT_HOLD)
+		return -EBUSY;
+	if (!s->opened || !s->image_enabled || !s->power_dirty ||
+	    !s->mode_acked || !s->surface_acked)
+		return -EUCLEAN;
+	s->blank_requested = true;
+	s->phase = M4_DCPEXT_IBOOT_POWER_OFF;
+	return iboot_packet(s, ops, cookie, 0, 2, 0);
+}
+
+int m4_dcpext_iboot_unblank(struct m4_dcpext_iboot *s)
+{
+	if (s->error)
+		return s->error;
+	if (s->pending || s->phase != M4_DCPEXT_IBOOT_BLANK)
+		return -EBUSY;
+	if (!s->opened || !s->image_enabled || s->power_dirty || !s->blank_requested)
+		return -EUCLEAN;
+	s->blank_requested = false;
+	s->hpd = s->mode_acked = s->surface_acked = false;
+	s->timings_count = s->colors_count = s->count_attempts = 0;
+	memset(s->timings, 0, sizeof(s->timings));
+	memset(s->colors, 0, sizeof(s->colors));
+	memset(s->selected_mode, 0, sizeof(s->selected_mode));
+	s->phase = M4_DCPEXT_IBOOT_HPD_WAIT;
 	return 0;
 }
 
