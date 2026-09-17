@@ -3,6 +3,7 @@
 use kernel::{c_str, dma_fence::*, drm::sched, new_mutex, prelude::*,
     sync::{Arc, Mutex}, xarray};
 use crate::{driver, file, g16_drm::Shared, g17_uapi, mmu, queue};
+use core::sync::atomic::{AtomicBool, Ordering};
 
 #[derive(Default)]
 pub(crate) struct Completion;
@@ -68,10 +69,18 @@ pub(crate) struct Packet {
     pub(crate) render_cache: RenderCache,
     pub(crate) compute_cache: ComputeCache,
     pub(crate) completion: UserFence<Completion>,
+    finish_claimed: AtomicBool,
     _vm_job: mmu::T8140VmJobGuard,
 }
 impl Packet {
     pub(crate) fn finish(&self, result: Result) {
+        // Publication failure is reported by both the runtime and DRM job;
+        // cancellation may also arrive after retirement. Only the first
+        // finisher may set the error and signal. This is an ownership latch,
+        // not a completion indicator: waiters still wait on the fence itself.
+        if self.finish_claimed.swap(true, Ordering::Relaxed) {
+            return;
+        }
         if let Err(error) = result {
             self.vm.status().record(error.to_errno());
             self.completion.set_error(error);
@@ -206,6 +215,7 @@ impl queue::Queue for Queue {
         let packet = Arc::new(Packet { id, vm: self.vm.clone(), commands,
             render_cache: self.render_cache.clone(),
             compute_cache: self.compute_cache.clone(),
+            finish_claimed: AtomicBool::new(false),
             completion: self.fences.new_fence(0, Completion)?.into(), _vm_job: vm_job }, GFP_KERNEL)?;
         let mut job = self.entity.new_job(1, Job { shared: self.shared.clone(), packet, dev: self.dev.clone() })?;
         for sync in syncs.drain(0..in_sync_count) {
