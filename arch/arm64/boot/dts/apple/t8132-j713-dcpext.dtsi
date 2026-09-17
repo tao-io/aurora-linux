@@ -124,7 +124,7 @@
 		status = "disabled";
 	};
 
-	/* ADT atc1-dpxbar; lives inside the ATC PHY1 core window. */
+	/* ADT atc1-dpxbar; a separately owned slice of the ATC aperture. */
 	atcphy1_xbar: mux@40b04c000 {
 		compatible = "apple,t8132-display-crossbar";
 		reg = <0x4 0x0b04c000 0x0 0x4000>;
@@ -134,13 +134,16 @@
 	};
 };
 
-/* ATC PHY1 gains its core window (ADT reg[2]); the DP path stays dormant
- * until the driver's T8132 generation enables it explicitly.
+/* ATC PHY1 gains the qualified core slice of ADT reg[2]. The full 0x58000
+ * aperture also contains the separately owned crossbar at +0x4c000; claiming
+ * that full resource in both platform drivers would make the second probe
+ * fail with -EBUSY. The 0x24000 slice matches the qualified PHY diagnostic.
+ * The DP path stays dormant until the T8132 generation enables it explicitly.
  */
 &atcphy1 {
 	reg = <0x4 0x0aa90000 0x0 0x4000>,
 	      <0x4 0x0aa84000 0x0 0x4000>,
-	      <0x4 0x0b000000 0x0 0x58000>;
+	      <0x4 0x0b000000 0x0 0x24000>;
 	reg-names = "usb2phy", "pipehandler", "core";
 
 	ports {
