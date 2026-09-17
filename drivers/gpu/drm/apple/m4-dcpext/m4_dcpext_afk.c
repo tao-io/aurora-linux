@@ -115,20 +115,23 @@ bool m4_dcpext_afk_tx_empty(struct m4_dcpext_afk *afk)
 	return empty;
 }
 
-/* Refuse split/dummy-wrap publication. Bounded packets fit; the caller must
- * handle -ENOSPC. No shared state changes on admission failure; a published
- * packet stays in the ring even if the mailbox notification fails.
+/* Wrap using duplicate queue headers, as in Sven Peter's Asahi afk_send_epic:
+ * one at the tail and one before the complete payload at offset zero. Never
+ * split a payload or overwrite unread blocks. Keep one block empty so equal
+ * pointers mean empty. All admission checks precede shared-memory writes;
+ * published packets stay mapped even if the mailbox notification fails.
  */
-static int afk_write(struct m4_dcpext_afk *afk, const u8 *data, u32 bytes)
+int m4_dcpext_afk_ring_write(struct m4_dcpext_afk_ring *r,
+			     const u8 *data, u32 bytes, u32 *published)
 {
-	struct m4_dcpext_afk_ring *r = &afk->rings[AFK_RING_TX];
 	u32 rd, wr, total, next;
 	u8 *qe;
+	bool wrap;
 
-	if (!afk->running || afk->stopping || afk->error || !r->header ||
-	    bytes < M4_DCPEXT_AFK_REPORT ||
-	    bytes > (afk->max_payload ? afk->max_payload : M4_DCPEXT_AFK_DEFAULT_PAYLOAD) ||
-	    bytes > M4_DCPEXT_AFK_MAX_PAYLOAD)
+	if (!r || !r->header || !r->data || !data || !published ||
+	    r->block < 64 || r->block > 256 || (r->block & (r->block - 1)) ||
+	    r->size < r->block || (r->size & (r->block - 1)) ||
+	    bytes < M4_DCPEXT_AFK_REPORT || bytes > M4_DCPEXT_AFK_MAX_PAYLOAD)
 		return -EINVAL;
 	total = ALIGN(bytes + 16, r->block);
 	rd = READ_ONCE(*(u32 *)(r->header + r->block));
@@ -136,15 +139,22 @@ static int afk_write(struct m4_dcpext_afk *afk, const u8 *data, u32 bytes)
 	dma_rmb();
 	if (rd >= r->size || wr >= r->size || (rd | wr) & (r->block - 1))
 		return -EPROTO;
-	if (total >= r->size || total > r->size - wr ||
+	wrap = total > r->size - wr;
+	if (total >= r->size || (wrap && (wr < rd || total >= rd)) ||
 	    (wr < rd && total >= rd - wr))
 		return -ENOSPC;
-	next = wr + total;
+	next = wrap ? total : wr + total;
 	if (next == r->size)
 		next = 0;
 	if (next == rd)
 		return -ENOSPC;
 	qe = r->data + wr;
+	if (wrap) {
+		memset(qe, 0, 16);
+		put_unaligned_le32(AFK_MAGIC, qe);
+		put_unaligned_le32(bytes, qe + 4);
+		qe = r->data;
+	}
 	memset(qe, 0, total);
 	put_unaligned_le32(AFK_MAGIC, qe);
 	put_unaligned_le32(bytes, qe + 4);
@@ -152,7 +162,21 @@ static int afk_write(struct m4_dcpext_afk *afk, const u8 *data, u32 bytes)
 	dma_wmb();
 	WRITE_ONCE(*(u32 *)(r->header + 2 * r->block), next);
 	dma_wmb();
-	return afk_send(afk, AFK_MSG_SUBMIT, next);
+	*published = next;
+	return 0;
+}
+
+
+static int afk_write(struct m4_dcpext_afk *afk, const u8 *data, u32 bytes)
+{
+	u32 next;
+	int ret;
+
+	if (!afk->running || afk->stopping || afk->error ||
+	    bytes > (afk->max_payload ? afk->max_payload : M4_DCPEXT_AFK_DEFAULT_PAYLOAD))
+		return -EINVAL;
+	ret = m4_dcpext_afk_ring_write(&afk->rings[AFK_RING_TX], data, bytes, &next);
+	return ret ? ret : afk_send(afk, AFK_MSG_SUBMIT, next);
 }
 
 int m4_dcpext_afk_write(struct m4_dcpext_afk *afk, const u8 *payload, u32 bytes)

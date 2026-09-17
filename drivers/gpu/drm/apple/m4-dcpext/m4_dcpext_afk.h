@@ -149,6 +149,13 @@ int m4_dcpext_afk_receive(struct m4_dcpext_afk *afk, u64 message);
 /* Requests the acknowledged shutdown once TX is consumed. */
 int m4_dcpext_afk_stop(struct m4_dcpext_afk *afk);
 bool m4_dcpext_afk_tx_empty(struct m4_dcpext_afk *afk);
+/* Shared publication primitive for a negotiated, mapped TX ring. Caller
+ * serializes access and notifies firmware using the returned write pointer.
+ * An admission failure leaves the ring and output pointer unchanged. On
+ * success all memory must remain owned even if notification later fails.
+ */
+int m4_dcpext_afk_ring_write(struct m4_dcpext_afk_ring *ring,
+			     const u8 *payload, u32 bytes, u32 *published);
 /* Raw TX ring publication of a complete payload (framed by the caller). */
 int m4_dcpext_afk_write(struct m4_dcpext_afk *afk, const u8 *payload, u32 bytes);
 /* Consumes the RX ring; exposed for the offline ring tests. */
