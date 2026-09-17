@@ -873,7 +873,7 @@ out:
 	return ret;
 }
 
-int m4_dcpext_native_stop(struct m4_dcpext_native *dcp)
+static int native_stop(struct m4_dcpext_native *dcp, bool system_shutdown)
 {
 	/* 25G83 IOMobileFramebufferAP::last_client_close_dcp at a96da88:
 	 * byte 0 indicates a NULL result pointer; the other bytes are padding.
@@ -898,6 +898,11 @@ int m4_dcpext_native_stop(struct m4_dcpext_native *dcp)
 		   &closed, sizeof(closed), 0);
 	if (ret)
 		goto out;
+	/* Native shutdownNotification (25G83 a95b2a8) sets the second
+	 * power flag; ordinary monitor disable leaves it clear. There is
+	 * no AP default framebuffer, so the first flag remains false.
+	 */
+	power_request[9] = system_shutdown;
 	ret = call(dcp, A(473), power_request, sizeof(power_request),
 		   power_result, sizeof(power_result), 0);
 	if (!ret && le32_to_cpu(power_result[1])) {
@@ -915,6 +920,16 @@ int m4_dcpext_native_stop(struct m4_dcpext_native *dcp)
 out:
 	mutex_unlock(&dcp->lock);
 	return ret;
+}
+
+int m4_dcpext_native_stop(struct m4_dcpext_native *dcp)
+{
+	return native_stop(dcp, false);
+}
+
+int m4_dcpext_native_stop_for_shutdown(struct m4_dcpext_native *dcp)
+{
+	return native_stop(dcp, true);
 }
 
 int m4_dcpext_native_shutdown(struct m4_dcpext_native *dcp)
