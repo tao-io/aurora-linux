@@ -8,6 +8,7 @@ struct apple_t8132_dp;
 struct mutex;
 struct phy;
 struct platform_device;
+struct typec_displayport_data;
 
 /* NULL means that the DT supplies only the existing USB2 configuration.
  * power_on/off owns the common PHY session; set_mode(DP/INVALID, 0) toggles
@@ -18,12 +19,13 @@ struct platform_device;
 struct apple_t8132_dp *apple_t8132_dp_create(struct platform_device *pdev,
 					  struct mutex *lock, struct phy **phy);
 /* Called with the shared ATC lock held. These never wait for DCP or change
- * active lanes. The display consumer receives the same Type-C notification
+ * active lanes. The display consumer subscribes through phy-apple-t8132.h
  * and owns link/crossbar retirement before phy_power_off().
  */
 void apple_t8132_dp_orientation(struct apple_t8132_dp *dp,
 			       enum typec_orientation orientation);
-int apple_t8132_dp_route(struct apple_t8132_dp *dp, bool pin_d);
+int apple_t8132_dp_route(struct apple_t8132_dp *dp, bool pin_d,
+			const struct typec_displayport_data *data);
 int apple_t8132_dp_suspend(struct apple_t8132_dp *dp);
 
 #endif

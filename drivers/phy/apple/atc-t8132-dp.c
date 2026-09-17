@@ -8,8 +8,10 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/phy/phy.h>
+#include <linux/phy/phy-apple-t8132.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/usb/typec_dp.h>
 #include "atc-t8132-dp.h"
 #include "atc-t8132-session.h"
 #include "atc-t8132-dp-main.h"
@@ -19,8 +21,9 @@
 struct apple_t8132_dp {
 	struct apple_t8132_atc_session session;
 	struct mutex *lock;
-	enum typec_orientation orientation;
-	bool allowed;
+	struct apple_t8132_dp_connection connection;
+	apple_t8132_dp_notify_t notify;
+	void *notify_cookie;
 	bool pinned;
 	bool aux;
 	u32 rate;
@@ -28,21 +31,97 @@ struct apple_t8132_dp {
 	u32 saved[ARRAY_SIZE(apple_t8132_atc_main_offsets)];
 };
 
+static const struct phy_ops t8132_dp_ops;
+
+static void t8132_dp_notify(struct apple_t8132_dp *dp)
+{
+	struct apple_t8132_dp_connection snapshot = dp->connection;
+
+	lockdep_assert_held(dp->lock);
+	if (dp->notify)
+		dp->notify(dp->notify_cookie, &snapshot);
+}
+
 void apple_t8132_dp_orientation(struct apple_t8132_dp *dp,
 			       enum typec_orientation orientation)
 {
 	lockdep_assert_held(dp->lock);
-	if (dp->orientation != orientation)
-		dp->allowed = false;
-	dp->orientation = orientation;
+	if (dp->connection.orientation == orientation)
+		return;
+	dp->connection.orientation = orientation;
+	dp->connection.pin_d = false;
+	dp->connection.allowed = false;
+	dp->connection.hpd = false;
+	dp->connection.generation++;
+	t8132_dp_notify(dp);
 }
 
-int apple_t8132_dp_route(struct apple_t8132_dp *dp, bool pin_d)
+int apple_t8132_dp_route(struct apple_t8132_dp *dp, bool pin_d,
+			const struct typec_displayport_data *data)
 {
+	struct apple_t8132_dp_connection *c = &dp->connection;
+	bool allowed, hpd, irq;
+	int ret = 0;
+
 	lockdep_assert_held(dp->lock);
-	dp->allowed = pin_d && dp->orientation == TYPEC_ORIENTATION_REVERSE;
-	return pin_d && !dp->allowed ? -EOPNOTSUPP : 0;
+	/* Missing DP status must revoke a previous route, not leave stale HPD. */
+	if (pin_d && !data) {
+		pin_d = false;
+		ret = -EINVAL;
+	}
+	allowed = pin_d && c->orientation == TYPEC_ORIENTATION_REVERSE;
+	hpd = allowed && (data->status & DP_STATUS_HPD_STATE);
+	irq = hpd && (data->status & DP_STATUS_IRQ_HPD);
+	if (c->pin_d != pin_d || c->allowed != allowed || c->hpd != hpd || irq) {
+		c->pin_d = pin_d;
+		c->allowed = allowed;
+		c->hpd = hpd;
+		c->generation++;
+		if (irq)
+			c->irq_count++;
+		t8132_dp_notify(dp);
+	}
+	return ret ?: (pin_d && !allowed ? -EOPNOTSUPP : 0);
 }
+
+int apple_t8132_dp_subscribe(struct phy *phy, apple_t8132_dp_notify_t notify,
+			    void *cookie)
+{
+	struct apple_t8132_dp *dp;
+
+	if (!phy || phy->ops != &t8132_dp_ops)
+		return -EOPNOTSUPP;
+	if (!notify)
+		return -EINVAL;
+	dp = phy_get_drvdata(phy);
+	guard(mutex)(dp->lock);
+	if (dp->notify)
+		return -EBUSY;
+	dp->notify = notify;
+	dp->notify_cookie = cookie;
+	t8132_dp_notify(dp);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(apple_t8132_dp_subscribe);
+
+int apple_t8132_dp_unsubscribe(struct phy *phy, apple_t8132_dp_notify_t notify,
+			      void *cookie)
+{
+	struct apple_t8132_dp *dp;
+
+	if (!phy || phy->ops != &t8132_dp_ops)
+		return -EOPNOTSUPP;
+	if (!notify)
+		return -EINVAL;
+	dp = phy_get_drvdata(phy);
+	guard(mutex)(dp->lock);
+	if (dp->notify != notify || dp->notify_cookie != cookie)
+		return -ENOENT;
+	dp->notify = NULL;
+	dp->notify_cookie = NULL;
+	return 0;
+}
+EXPORT_SYMBOL_GPL(apple_t8132_dp_unsubscribe);
 
 int apple_t8132_dp_suspend(struct apple_t8132_dp *dp)
 {
@@ -61,7 +140,7 @@ static int t8132_dp_power_on(struct phy *phy)
 	guard(mutex)(dp->lock);
 	if (dp->session.failed)
 		return -EIO;
-	if (!dp->allowed)
+	if (!dp->connection.allowed)
 		return -ENOLINK;
 	if (dp->session.active)
 		return 0;
@@ -139,7 +218,7 @@ static int t8132_dp_set_mode(struct phy *phy, enum phy_mode mode, int submode)
 		return -EIO;
 	if (!dp->session.active)
 		return -EHOSTDOWN;
-	if (enable && !dp->allowed)
+	if (enable && !dp->connection.allowed)
 		return -ENOLINK;
 	if (!enable && dp->rate)
 		return -EBUSY;
@@ -169,7 +248,7 @@ static int t8132_dp_validate(struct phy *phy, enum phy_mode mode, int submode,
 	if (mode != PHY_MODE_DP || submode)
 		return -EINVAL;
 	guard(mutex)(dp->lock);
-	opts->dp.lanes = dp->allowed && !dp->session.failed ? 2 : 0;
+	opts->dp.lanes = dp->connection.allowed && !dp->session.failed ? 2 : 0;
 	return 0;
 }
 
@@ -197,7 +276,7 @@ static int t8132_dp_configure(struct phy *phy, union phy_configure_opts *opts)
 	if (!dp->aux && ((o->set_rate && o->link_rate) || o->set_voltages))
 		return -EHOSTDOWN;
 	/* Teardown must remain possible after Type-C invalidates the route. */
-	if (!dp->allowed && !(o->set_rate && !o->link_rate &&
+	if (!dp->connection.allowed && !(o->set_rate && !o->link_rate &&
 			      !o->set_voltages && (!o->set_lanes || !o->lanes)))
 		return -ENOLINK;
 	lanes = o->set_lanes ? o->lanes : dp->lanes;

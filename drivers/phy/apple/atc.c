@@ -2324,7 +2324,8 @@ static int atcphy_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *sta
 		bool dp_mode = state->alt && state->alt->svid == USB_TYPEC_DP_SID &&
 			state->mode != TYPEC_STATE_SAFE && state->mode != TYPEC_STATE_USB;
 		int ret = apple_t8132_dp_route(atcphy->t8132_dp,
-					      dp_mode && state->mode == TYPEC_DP_STATE_D);
+					      dp_mode && state->mode == TYPEC_DP_STATE_D,
+					      dp_mode ? state->data : NULL);
 
 		if (ret)
 			return ret;
