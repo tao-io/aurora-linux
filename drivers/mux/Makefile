@@ -9,6 +9,7 @@ mux-adgs1408-objs		:= adgs1408.o
 mux-gpio-objs			:= gpio.o
 mux-mmio-objs			:= mmio.o
 mux-apple-display-crossbar-objs	:= apple-display-crossbar.o
+mux-apple-display-crossbar-t8132-objs := apple-display-crossbar-t8132.o
 
 obj-$(CONFIG_MULTIPLEXER)	+= mux-core.o
 obj-$(CONFIG_MUX_ADG792A)	+= mux-adg792a.o
@@ -16,3 +17,5 @@ obj-$(CONFIG_MUX_ADGS1408)	+= mux-adgs1408.o
 obj-$(CONFIG_MUX_APPLE_DPXBAR)	+= mux-apple-display-crossbar.o
 obj-$(CONFIG_MUX_GPIO)		+= mux-gpio.o
 obj-$(CONFIG_MUX_MMIO)		+= mux-mmio.o
+
+obj-$(CONFIG_MUX_APPLE_DPXBAR) += mux-apple-display-crossbar-t8132.o
