@@ -896,8 +896,12 @@ static int native_stop(struct m4_dcpext_native *dcp, bool system_shutdown)
 		goto out;
 	ret = call(dcp, A(458), close_request, sizeof(close_request),
 		   &closed, sizeof(closed), 0);
-	if (ret)
+	if (ret) {
+		/* Close may have reached firmware even when its reply failed.
+		 * Retrying would act on an unknown client lifetime. */
+		dcp->failed = true;
 		goto out;
+	}
 	/* Native shutdownNotification (25G83 a95b2a8) sets the second
 	 * power flag; ordinary monitor disable leaves it clear. There is
 	 * no AP default framebuffer, so the first flag remains false.
@@ -950,6 +954,8 @@ int m4_dcpext_native_shutdown(struct m4_dcpext_native *dcp)
 		ret = call(dcp, A(402), NULL, 0, NULL, 0, 0);
 		if (!ret)
 			dcp->shutdown = true;
+		else
+			dcp->failed = true;
 		dev_info(dcp->dev, "DCPEXT native stop signal ret=%d; DMA retained\n", ret);
 	}
 	mutex_unlock(&dcp->lock);

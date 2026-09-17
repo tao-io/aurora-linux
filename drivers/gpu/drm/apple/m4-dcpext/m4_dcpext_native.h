@@ -25,7 +25,8 @@ int m4_dcpext_native_stop(struct m4_dcpext_native *dcp);
 /* Native system-shutdown power flags, still requires AP/IOP ACKs.
  * Select instead of stop(), not after it. Hardware qualification pending. */
 int m4_dcpext_native_stop_for_shutdown(struct m4_dcpext_native *dcp);
-/* Stop the native service after client close; not a DMA retirement fence. */
+/* Diagnostic only: service destruction crashes the qualified M4 firmware
+ * after a trained session. Not a production teardown or DMA retirement fence. */
 int m4_dcpext_native_shutdown(struct m4_dcpext_native *dcp);
 /* Caller kfree()s the returned coherent mode snapshot. Errors are ERR_PTRs. */
 struct m4_dcpext_native_mode *m4_dcpext_native_modes(struct m4_dcpext_native *dcp,
