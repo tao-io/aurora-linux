@@ -33,6 +33,9 @@ struct m4_dcpext_kms {
 	const struct m4_dcpext_kms_ops *ops;
 	void *cookie;
 	struct mutex *route_lock;
+	/* Outlives the hardware owner while userspace retains DRM references. */
+	struct mutex owner_lock;
+	bool detached;
 	bool failed;
 	u64 completed;
 };
@@ -115,6 +118,11 @@ static int present(struct m4_dcpext_kms *kms, struct drm_atomic_state *state,
 		if (ret)
 			goto end_access;
 	}
+	mutex_lock(&kms->owner_lock);
+	if (kms->detached) {
+		ret = -ENODEV;
+		goto unlock_owner;
+	}
 	mutex_lock(kms->route_lock);
 	ret = kms->failed ? -EIO : 0;
 	if (!ret && enable) {
@@ -133,6 +141,8 @@ static int present(struct m4_dcpext_kms *kms, struct drm_atomic_state *state,
 		drm_err(&kms->drm, "external commit failed %d; scanout retained by owner\n", ret);
 	}
 	mutex_unlock(kms->route_lock);
+unlock_owner:
+	mutex_unlock(&kms->owner_lock);
 	if (fb)
 		drm_gem_fb_vunmap(fb, map);
 end_access:
@@ -271,6 +281,7 @@ struct m4_dcpext_kms *m4_dcpext_kms_create(struct device *dev,
 	kms->ops = ops;
 	kms->cookie = cookie;
 	kms->route_lock = route_lock;
+	mutex_init(&kms->owner_lock);
 	ret = drmm_mode_config_init(drm);
 	if (ret)
 		return ERR_PTR(ret);
@@ -313,5 +324,15 @@ void m4_dcpext_kms_unplug(struct m4_dcpext_kms *kms)
 {
 	drm_dev_unplug(&kms->drm);
 	drm_atomic_helper_shutdown(&kms->drm);
+	/* Shutdown performs the final disable while the owner is still alive.
+	 * Serialize with any late commit before severing callback references.
+	 * Existing DRM/GEM file references may survive physical device removal.
+	 */
+	mutex_lock(&kms->owner_lock);
+	kms->detached = true;
+	kms->ops = NULL;
+	kms->cookie = NULL;
+	kms->route_lock = NULL;
+	mutex_unlock(&kms->owner_lock);
 }
 MODULE_IMPORT_NS("DMA_BUF");
