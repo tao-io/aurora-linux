@@ -375,6 +375,9 @@ struct cd321x {
 	/* Last successfully delivered DP status/configuration, not just pin mode. */
 	u32 mux_dp_status;
 	u32 mux_dp_conf;
+	/* Protected by tps.lock; updated only by the hardware IRQ handler. */
+	u64 hpd_irqs;
+	unsigned long dp_polled;
 };
 
 struct sn201202x {
