@@ -52,8 +52,7 @@ static int (*session_atc_protocol)(void);
 
 static int session_atc_partner_at(unsigned int phy, bool report, bool *hpd, bool *flipped)
 {
-	/* Owner-serialized TIPD state. DP SID is refreshed at most once per
-	 * second by TIPD; register definitions are Intel/Asahi tps6598x.h.
+	/* Owner-serialized TIPD state, refreshed by controller interrupts; register definitions are Intel/Asahi tps6598x.h.
 	 * The current lane policy admits pin-D on either J713 port.
 	 */
 	struct device_node *node;

@@ -131,6 +131,53 @@ This is a lifecycle/recovery correction, not proof of the electrical cause of
 all device-not-responding notifications. Repeated reconnect reliability and
 DP-SID interrupt integration remain TODO; this build still uses 1 Hz refresh.
 
+## Interrupt integration checkpoint — paused at user request (2026-09-17)
+
+The final IRQ-only candidate is built and committed as work in progress, **not
+installed or hardware-qualified**. It admits SN201202x DP SID event bit37,
+refreshes DP SID in the owner's threaded IRQ handler, acknowledges all11 event
+bytes with error checking, and removes the1Hz bus polling from the snapshot API.
+The main kernel also receives the existing DP mux notification fix so unchanged
+pin assignment does not suppress HPD changes. Other controllers retain8-byte
+interrupt access. Source-level ASan/UBSan handler, mask, snapshot and mux tests
+pass; the ARM64 Image build succeeds.
+
+Evidence for bit37: bounded diagnostic `20260917T125445712634Z-dp-sid-mask-admission-1`
+temporarily added this bit while HDMI was out. On physical reconnection IRQ81
+advanced14->16 before DRM reported connected. The exact prior mask was restored
+and the diagnostic module unloaded. This supports the event selection; it does
+not yet prove the final handler works with polling removed. No speculative
+DATA_CONTROL acknowledgment or SPMI write-completion change is in the candidate.
+
+The earlier11-byte candidate mislabeled vendor-status bits72/75 as power/data.
+Native vtable resolution identifies normalized9/10 as CFVidStatus notifications;
+that candidate failed physical IRQ removal qualification. Those definitions and
+handlers are absent from the committed candidate. Keep this failed experiment
+as evidence, not a passing interrupt-integration claim.
+
+**Desktop left running:** boot c467995a-66bb-49bc-937c-0131ea644566, kernel#12,
+Image SHA2569a3ba2c2c4a7a8f277224680ea6ac1328a8f259a602410dbe7ea164bfb5105e9,
+module desktop-reconnect-release-1 SHA256
+1beeb293992d63547aecf26deb16de4f93ff41821bfd05ca2ad8c76bcf917d54.
+This still uses the1Hz fallback and has the experimental vendor mask
+bytes enabled. Normal dual-output activation passed; the user reconnected HDMI
+and DRM reports connected. The lifecycle/display-manager services remain active,
+and the60-second watchdog is idle/armed. No new kernel deployment or reboot was
+performed after the user requested this pause. Previous working Image backup:
+/boot/asahi/Image.before-extended-irq-1. Desktop module is explicitly activated,
+not automatically loaded on boot.
+
+**Resume:** freeze/install the final candidate from
+_provenance/displayport-v1-20260917/irq-integration-checkpoint/ after checking
+current source/binary identity, reboot (never reload DCP in the same boot), then
+use guarded desktop activation. Qualify HDMI removal/return with polling absent,
+verify actual bit37 logs, unchanged compositor session, fresh EDID and native
+IRQ-command ACKs. Then assess repeated reconnect/recovery. Final Image SHA256:
+78fa565838385d4d3cfb762c88d89b14dd6375fb62d72234aebf1aa4c7d72105.
+TODO: IRQ-only hardware qualification, generic Type-C/PHY consumer integration,
+repeated-cycle reliability and timeout recovery qualification; existing broader
+feature TODOs remain. Deep sleep remains explicitly deferred.
+
 ## TODO / qualification boundaries
 
 - Longer desktop use and repeated hotplug qualification.

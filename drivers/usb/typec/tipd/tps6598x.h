@@ -134,6 +134,10 @@
 #define TPS_REG_INT_HARD_RESET				BIT(1)
 #define TPS_REG_INT_PD_SOFT_RESET			BIT(0)
 
+/* Native DP SID notification. J713 SN201202x supports this independently
+ * of the general DATA_STATUS update (which some bridges leave unchanged). */
+#define SN201202X_INT_DP_SID_UPDATE BIT_ULL(37)
+
 /* Apple-specific TPS_REG_INT_* bits */
 #define APPLE_CD_REG_INT_DATA_STATUS_UPDATE		BIT(10)
 #define APPLE_CD_REG_INT_POWER_STATUS_UPDATE		BIT(9)
@@ -278,6 +282,7 @@ struct tps6598x;
 struct tipd_data {
 	irq_handler_t irq_handler;
 	u64 irq_mask1;
+	u8 irq_event_len; /* Zero retains the original eight-byte mask. */
 	size_t tps_struct_size;
 	void (*remove)(struct tps6598x *tps);
 	int (*register_port)(struct tps6598x *tps, struct fwnode_handle *node);
@@ -377,7 +382,6 @@ struct cd321x {
 	u32 mux_dp_conf;
 	/* Protected by tps.lock; updated only by the hardware IRQ handler. */
 	u64 hpd_irqs;
-	unsigned long dp_polled;
 };
 
 struct sn201202x {

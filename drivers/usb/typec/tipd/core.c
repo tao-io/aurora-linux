@@ -21,6 +21,7 @@
 #include <linux/usb/role.h>
 #include <linux/workqueue.h>
 #include <linux/firmware.h>
+#include <linux/unaligned.h>
 
 #include "tps6598x.h"
 #include "trace.h"
@@ -792,23 +793,32 @@ static int cd321x_connect(struct tps6598x *tps, u32 status)
 static irqreturn_t cd321x_interrupt(int irq, void *data)
 {
 	struct tps6598x *tps = data;
+	u8 raw_event[16] = {};
 	u64 event = 0;
+	u32 event_hi = 0;
+	u8 event_len = tps->data->irq_event_len ?: 8;
 	u32 status;
 	int ret;
 
 	mutex_lock(&tps->lock);
 
-	ret = tps6598x_read64(tps, TPS_REG_INT_EVENT1, &event);
+	ret = tps6598x_block_read(tps, TPS_REG_INT_EVENT1, raw_event, event_len);
 	if (ret) {
 		dev_err(tps->dev, "%s: failed to read events\n", __func__);
 		goto err_unlock;
 	}
+	event = get_unaligned_le64(raw_event);
+	event_hi = get_unaligned_le32(raw_event + 8);
 	trace_cd321x_irq(event);
 
-	if (!event)
+	if (!event && !event_hi)
 		goto err_unlock;
 
-	tps6598x_write64(tps, TPS_REG_INT_CLEAR1, event);
+	ret = tps6598x_block_write(tps, TPS_REG_INT_CLEAR1, raw_event, event_len);
+	if (ret) {
+		dev_err_ratelimited(tps->dev, "failed to acknowledge controller events: %d\n", ret);
+		goto err_unlock;
+	}
 
 	if (!tps6598x_read_status(tps, &status))
 		goto err_unlock;
@@ -824,13 +834,17 @@ static irqreturn_t cd321x_interrupt(int irq, void *data)
 		}
 	}
 
-	if (event & APPLE_CD_REG_INT_DATA_STATUS_UPDATE) {
+	if (event & (APPLE_CD_REG_INT_DATA_STATUS_UPDATE |
+		     (tps->data->irq_mask1 & SN201202X_INT_DP_SID_UPDATE))) {
 		struct cd321x *cd = container_of(tps, struct cd321x, tps);
 
 		if (!tps->data->read_data_status(tps))
 			goto err_unlock;
+		if (event & SN201202X_INT_DP_SID_UPDATE)
+			dev_info_ratelimited(tps->dev, "DP SID IRQ: event=%#llx dp=%#x\n",
+				event, le32_to_cpu(cd->dp_sid_status.status_rx));
 		/* The status bit remains cached after the interrupt. Count only
-		 * fresh data-status events, before debounced mux work can coalesce
+		 * fresh data/DP-SID events, before debounced mux work can coalesce
 		 * identical notifications. Power/status-only events are not IRQs.
 		 */
 		if ((status & TPS_STATUS_PLUG_PRESENT) &&
@@ -846,7 +860,7 @@ static irqreturn_t cd321x_interrupt(int irq, void *data)
 err_unlock:
 	mutex_unlock(&tps->lock);
 
-	if (event)
+	if (event || event_hi)
 		return IRQ_HANDLED;
 	return IRQ_NONE;
 }
@@ -869,27 +883,8 @@ int cd321x_get_dp_state(struct device *dev, struct cd321x_dp_snapshot *snapshot)
 		struct cd321x *cd = container_of(tps, struct cd321x, tps);
 
 		mutex_lock(&tps->lock);
-		/* Some DP-to-HDMI bridges update DP SID HPD without changing
-		 * DATA_STATUS or generating one of our admitted controller IRQs.
-		 * J713 capture: DATA_STATUS=8000c531 in both states, SID RX=19a
-		 * attached and 1a detached. Refresh that authoritative DP status
-		 * at a bounded rate, without treating a sampled IRQ bit as a pulse.
-		 * TODO: qualify the DP-SID-specific controller interrupt mask and
-		 * deliver it through the normal Type-C mux/provider path.
-		 */
-		if ((tps->status & TPS_STATUS_PLUG_PRESENT) &&
-		    (tps->data_status & TPS_DATA_STATUS_DP_CONNECTION) &&
-		    (!cd->dp_polled || time_after_eq(jiffies, cd->dp_polled + HZ))) {
-			struct tps6598x_dp_sid_status_reg dp;
-
-			ret = tps6598x_block_read(tps, TPS_REG_DP_SID_STATUS, &dp, sizeof(dp));
-			if (ret) {
-				mutex_unlock(&tps->lock);
-				goto unlock_device;
-			}
-			cd->dp_sid_status = dp;
-			cd->dp_polled = jiffies;
-		}
+		/* Refreshed by the owner's DATA_STATUS/DP_SID interrupt handler.
+		 * A cached sample never invents an IRQ or performs bus polling. */
 		snapshot->dp_status = le32_to_cpu(cd->dp_sid_status.status_rx);
 		snapshot->status = tps->status;
 		snapshot->data_status = tps->data_status;
@@ -897,7 +892,6 @@ int cd321x_get_dp_state(struct device *dev, struct cd321x_dp_snapshot *snapshot)
 		mutex_unlock(&tps->lock);
 		ret = 0;
 	}
-unlock_device:
 	device_unlock(dev);
 	return ret;
 }
@@ -1720,6 +1714,18 @@ static void cd321x_remove(struct tps6598x *tps)
 	cancel_delayed_work_sync(&cd321x->update_work);
 }
 
+/* Preserve the complete controller-specific event mask on init/error cleanup. */
+static int tps6598x_write_irq_mask(struct tps6598x *tps, bool enable)
+{
+	u8 raw[16] = {};
+
+	if (enable) {
+		put_unaligned_le64(tps->data->irq_mask1, raw);
+	}
+	return tps6598x_block_write(tps, TPS_REG_INT_MASK1, raw,
+				   tps->data->irq_event_len ?: 8);
+}
+
 int tipd_init(struct tps6598x *tps)
 {
 	struct fwnode_handle *fwnode;
@@ -1757,7 +1763,7 @@ int tipd_init(struct tps6598x *tps)
 			return ret;
 	}
 
-	ret = tps6598x_write64(tps, TPS_REG_INT_MASK1, tps->data->irq_mask1);
+	ret = tps6598x_write_irq_mask(tps, true);
 	if (ret)
 		goto err_reset_controller;
 
@@ -1836,7 +1842,7 @@ err_role_put:
 err_fwnode_put:
 	fwnode_handle_put(fwnode);
 err_clear_mask:
-	tps6598x_write64(tps, TPS_REG_INT_MASK1, 0);
+	tps6598x_write_irq_mask(tps, false);
 err_reset_controller:
 	/* Reset PD controller to remove any applied patch */
 	tps->data->reset(tps);
@@ -1972,8 +1978,10 @@ const struct tipd_data tipd_tps25750_data = {
 EXPORT_SYMBOL_GPL(tipd_tps25750_data);
 
 const struct tipd_data tipd_sn201202x_data = {
+	.irq_event_len = 11,
 	.irq_handler = cd321x_interrupt,
-	.irq_mask1 = APPLE_CD_REG_INT_POWER_STATUS_UPDATE |
+	.irq_mask1 = SN201202X_INT_DP_SID_UPDATE |
+		     APPLE_CD_REG_INT_POWER_STATUS_UPDATE |
 		     APPLE_CD_REG_INT_DATA_STATUS_UPDATE |
 		     APPLE_CD_REG_INT_PLUG_EVENT,
 	.tps_struct_size = sizeof(struct sn201202x),
