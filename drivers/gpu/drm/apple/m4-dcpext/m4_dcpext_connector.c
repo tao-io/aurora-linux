@@ -57,11 +57,33 @@ static bool mode_known(struct m4_dcpext_connector *c,
 	return false;
 }
 
+static int select_native_mode(struct m4_dcpext_connector *c,
+			      const struct drm_display_mode *mode, u32 *selected)
+{
+	struct m4_dcpext_native_mode requested = {};
+
+	if (mode->vscan > 1 || mode->flags & ~(DRM_MODE_FLAG_PHSYNC |
+	    DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_PVSYNC | DRM_MODE_FLAG_NVSYNC) ||
+	    mode->hsync_start < mode->hdisplay || mode->hsync_end < mode->hsync_start ||
+	    mode->vsync_start < mode->vdisplay || mode->vsync_end < mode->vsync_start)
+		return -EINVAL;
+	mode_geometry(mode, &requested.geometry);
+	requested.hfront = mode->hsync_start - mode->hdisplay;
+	requested.hsync = mode->hsync_end - mode->hsync_start;
+	requested.vfront = mode->vsync_start - mode->vdisplay;
+	requested.vsync = mode->vsync_end - mode->vsync_start;
+	requested.hpositive = mode->flags & DRM_MODE_FLAG_PHSYNC;
+	requested.vpositive = mode->flags & DRM_MODE_FLAG_PVSYNC;
+	return m4_dcpext_native_mode_select(&requested, c->native_modes,
+					   c->native_modes_count, selected);
+}
+
 static int get_modes(struct drm_connector *connector)
 {
 	struct m4_dcpext_connector *c = to_m4(connector);
 	struct drm_display_mode *mode, *next, *modes;
 	u32 count = 0;
+	u32 selected;
 	u8 timing[24];
 	int ret;
 
@@ -74,7 +96,8 @@ static int get_modes(struct drm_connector *connector)
 		goto out;
 	drm_edid_connector_add_modes(connector);
 	list_for_each_entry_safe(mode, next, &connector->probed_modes, head) {
-		if (select_mode(c, mode, timing)) {
+		if (c->native_modes ? select_native_mode(c, mode, &selected) :
+				      select_mode(c, mode, timing)) {
 			list_del(&mode->head);
 			drm_mode_destroy(connector->dev, mode);
 		} else {
@@ -188,6 +211,7 @@ static void destroy(struct drm_connector *connector)
 	drm_connector_cleanup(connector);
 	drm_edid_free(c->edid);
 	kfree(c->modes);
+	kfree(c->native_modes);
 }
 
 static const struct drm_connector_funcs connector_funcs = {
@@ -239,28 +263,52 @@ u64 m4_dcpext_connector_invalidate(struct m4_dcpext_connector *c, bool connected
 	c->modes = NULL;
 	c->modes_count = 0;
 	c->timings_count = 0;
+	kfree(c->native_modes);
+	c->native_modes = NULL;
+	c->native_modes_count = 0;
+	c->native_generation = 0;
 	drm_edid_connector_update(&c->base, NULL);
 	mutex_unlock(&c->lock);
 	mutex_unlock(&c->base.dev->mode_config.mutex);
 	return generation;
 }
 
-int m4_dcpext_connector_publish(struct m4_dcpext_connector *c, u64 generation,
-			      const u8 *raw, u32 bytes, const u8 *timings, u32 count)
+static int publish_snapshot(struct m4_dcpext_connector *c, u64 generation,
+			    const u8 *raw, u32 bytes, const u8 *timings, u32 count,
+			    const struct m4_dcpext_native_mode *native, u64 native_generation)
 {
 	const struct drm_edid *edid;
+	struct m4_dcpext_native_mode *native_copy = NULL;
 	int ret = 0;
 
 	if (!raw || bytes < 128 || bytes > M4_DCPEXT_EDID_RAW_MAX ||
 	    bytes % 128 || bytes != ((u32)raw[126] + 1) * 128 ||
-	    !timings || !count || count > 64)
+	    !count || (!native && (!timings || count > 64)) ||
+	    (native && (timings || !native_generation || count > M4_DCPEXT_NATIVE_MAX_MODES)))
 		return -EINVAL;
+	if (native) {
+		for (u32 i = 0; i < count; i++) {
+			u32 rate;
+			if (m4_dcpext_mode_validate(&native[i].geometry, &rate) ||
+			    !native[i].hsync || !native[i].vsync ||
+			    (u64)native[i].geometry.width + native[i].hfront + native[i].hsync > native[i].geometry.htotal ||
+			    (u64)native[i].geometry.height + native[i].vfront + native[i].vsync > native[i].geometry.vtotal)
+				return -EINVAL;
+		}
+	}
 	edid = drm_edid_alloc(raw, bytes);
 	if (!edid)
 		return -ENOMEM;
 	if (!drm_edid_valid(edid)) {
 		drm_edid_free(edid);
 		return -EINVAL;
+	}
+	if (native) {
+		native_copy = kmemdup(native, count * sizeof(*native), GFP_KERNEL);
+		if (!native_copy) {
+			drm_edid_free(edid);
+			return -ENOMEM;
+		}
 	}
 	mutex_lock(&c->base.dev->mode_config.mutex);
 	mutex_lock(&c->lock);
@@ -272,13 +320,37 @@ int m4_dcpext_connector_publish(struct m4_dcpext_connector *c, u64 generation,
 	} else {
 		c->edid = edid;
 		edid = NULL;
-		memcpy(c->timings, timings, count * 24);
-		c->timings_count = count;
+		if (native) {
+			c->native_modes = native_copy;
+			native_copy = NULL;
+			c->native_modes_count = count;
+			c->native_generation = native_generation;
+		} else {
+			memcpy(c->timings, timings, count * 24);
+			c->timings_count = count;
+		}
 	}
 	mutex_unlock(&c->lock);
 	mutex_unlock(&c->base.dev->mode_config.mutex);
 	drm_edid_free(edid);
+	kfree(native_copy);
 	return ret;
+}
+
+int m4_dcpext_connector_publish(struct m4_dcpext_connector *c, u64 generation,
+			      const u8 *raw, u32 bytes, const u8 *timings, u32 count)
+{
+	return publish_snapshot(c, generation, raw, bytes, timings, count, NULL, 0);
+}
+
+int m4_dcpext_connector_publish_native(struct m4_dcpext_connector *c,
+				     u64 generation, const u8 *raw, u32 bytes,
+				     const struct m4_dcpext_native_mode *modes,
+				     u32 count, u64 native_generation)
+{
+	if (!modes)
+		return -EINVAL;
+	return publish_snapshot(c, generation, raw, bytes, NULL, count, modes, native_generation);
 }
 
 void m4_dcpext_connector_hotplug(struct m4_dcpext_connector *c)
@@ -300,12 +372,44 @@ int m4_dcpext_connector_commit_mode(struct m4_dcpext_connector *c,
 	mutex_lock(&c->lock);
 	if (!c->connected || !c->edid || s->generation != c->generation)
 		ret = -ESTALE;
+	else if (c->native_modes)
+		ret = -EOPNOTSUPP;
 	else if (!mode_known(c, mode))
 		ret = -EINVAL;
 	else {
 		ret = select_mode(c, mode, timing);
 		if (!ret)
 			mode_geometry(mode, geometry);
+	}
+	mutex_unlock(&c->lock);
+	return ret;
+}
+
+int m4_dcpext_connector_commit_native(struct m4_dcpext_connector *c,
+				     const struct drm_connector_state *state,
+				     const struct drm_display_mode *mode,
+				     struct m4_dcpext_native_mode *selected,
+				     u64 *native_generation)
+{
+	const struct m4_connector_state *s;
+	u32 index;
+	int ret;
+
+	if (!state || state->connector != &c->base || !state->crtc ||
+	    !mode || !selected || !native_generation)
+		return -EINVAL;
+	s = container_of(state, struct m4_connector_state, base);
+	mutex_lock(&c->lock);
+	if (!c->connected || !c->edid || s->generation != c->generation)
+		ret = -ESTALE;
+	else if (!c->native_modes || !mode_known(c, mode))
+		ret = -EINVAL;
+	else {
+		ret = select_native_mode(c, mode, &index);
+		if (!ret) {
+			*selected = c->native_modes[index];
+			*native_generation = c->native_generation;
+		}
 	}
 	mutex_unlock(&c->lock);
 	return ret;

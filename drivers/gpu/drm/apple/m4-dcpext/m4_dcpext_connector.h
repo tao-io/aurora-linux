@@ -23,6 +23,9 @@ struct m4_dcpext_connector {
 	const struct drm_edid *edid;
 	u8 timings[64 * 24];
 	u32 timings_count;
+	struct m4_dcpext_native_mode *native_modes;
+	u32 native_modes_count;
+	u64 native_generation;
 	struct drm_display_mode *modes;
 	u32 modes_count;
 };
@@ -42,6 +45,10 @@ u64 m4_dcpext_connector_invalidate(struct m4_dcpext_connector *connector,
 int m4_dcpext_connector_publish(struct m4_dcpext_connector *connector,
 			      u64 generation, const u8 *edid, u32 bytes,
 			      const u8 *timings, u32 count);
+int m4_dcpext_connector_publish_native(struct m4_dcpext_connector *connector,
+				     u64 generation, const u8 *edid, u32 bytes,
+				     const struct m4_dcpext_native_mode *modes,
+				     u32 count, u64 native_generation);
 /* Owner calls after releasing its route lock, with the DRM device registered. */
 void m4_dcpext_connector_hotplug(struct m4_dcpext_connector *connector);
 /* Recheck a checked atomic state's generation immediately before hardware
@@ -53,4 +60,9 @@ int m4_dcpext_connector_commit_mode(struct m4_dcpext_connector *connector,
 				  const struct drm_display_mode *mode,
 				  struct m4_dcpext_mode *geometry,
 				  u8 timing[24]);
+int m4_dcpext_connector_commit_native(struct m4_dcpext_connector *connector,
+				     const struct drm_connector_state *state,
+				     const struct drm_display_mode *mode,
+				     struct m4_dcpext_native_mode *selected,
+				     u64 *native_generation);
 #endif

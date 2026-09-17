@@ -433,7 +433,7 @@ int m4_dcpext_rpc_pump(struct m4_dcpext_rpc *b, unsigned long timeout,
 static int rpc_call(struct m4_dcpext_rpc *b, u32 tag, const void *input,
 		    u32 input_size, void *output, u32 output_size,
 		    u32 completion_id, m4_dcpext_callback_fn callback,
-		    void *cookie)
+		    void *cookie, bool (*valid)(void *), bool *rejected)
 {
 	struct apple_dcp_link_rpc_header *packet;
 	unsigned long deadline = jiffies + 5 * HZ;
@@ -479,6 +479,11 @@ retry:
 		expected |= b->callbacks[b->callback_count - 1].message &
 			    BIT_ULL(8);
 	mutex_unlock(&b->lock);
+	if (valid && !valid(cookie)) {
+		*rejected = true;
+		kfree(packet);
+		return -ESTALE;
+	}
 	ret = kernel_send(b, 1, nested, packet, size);
 	if (ret == -EBUSY && !nested && time_before(jiffies, deadline))
 		goto retry; /* A callback arrived between draining and submitting. */
@@ -581,13 +586,23 @@ int m4_dcpext_rpc_call(struct m4_dcpext_rpc *b, u32 tag, const void *input,
 		       u32 completion_id, m4_dcpext_callback_fn callback,
 		       void *cookie)
 {
+	return m4_dcpext_rpc_call_checked(b, tag, input, input_size, output,
+					output_size, completion_id, callback, cookie, NULL);
+}
+
+int m4_dcpext_rpc_call_checked(struct m4_dcpext_rpc *b, u32 tag, const void *input,
+			     u32 input_size, void *output, u32 output_size,
+			     u32 completion_id, m4_dcpext_callback_fn callback,
+			     void *cookie, bool (*valid)(void *))
+{
+	bool rejected = false;
 	int ret;
 
 	if ((input_size && !input) || (output_size && !output))
 		return -EINVAL;
 	ret = rpc_call(b, tag, input, input_size, output, output_size,
-		       completion_id, callback, cookie);
-	if (ret)
+		       completion_id, callback, cookie, valid, &rejected);
+	if (ret && !rejected)
 		m4_dcpext_rpc_crashed(b);
 	return ret;
 }

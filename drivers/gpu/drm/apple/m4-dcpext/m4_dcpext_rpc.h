@@ -39,6 +39,12 @@ void m4_dcpext_rpc_destroy(struct m4_dcpext_rpc *);
 int m4_dcpext_rpc_call(struct m4_dcpext_rpc *, u32 tag, const void *, u32,
 		       void *, u32, u32 completion_id, m4_dcpext_callback_fn,
 		       void *);
+/* Check owner state after draining callbacks and before each send attempt.
+ * The owner serializes state changes with calls/pump. A false check returns
+ * -ESTALE without sending this request or poisoning the transport. */
+int m4_dcpext_rpc_call_checked(struct m4_dcpext_rpc *, u32 tag, const void *, u32,
+			     void *, u32, u32 completion_id,
+			     m4_dcpext_callback_fn, void *, bool (*valid)(void *));
 int m4_dcpext_rpc_pump(struct m4_dcpext_rpc *, unsigned long timeout,
 		       m4_dcpext_callback_fn, void *);
 int m4_dcpext_rpc_alloc(struct m4_dcpext_rpc *, struct m4_dcpext_buffer *);
