@@ -73,6 +73,27 @@ is covered by exhaustive pointer/packet wrap tests, not only its successor.
 The fixed module passed guarded dual-output activation and is installed.
 Physical repeated-reconnect qualification of this fix is pending.
 
+## Failed repeated reconnect (2026-09-17)
+
+After the successful physical remove/return check, the user reported variable
+reconnect delays and one connection with no image after80seconds. Same boot
+7eea6182-6162-4207-ae7a-77da24fafa25, installed desktop-dp-sid-1. The connector
+was disconnected while the worker remained alive (result0,312frames); counters
+were3connects/4disconnects and DPTX errors22/23/24 were10/0/2.
+
+Retained log: HPD-high command acknowledged at365.922s, repeated command22
+link-error notifications, discovery timed out at370.887s, then HPD-low was
+acknowledged and the driver waited for a cable change. Thus the80second wait
+was not merely the1Hz status polling delay. Exact link-error cause and recovery
+remain unresolved; do not extend the discovery timeout without evidence.
+
+Evidence: workspace _provenance/displayport-v1-20260917/dp-sid-reconnect-failure/
+contains state, kernel log and raw AFK/syslog/EDID/native captures. Prior single
+hotplug pass remains valid but does not establish repeated-reconnect reliability.
+TODO: diagnose link failure and recovery; implement interrupt-driven DP SID
+notification. User explicitly accepts dev-branch progress with known failures.
+
+
 ## TODO / qualification boundaries
 
 - Longer desktop use and repeated hotplug qualification.
