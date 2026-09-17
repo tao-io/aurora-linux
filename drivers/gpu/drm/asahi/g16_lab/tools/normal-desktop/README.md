@@ -89,3 +89,11 @@ that single request, fetches the named `.m4fb`, and runs the adjacent
 `scanout-image.py` to produce a PNG. It launches no experiment on its own;
 the server must already have a live guard. This reduces repeated SSH/quoting
 and snapshot-copy commands during real menu navigation.
+
+The greeter and user-session launchers refresh their AQ_DRM_DEVICES list at
+launch using m4-drm-devices.py. The boot-selected internal card stays primary;
+a registered M4 external DRM card is appended. This matters when the external
+module was loaded after m4-graphics-init.py: a new login compositor otherwise
+opens only the internal display, even though the greeter handled hotplug.
+Existing running compositors need normal DRM add-event discovery; updating a
+launcher's environment does not update an existing process.
