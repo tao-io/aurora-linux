@@ -39,6 +39,7 @@ struct m4_dcpext_native {
 	bool normal_mode_active;
 	bool console_requested;
 	u64 mode_generation;
+	u64 sink_generation;
 	u64 requested_generation;
 	u64 active_mode_generation;
 	u64 powered_mode_generation;
@@ -343,6 +344,9 @@ static int callback(struct m4_dcpext_rpc *b, void *cookie, u32 tag,
 		if (dcp->connected != connected) {
 			dcp->connected = connected;
 			dcp->mode_generation++;
+			dcp->sink_generation++;
+			dev_info(dcp->dev, "M4 D575 sink connected=%llu generation=%llu\n",
+				 connected, dcp->sink_generation);
 		}
 		if (!dcp->connected)
 			remove_raw_property(dcp, "TimingElements");
@@ -721,6 +725,18 @@ struct m4_dcpext_native_mode *m4_dcpext_native_modes(struct m4_dcpext_native *dc
 	}
 	mutex_unlock(&dcp->lock);
 	return copy;
+}
+
+int m4_dcpext_native_sink(struct m4_dcpext_native *dcp, bool *connected, u64 *generation)
+{
+	int ret;
+
+	mutex_lock(&dcp->lock);
+	ret = dcp->failed || dcp->stopped ? -ESHUTDOWN : 0;
+	*connected = dcp->connected;
+	*generation = dcp->sink_generation;
+	mutex_unlock(&dcp->lock);
+	return ret;
 }
 
 void m4_dcpext_native_invalidate_sink(struct m4_dcpext_native *dcp)

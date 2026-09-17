@@ -1,15 +1,19 @@
 /* SPDX-License-Identifier: GPL-2.0-only OR MIT */
-/* Runtime sink HPD on the already admitted USB-C route. Poll only the bound
- * controller's locked cache, not its registers. Firmware/DRM notifications run
+/* Runtime sink HPD on the admitted USB-C route. TIPD owns status refresh
+ * and rate limits its DP SID register reads. Firmware/DRM notifications run
  * in process context, outside callbacks; scanout and endpoint DMA stay owned.
  */
 enum desktop_hpd_phase {
 	DESKTOP_HPD_ONLINE, DESKTOP_HPD_WAIT_LOW, DESKTOP_HPD_OFFLINE,
 	DESKTOP_HPD_WAIT_HIGH, DESKTOP_HPD_MODES, DESKTOP_HPD_EDID,
-	DESKTOP_HPD_ROUTE_OFF, DESKTOP_HPD_ROUTE_ON,
+	DESKTOP_HPD_ROUTE_OFF, DESKTOP_HPD_ROUTE_ON, DESKTOP_HPD_SINK_WAIT,
 };
 static enum desktop_hpd_phase desktop_hpd_phase;
 static u64 desktop_hpd_next, desktop_hpd_deadline;
+static u64 desktop_irq_seen, desktop_irq_deadline, desktop_sink_generation;
+static bool desktop_irq_initialized, desktop_sink_initialized;
+static unsigned int desktop_hpd_irqs;
+module_param(desktop_hpd_irqs, uint, 0400);
 static int desktop_hpd_failed_port = -1;
 static unsigned int desktop_hpd_disconnects, desktop_hpd_connects;
 module_param(desktop_hpd_disconnects, uint, 0400);
@@ -21,6 +25,8 @@ static int native_kms_hotplug_tick(void)
 	struct m4_dcpext_native_mode *modes = NULL;
 	u64 now = session_now(NULL), generation = 0, connector_generation;
 	u32 count;
+	u64 sink_generation;
+	bool sink_connected, sink_changed;
 	bool hpd, disconnect = false, publish = false;
 	int ret = 0, partner;
 
@@ -34,6 +40,48 @@ static int native_kms_hotplug_tick(void)
 		goto unlock;
 	}
 	hpd = !partner && session_atc_hpd;
+	ret = m4_dcpext_native_sink(native_client, &sink_connected, &sink_generation);
+	if (ret)
+		goto unlock;
+	sink_changed = desktop_sink_initialized && sink_generation != desktop_sink_generation;
+	desktop_sink_initialized = true;
+	desktop_sink_generation = sink_generation;
+	if (!desktop_irq_initialized || !hpd) {
+		/* Initial HPD-high already discovers the sink; old controller
+		 * events and events from a released route must not be replayed. */
+		desktop_irq_seen = session_atc_hpd_irqs;
+		desktop_irq_initialized = true;
+	}
+	if (dptx_runtime_irq_pending) {
+		if (now >= desktop_irq_deadline) {
+			ret = -ETIMEDOUT;
+			goto unlock;
+		}
+	} else {
+		desktop_irq_deadline = 0;
+	}
+	/* D575 may report downstream removal with the adapter's HPD still
+	 * high. Retain the route/AUX/HPD so the return IRQ can reach firmware.
+	 * Generation also catches a complete remove/return between polls. */
+	if (hpd && ((desktop_hpd_phase == DESKTOP_HPD_ONLINE &&
+		     (!sink_connected || sink_changed)) ||
+		    ((desktop_hpd_phase == DESKTOP_HPD_MODES ||
+		      desktop_hpd_phase == DESKTOP_HPD_EDID) && sink_changed && !sink_connected))) {
+		edid_native_ready = false;
+		if (native_kms_connected) {
+			native_kms_connected = false;
+			disconnect = true;
+			desktop_hpd_disconnects++;
+		}
+		if (native_kms_powered)
+			ret = m4_dcpext_native_set_power(native_client, false, 0);
+		if (ret)
+			goto unlock;
+		native_kms_powered = false;
+		native_kms_generation = 0;
+		desktop_hpd_phase = DESKTOP_HPD_SINK_WAIT;
+		desktop_hpd_deadline = 0;
+	}
 	if (!hpd && desktop_hpd_failed_port == (int)session_atc_port)
 		desktop_hpd_failed_port = -1;
 	if (desktop_hpd_deadline && now >= desktop_hpd_deadline &&
@@ -63,7 +111,7 @@ static int native_kms_hotplug_tick(void)
 	}
 	/* Finish the current HPD command before reversing direction. Rapid
 	 * unplug/replug must not reuse its tag or publish the old EDID. */
-	if (dptx_runtime_hpd_pending || dptx_runtime_route_pending)
+	if (dptx_runtime_hpd_pending || dptx_runtime_route_pending || dptx_runtime_irq_pending)
 		goto unlock;
 	if (desktop_hpd_phase == DESKTOP_HPD_ROUTE_OFF) {
 		/* An acknowledged display release leaves the route object and DMA
@@ -79,6 +127,7 @@ static int native_kms_hotplug_tick(void)
 			ret = partner == -ENOLINK ? 0 : partner;
 			goto unlock;
 		}
+		desktop_irq_initialized = false;
 		ret = session_atc_switch_port(partner);
 		if (!ret)
 			ret = dpxbar_up();
@@ -122,7 +171,8 @@ static int native_kms_hotplug_tick(void)
 			ret = partner == -ENOLINK ? 0 : partner;
 			goto unlock;
 		}
-		if ((unsigned int)partner != session_atc_port) {
+		if ((unsigned int)partner != session_atc_port ||
+		    session_atc_partner_flipped != session_atc_flipped) {
 			ret = dptx_runtime_set_route(false);
 			if (!ret) {
 				desktop_hpd_phase = DESKTOP_HPD_ROUTE_OFF;
@@ -155,6 +205,31 @@ static int native_kms_hotplug_tick(void)
 		desktop_hpd_phase = DESKTOP_HPD_WAIT_HIGH;
 		desktop_hpd_deadline = now + 5000;
 		goto unlock;
+	}
+	if (hpd && afk_hpd_dirty && desktop_irq_seen != session_atc_hpd_irqs) {
+		ret = dptx_runtime_hpd_irq();
+		if (!ret) {
+			/* One service-vector read covers all IRQs accumulated before
+			 * this command; events arriving during it remain pending. */
+			desktop_irq_seen = session_atc_hpd_irqs;
+			desktop_irq_deadline = now + 5000;
+			desktop_hpd_irqs++;
+		}
+		goto unlock;
+	}
+	if (desktop_hpd_phase == DESKTOP_HPD_SINK_WAIT) {
+		if (!sink_connected)
+			goto unlock;
+		/* Drain an old request before accepting the new sink's EDID. */
+		if (edid_state.pending) {
+			if (!desktop_hpd_deadline)
+				desktop_hpd_deadline = now + 5000;
+			goto unlock;
+		}
+		edid_state.received = false;
+		edid_state.bytes = 0;
+		desktop_hpd_phase = DESKTOP_HPD_MODES;
+		desktop_hpd_deadline = now + 5000;
 	}
 	if (desktop_hpd_phase == DESKTOP_HPD_WAIT_HIGH)
 		desktop_hpd_phase = DESKTOP_HPD_MODES;

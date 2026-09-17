@@ -18,6 +18,7 @@ struct apple_t8132_atc_session {
 	bool touched;
 	bool active;
 	bool failed;
+	bool unflipped; /* Zero preserves the original pair0 diagnostic route. */
 };
 
 static const u32 apple_t8132_atc_idle_offsets[] = {
@@ -37,7 +38,7 @@ static int apple_t8132_atc_session_idle(struct apple_t8132_atc_session *s)
 }
 
 static int apple_t8132_atc_session_start(struct apple_t8132_atc_session *s,
-				       bool pin_d_flipped)
+				       bool route_pin_d)
 {
 	int ret;
 
@@ -71,8 +72,8 @@ static int apple_t8132_atc_session_start(struct apple_t8132_atc_session *s,
 			goto fail;
 		}
 	}
-	if (pin_d_flipped) {
-		ret = apple_t8132_atc_route_pin_d_flipped(s->regs);
+	if (route_pin_d) {
+		ret = apple_t8132_atc_route_pin_d(s->regs, !s->unflipped);
 		if (ret)
 			goto fail;
 	}

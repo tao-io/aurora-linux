@@ -52,21 +52,31 @@ static void apple_t8132_atc_component_update(void __iomem *regs, u32 offset, u32
 	writel((readl(regs + offset) & ~clear) | set, regs + offset);
 }
 
-/* Native T8132 aciophy_xbar_config(mode=4, flipped=1), then the flip
+/* Native T8132 aciophy_xbar_config(mode=4, flipped={0,1}), then the flip
  * write in aciophy_phy_init_partC before its 10-us reset-release delay.
  * Asahi's atcphy_configure_lanes provides the lane/protocol interpretation.
  * This selects two DP lanes; it does not initialize or start USB3 lanes.
  */
-static int apple_t8132_atc_route_pin_d_flipped(void __iomem *regs)
+static int apple_t8132_atc_route_pin_d(void __iomem *regs, bool flipped)
 {
-	apple_t8132_atc_component_update(regs, 0x60, 0xfff, 0x252);
-	apple_t8132_atc_component_update(regs, 0x64, 0x1ffff, 0x111);
-	apple_t8132_atc_component_update(regs, 0x20008, 4, 4);
-	pr_info("m4_atc_probe: pin-D/flipped routing lanes=%#x crossbar=%#x misc=%#x\n",
-		readl(regs + 0x60), readl(regs + 0x64), readl(regs + 0x20008));
-	return (readl(regs + 0x60) & 0xfff) == 0x252 &&
-	       (readl(regs + 0x64) & 0x1ffff) == 0x111 &&
-	       (readl(regs + 0x20008) & 4) ? 0 : -EIO;
+	/* Retained native xbar-mode4-flip{0,1} traces: normal uses pair1,
+	 * flipped uses pair0. MISC bit2 is written before reset release. */
+	u32 lanes = flipped ? 0x252 : 0x489;
+	u32 crossbar = flipped ? 0x111 : 0x110;
+
+	apple_t8132_atc_component_update(regs, 0x60, 0xfff, lanes);
+	apple_t8132_atc_component_update(regs, 0x64, 0x1ffff, crossbar);
+	apple_t8132_atc_component_update(regs, 0x20008, 4, flipped ? 4 : 0);
+	pr_info("m4_atc_probe: pin-D flipped=%u routing lanes=%#x crossbar=%#x misc=%#x\n",
+		flipped, readl(regs + 0x60), readl(regs + 0x64), readl(regs + 0x20008));
+	return (readl(regs + 0x60) & 0xfff) == lanes &&
+	       (readl(regs + 0x64) & 0x1ffff) == crossbar &&
+	       !!(readl(regs + 0x20008) & 4) == flipped ? 0 : -EIO;
+}
+
+static inline int apple_t8132_atc_route_pin_d_flipped(void __iomem *regs)
+{
+	return apple_t8132_atc_route_pin_d(regs, true);
 }
 
 static int apple_t8132_atc_common_start(void __iomem *regs)

@@ -11,6 +11,7 @@ enum dptx_trial_phase {
 	DPTX_TRIAL_CONNECT, DPTX_TRIAL_REQUEST, DPTX_TRIAL_RELEASE,
 	DPTX_TRIAL_DISCONNECT, DPTX_TRIAL_DONE,
 	DPTX_TRIAL_HPD_ON, DPTX_TRIAL_HPD_WAIT, DPTX_TRIAL_HPD_OFF,
+	DPTX_TRIAL_HPD_IRQ,
 };
 static enum dptx_trial_phase dptx_trial_phase;
 static bool release_before_hpd_off;
@@ -20,6 +21,7 @@ static bool afk_hpd_dirty;
 static u64 dptx_trial_observe_until;
 static bool native_route_pending;
 static bool dptx_runtime_hpd_pending;
+static bool dptx_runtime_irq_pending;
 static bool dptx_runtime_route_pending;
 static unsigned int dptx_trial_callbacks;
 static struct m4_dcpext_dptx_errors dptx_errors;
@@ -32,6 +34,8 @@ MODULE_PARM_DESC(link_capabilities, "Experimental HBR3/downspread capability rep
 
 static u32 dptx_trial_command(void)
 {
+	if (dptx_trial_phase == DPTX_TRIAL_HPD_IRQ)
+		return 9;
 	if (dptx_trial_phase == DPTX_TRIAL_HPD_ON || dptx_trial_phase == DPTX_TRIAL_HPD_OFF)
 		return 8;
 	return dptx_trial_phase == DPTX_TRIAL_REQUEST ? 6 :
@@ -41,13 +45,15 @@ static u32 dptx_trial_command(void)
 static u32 dptx_trial_group(void)
 {
 	/* Native displayRelease sets service group 8, unlike older Linux. */
-	return dptx_trial_phase == DPTX_TRIAL_RELEASE ||
+	return dptx_trial_phase == DPTX_TRIAL_HPD_IRQ ||
+	       dptx_trial_phase == DPTX_TRIAL_RELEASE ||
 	       dptx_trial_phase == DPTX_TRIAL_HPD_ON || dptx_trial_phase == DPTX_TRIAL_HPD_OFF ? 8 : 0;
 }
 
 static u32 dptx_trial_data_size(void)
 {
-	return dptx_trial_phase == DPTX_TRIAL_REQUEST ||
+	return dptx_trial_phase == DPTX_TRIAL_HPD_IRQ ||
+	       dptx_trial_phase == DPTX_TRIAL_REQUEST ||
 	       dptx_trial_phase == DPTX_TRIAL_RELEASE ? 16 : 32;
 }
 
@@ -250,7 +256,7 @@ static int dptx_trial_receive(const u8 *p, u32 bytes)
 /* Keep the service and route alive across sink-only HPD changes. */
 static int dptx_runtime_set_hpd(bool on)
 {
-	if (!desktop || !session.runtime || dptx_runtime_hpd_pending || dptx_runtime_route_pending ||
+	if (!desktop || !session.runtime || dptx_runtime_irq_pending || dptx_runtime_hpd_pending || dptx_runtime_route_pending ||
 	    dptx_trial_phase != DPTX_TRIAL_HPD_WAIT)
 		return -EBUSY;
 	dptx_runtime_hpd_pending = true;
@@ -264,7 +270,7 @@ static int dptx_runtime_set_hpd(bool on)
  * target-zero disconnect belongs to final teardown, not live retargeting. */
 static int dptx_runtime_set_route(bool connected)
 {
-	if (!desktop || !session.runtime || dptx_runtime_hpd_pending ||
+	if (!desktop || !session.runtime || dptx_runtime_irq_pending || dptx_runtime_hpd_pending ||
 	    dptx_runtime_route_pending || afk_hpd_dirty ||
 	    dptx_trial_phase != DPTX_TRIAL_HPD_WAIT ||
 	    (connected && afk_display_dirty))
@@ -275,8 +281,30 @@ static int dptx_runtime_set_route(bool connected)
 	return 0;
 }
 
+/* Native J713 AppleDCPDPTXRemotePortProxy::interruptRequestOccurred:
+ * service group 8, command 9, 16 zero payload bytes (25G83 constant 73dfa08).
+ * An IRQ asks firmware to read the sink's DPCD service vector over AUX. */
+static int dptx_runtime_hpd_irq(void)
+{
+	if (!desktop || !session.runtime || !afk_hpd_dirty ||
+	    dptx_runtime_hpd_pending || dptx_runtime_route_pending ||
+	    dptx_runtime_irq_pending || dptx_trial_phase != DPTX_TRIAL_HPD_WAIT)
+		return -EBUSY;
+	dptx_runtime_irq_pending = true;
+	dptx_trial_phase = DPTX_TRIAL_HPD_IRQ;
+	afk_query_sent = afk_query_replied = false;
+	return 0;
+}
+
 static int dptx_trial_progress(void)
 {
+	if (dptx_runtime_irq_pending && afk_query_replied) {
+		if (afk_query_result)
+			return afk_query_result;
+		dptx_runtime_irq_pending = false;
+		dptx_trial_phase = DPTX_TRIAL_HPD_WAIT;
+		return 0;
+	}
 	if (dptx_runtime_route_pending && afk_query_replied) {
 		if (afk_query_result)
 			return afk_query_result;

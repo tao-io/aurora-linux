@@ -43,6 +43,8 @@ void *m4_dcpext_native_property(struct m4_dcpext_native *dcp, const char *key,
 /* External HPD loss invalidates sink identity/modes, never DMA ownership.
  * The owner serializes this with presentation and subsequent HPD requests. */
 void m4_dcpext_native_invalidate_sink(struct m4_dcpext_native *dcp);
+/* Firmware sink state is independent of an adapter holding physical HPD high. */
+int m4_dcpext_native_sink(struct m4_dcpext_native *dcp, bool *connected, u64 *generation);
 int m4_dcpext_native_poll(struct m4_dcpext_native *dcp);
 void m4_dcpext_native_destroy(struct m4_dcpext_native *dcp);
 #endif
