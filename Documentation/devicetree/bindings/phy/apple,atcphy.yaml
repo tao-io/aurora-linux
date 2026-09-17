@@ -36,9 +36,17 @@ allOf:
     then:
       properties:
         reg:
-          maxItems: 2
+          maxItems: 3
         reg-names:
-          maxItems: 2
+          maxItems: 3
+      allOf:
+        - if:
+            properties:
+              reg:
+                minItems: 3
+          then:
+            required:
+              - power-domains
     else:
       properties:
         reg:
@@ -85,9 +93,11 @@ properties:
           - description: Type-C PHY AXI to Apple Fabric interconnect controls
           - description: USB2 PHY specific controls
           - description: USB3 PIPE interface controls
-      - items:
+      - minItems: 2
+        items:
           - description: USB2 PHY specific controls
           - description: USB3 PIPE interface controls
+          - description: T8132 high-speed PHY core, excluding the display crossbar
 
   reg-names:
     oneOf:
@@ -97,9 +107,11 @@ properties:
           - const: axi2af
           - const: usb2phy
           - const: pipehandler
-      - items:
+      - minItems: 2
+        items:
           - const: usb2phy
           - const: pipehandler
+          - const: core
 
   "#phy-cells":
     const: 1
