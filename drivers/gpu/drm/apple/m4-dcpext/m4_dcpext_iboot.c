@@ -244,7 +244,7 @@ int m4_dcpext_iboot_select_mode(struct m4_dcpext_iboot *s)
 {
 	const u8 *timing = NULL, *color = NULL;
 
-	if (!s->image_enabled || !s->frame_dva || s->frame_dva >= (1ULL << 36) ||
+	if (!s->image_enabled || !s->frame_dva || s->frame_dva > (1ULL << 36) - 7680 * 1080 ||
 	    (s->frame_dva & 0x3fff) || !s->hpd || !s->power_dirty ||
 	    s->timings_count > M4_DCPEXT_IBOOT_RECORDS || s->colors_count > M4_DCPEXT_IBOOT_RECORDS)
 		return -EINVAL;
