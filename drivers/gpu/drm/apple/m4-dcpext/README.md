@@ -8,8 +8,38 @@ explicitly to `dirtyroom HEAD:refs/heads/eryk_m4_gpu`.
 
 The unified branch preserves both parents: the DisplayPort implementation and
 the main kernel's GPU shmem reclamation, compute-depth policy, timing/thermal
-work and D114 callback fixes. Integration does not change the paused hardware
-qualification state below: the final IRQ-only candidate is not yet deployed.
+work and D114 callback fixes. The boot qualification below supersedes the earlier paused checkpoint state.
+
+## Unified kernel boot qualification (2026-09-17)
+
+Merge `e1eb8648d446` combines every committed change from main tip
+`ff8c18c0a35d` and DisplayPort tip `c47df0457a69`; ancestry checks confirm
+neither parent has omitted commits. Canonical remote: `dirtyroom/eryk_m4_gpu`.
+Build source: `linux/linux-asahi`; Image, J713 DTB and the explicit DCPEXT module
+were built against `build/linux-asahi-j713`. The old DisplayPort worktree's
+three pre-existing uncommitted drafts remain preserved, outside this merge.
+
+The M4 is now running this combined kernel (#15), boot
+`8b26c6d9-acd2-4ed3-abe3-407ac1d4afe9`. Guarded ordinary Wayland activation
+passed with eDP-1 at2560x1664 and DP-1 at1920x1080. Peak temperature59.25 C;
+60-second watchdog returned to armed/idle. Display manager and orderly external
+display lifecycle services are active. The matching module is installed.
+
+Image SHA256: 99213bac8427d43e348922e44dd697e5758ad0475a825170f9c967d3fbca7e1b.
+Desktop module SHA256: f35fdb2086ed22c669a301f5cb801f5d9dbfc491032508e765598634fbe0a7a9.
+Actual bit37 DP-SID interrupts reached the new handler, one native HPD IRQ was
+forwarded, and no recovery retry was needed. This establishes boot and connected
+monitor activation with the IRQ-only kernel; physical HDMI remove/return and
+repeated-cycle qualification on this final kernel remain TODO. Earlier paused
+checkpoint sections below describe historical deployments, not the current one.
+
+Recovery menu entry `M4 before unified kernel` selects
+`/boot/asahi/Image.before-unified-1`. Normal boot remains graphical. The external
+module still requires explicit activation; boot autoload and broader feature
+TODOs remain. No sleep/resume or DCP restart qualification is claimed.
+Workspace evidence: `_provenance/displayport-v1-20260917/unified-kernel-1/` and
+`desktop-unified-kernel-1/`. Development helpers now select the canonical kernel
+source instead of the historical DisplayPort checkout.
 
 `m4_dcpext_desktop.ko` is the explicit-load first desktop driver for the
 qualified J713 DCPEXT0 / USB-C route. It registers a DRM device with live EDID,

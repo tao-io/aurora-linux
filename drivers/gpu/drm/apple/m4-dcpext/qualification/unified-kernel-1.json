@@ -1,0 +1,61 @@
+{
+  "source_commit": "e1eb8648d446",
+  "preserved_parent_tips": [
+    "ff8c18c0a35d",
+    "c47df0457a69"
+  ],
+  "image_sha256": "99213bac8427d43e348922e44dd697e5758ad0475a825170f9c967d3fbca7e1b",
+  "module_sha256": "f35fdb2086ed22c669a301f5cb801f5d9dbfc491032508e765598634fbe0a7a9",
+  "passed": true,
+  "target": {
+    "boot": "8b26c6d9-acd2-4ed3-abe3-407ac1d4afe9",
+    "version": "#15 SMP PREEMPT Thu Sep 17 15:05:15 CEST 2026",
+    "parameters": {
+      "native_kms_ready": "Y",
+      "native_kms_worker_done": "N",
+      "native_kms_frames": "10",
+      "desktop_hpd_irqs": "1",
+      "desktop_hpd_retries": "0"
+    },
+    "outputs": {
+      "/sys/class/drm/card2-eDP-1/status": "connected",
+      "/sys/class/drm/card0-DP-1/status": "connected"
+    },
+    "services": [
+      "active",
+      "active"
+    ]
+  },
+  "outputs": [
+    {
+      "name": "eDP-1",
+      "width": 2560,
+      "height": 1664
+    },
+    {
+      "name": "DP-1",
+      "width": 1920,
+      "height": 1080
+    }
+  ],
+  "thermals": {
+    "startup_limit_mc": 95000,
+    "stop_limit_mc": 95000,
+    "interval_seconds": 0.5,
+    "samples": 14,
+    "sync_interval_seconds": 5,
+    "peak_temperatures_mc": {
+      "PMP aggregate die hotspot": 59250,
+      "Ta000m": 59250,
+      "Te000m": 55750,
+      "Te001m": 54250,
+      "Tp000m": 58250,
+      "Tp001m": 53750
+    },
+    "failure": null,
+    "dedicated_gpu_sensor_verified": false,
+    "log": "temperatures.jsonl",
+    "cpu_frequency_caps": []
+  },
+  "boundary": "Connected-monitor boot activation only; physical IRQ-only hotplug and repeated cycles remain unqualified."
+}
