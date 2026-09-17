@@ -114,6 +114,12 @@ int m4_dcpext_edid_receive(struct m4_dcpext_edid *s, const u8 *p, u32 bytes)
 		s->interface = interface;
 		return 0;
 	}
+	/* An AV endpoint multiplexes several services. Publications for the
+	 * other services were deliberately not selected above; their subsequent
+	 * reports must not poison our EDID transaction either. Responses still
+	 * require the selected interface and matching transaction tag. */
+	if (!p[17] && interface != s->interface)
+		return 0;
 	if (!s->interface || interface != s->interface)
 		return -EPROTO;
 	if (!p[17])

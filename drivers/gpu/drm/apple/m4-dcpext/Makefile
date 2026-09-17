@@ -9,4 +9,4 @@
 # Without MO= this kbuild writes its generated stub Makefile into the module
 # source directory (this file) and every later build recurses.
 obj-m += m4_dcpext.o
-m4_dcpext-y := m4_dcpext_afk.o m4_dcpext_dptx.o m4_dcpext_iboot.o m4_dcpext_edid.o m4_dcpext_modes.o m4_dcpext_connector.o m4_dcpext_rpc.o m4_dcpext_native.o
+m4_dcpext-y := m4_dcpext_afk.o m4_dcpext_dptx.o m4_dcpext_iboot.o m4_dcpext_edid.o m4_dcpext_modes.o m4_dcpext_connector.o m4_dcpext_rpc.o m4_dcpext_native.o m4_dcpext_kms.o

@@ -22,6 +22,8 @@ int m4_dcpext_native_swap(struct m4_dcpext_native *dcp, u64 generation, const vo
 /* Close the native client and request power state zero. This is NOT a DMA
  * retirement fence: the owner must still establish AP/IOP quiescence. */
 int m4_dcpext_native_stop(struct m4_dcpext_native *dcp);
+/* Stop the native service after client close; not a DMA retirement fence. */
+int m4_dcpext_native_shutdown(struct m4_dcpext_native *dcp);
 /* Caller kfree()s the returned coherent mode snapshot. Errors are ERR_PTRs. */
 struct m4_dcpext_native_mode *m4_dcpext_native_modes(struct m4_dcpext_native *dcp,
 						  u32 *count, u64 *generation);

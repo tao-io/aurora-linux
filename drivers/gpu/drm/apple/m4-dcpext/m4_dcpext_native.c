@@ -1,12 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 /* External J713 native client, adapted from the working internal protocol
  * client. READY/A412, A401 and A457 are externally qualified by the retained
- * native-startup-dart-1 trace. Swaps/modes remain gated on further validation;
- * this component is not yet attached to a DRM scanout owner.
+ * native-startup-dart-1 trace. Native modes, surface swaps and DPMS are
+ * qualified through the bounded KMS owner; persistent ownership is separate.
  * One owner serializes startup, polling and swaps; buffers remain owned by it.
  */
 #include <linux/device.h>
 #include <linux/err.h>
+#include <linux/jiffies.h>
 #include <linux/mutex.h>
 #include <linux/seq_file.h>
 #include <linux/slab.h>
@@ -33,7 +34,9 @@ struct m4_dcpext_native {
 	struct mutex lock;
 	bool failed;
 	bool stopped;
+	bool shutdown;
 	bool connected;
+	bool normal_mode_active;
 	bool console_requested;
 	u64 mode_generation;
 	u64 requested_generation;
@@ -189,6 +192,7 @@ static void remove_raw_property(struct m4_dcpext_native *dcp, const char *key)
 		break;
 	}
 	if (!strcmp(key, "TimingElements")) {
+		dcp->normal_mode_active = false;
 		kfree(dcp->modes);
 		dcp->modes = NULL;
 		dcp->mode_count = 0;
@@ -281,6 +285,14 @@ static int callback(struct m4_dcpext_rpc *b, void *cookie, u32 tag,
 		return 0;
 	if (tag == D(599) && SHAPE(0, 0))
 		return simple_call(dcp, A(412), false, true, false);
+	if (tag == D(597) && SHAPE(0, 4)) {
+		/* 25G83 a97c3c8 -> isDFBAllocated (a95c464): whether the AP
+		 * owns a default/console framebuffer. This owner supplies only
+		 * explicit DRM surfaces, so there is no default allocation.
+		 */
+		out[0] = 0;
+		return 0;
+	}
 	if (tag == D(598) && SHAPE(0, 4)) {
 		/* 25G83 a97c470 reads AP+0x20cc (remote subobject+0x203c).
 		 * setProperties at a95cc40/a95cc88 names the flag
@@ -325,8 +337,13 @@ static int callback(struct m4_dcpext_rpc *b, void *cookie, u32 tag,
 
 		if (connected > 1)
 			return -EINVAL;
-		dcp->connected = connected;
-		dcp->mode_generation++;
+		/* The first swap after a timing change repeats connected=1.
+		 * It does not replace the timing catalog or represent a new plug.
+		 * Catalog replacement/removal has its own generation changes. */
+		if (dcp->connected != connected) {
+			dcp->connected = connected;
+			dcp->mode_generation++;
+		}
 		if (!dcp->connected)
 			remove_raw_property(dcp, "TimingElements");
 		if (!(in[84] & 1))
@@ -542,6 +559,8 @@ static int callback(struct m4_dcpext_rpc *b, void *cookie, u32 tag,
 				   get_unaligned_le32(in + key_offset + 64);
 		if (tag == D(104))
 			p->value = in[64];
+		if (!service && !strcmp(p->key, "NormalModeActive"))
+			dcp->normal_mode_active = !!p->value;
 		if (out_size)
 			out[0] = 1;
 		return 0;
@@ -560,6 +579,8 @@ static int callback(struct m4_dcpext_rpc *b, void *cookie, u32 tag,
 		/* D107 invalidates data publications as well as scalar properties.
 		 * The native unplug capture removes TimingElements before D575. */
 		remove_raw_property(dcp, in);
+		if (!strcmp(in, "NormalModeActive"))
+			dcp->normal_mode_active = false;
 		return 0;
 	}
 	if ((tag == D(206) || tag == D(207)) && SHAPE(0, 4)) {
@@ -773,7 +794,35 @@ static bool swap_request_valid(void *cookie)
 	struct m4_dcpext_native *dcp = cookie;
 
 	return power_request_valid(cookie) &&
+	       dcp->normal_mode_active &&
 	       dcp->powered_mode_generation == dcp->requested_generation;
+}
+
+static int wait_normal_mode(struct m4_dcpext_native *dcp)
+{
+	unsigned long deadline = jiffies + 5 * HZ;
+	int ret;
+
+	/* A473 can acknowledge before the output timings become active. A407
+	 * in that interval is swallowed by firmware and never completes. Keep
+	 * servicing callbacks (including disconnect) until D104 says ready.
+	 * The transport also enforces the owner's absolute experiment deadline.
+	 */
+	for (;;) {
+		long remaining = deadline - jiffies;
+
+		if (!power_request_valid(dcp))
+			return -ESTALE;
+		if (dcp->normal_mode_active)
+			return 0;
+		if (remaining <= 0)
+			return -ETIMEDOUT;
+		ret = m4_dcpext_rpc_pump(dcp->bridge, remaining,
+					callback, dcp);
+		/* A timeout may be the owner's earlier absolute deadline. */
+		if (ret && ret != -EAGAIN)
+			return ret;
+	}
 }
 
 int m4_dcpext_native_set_power(struct m4_dcpext_native *dcp, bool on, u64 generation)
@@ -803,6 +852,14 @@ int m4_dcpext_native_set_power(struct m4_dcpext_native *dcp, bool on, u64 genera
 					on ? power_request_valid : NULL);
 	if (!ret && le32_to_cpu(result[1]))
 		ret = -EREMOTEIO;
+	/* Power-off does not always publish NormalModeActive=false. Invalidate
+	 * our readiness on its ACK; a later wake must receive a fresh true.
+	 * Repeated power-on while already active need not publish another D104.
+	 */
+	if (!ret && !on)
+		dcp->normal_mode_active = false;
+	if (!ret && on)
+		ret = wait_normal_mode(dcp);
 	if (ret && ret != -ESTALE)
 		dcp->failed = true;
 	if (!ret && on && !power_request_valid(dcp))
@@ -856,6 +913,30 @@ int m4_dcpext_native_stop(struct m4_dcpext_native *dcp)
 	dev_info(dcp->dev, "DCPEXT native client closed (result %#x), power-off acknowledged; owner quiescence still required\n",
 		 le32_to_cpu(closed));
 out:
+	mutex_unlock(&dcp->lock);
+	return ret;
+}
+
+int m4_dcpext_native_shutdown(struct m4_dcpext_native *dcp)
+{
+	int ret = 0;
+
+	mutex_lock(&dcp->lock);
+	if (dcp->failed)
+		ret = -EIO;
+	else if (!dcp->stopped)
+		ret = -EBUSY;
+	else if (!dcp->shutdown) {
+		/* 25G83 IOMobileFramebufferAP::stop_signal, a96b224:
+		 * A402 with no input or output. This pairs service startup A401;
+		 * closing its last client (A458) is a separate operation.
+		 * The owner must still wait for both RTKit power-state ACKs.
+		 */
+		ret = call(dcp, A(402), NULL, 0, NULL, 0, 0);
+		if (!ret)
+			dcp->shutdown = true;
+		dev_info(dcp->dev, "DCPEXT native stop signal ret=%d; DMA retained\n", ret);
+	}
 	mutex_unlock(&dcp->lock);
 	return ret;
 }
