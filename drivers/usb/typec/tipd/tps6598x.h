@@ -372,6 +372,9 @@ struct cd321x {
 	struct cd321x_status update_status;
 	struct delayed_work update_work;
 	struct usb_pd_identity cur_partner_identity;
+	/* Protected by tps.lock; updated only by the hardware IRQ handler. */
+	u64 hpd_irqs;
+	unsigned long dp_polled;
 };
 
 struct sn201202x {

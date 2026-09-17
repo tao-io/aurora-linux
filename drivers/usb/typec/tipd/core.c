@@ -13,6 +13,7 @@
 #include <linux/power_supply.h>
 #include <linux/regmap.h>
 #include <linux/usb/typec.h>
+#include <linux/usb/typec_cd321x.h>
 #include <linux/usb/typec_altmode.h>
 #include <linux/usb/typec_dp.h>
 #include <linux/usb/typec_mux.h>
@@ -805,9 +806,21 @@ static irqreturn_t cd321x_interrupt(int irq, void *data)
 		}
 	}
 
-	if (event & APPLE_CD_REG_INT_DATA_STATUS_UPDATE)
+	if (event & APPLE_CD_REG_INT_DATA_STATUS_UPDATE) {
+		struct cd321x *cd = container_of(tps, struct cd321x, tps);
+
 		if (!tps->data->read_data_status(tps))
 			goto err_unlock;
+		/* The status bit remains cached after the interrupt. Count only
+		 * fresh data-status events, before debounced mux work can coalesce
+		 * identical notifications. Power/status-only events are not IRQs.
+		 */
+		if ((status & TPS_STATUS_PLUG_PRESENT) &&
+		    (tps->data_status & TPS_DATA_STATUS_DP_CONNECTION) &&
+		    (le32_to_cpu(cd->dp_sid_status.status_rx) & DP_STATUS_HPD_STATE) &&
+		    (le32_to_cpu(cd->dp_sid_status.status_rx) & DP_STATUS_IRQ_HPD))
+			cd->hpd_irqs++;
+	}
 
 	/* Can be called uncondtionally since it will check for any changes itself */
 	cd321x_connect(tps, status);
@@ -819,6 +832,58 @@ err_unlock:
 		return IRQ_HANDLED;
 	return IRQ_NONE;
 }
+
+/* Transitional state consumer for the explicit M4 display owner.
+ * Controller transactions stay with their owner; no second Type-C mux owner.
+ * Lock the device against removal before looking at driver-private storage.
+ */
+int cd321x_get_dp_state(struct device *dev, struct cd321x_dp_snapshot *snapshot)
+{
+	struct tps6598x *tps;
+	int ret = -ENODEV;
+
+	if (!dev || !snapshot)
+		return -EINVAL;
+	device_lock(dev);
+	tps = dev_get_drvdata(dev);
+	if (dev->driver && tps && tps->dev == dev &&
+	    (tps->data == &tipd_cd321x_data || tps->data == &tipd_sn201202x_data)) {
+		struct cd321x *cd = container_of(tps, struct cd321x, tps);
+
+		mutex_lock(&tps->lock);
+		/* Some DP-to-HDMI bridges update DP SID HPD without changing
+		 * DATA_STATUS or generating one of our admitted controller IRQs.
+		 * J713 capture: DATA_STATUS=8000c531 in both states, SID RX=19a
+		 * attached and 1a detached. Refresh that authoritative DP status
+		 * at a bounded rate, without treating a sampled IRQ bit as a pulse.
+		 * TODO: qualify the DP-SID-specific controller interrupt mask and
+		 * deliver it through the normal Type-C mux/provider path.
+		 */
+		if ((tps->status & TPS_STATUS_PLUG_PRESENT) &&
+		    (tps->data_status & TPS_DATA_STATUS_DP_CONNECTION) &&
+		    (!cd->dp_polled || time_after_eq(jiffies, cd->dp_polled + HZ))) {
+			struct tps6598x_dp_sid_status_reg dp;
+
+			ret = tps6598x_block_read(tps, TPS_REG_DP_SID_STATUS, &dp, sizeof(dp));
+			if (ret) {
+				mutex_unlock(&tps->lock);
+				goto unlock_device;
+			}
+			cd->dp_sid_status = dp;
+			cd->dp_polled = jiffies;
+		}
+		snapshot->dp_status = le32_to_cpu(cd->dp_sid_status.status_rx);
+		snapshot->status = tps->status;
+		snapshot->data_status = tps->data_status;
+		snapshot->hpd_irqs = cd->hpd_irqs;
+		mutex_unlock(&tps->lock);
+		ret = 0;
+	}
+unlock_device:
+	device_unlock(dev);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(cd321x_get_dp_state);
 
 static bool tps6598x_has_role_changed(struct tps6598x *tps, u32 status)
 {
