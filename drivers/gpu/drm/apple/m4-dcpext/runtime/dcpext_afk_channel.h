@@ -8,6 +8,7 @@
  */
 #ifndef DCPEXT_AFK_CHANNEL_H
 #define DCPEXT_AFK_CHANNEL_H
+#include "m4_dcpext_afk.h"
 struct afkc;
 struct afkc_ops {
 	int (*send)(void *cookie, u8 endpoint, u64 message);
@@ -74,37 +75,22 @@ static bool afkc_tx_empty(struct afkc *c)
 static int afkc_write(struct afkc *c, const u8 *data, u32 bytes)
 {
 	struct afkc_ring *r = &c->rings[0];
-	u32 rd, wr, total, next;
-	u8 *qe;
-	if (!c->running || c->stopping || c->error || !r->header ||
-	    bytes < 24 || bytes > (c->max_payload ? c->max_payload : 256) ||
-	    bytes > 4096)
+	struct m4_dcpext_afk_ring ring = {
+		.header = r->header, .data = r->data,
+		.size = r->size, .block = r->block,
+	};
+	u32 next;
+	int ret;
+
+	if (!c->running || c->stopping || c->error ||
+	    bytes > (c->max_payload ? c->max_payload : 256))
 		return -EINVAL;
-	total = ALIGN(bytes + 16, r->block);
-	rd = READ_ONCE(*(u32 *)(r->header + r->block));
-	wr = READ_ONCE(*(u32 *)(r->header + 2 * r->block));
-	dma_rmb();
-	if (rd >= r->size || wr >= r->size || (rd | wr) & (r->block - 1))
-		return -EPROTO;
-	/* Refuse split/dummy-wrap publication, as in the existing primary.
-	 * A short bounded query sequence fits; caller must handle ENOSPC.
-	 */
-	if (total >= r->size || total > r->size - wr ||
-	    (wr < rd && total >= rd - wr))
-		return -ENOSPC;
-	next = wr + total;
-	if (next == r->size)
-		next = 0;
-	if (next == rd)
-		return -ENOSPC;
-	qe = r->data + wr;
-	memset(qe, 0, total);
-	put_unaligned_le32(0x20504f49, qe);
-	put_unaligned_le32(bytes, qe + 4);
-	memcpy(qe + 16, data, bytes);
-	dma_wmb();
-	WRITE_ONCE(*(u32 *)(r->header + 2 * r->block), next);
-	dma_wmb();
+	/* EDID requests outlive the original bounded probe. Use the same
+	 * duplicate-header wrap writer as DPTX: a packet crossing the tail
+	 * must wrap without overwriting unread data, not terminate hotplug. */
+	ret = m4_dcpext_afk_ring_write(&ring, data, bytes, &next);
+	if (ret)
+		return ret;
 	return afkc_send(c, 0xa2, next);
 }
 

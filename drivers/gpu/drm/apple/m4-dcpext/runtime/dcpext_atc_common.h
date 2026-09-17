@@ -13,7 +13,7 @@ static bool atc_component_route_pin_d;
 #define atc_aux_start() apple_t8132_atc_aux_start(atc_core)
 #define atc_aux_stop() apple_t8132_atc_aux_stop(atc_core)
 #include "atc-t8132-session.h"
-static int atc_common_roundtrip(void)
+static int __maybe_unused atc_common_roundtrip(void)
 {
 	struct apple_t8132_atc_session state = { .regs = atc_core };
 	int ret;

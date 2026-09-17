@@ -71,7 +71,7 @@ static int afk_query_message(u8 type, bool command)
 			put_unaligned_le32(11, packet + 36);
 			put_unaligned_le32(32, packet + 40);
 			put_unaligned_le32(0x69706378, packet + 44);
-			put_unaligned_le32(afk_route_disconnect ? 0 : 0x8010, packet + 100);
+			put_unaligned_le32(afk_route_disconnect ? 0 : session_atc_target(), packet + 100);
 			/* Conservative on publication failure: keep the recovery pin. */
 			afk_route_dirty = true;
 		} else if (afk_query == 3) {
@@ -85,7 +85,7 @@ static int afk_query_message(u8 type, bool command)
 			put_unaligned_le32(48, packet + 40);
 			put_unaligned_le32(0x69706378, packet + 44);
 			put_unaligned_le32(0x100, packet + 96);
-			put_unaligned_le32(0x8010, packet + 100);
+			put_unaligned_le32(session_atc_target(), packet + 100);
 		} else if (afk_query == 2) {
 			/* Native DCPAVControllerProxy::getPower: group 0, command 7,
 			 * 64-byte service header plus 32 bytes. Unlike the old m1n1
@@ -226,7 +226,7 @@ static int afk_query_receive(const u8 *p, u32 bytes)
 		return 0;
 	}
 	if (afk_query == 4) {
-		u32 target = afk_route_disconnect ? 0 : 0x8010;
+		u32 target = afk_route_disconnect ? 0 : session_atc_target();
 		if (bytes != 128 || get_unaligned_le32(p + 32) ||
 		    get_unaligned_le32(p + 36) != 11 || get_unaligned_le32(p + 40) != 32 ||
 		    get_unaligned_le32(p + 44) != 0x69706378 ||
@@ -248,7 +248,7 @@ static int afk_query_receive(const u8 *p, u32 bytes)
 		if (bytes != 144 || get_unaligned_le32(p + 32) ||
 		    get_unaligned_le32(p + 36) != 12 || get_unaligned_le32(p + 40) != 48 ||
 		    get_unaligned_le32(p + 44) != 0x69706378 ||
-		    get_unaligned_le32(p + 96) != 0x100 || get_unaligned_le32(p + 100) != 0x8010)
+		    get_unaligned_le32(p + 96) != 0x100 || get_unaligned_le32(p + 100) != session_atc_target())
 			return -EPROTO;
 		pr_info("m4_dcpext_session: DPTX ATC1 route validation service_status=%#x result=%#x (not connected, not EDID)\n",
 			get_unaligned_le32(p + 112), get_unaligned_le32(p + 128));

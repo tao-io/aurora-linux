@@ -6,9 +6,11 @@
 enum desktop_hpd_phase {
 	DESKTOP_HPD_ONLINE, DESKTOP_HPD_WAIT_LOW, DESKTOP_HPD_OFFLINE,
 	DESKTOP_HPD_WAIT_HIGH, DESKTOP_HPD_MODES, DESKTOP_HPD_EDID,
+	DESKTOP_HPD_ROUTE_OFF, DESKTOP_HPD_ROUTE_ON,
 };
 static enum desktop_hpd_phase desktop_hpd_phase;
 static u64 desktop_hpd_next, desktop_hpd_deadline;
+static int desktop_hpd_failed_port = -1;
 static unsigned int desktop_hpd_disconnects, desktop_hpd_connects;
 module_param(desktop_hpd_disconnects, uint, 0400);
 module_param(desktop_hpd_connects, uint, 0400);
@@ -32,6 +34,21 @@ static int native_kms_hotplug_tick(void)
 		goto unlock;
 	}
 	hpd = !partner && session_atc_hpd;
+	if (!hpd && desktop_hpd_failed_port == (int)session_atc_port)
+		desktop_hpd_failed_port = -1;
+	if (desktop_hpd_deadline && now >= desktop_hpd_deadline &&
+	    (desktop_hpd_phase == DESKTOP_HPD_MODES || desktop_hpd_phase == DESKTOP_HPD_EDID) &&
+	    !dptx_runtime_hpd_pending && !dptx_runtime_route_pending) {
+		/* Discovery failure is not lost command ownership. Send an
+		 * acknowledged HPD-low and wait for a physical change instead of
+		 * killing the worker or endlessly retraining an attached sink. */
+		pr_warn("m4_dcpext_native: ATC%u sink discovery timed out; quiescing HPD and waiting for cable change\n",
+			session_atc_port);
+		desktop_hpd_failed_port = session_atc_port;
+		desktop_hpd_deadline = 0;
+	}
+	if (desktop_hpd_failed_port == (int)session_atc_port)
+		hpd = false;
 	if (!hpd && native_kms_connected) {
 		/* Reject commits before invalidating EDID/modes or sending the
 		 * hotplug event. Connector operations cannot run under route_lock:
@@ -46,8 +63,37 @@ static int native_kms_hotplug_tick(void)
 	}
 	/* Finish the current HPD command before reversing direction. Rapid
 	 * unplug/replug must not reuse its tag or publish the old EDID. */
-	if (dptx_runtime_hpd_pending)
+	if (dptx_runtime_hpd_pending || dptx_runtime_route_pending)
 		goto unlock;
+	if (desktop_hpd_phase == DESKTOP_HPD_ROUTE_OFF) {
+		/* An acknowledged display release leaves the route object and DMA
+		 * alive but disables its PHY through the AUX callback. A cable can
+		 * wait here with no deadline until either port has a valid sink. */
+		if (afk_display_dirty || afk_hpd_dirty || session_atc_active) {
+			ret = -EUCLEAN;
+			goto unlock;
+		}
+		desktop_hpd_deadline = 0;
+		partner = session_atc_find_partner();
+		if (partner < 0) {
+			ret = partner == -ENOLINK ? 0 : partner;
+			goto unlock;
+		}
+		ret = session_atc_switch_port(partner);
+		if (!ret)
+			ret = dpxbar_up();
+		if (!ret)
+			ret = dptx_runtime_set_route(true);
+		if (!ret) {
+			desktop_hpd_phase = DESKTOP_HPD_ROUTE_ON;
+			desktop_hpd_deadline = now + 5000;
+		}
+		goto unlock;
+	}
+	if (desktop_hpd_phase == DESKTOP_HPD_ROUTE_ON) {
+		desktop_hpd_phase = DESKTOP_HPD_OFFLINE;
+		desktop_hpd_deadline = 0;
+	}
 	if (!hpd && desktop_hpd_phase != DESKTOP_HPD_OFFLINE &&
 	    desktop_hpd_phase != DESKTOP_HPD_WAIT_LOW) {
 		edid_native_ready = false;
@@ -69,6 +115,21 @@ static int native_kms_hotplug_tick(void)
 		desktop_hpd_phase = DESKTOP_HPD_OFFLINE;
 		desktop_hpd_deadline = 0;
 		pr_info("m4_dcpext_native: sink HPD low acknowledged; connector disconnected, DMA retained\n");
+	}
+	if (desktop_hpd_phase == DESKTOP_HPD_OFFLINE && !hpd) {
+		partner = session_atc_find_partner();
+		if (partner < 0) {
+			ret = partner == -ENOLINK ? 0 : partner;
+			goto unlock;
+		}
+		if ((unsigned int)partner != session_atc_port) {
+			ret = dptx_runtime_set_route(false);
+			if (!ret) {
+				desktop_hpd_phase = DESKTOP_HPD_ROUTE_OFF;
+				desktop_hpd_deadline = now + 5000;
+			}
+			goto unlock;
+		}
 	}
 	if (desktop_hpd_phase == DESKTOP_HPD_OFFLINE && hpd) {
 		/* A reply to a query issued before removal still owns its tag. */

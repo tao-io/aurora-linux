@@ -20,6 +20,7 @@ static bool afk_hpd_dirty;
 static u64 dptx_trial_observe_until;
 static bool native_route_pending;
 static bool dptx_runtime_hpd_pending;
+static bool dptx_runtime_route_pending;
 static unsigned int dptx_trial_callbacks;
 static struct m4_dcpext_dptx_errors dptx_errors;
 module_param_named(link_error_last, dptx_errors.last_command, uint, 0400);
@@ -72,7 +73,7 @@ static int dptx_trial_send(void)
 	put_unaligned_le32(data_size, packet + 40);
 	put_unaligned_le32(0x69706378, packet + 44);
 	if (dptx_trial_phase == DPTX_TRIAL_CONNECT) {
-		put_unaligned_le32(0x8010, packet + 100);
+		put_unaligned_le32(session_atc_target(), packet + 100);
 		afk_route_dirty = true;
 	} else if (dptx_trial_phase == DPTX_TRIAL_REQUEST) {
 		afk_display_dirty = true;
@@ -224,7 +225,7 @@ static int dptx_trial_receive(const u8 *p, u32 bytes)
 	    get_unaligned_le32(p + 40) != data_size || get_unaligned_le32(p + 44) != 0x69706378)
 		return -EPROTO;
 	if (dptx_trial_phase == DPTX_TRIAL_CONNECT || dptx_trial_phase == DPTX_TRIAL_DISCONNECT) {
-		target = dptx_trial_phase == DPTX_TRIAL_CONNECT ? 0x8010 : 0;
+		target = dptx_trial_phase == DPTX_TRIAL_CONNECT ? session_atc_target() : 0;
 		if (get_unaligned_le32(p + 96) || get_unaligned_le32(p + 100) != target)
 			return -EPROTO;
 	}
@@ -249,7 +250,7 @@ static int dptx_trial_receive(const u8 *p, u32 bytes)
 /* Keep the service and route alive across sink-only HPD changes. */
 static int dptx_runtime_set_hpd(bool on)
 {
-	if (!desktop || !session.runtime || dptx_runtime_hpd_pending ||
+	if (!desktop || !session.runtime || dptx_runtime_hpd_pending || dptx_runtime_route_pending ||
 	    dptx_trial_phase != DPTX_TRIAL_HPD_WAIT)
 		return -EBUSY;
 	dptx_runtime_hpd_pending = true;
@@ -258,8 +259,36 @@ static int dptx_runtime_set_hpd(bool on)
 	return 0;
 }
 
+/* Retarget only after HPD-low. Match dcp_dptx_disconnect/connect: release
+ * the display, then connect directly to the next target and request it. The
+ * target-zero disconnect belongs to final teardown, not live retargeting. */
+static int dptx_runtime_set_route(bool connected)
+{
+	if (!desktop || !session.runtime || dptx_runtime_hpd_pending ||
+	    dptx_runtime_route_pending || afk_hpd_dirty ||
+	    dptx_trial_phase != DPTX_TRIAL_HPD_WAIT ||
+	    (connected && afk_display_dirty))
+		return -EBUSY;
+	dptx_runtime_route_pending = true;
+	dptx_trial_phase = connected ? DPTX_TRIAL_CONNECT : DPTX_TRIAL_RELEASE;
+	afk_query_sent = afk_query_replied = false;
+	return 0;
+}
+
 static int dptx_trial_progress(void)
 {
+	if (dptx_runtime_route_pending && afk_query_replied) {
+		if (afk_query_result)
+			return afk_query_result;
+		if (dptx_trial_phase == DPTX_TRIAL_CONNECT)
+			dptx_trial_phase = DPTX_TRIAL_REQUEST;
+		else {
+			dptx_runtime_route_pending = false;
+			dptx_trial_phase = DPTX_TRIAL_HPD_WAIT;
+			return 0;
+		}
+		afk_query_sent = afk_query_replied = false;
+	}
 	if (dptx_runtime_hpd_pending && afk_query_replied) {
 		if (afk_query_result)
 			return afk_query_result;

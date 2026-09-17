@@ -24,7 +24,8 @@ Diagnostic capture storage rolls over instead of ending a running desktop.
 
 Use tools/displayport-freeze-probe.py with --binary pointing to this build, then
 `tools/displayport-host-run.py --desktop FROZEN` for guarded first activation.
-The monitor must be connected to the qualified port at fresh boot. Activation
+The monitor must be connected to either qualified flipped pin-D port at fresh boot.
+Use `--observe-only` to activate without mode changes or test clients. Activation
 requires the armed 60-second SSH watchdog broker and temperature guard, tests
 both Wayland outputs and mode/DPMS changes, saves evidence, and returns the
 running ordinary desktop to idle watchdog supervision. No stress client remains.
@@ -63,14 +64,23 @@ independent GBM displays when EGL reference tracking is absent; kernel hotplug
 success alone does not prove compositor continuity. See the workspace handoff
 for separate driver and userspace evidence.
 
+Runtime also migrates between ATC0 and ATC1 after acknowledged HPD-low and
+release, retaining the DCP route object while changing the PHY. Both directions
+published fresh modes/EDID during the user's repeated cable moves. A subsequent
+-ENOSPC failure identified the EDID channel's leftover no-wrap TX writer; it now
+shares the maintained duplicate-header ring writer. The actual runtime header
+is covered by exhaustive pointer/packet wrap tests, not only its successor.
+The fixed module passed guarded dual-output activation and is installed.
+Physical repeated-reconnect qualification of this fix is pending.
+
 ## TODO / qualification boundaries
 
 - Longer desktop use and repeated hotplug qualification.
 - Automatic boot loading and startup recovery. The installed lifecycle service
   requests bounded acknowledged shutdown on system stop; this service wiring
   has not yet been exercised through a reboot.
-- Physical USB-C unplug/replug and HPD IRQ handling through the normal Type-C
-  provider; additional USB-C ports, orientations, adapters and monitors.
+- Extended USB-C hotplug qualification and HPD IRQ handling through the normal
+  Type-C provider; additional orientations, adapters and monitors.
 - Replace explicit handoff/MMIO ownership with the normal platform/RTKit, PHY,
   crossbar, PMGR and IOMMU consumer integration already being developed.
 - Deep sleep and display-coprocessor restart (explicitly deferred by the user).
