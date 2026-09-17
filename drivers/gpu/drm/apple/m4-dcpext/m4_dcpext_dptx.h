@@ -70,6 +70,17 @@ struct m4_dcpext_monitor {
 	u32 width, height;
 };
 
+/* Firmware's deviceNotResponding/BusyTimeout/NotStarted notifications.
+ * Acknowledging receipt never proves link training or clears ownership.
+ * Keep diagnostics separately from lifecycle command completion status.
+ */
+struct m4_dcpext_dptx_errors {
+	u32 count[3];
+	u32 last_command;
+};
+int m4_dcpext_dptx_error_notification(struct m4_dcpext_dptx_errors *errors,
+				    u32 command, u32 size);
+
 enum m4_dcpext_dptx_phase {
 	M4_DCPEXT_DPTX_CONNECT, M4_DCPEXT_DPTX_REQUEST, M4_DCPEXT_DPTX_RELEASE,
 	M4_DCPEXT_DPTX_DISCONNECT, M4_DCPEXT_DPTX_DONE,
@@ -106,6 +117,7 @@ struct m4_dcpext_dptx {
 	bool route_dirty, display_dirty, hpd_dirty, phy_fault;
 	struct m4_dcpext_dptx_link link;
 	struct m4_dcpext_monitor monitor;
+	struct m4_dcpext_dptx_errors errors;
 };
 
 /* Standalone link-training callback dispatcher (Unsupported for anything

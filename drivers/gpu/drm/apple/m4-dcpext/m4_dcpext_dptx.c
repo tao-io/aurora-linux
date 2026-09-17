@@ -18,6 +18,22 @@ static void put_unaligned_le32(u32 v, void *p) { memcpy(p, &v, 4); }
 #define DPTX_STATUS_UNSUPPORTED M4_DCPEXT_AFK_STATUS_UNSUPPORTED
 #define DPTX_MAGIC 0x69706378
 
+int m4_dcpext_dptx_error_notification(struct m4_dcpext_dptx_errors *errors,
+				    u32 command, u32 size)
+{
+	/* 25G83 RemotePortProxy command table 0xfffffe0007f9bda0,
+	 * entries22..24: 16-byte notifications, handlers write status zero
+	 * at service64 after informing IODPTXPort. These are reports of sink
+	 * errors, not requests to perform a missing PHY operation.
+	 */
+	if (command < 22 || command > 24 || size != 16)
+		return -EOPNOTSUPP;
+	errors->last_command = command;
+	if (errors->count[command - 22] != ~(u32)0)
+		errors->count[command - 22]++;
+	return 0;
+}
+
 int m4_dcpext_dptx_link_callback(struct m4_dcpext_dptx_link *l,
 				 const struct m4_dcpext_dptx_phy_ops *ops, void *cookie,
 				 u32 command, const u8 *data, u32 size, u8 *reply)
@@ -236,6 +252,8 @@ int m4_dcpext_dptx_callback(struct m4_dcpext_dptx *d, const struct m4_dcpext_dpt
 			ret = ops->check_partner(cookie);
 		else if (command == 21 && data_size == 160)
 			ret = m4_dcpext_dptx_display_hints(&d->monitor, p + 96, data_size);
+		else if (command >= 22 && command <= 24)
+			ret = m4_dcpext_dptx_error_notification(&d->errors, command, data_size);
 		else if (d->capabilities && command == 7 && data_size == 32)
 			ret = ops->check_partner(cookie);
 		else if (d->capabilities && ((command == 13 && data_size == 48) ||
@@ -247,6 +265,10 @@ int m4_dcpext_dptx_callback(struct m4_dcpext_dptx *d, const struct m4_dcpext_dpt
 		if (!ret) {
 			response_bytes = bytes;
 			memcpy(reply + 32, p + 32, 64);
+			if (command >= 22 && command <= 24) {
+				memcpy(reply + 96, p + 96, data_size);
+				put_unaligned_le32(0, reply + 96);
+			}
 			if (command == 21) {
 				/* Notification accepted, without allocating a display or
 				 * claiming a completed physical link. Native status 208.
