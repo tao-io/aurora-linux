@@ -73,6 +73,8 @@ enum {
 
 #define APPLE_RTKIT_OSLOG_TYPE GENMASK_ULL(63, 56)
 #define APPLE_RTKIT_OSLOG_BUFFER_REQUEST 1
+#define APPLE_RTKIT_OSLOG_LOG 2
+#define APPLE_RTKIT_OSLOG_LOG_RESERVED GENMASK_ULL(55, 32)
 #define APPLE_RTKIT_OSLOG_SIZE GENMASK_ULL(55, 36)
 #define APPLE_RTKIT_OSLOG_IOVA GENMASK_ULL(35, 0)
 
@@ -756,11 +758,29 @@ static void apple_rtkit_syslog_rx(struct apple_rtkit *rtk, u64 msg)
 static void apple_rtkit_oslog_rx(struct apple_rtkit *rtk, u64 msg)
 {
 	u8 type = FIELD_GET(APPLE_RTKIT_OSLOG_TYPE, msg);
+	int err;
 
 	switch (type) {
 	case APPLE_RTKIT_OSLOG_BUFFER_REQUEST:
 		apple_rtkit_common_rx_get_buffer(rtk, &rtk->oslog_buffer,
 						 APPLE_RTKIT_EP_OSLOG, msg);
+		break;
+	case APPLE_RTKIT_OSLOG_LOG:
+		/* Channel zero reports a cumulative 32-bit write counter. Even
+		 * though we discard these logs, acknowledge that exact counter:
+		 * AppleDCP waits for its log transport to drain before AP sleep.
+		 * This is not a buffer offset and may wrap. Other channels do not
+		 * have a buffer admitted by this endpoint implementation.
+		 */
+		if (!rtk->oslog_buffer.size ||
+		    (msg & APPLE_RTKIT_OSLOG_LOG_RESERVED)) {
+			dev_warn(rtk->dev, "RTKit: invalid oslog notification: %llx\n", msg);
+			break;
+		}
+		err = apple_rtkit_send_message(rtk, APPLE_RTKIT_EP_OSLOG,
+					       msg, NULL, false);
+		if (err)
+			dev_err(rtk->dev, "RTKit: oslog acknowledgment failed: %d\n", err);
 		break;
 	default:
 		dev_warn(rtk->dev, "RTKit: Unknown oslog message: %llx\n",
