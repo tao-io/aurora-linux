@@ -346,7 +346,7 @@ int m4_dcpext_dptx_progress(struct m4_dcpext_dptx *d, const struct m4_dcpext_dpt
 			return 0;
 		if (d->iboot_gate && !d->iboot_finished)
 			return 0; /* The session deadline still bounds a failed side service. */
-		d->phase = M4_DCPEXT_DPTX_HPD_OFF;
+		d->phase = d->release_before_hpd_off ? M4_DCPEXT_DPTX_RELEASE : M4_DCPEXT_DPTX_HPD_OFF;
 		d->sent = d->replied = false;
 	}
 	if (d->replied && d->phase != M4_DCPEXT_DPTX_DONE) {
@@ -358,7 +358,9 @@ int m4_dcpext_dptx_progress(struct m4_dcpext_dptx *d, const struct m4_dcpext_dpt
 			d->phase = M4_DCPEXT_DPTX_HPD_WAIT;
 			d->observe_until = ops->now_ms(cookie) + M4_DCPEXT_DPTX_HPD_OBSERVE_MS;
 		} else if (d->phase == M4_DCPEXT_DPTX_HPD_OFF)
-			d->phase = M4_DCPEXT_DPTX_RELEASE;
+			d->phase = d->release_before_hpd_off ? M4_DCPEXT_DPTX_DISCONNECT : M4_DCPEXT_DPTX_RELEASE;
+		else if (d->phase == M4_DCPEXT_DPTX_RELEASE && d->release_before_hpd_off && d->hpd_dirty)
+			d->phase = M4_DCPEXT_DPTX_HPD_OFF;
 		else
 			d->phase++;
 		if (d->phase != M4_DCPEXT_DPTX_DONE)

@@ -91,6 +91,7 @@ struct m4_dcpext_dptx {
 	u8 sequence;
 	/* Policy (set before use). */
 	bool aux_callbacks;		/* service AUX/partner/hints callbacks */
+	bool release_before_hpd_off; /* Explicit m1n1 ordering experiment. */
 	bool hpd_routing;		/* request -> HPD on/wait/off -> release */
 	bool training;			/* dispatch link-training callbacks */
 	bool capabilities;		/* experimental capability replies */
