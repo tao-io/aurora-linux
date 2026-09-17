@@ -1,0 +1,17 @@
+{
+  "boot": "4293580b-1726-4a08-861f-e397d2e95742",
+  "status": {
+    "completed": "35",
+    "failed": "0",
+    "active_fb": "43",
+    "imported": "1",
+    "swap_total_us": "311327",
+    "swap_max_us": "16527"
+  },
+  "analytics": [
+    "events 4",
+    "last_event com.apple.iomfb.pa.piodma_only_regs_count",
+    "dictionary_present 1"
+  ],
+  "display_manager": "active"
+}

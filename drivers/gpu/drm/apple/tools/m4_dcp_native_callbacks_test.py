@@ -104,6 +104,10 @@ int main(int argc,char **argv) {
         if (h[0]==D(201)) assert(get_unaligned_le32(out)==get_unaligned_le64(in));
         if (h[0]==D(582)) assert(out[0]==0);
         if (h[0]==D(3)) assert(get_unaligned_le32(out+56)==1);
+        if (h[0]==D(114)) {
+            assert(get_unaligned_le32(out+4096)==0);
+            if (!in[4160]) assert(!memcmp(out,in+64,4096));
+        }
         free(in);free(out);cases++;
     }
     assert(d->property_count>10 && d->raw_count>=4 && alloc_count==3 && !d->chunk);

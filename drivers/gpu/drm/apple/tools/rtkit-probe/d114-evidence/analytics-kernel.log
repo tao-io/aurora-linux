@@ -1,0 +1,4 @@
+[ 3611.572020] omarchy kernel: m4-dcp-rtkit 30ae00000.dcp: M4 analytics event 1: com.apple.iomfb.pa.piodma_only_regs_count (retained locally)
+[ 3611.572571] omarchy kernel: m4-dcp-rtkit 30ae00000.dcp: M4 analytics event 2: com.apple.iomfb.pa.piodma_only_regs_count (retained locally)
+[ 3611.572834] omarchy kernel: m4-dcp-rtkit 30ae00000.dcp: M4 analytics event 3: com.apple.iomfb.pa.piodma_only_regs_count (retained locally)
+[ 3611.573084] omarchy kernel: m4-dcp-rtkit 30ae00000.dcp: M4 analytics event 4: com.apple.iomfb.pa.piodma_only_regs_count (retained locally)

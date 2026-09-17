@@ -1,0 +1,37 @@
+{
+  "id": "20260916T235245888762Z-dcp-analytics-pixel-window2",
+  "hypothesis": "Periodic D114 analytics is accepted and preserves GPU rendering and display state across the first hourly callback",
+  "command": [
+    "env",
+    "VK_DRIVER_FILES=/opt/asahi-m4-port/asahi_icd.json",
+    "ASAHI_M4_EXPERIMENTAL=1",
+    "LD_LIBRARY_PATH=/opt/asahi-m4-port/lib",
+    "LIBGL_DRIVERS_PATH=/opt/asahi-m4-port/lib/dri",
+    "GBM_BACKENDS_PATH=/opt/asahi-m4-port/lib/gbm",
+    "MESA_LOADER_DRIVER_OVERRIDE=zink",
+    "VK_INSTANCE_LAYERS=VK_LAYER_KHRONOS_validation",
+    "python3",
+    "/root/dcp-analytics-observe.py",
+    "--output",
+    "/root/asahi-evidence/20260916T235245888762Z-dcp-analytics-pixel-window2",
+    "--seconds",
+    "1700",
+    "--pixel-probe",
+    "/root/dmabuf-view-probe",
+    "--require-event"
+  ],
+  "expected_success": "^PASS: bounded DCP observation",
+  "seconds": 1750,
+  "sources": {
+    "mesa": {
+      "head": "689093d7237a2c7c9063e0b5316964405a438198",
+      "status": " M src/asahi/vulkan/tests/m4-desktop/asahi-session.py\n M src/asahi/vulkan/tests/m4-desktop/desktop-launch.py\n M src/asahi/vulkan/tests/m4-desktop/steam-zink-mutable-modifier/imported-view/README.md\n M src/asahi/vulkan/tests/m4-desktop/vulkan-trim-host.py\n?? src/asahi/vulkan/tests/m4-desktop/steam-virtio-runtime/final-login/\n",
+      "patch_sha256": "5b8ff8ae9f98371020641d1f435e6e768e838e33c5e30828596a816ffd03f2fc"
+    },
+    "kernel": {
+      "head": "0d5dc0bc24db8d6235b14752b53dd1a23167bf33",
+      "status": "",
+      "patch_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    }
+  }
+}

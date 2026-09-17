@@ -122,18 +122,20 @@ with zeros would still be invalid. Other unknown callbacks continue to fail.
 
 Offline identification: saved DCP segment SHA256
 25b095cc293adb48c2c507a578b94810e5e06e7607eb13e5d64a6221e2c29793,
-wrapper offset0x272598, D114 calls0x27264c/0x272714. Callers include event names
+wrapper offset 0x272598, D114 calls 0x27264c/0x272714. Callers include event names
 com.apple.iomfb.lth_corruption (0x19a438) and com.apple.iomfb.IRDCReset
 (0x2900cc). The matching native UnifiedPipeline2::CoreAnalyticsSendEvent
 symbol corroborates the service identity. Only the Linux implementation and
 provenance are retained here; firmware binaries are not source artifacts.
 
-ASan/UBSan: 257 captured startup callbacks and514 wrong-shape rejections pass,
+ASan/UBSan: 257 captured startup callbacks and 514 wrong-shape rejections pass,
 plus D114 dictionary roundtrip, null input and malformed name/tag-shape tests.
 Build uses build/linux-asahi-j713 and the four unversioned drm_dma_helper
 exports from build/linux-alpha-j713/Module.symvers (the incremental Asahi
 symvers lacks these existing runtime exports). Installed candidate module
-SHA256920df6487c1ac06fb0bc90897413b08ec132ce829a81f26a585111bd40391e7d.
-Boot db3f9bcc-d2ab-4665-a471-b9144ef66931 starts SDDM with zero failed flips.
-At installation the actual hourly callback is still awaiting live validation;
-a successful module load or synthetic callback test is not that validation.
+SHA256: 920df6487c1ac06fb0bc90897413b08ec132ce829a81f26a585111bd40391e7d.
+Live qualification now passes on boot 4293580b-1726-4a08-861f-e397d2e95742:
+four real hourly events at uptime 3611.572 seconds, continued pixel probes,
+and 18 successful physical-panel cursor redraws afterwards. Failed flips
+remain zero. See [retained evidence](d114-evidence/README.md) for the exact
+scope, module hash, thermal/watchdog record and live dictionary replay.

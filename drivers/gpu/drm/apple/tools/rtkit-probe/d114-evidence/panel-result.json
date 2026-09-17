@@ -1,0 +1,415 @@
+{
+  "watchdog": {
+    "device": "/dev/watchdog0",
+    "identity": "Apple SoC Watchdog",
+    "timeout_seconds": 60,
+    "initial_timeleft_seconds": 59,
+    "periodic_keepalive": false,
+    "armed": true,
+    "ssh_broker_lease": true
+  },
+  "original_cursor": {
+    "x": 640,
+    "y": 416
+  },
+  "frames": [
+    {
+      "i": 0,
+      "x": 280,
+      "y": 120,
+      "framebuffer": 43,
+      "status": {
+        "completed": "16",
+        "failed": "0",
+        "active_fb": "42",
+        "imported": "1",
+        "swap_total_us": "139273",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 280,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 560,
+      "white_max_x": 583
+    },
+    {
+      "i": 1,
+      "x": 316,
+      "y": 120,
+      "framebuffer": 40,
+      "status": {
+        "completed": "18",
+        "failed": "0",
+        "active_fb": "40",
+        "imported": "1",
+        "swap_total_us": "160397",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 316,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 632,
+      "white_max_x": 655
+    },
+    {
+      "i": 2,
+      "x": 352,
+      "y": 120,
+      "framebuffer": 42,
+      "status": {
+        "completed": "19",
+        "failed": "0",
+        "active_fb": "42",
+        "imported": "1",
+        "swap_total_us": "170702",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 352,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 704,
+      "white_max_x": 727
+    },
+    {
+      "i": 3,
+      "x": 388,
+      "y": 120,
+      "framebuffer": 43,
+      "status": {
+        "completed": "20",
+        "failed": "0",
+        "active_fb": "43",
+        "imported": "1",
+        "swap_total_us": "182869",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 388,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 776,
+      "white_max_x": 799
+    },
+    {
+      "i": 4,
+      "x": 424,
+      "y": 120,
+      "framebuffer": 40,
+      "status": {
+        "completed": "21",
+        "failed": "0",
+        "active_fb": "40",
+        "imported": "1",
+        "swap_total_us": "195586",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 424,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 848,
+      "white_max_x": 871
+    },
+    {
+      "i": 5,
+      "x": 460,
+      "y": 120,
+      "framebuffer": 42,
+      "status": {
+        "completed": "22",
+        "failed": "0",
+        "active_fb": "42",
+        "imported": "1",
+        "swap_total_us": "207723",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 460,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 920,
+      "white_max_x": 943
+    },
+    {
+      "i": 6,
+      "x": 496,
+      "y": 120,
+      "framebuffer": 43,
+      "status": {
+        "completed": "23",
+        "failed": "0",
+        "active_fb": "43",
+        "imported": "1",
+        "swap_total_us": "217937",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 496,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 992,
+      "white_max_x": 1015
+    },
+    {
+      "i": 7,
+      "x": 532,
+      "y": 120,
+      "framebuffer": 40,
+      "status": {
+        "completed": "24",
+        "failed": "0",
+        "active_fb": "40",
+        "imported": "1",
+        "swap_total_us": "222117",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 532,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 1064,
+      "white_max_x": 1087
+    },
+    {
+      "i": 8,
+      "x": 568,
+      "y": 120,
+      "framebuffer": 42,
+      "status": {
+        "completed": "25",
+        "failed": "0",
+        "active_fb": "42",
+        "imported": "1",
+        "swap_total_us": "229188",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 568,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 1136,
+      "white_max_x": 1159
+    },
+    {
+      "i": 9,
+      "x": 604,
+      "y": 120,
+      "framebuffer": 43,
+      "status": {
+        "completed": "26",
+        "failed": "0",
+        "active_fb": "43",
+        "imported": "1",
+        "swap_total_us": "237168",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 604,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 1208,
+      "white_max_x": 1231
+    },
+    {
+      "i": 10,
+      "x": 640,
+      "y": 120,
+      "framebuffer": 40,
+      "status": {
+        "completed": "27",
+        "failed": "0",
+        "active_fb": "40",
+        "imported": "1",
+        "swap_total_us": "239718",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 640,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 1280,
+      "white_max_x": 1303
+    },
+    {
+      "i": 11,
+      "x": 676,
+      "y": 120,
+      "framebuffer": 42,
+      "status": {
+        "completed": "28",
+        "failed": "0",
+        "active_fb": "42",
+        "imported": "1",
+        "swap_total_us": "243138",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 676,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 1352,
+      "white_max_x": 1375
+    },
+    {
+      "i": 12,
+      "x": 712,
+      "y": 120,
+      "framebuffer": 43,
+      "status": {
+        "completed": "29",
+        "failed": "0",
+        "active_fb": "43",
+        "imported": "1",
+        "swap_total_us": "249470",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 712,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 1424,
+      "white_max_x": 1447
+    },
+    {
+      "i": 13,
+      "x": 748,
+      "y": 120,
+      "framebuffer": 40,
+      "status": {
+        "completed": "30",
+        "failed": "0",
+        "active_fb": "40",
+        "imported": "1",
+        "swap_total_us": "263959",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 748,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 1496,
+      "white_max_x": 1519
+    },
+    {
+      "i": 14,
+      "x": 784,
+      "y": 120,
+      "framebuffer": 42,
+      "status": {
+        "completed": "31",
+        "failed": "0",
+        "active_fb": "42",
+        "imported": "1",
+        "swap_total_us": "274717",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 784,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 1568,
+      "white_max_x": 1591
+    },
+    {
+      "i": 15,
+      "x": 820,
+      "y": 120,
+      "framebuffer": 43,
+      "status": {
+        "completed": "32",
+        "failed": "0",
+        "active_fb": "43",
+        "imported": "1",
+        "swap_total_us": "283119",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 820,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 1640,
+      "white_max_x": 1663
+    },
+    {
+      "i": 16,
+      "x": 856,
+      "y": 120,
+      "framebuffer": 40,
+      "status": {
+        "completed": "33",
+        "failed": "0",
+        "active_fb": "40",
+        "imported": "1",
+        "swap_total_us": "292287",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 856,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 1712,
+      "white_max_x": 1735
+    },
+    {
+      "i": 17,
+      "x": 892,
+      "y": 120,
+      "framebuffer": 42,
+      "status": {
+        "completed": "34",
+        "failed": "0",
+        "active_fb": "42",
+        "imported": "1",
+        "swap_total_us": "298490",
+        "swap_max_us": "16527"
+      },
+      "cursor": {
+        "x": 892,
+        "y": 120
+      },
+      "white_pixels": 163,
+      "white_min_x": 1784,
+      "white_max_x": 1807
+    }
+  ],
+  "passed": true,
+  "thermal": {
+    "startup_limit_mc": 95000,
+    "stop_limit_mc": 95000,
+    "interval_seconds": 0.5,
+    "samples": 10,
+    "sync_interval_seconds": 5,
+    "peak_temperatures_mc": {
+      "PMP aggregate die hotspot": 60000,
+      "Ta000m": 60000,
+      "Te000m": 57250,
+      "Te001m": 55500,
+      "Tp000m": 59500,
+      "Tp001m": 55500
+    },
+    "failure": null,
+    "dedicated_gpu_sensor_verified": false,
+    "log": "temperatures.jsonl",
+    "cpu_frequency_caps": []
+  }
+}
