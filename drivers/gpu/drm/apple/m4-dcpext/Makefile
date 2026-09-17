@@ -10,3 +10,6 @@
 # source directory (this file) and every later build recurses.
 obj-m += m4_dcpext.o
 m4_dcpext-y := m4_dcpext_afk.o m4_dcpext_dptx.o m4_dcpext_iboot.o m4_dcpext_edid.o m4_dcpext_modes.o m4_dcpext_connector.o m4_dcpext_rpc.o m4_dcpext_native.o m4_dcpext_kms.o
+obj-m += m4_dcpext_desktop.o
+m4_dcpext_desktop-y := runtime/m4_dcpext_desktop_main.o runtime/dcpext_session.o runtime/dcpext_native_query.o $(m4_dcpext-y)
+ccflags-y += -I$(src) -I$(src)/../../../../phy/apple -I$(src)/../../../../mux -I$(src)/../../../../usb/typec/tipd
