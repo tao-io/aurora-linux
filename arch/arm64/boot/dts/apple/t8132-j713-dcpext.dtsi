@@ -134,6 +134,25 @@
 	};
 };
 
+/* First desktop support adopts the firmware-powered domains without changing
+ * PMGR state or enabling resets. Runtime power saving and sleep are TODOs.
+ */
+&ps_dispext0_sys {
+	apple,inherited-on;
+};
+
+&ps_dispext0_fe {
+	apple,inherited-on;
+};
+
+&ps_dispext0_cpu {
+	apple,inherited-on;
+};
+
+&ps_atc1_common {
+	apple,inherited-on;
+};
+
 /* ATC PHY1 gains the qualified core slice of ADT reg[2]. The full 0x58000
  * aperture also contains the separately owned crossbar at +0x4c000; claiming
  * that full resource in both platform drivers would make the second probe
