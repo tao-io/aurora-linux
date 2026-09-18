@@ -60,6 +60,17 @@ struct SubmitSummary {
     gpu_ns: [u64; 2],
     render_clear: [u64; 3],
     render_stage_ns: [i64; 3],
+    geometry: [RenderSummary; 16],
+    geometry_overflow: u64,
+}
+#[derive(Clone, Copy, Default)]
+struct RenderSummary {
+    key: [u32; 3],
+    count: u64,
+    preparation_ns: u64,
+    active_ns: u64,
+    fragment_ns: u64,
+    max_fragment_ns: u64,
 }
 impl SubmitSummary {
     fn record(&mut self, render: bool, preparation: i64, active: i64, gpu: u64) {
@@ -466,6 +477,18 @@ impl Runtime {
                 inner.summary.record(matches!(&active.work, Work::Render(_)),
                     active.preparation_ns, active_ns, gpu_ns);
                 if let Work::Render(r) = &active.work {
+                    let key = r.profiling_key();
+                    if let Some(g) = inner.summary.geometry.iter_mut().find(|g| g.count == 0 || g.key == key) {
+                        g.key = key;
+                        g.count += 1;
+                        g.preparation_ns += active.preparation_ns.max(0) as u64;
+                        g.active_ns += active_ns.max(0) as u64;
+                        let ns = render_stage_ns[2].max(0) as u64;
+                        g.fragment_ns += ns;
+                        g.max_fragment_ns = g.max_fragment_ns.max(ns);
+                    } else {
+                        inner.summary.geometry_overflow += 1;
+                    }
                     for (sum, value) in inner.summary.render_stage_ns.iter_mut().zip(render_stage_ns) {
                         *sum += value;
                     }
@@ -530,6 +553,14 @@ impl Runtime {
                             s.active_ns[0], s.active_ns[1], s.gpu_ns[0], s.gpu_ns[1],
                             s.render_clear[0], s.render_clear[1], s.render_clear[2],
                             s.render_stage_ns[0], s.render_stage_ns[1], s.render_stage_ns[2]);
+                        dev_info!(inner.drm.as_ref(), "G16G: completion wait totals monotonic_ns={} messages={} waits={} late={} timeouts={} geometry_overflow={}\n",
+                            now, inner.state.event_messages.load(core::sync::atomic::Ordering::Acquire),
+                            inner.waits, inner.late_retirements, inner.wait_timeouts, s.geometry_overflow);
+                        for g in s.geometry.iter().filter(|g| g.count != 0) {
+                            dev_info!(inner.drm.as_ref(), "G16G: render geometry summary monotonic_ns={} asid={} width={} height={} commands={} prepare_ns={} active_ns={} fragment_ns={} max_fragment_ns={}\n",
+                                now, g.key[0], g.key[1], g.key[2], g.count,
+                                g.preparation_ns, g.active_ns, g.fragment_ns, g.max_fragment_ns);
+                        }
                         inner.summary = SubmitSummary { since_ns: now, ..Default::default() };
                     }
                 }

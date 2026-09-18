@@ -46,6 +46,10 @@ pub(crate) struct Render {
     pub(crate) clear_metrics: [u64; 3],
 }
 impl Render {
+    pub(crate) fn profiling_key(&self) -> [u32; 3] {
+        [self.binding.slot(), self.layout[0], self.layout[1]]
+    }
+
     #[cfg(CONFIG_DEV_COREDUMP)]
     pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
         // Retained pass-owned state only. In particular, partial tiling can

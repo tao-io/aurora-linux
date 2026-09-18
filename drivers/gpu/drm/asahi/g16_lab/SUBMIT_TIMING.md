@@ -88,3 +88,11 @@ retained 19.063 s with 2715 renders and 3533 computes. Render GPU spans totaled
 About 96% of that span was fragment execution; mean interstage gap was 84 us.
 This directed the following optimizations toward fragment executables rather
 than removing synchronization between tiling and fragments.
+
+The summary also retains up to 16 ASID/render-size buckets per interval, with
+count, preparation, active and fragment time plus maximum fragment duration.
+Additional geometries increment an explicit overflow counter rather than being
+silently assigned to another bucket. Completion messages, snapshots, late
+retirements and fallback-wait timeouts are cumulative counters; take deltas
+across intervals. Collection remains behind SubmitSummary and reports after
+proven packet completion, without changing admission, waits or retirement.
