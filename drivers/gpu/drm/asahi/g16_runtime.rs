@@ -339,6 +339,9 @@ impl Runtime {
         }
         inner.user_generation = generation;
         inner.device.check_pstate()?;
+        // Allocation must precede publication: failure after the doorbell
+        // cannot be allowed to drop DMA backing still owned by firmware.
+        inner.inflight.reserve(1, GFP_KERNEL)?;
         // Retain all DMA backing before the first shared publication, including
         // failure paths that cannot prove whether a mailbox doorbell arrived.
         let mut active = Active { packet, work, index, queue_next:[0;3],pipe_next:[0;3],
@@ -423,6 +426,10 @@ impl Runtime {
             let shared = inner.compute_queue.completion_stamp()?;
             if shared.wrapping_sub(active.work.stamp()) as i32 >= 0 {
                 status[1] = active.work.stamp() as u64;
+            }
+            let firmware = inner.compute_queue.firmware_stamp()?;
+            if firmware.wrapping_sub(active.work.stamp()) as i32 >= 0 {
+                status[0] = active.work.stamp() as u64;
             }
         }
         let engine = match pipe_index { 0=>&mut inner.queue,1=>&mut inner.fragment_queue,_=>&mut inner.compute_queue };

@@ -44,6 +44,10 @@ pub(crate) struct Notification {
     pub threshold: u64,
     /// Shared user stamp address for every command of the queue.
     pub stamp: u64,
+    /// Firmware retirement stamp shared by this queue, as in WorkQueue/Event.
+    pub fw_stamp: u64,
+    /// Queue-local sequence before this command's notification is submitted.
+    pub event_seq: u64,
 }
 
 #[derive(Clone, Copy)]
@@ -122,12 +126,13 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     u64_at(out, 0x7c8, 0x154024201);
     u32_at(out, 0x7e8, u32::MAX);
     u64_at(out, 0x800, notification.map_or(c + 0xee4, |n| n.stamp));
-    u64_at(out, 0x808, c + 0xee0);
+    u64_at(out, 0x808, notification.map_or(c + 0xee0, |n| n.fw_stamp));
     if a.event_slot >= 4 { return Err(()); }
     u32_at(out, 0x810, a.stamp);
     u32_at(out, 0x814, SLOT as u32);
     u32_at(out, 0x818, a.event_slot as u32);
     u32_at(out, 0x820, 1);
+    u32_at(out, 0x824, notification.map_or(0, |n| n.event_seq as u32));
     u64_at(out, 0x834, c + 0x8c0);
     u64_at(out, 0x83c, c + 0x8c8);
     u64_at(out, 0x86a, uma);
@@ -145,6 +150,7 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     // Context-control flag, separate from RunCompute ASID generation.
     u32_at(out, 0x930, 1);
     u32_at(out, 0x934, EVENT_GENERATION);
+    u64_at(out, 0x938, notification.map_or(0, |n| n.event_seq));
     u32_at(out, 0x950, 1);
     u64_at(out, 0xa78, a.auxiliary_gpu);
     for (i, delta) in [0, 0xf400, 0x1e800, 0x1f000].iter().enumerate() {
@@ -161,7 +167,7 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     u32_at(out, 0xb08, 1); // compute WFI
     u32_at(out, 0xb58, 0xc);
     for (off, value) in [(4, a.stats), (12, a.work_queue), (24, c + 0x76c),
-        (36, 1), (44, c + 0xee0), (0x5c, sku + 0x160),
+        (36, 1), (44, notification.map_or(c + 0xee0, |n| n.fw_stamp)), (0x5c, sku + 0x160),
         (0x69, c + 0x8ac), (0x71, c + 0x88c)] {
         u64_at(out, 0xb58 + off, value);
     }
@@ -218,7 +224,8 @@ mod tests {
     #[test]
     fn engine_state_queue_and_notifier_are_distinct() {
         let a = addresses();
-        let n = Notification { address: 0xfffffc2000070000, threshold: 0xfffffc2000074000, stamp: 0xfffffc2000078000 };
+        let n = Notification { address: 0xfffffc2000070000, threshold: 0xfffffc2000074000,
+            stamp: 0xfffffc2000078000, fw_stamp: 0xfffffc200007c000, event_seq: 0x100000003 };
         let mut bytes = [0; SIZE];
         encode_dispatch(&mut bytes, a, 16384, 512,
             Control { base: a.cdm_gpu, end: a.cdm_gpu + 0x30, usc_base: 0 }, Some(n)).unwrap();
@@ -227,6 +234,11 @@ mod tests {
         for off in [0x924, 0xad8, 0xb28, 0xb64] { assert_eq!(ptr(off), a.work_queue); }
         assert_eq!(ptr(0x10), n.address);
         assert_eq!(ptr(0xc00), n.threshold);
+        assert_eq!(ptr(0x800), n.stamp);
+        assert_eq!(ptr(0x808), n.fw_stamp);
+        assert_eq!(ptr(0xb84), n.fw_stamp);
+        assert_eq!(ptr(0x938), n.event_seq);
+        assert_eq!(&bytes[0x824..0x828], &3u32.to_le_bytes());
     }
     #[test]
     fn dispatch_and_finish_carry_the_same_event_value() {

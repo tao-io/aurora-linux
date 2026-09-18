@@ -104,11 +104,14 @@ impl Queue {
 
     pub(crate) fn notification(&self) -> crate::g16_compute::Notification {
         crate::g16_compute::Notification { address: self.notification.va(), threshold: self.threshold.va(),
-            stamp: self.completion.va() }
+            stamp: self.completion.va(), fw_stamp: self.stamp.va(), event_seq: self.submitted }
     }
     /// Latest user completion stamp the firmware stored for this queue.
     pub(crate) fn completion_stamp(&mut self) -> Result<u32> {
         self.completion.read_u32(0)
+    }
+    pub(crate) fn firmware_stamp(&mut self) -> Result<u32> {
+        self.stamp.read_u32(0)
     }
     pub(crate) fn set_render_context(&mut self, context: u32) -> Result {
         if context >= 64 { return Err(EINVAL); }
