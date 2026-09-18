@@ -57,6 +57,9 @@ pub(crate) enum DebugFlags {
     // Host submission/completion timestamps without verbose firmware tracing.
     SubmitTiming = 23,
 
+    // One aggregate per second, emitted only after exact GPU retirement.
+    SubmitSummary = 24,
+
     // 32-35: Allocator debugging
     FillAllocations = 32,
     DebugAllocations = 33,

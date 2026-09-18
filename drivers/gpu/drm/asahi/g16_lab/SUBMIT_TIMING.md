@@ -40,3 +40,16 @@ after reboot, no fault. Gallium invisible HUD measured about 7.5–7.9 FPS, the
 same range as before. This is a logging cleanup, not a demonstrated FPS gain.
 Per-command `gpu-command-timings.py` analysis now requires SubmitTiming at load;
 use application FPS logging for ordinary measurements without that overhead.
+
+`debug_flags=16777216` (bit 24, SubmitSummary) retains exact-retirement evidence
+without per-command diagnostics. At most once per second, after signalling a
+completed packet, it emits the recognizable `userspace GPU job ... retired`
+record with an explicit CLOCK_MONOTONIC timestamp and the interval's render and
+compute command counts, preparation times, active times and GPU timestamp spans.
+These are sums across all clients. Active time includes observation latency;
+render GPU spans include the TA-to-fragment interval. Neither is a utilization
+counter. The first interval also includes idle time since runtime initialization.
+
+The existing experiment watchdog accepts only these fresh, increasing exact
+retirements; summaries do not introduce idle keepalives or relax thermal gates.
+This flag remains opt-in. Hardware validation is pending.

@@ -46,6 +46,27 @@ struct Inner {
     waits: u64,
     late_retirements: u64,
     wait_timeouts: u64,
+    summary: SubmitSummary,
+}
+
+/// Low-volume profiling uses the same proven retirements as fence signalling.
+/// Durations cover serialized commands; active time includes host observation.
+#[derive(Default)]
+struct SubmitSummary {
+    since_ns: i64,
+    commands: [u64; 2],
+    preparation_ns: [u64; 2],
+    active_ns: [u64; 2],
+    gpu_ns: [u64; 2],
+}
+impl SubmitSummary {
+    fn record(&mut self, render: bool, preparation: i64, active: i64, gpu: u64) {
+        let i = usize::from(!render);
+        self.commands[i] += 1;
+        self.preparation_ns[i] += preparation.max(0) as u64;
+        self.active_ns[i] += active.max(0) as u64;
+        self.gpu_ns[i] += gpu;
+    }
 }
 
 /// Compute commands the compute queue may hold at once, all from one client
@@ -432,6 +453,10 @@ impl Runtime {
             // the shared 24 MHz counter, for the retained progress record.
             // GPU execution time from the command's own 24 MHz timestamps.
             let gpu_ns = gpu_span[1].wrapping_sub(gpu_span[0]).saturating_mul(1000) / 24;
+            if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
+                inner.summary.record(matches!(&active.work, Work::Render(_)),
+                    active.preparation_ns, active_ns, gpu_ns);
+            }
             let cleanup = kernel::time::Instant::<kernel::time::Monotonic>::now();
             inner.gpu_pending = !inner.inflight.is_empty();
             let packet = active.packet.clone();
@@ -476,6 +501,19 @@ impl Runtime {
                 // follow the firmware's cache flush. No idle-time delay is
                 // needed to make the command's writes visible to the CPU.
                 packet.finish(Ok(()));
+                if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
+                    let now = <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get();
+                    if now - inner.summary.since_ns >= 1_000_000_000 {
+                        let s = &inner.summary;
+                        // Same recognizable retirement record used by the
+                        // watchdog guard, followed by aggregate measurements.
+                        dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} summary_span_ns={} render_commands={} compute_commands={} render_prepare_ns={} compute_prepare_ns={} render_active_ns={} compute_active_ns={} render_gpu_ns={} compute_gpu_ns={}\n",
+                            packet.id, index, now, now - s.since_ns,
+                            s.commands[0], s.commands[1], s.preparation_ns[0], s.preparation_ns[1],
+                            s.active_ns[0], s.active_ns[1], s.gpu_ns[0], s.gpu_ns[1]);
+                        inner.summary = SubmitSummary { since_ns: now, ..Default::default() };
+                    }
+                }
             }
             self.pump()?;
             return Ok(true);
@@ -541,7 +579,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0 }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {
