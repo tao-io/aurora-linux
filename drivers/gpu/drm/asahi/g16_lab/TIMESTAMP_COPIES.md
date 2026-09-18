@@ -20,7 +20,16 @@ Host check: tools/test-g16-timestamp-copy-abi.py compiles the production parser
 section and checks old payloads, all eight destinations, and unknown nonzero
 tail rejection. The complete g17_uapi standalone test target currently fails in
 unrelated G17 module imports; this narrow check avoids those modules.
-Kernel module and ARM64/x86 Mesa builds passed. Hardware qualification pending.
+Kernel module and ARM64/x86 Mesa builds passed. Guarded M4 qualification:
+- `20260918T210254160016Z-factorio-retirement-copy-queries`: sixteen rounds
+  of twelve GL timestamps, eight retirement copies and three fallback shader
+  copies per render confirmed in the command log; all query readbacks agree.
+- `20260918T210805216428Z-factorio-retirement-copies-frame`: retained Factorio
+  frame has zero differing pixels.
+- `20260918T210320175462Z-factorio-retirement-copies-menu`: 11.902 FPS
+  (11.51–12.37), peak 62.75 C. Last 19.148 s has 2079 compute commands versus
+  3061 in the earlier compression run. Scene variation prevents a controlled
+  FPS attribution. 60 FPS remains unresolved.
 Mesa use is opt-in via HK_M4_TIMESTAMP_COPIES=true and requires feature bit 4.
 
 TODO: measure Factorio FPS, validate reused queries and GPU/CPU readback, and
