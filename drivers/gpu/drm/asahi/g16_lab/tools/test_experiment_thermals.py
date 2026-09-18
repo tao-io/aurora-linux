@@ -41,8 +41,8 @@ class ThermalsTest(unittest.TestCase):
         self.assertFalse(self.stops)
 
     def test_startup_hot_or_missing_sensor_refuses(self):
-        (self.pmp / 'temp1_input').write_text('65000')
-        with self.assertRaisesRegex(RuntimeError, 'cool'):
+        (self.pmp / 'temp1_input').write_text('95000')
+        with self.assertRaisesRegex(RuntimeError, 'cutoff'):
             self.guard.start()
         self.assertIsNone(self.guard.thread)
         (self.pmp / 'temp1_input').unlink()
@@ -53,7 +53,7 @@ class ThermalsTest(unittest.TestCase):
         self.guard.discover()
         for i in range(1, 7):
             path = self.pmp / f'temp{i}_input'
-            path.write_text('75000')
+            path.write_text('95000')
             with self.assertRaisesRegex(RuntimeError, 'cutoff'):
                 self.guard.sample()
             path.write_text('57000')
@@ -71,7 +71,7 @@ class ThermalsTest(unittest.TestCase):
     def test_monitor_latches_hot_reading_and_stops(self):
         self.guard.interval_seconds = 0.01
         self.guard.start()
-        (self.pmp / 'temp5_input').write_text('76000')
+        (self.pmp / 'temp5_input').write_text('96000')
         self.guard.thread.join(timeout=1)
         self.assertEqual(self.stops, [True])
         self.assertIsNotNone(self.guard.failure)
@@ -95,6 +95,25 @@ class ThermalsTest(unittest.TestCase):
             self.guard.trip(RuntimeError('sensor failure'))
         self.assertEqual(self.stops, [True])
         self.assertIsNotNone(self.guard.failure)
+
+    def test_full_clocks_do_not_latch_a_thermal_ceiling(self):
+        policy = self.root / 'devices/system/cpu/cpufreq/policy0'
+        policy.mkdir(parents=True)
+        (policy / 'scaling_available_frequencies').write_text('900000 1800000 4000000')
+        (policy / 'scaling_min_freq').write_text('900000')
+        (policy / 'scaling_cur_freq').write_text('900000')
+        maximum = policy / 'scaling_max_freq'
+        maximum.write_text('900000')
+        before = maximum.stat().st_mtime_ns
+        self.guard.cap_cpu_frequency(4104000)
+        self.assertEqual(maximum.stat().st_mtime_ns, before)
+        self.assertEqual(maximum.read_text(), '900000')
+        self.assertFalse(self.guard.cpu_frequency_caps[0]['cap_applied'])
+        self.guard.start()
+        # Thermal QoS can recover without this being an overridden test cap.
+        maximum.write_text('4000000')
+        self.guard.check()
+        self.assertFalse(self.stops)
 
     def test_cpu_cap_never_raises_existing_policy_and_detects_override(self):
         policies = self.root / 'devices/system/cpu/cpufreq'

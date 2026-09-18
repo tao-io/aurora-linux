@@ -114,6 +114,18 @@ class ExperimentThermals:
             minimum = policy / 'scaling_min_freq'
             old_max, old_min = int(maximum.read_text()), int(minimum.read_text())
             available = [int(f) for f in (policy / 'scaling_available_frequencies').read_text().split()]
+            if available and requested_khz >= max(available):
+                # scaling_max_freq includes the temporary thermal QoS ceiling.
+                # Writing it back would turn throttling into a persistent user
+                # cap. A full-frequency run needs no additional cap: hardware
+                # already bounds the clock, and lower user limits stay intact.
+                self.cpu_frequency_caps.append({
+                    'policy': policy.name, 'old_min_khz': old_min,
+                    'old_max_khz': old_max, 'max_khz': max(available),
+                    'effective_max_khz': old_max, 'cap_applied': False})
+                (self.result / 'cpu-frequency-caps.json').write_text(
+                    json.dumps(self.cpu_frequency_caps, indent=2) + '\n')
+                continue
             candidates = [f for f in available if f <= min(requested_khz, old_max)]
             if not candidates:
                 raise RuntimeError(f'no supported CPU frequency below requested cap: {policy}')
