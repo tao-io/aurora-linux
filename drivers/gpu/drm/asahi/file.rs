@@ -1137,10 +1137,14 @@ impl File {
             return Err(EINVAL);
         }
 
-        // TODO: Allow with CAP_SYS_NICE
         if data.priority >= uapi::drm_asahi_priority_DRM_ASAHI_PRIORITY_HIGH {
-            cls_pr_debug!(Errors, "queue_create: Invalid priority\n");
-            return Err(EINVAL);
+            // Only the M4 shared scheduler currently qualifies these levels.
+            // Preserve the permission boundary even for direct DRM clients.
+            // SAFETY: capable inspects the calling task and takes no pointers.
+            if !device.gpu()?.supports_scheduled_queues() ||
+                !unsafe { kernel::bindings::capable(kernel::bindings::CAP_SYS_NICE as _) } {
+                return Err(EPERM);
+            }
         }
 
         let queues_xa = file.inner().queues();

@@ -111,9 +111,28 @@ impl sched::JobImpl for Job {
         Ok(Some(Fence::from_fence(&job.packet.completion)))
     }
     fn timed_out(job: &mut sched::Job<Self>) -> sched::Status {
-        if let Some(runtime) = Option::as_mut(&mut *job.shared.lock()) {
-            runtime.fail_job(job.packet.id, ETIMEDOUT);
+        let mut guard = job.shared.lock();
+        let Some(runtime) = Option::as_mut(&mut *guard) else {
+            return sched::Status::NoDevice;
+        };
+        // The scheduler measures the whole packet, including admission wait
+        // and all of its commands. Its callback can also wait behind the
+        // completion worker's runtime lock. Recheck exact hardware retirement
+        // and the active command's deadline before declaring the GPU lost.
+        // In particular, a successor just published by that worker has not
+        // inherited the predecessor's elapsed execution time.
+        runtime.service_job();
+        if runtime.healthy() {
+            dev_info!(job.dev.as_ref(), "G16G: scheduler deadline rechecked, GPU healthy, job {} retained\n", job.packet.id);
+            drop(guard);
+            driver::queue_g16_completion_worker(job.dev.clone());
+            // NO_HANG puts the packet back on the scheduler pending list,
+            // including when it completed while this callback was waiting.
+            return sched::Status::NoHang;
         }
+        // service_job retains DMA owners and captures a genuine hardware
+        // fault. Also finish this packet if it was still waiting for admission.
+        runtime.fail_job(job.packet.id, ETIMEDOUT);
         sched::Status::NoDevice
     }
     fn cancel(job: &mut sched::Job<Self>) {
@@ -160,8 +179,10 @@ impl Queue {
         g17_uapi::QueueUscWindow { base: usc, user_start: 0x4000,
             user_end: crate::g16_drm::USER_TOP }.validate().map_err(|_| EINVAL)?;
         let priority = match priority {
-            0 => sched::Priority::Low, 1 => sched::Priority::Normal,
-            2 => sched::Priority::High, 3 => sched::Priority::Kernel,
+            // file::queue_create translates the UAPI into firmware order:
+            // 0 is realtime, 3 is low. DRM scheduler order is the reverse.
+            0 => sched::Priority::Kernel, 1 => sched::Priority::High,
+            2 => sched::Priority::Normal, 3 => sched::Priority::Low,
             _ => return Err(EINVAL),
         };
         Ok(Self { entity: sched::Entity::new(&scheduler, priority)?, _scheduler: scheduler,
@@ -174,7 +195,6 @@ impl Queue {
 impl queue::Queue for Queue {
     fn submit(&mut self, id: u64, mut syncs: KVec<file::SyncItem>, in_sync_count: usize,
         raw: &[u8], objects: Pin<&xarray::XArray<KBox<file::Object>>>) -> Result {
-        let vm_job = self.vm.retain_t8140_job()?;
         let mut parser = g17_uapi::UapiCommandParser::new(raw);
         let mut commands = KVec::new();
         while let Some(command) = parser.next_hardware().map_err(|_| EINVAL)? {
@@ -212,18 +232,27 @@ impl queue::Queue for Queue {
             }, GFP_KERNEL)?;
         }
         parser.finish().map_err(|_| EINVAL)?;
-        let packet = Arc::new(Packet { id, vm: self.vm.clone(), commands,
-            render_cache: self.render_cache.clone(),
-            compute_cache: self.compute_cache.clone(),
-            finish_claimed: AtomicBool::new(false),
-            completion: self.fences.new_fence(0, Completion)?.into(), _vm_job: vm_job }, GFP_KERNEL)?;
-        let mut job = self.entity.new_job(1, Job { shared: self.shared.clone(), packet, dev: self.dev.clone() })?;
-        for sync in syncs.drain(0..in_sync_count) {
-            if let Some(fence) = sync.fence { job.add_dependency(fence)?; }
+        // Each independently retired hardware command returns the scheduler
+        // credit, allowing another client (particularly the compositor) to
+        // run between commands of a large submission. Keep TA+fragment as one
+        // render command: partial renders require both stages to be live.
+        let mut jobs = KVec::with_capacity(commands.len(), GFP_KERNEL)?;
+        for command in commands {
+            let mut single = KVec::with_capacity(1, GFP_KERNEL)?;
+            single.push(command, GFP_KERNEL)?;
+            let packet = Arc::new(Packet { id, vm: self.vm.clone(), commands: single,
+                render_cache: self.render_cache.clone(),
+                compute_cache: self.compute_cache.clone(),
+                finish_claimed: AtomicBool::new(false),
+                completion: self.fences.new_fence(0, Completion)?.into(),
+                _vm_job: self.vm.retain_t8140_job()? }, GFP_KERNEL)?;
+            jobs.push(Job { shared: self.shared.clone(), packet, dev: self.dev.clone() }, GFP_KERNEL)?;
         }
-        let mut job = job.arm();
-        let finished = job.fences().finished();
-        job.push();
+        let mut dependencies = KVec::with_capacity(in_sync_count, GFP_KERNEL)?;
+        for sync in syncs.drain(0..in_sync_count) {
+            if let Some(fence) = sync.fence { dependencies.push(fence, GFP_KERNEL)?; }
+        }
+        let finished = self.entity.submit_batch(1, jobs, dependencies)?;
         for mut sync in syncs {
             if let Some(chain) = sync.chain_fence.take() {
                 sync.syncobj.add_point(chain, &finished, sync.timeline_value);
