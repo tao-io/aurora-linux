@@ -31,7 +31,7 @@ use g17_submission::{
 };
 
 pub(crate) const UAPI_COMMAND_HEADER_SIZE: usize = 8;
-pub(crate) const UAPI_RENDER_SIZE: usize = 256;
+pub(crate) const UAPI_RENDER_SIZE: usize = 320;
 pub(crate) const UAPI_COMPUTE_SIZE: usize = 64;
 pub(crate) const UAPI_ATTACHMENT_SIZE: usize = 24;
 pub(crate) const UAPI_MAX_ATTACHMENTS: usize = 16;
@@ -350,6 +350,7 @@ pub(crate) struct UapiRenderCommand {
     pub(crate) stencil_clear: u32,
     pub(crate) vertex_timestamps: UapiTimestamps,
     pub(crate) fragment_timestamps: UapiTimestamps,
+    pub(crate) fragment_end_copies: [UapiTimestamp; 8],
 }
 
 impl UapiRenderCommand {
@@ -388,6 +389,10 @@ impl UapiRenderCommand {
             stencil_clear: get_u32(&raw, 0xcc),
             vertex_timestamps: timestamps(&raw, 0xd0),
             fragment_timestamps: timestamps(&raw, 0xe0),
+            fragment_end_copies: core::array::from_fn(|i| UapiTimestamp {
+                handle: get_u32(&raw, 0x100 + i * 8),
+                offset: get_u32(&raw, 0x104 + i * 8),
+            }),
         })
     }
 }
@@ -734,6 +739,10 @@ pub(crate) fn translate_render_command<A: GpuAddressSpace>(
     address_space: &A,
     internal: RenderInternalState,
 ) -> Result<TranslatedRenderCommand, UapiTranslateError> {
+    // Only the M4 retirement path implements these optional copies.
+    if command.fragment_end_copies.iter().any(|t| t.handle != 0 || t.offset != 0) {
+        return Err(UapiTranslateError::FlagsUnsupported);
+    }
     if command.flags & !RENDER_FLAGS != 0 {
         return Err(UapiTranslateError::FlagsUnknownBits);
     }
@@ -1601,6 +1610,19 @@ mod tests {
             translate_compute_command(payload, short, window(), &TestAddressSpace),
             Err(UapiTranslateError::Add3ProofAttachments)
         );
+    }
+
+    #[test]
+    fn render_timestamp_copy_tail_is_optional_and_bounded() {
+        let old = UapiRenderCommand::parse(&[0; 256]).unwrap();
+        assert!(old.fragment_end_copies.iter().all(|t| t.handle == 0 && t.offset == 0));
+        let mut raw = [0; UAPI_RENDER_SIZE + 8];
+        raw[0x138..0x13c].copy_from_slice(&7u32.to_le_bytes());
+        raw[0x13c..0x140].copy_from_slice(&24u32.to_le_bytes());
+        let parsed = UapiRenderCommand::parse(&raw).unwrap();
+        assert_eq!(parsed.fragment_end_copies[7], UapiTimestamp { handle: 7, offset: 24 });
+        raw[UAPI_RENDER_SIZE] = 1;
+        assert_eq!(UapiRenderCommand::parse(&raw), Err(UapiTranslateError::PayloadTail));
     }
 
     #[test]

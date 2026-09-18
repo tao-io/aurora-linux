@@ -42,8 +42,30 @@ pub(crate) struct Command {
     pub(crate) payload: Payload,
     pub(crate) attachments: [crate::g16_attachments::Attachments; 2],
     timestamps: [Option<Destination>; 4],
+    fragment_end_copies: [Option<Destination>; 8],
 }
 impl Command {
+    /// The source is a firmware-written GPU timestamp. Preserve it bit for bit;
+    /// this runs only after exact render retirement, before fence publication.
+    pub(crate) fn copy_fragment_timestamp(&self) -> Result {
+        if self.fragment_end_copies.iter().all(Option::is_none) { return Ok(()); }
+        let source = self.timestamps[3].as_ref().ok_or(EINVAL)?;
+        let value = source.mapping.with_cpu_bytes(|raw| {
+            // SAFETY: resolve checked the aligned eight-byte subrange. The
+            // firmware has retired, and the retained mapping owns these bytes.
+            Ok(unsafe { raw.as_ptr().add(source.offset).cast::<u64>().read_volatile() })
+        })?;
+        for target in self.fragment_end_copies.iter().flatten() {
+            target.mapping.with_cpu_bytes(|raw| {
+                // SAFETY: resolve checked bounds/alignment. A single aligned
+                // store also keeps concurrent query-availability reads atomic.
+                unsafe { raw.as_mut_ptr().add(target.offset).cast::<u64>().write_volatile(value) };
+                Ok(())
+            })?;
+        }
+        crate::g16_memory::publish();
+        Ok(())
+    }
     pub(crate) fn timestamp_addresses(&self) -> [u64; 2] {
         core::array::from_fn(|i| self.timestamps[i].as_ref().map_or(0, Destination::firmware_address))
     }
@@ -213,9 +235,17 @@ impl queue::Queue for Queue {
                 validate_render(payload, self.usc, &AddressSpace(&self.vm))?;
                 g17_uapi::validate_attachments(&AddressSpace(&self.vm), &vertex_attachments).map_err(|_| EINVAL)?;
                 g17_uapi::validate_attachments(&AddressSpace(&self.vm), &fragment_attachments).map_err(|_| EINVAL)?;
+                let mut copies = core::array::from_fn(|_| None);
+                for (target, request) in copies.iter_mut().zip(payload.fragment_end_copies) {
+                    *target = Destination::resolve(objects, request)?;
+                }
+                if copies.iter().any(Option::is_some) && payload.fragment_timestamps.end.handle == 0 {
+                    return Err(EINVAL);
+                }
                 commands.push(Command { payload: Payload::Render { command:payload, usc:self.usc },
                     attachments: [encode_attachments(&self.vm, &vertex_attachments)?,
                                   encode_attachments(&self.vm, &fragment_attachments)?],
+                    fragment_end_copies: copies,
                     timestamps:[Destination::resolve(objects, payload.vertex_timestamps.start)?,
                         Destination::resolve(objects, payload.vertex_timestamps.end)?,
                         Destination::resolve(objects, payload.fragment_timestamps.start)?,
@@ -238,6 +268,7 @@ impl queue::Queue for Queue {
                     end: cmd.control_stream_end, usc_base: self.usc }),
                 attachments: [encode_attachments(&self.vm, &cmd.attachments)?,
                               crate::g16_attachments::Attachments::EMPTY],
+                fragment_end_copies: core::array::from_fn(|_| None),
                 timestamps: [Destination::resolve(objects, cmd.timestamps.start)?,
                     Destination::resolve(objects, cmd.timestamps.end)?, None, None],
             }, GFP_KERNEL)?;

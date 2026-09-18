@@ -261,6 +261,11 @@ enum drm_asahi_feature {
 	 * alone does not imply the hardware QUEUE_LIMITS query is available.
 	 */
 	DRM_ASAHI_FEATURE_SCHEDULED_QUEUES = (1UL) << 3,
+
+	/** @DRM_ASAHI_FEATURE_RENDER_TIMESTAMP_COPIES: Render retirement can copy
+	 * its fragment-end timestamp to additional bound timestamp destinations.
+	 */
+	DRM_ASAHI_FEATURE_RENDER_TIMESTAMP_COPIES = (1UL) << 4,
 };
 
 #define DRM_ASAHI_PARAM_GROUP_VM_STATUS 1
@@ -1221,6 +1226,14 @@ struct drm_asahi_cmd_render {
 
 	/** @bg_partial_rsrc_spec_hi: High dword of @partial_bg.rsrc_spec */
 	__u32 bg_partial_rsrc_spec_hi;
+
+	/** @ts_frag_end_copies: Optional copies of ts_frag.end, published after
+	 * exact render retirement and before dependent commands or fence signals.
+	 * Requires RENDER_TIMESTAMP_COPIES and a nonzero ts_frag.end handle.
+	 * Zero handles disable individual entries. These contain the identical
+	 * GPU timestamp value, not a host-clock sample.
+	 */
+	struct drm_asahi_timestamp ts_frag_end_copies[8];
 };
 
 /**

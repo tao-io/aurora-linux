@@ -440,6 +440,7 @@ impl Runtime {
                     // adds at most one call; the fragment path cannot recurse.
                     return self.poll_job();
                 }
+                active.packet.commands.get(active.index).ok_or(EINVAL)?.copy_fragment_timestamp()?;
                 // Preserve both stages' GPU timings once per completed pass.
                 let timestamps = render.timestamps()?;
                 gpu_span = [timestamps[0][0], timestamps[1][1]];
