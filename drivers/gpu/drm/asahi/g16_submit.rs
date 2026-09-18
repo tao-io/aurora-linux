@@ -3,7 +3,7 @@
 use kernel::{c_str, dma_fence::*, drm::sched, new_mutex, prelude::*,
     sync::{Arc, Mutex}, xarray};
 use crate::{driver, file, g16_drm::Shared, g17_uapi, mmu, queue};
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicI32, Ordering};
 
 #[derive(Default)]
 pub(crate) struct Completion;
@@ -70,6 +70,9 @@ pub(crate) struct Packet {
     pub(crate) compute_cache: ComputeCache,
     pub(crate) completion: UserFence<Completion>,
     finish_claimed: AtomicBool,
+    // First error in the original userspace submission. Commands that have
+    // not run must fail too, even for an allocation error with a healthy GPU.
+    failure: Arc<AtomicI32>,
     _vm_job: mmu::T8140VmJobGuard,
 }
 impl Packet {
@@ -82,6 +85,8 @@ impl Packet {
             return;
         }
         if let Err(error) = result {
+            let _ = self.failure.compare_exchange(0, error.to_errno(),
+                Ordering::Relaxed, Ordering::Relaxed);
             self.vm.status().record(error.to_errno());
             self.completion.set_error(error);
         }
@@ -99,6 +104,12 @@ impl Packet {
 pub(crate) struct Job { shared: Shared, packet: Arc<Packet>, dev: driver::AsahiDevRef }
 impl sched::JobImpl for Job {
     fn run(job: &mut sched::Job<Self>) -> Result<Option<Fence>> {
+        let failure = job.packet.failure.load(Ordering::Relaxed);
+        if failure != 0 {
+            let error = Error::from_errno(failure);
+            job.packet.finish(Err(error));
+            return Err(error);
+        }
         let mut guard = job.shared.lock();
         let result = Option::as_mut(&mut *guard).ok_or(ENODEV)
             .and_then(|runtime| runtime.publish(job.packet.clone()));
@@ -237,6 +248,7 @@ impl queue::Queue for Queue {
         // run between commands of a large submission. Keep TA+fragment as one
         // render command: partial renders require both stages to be live.
         let mut jobs = KVec::with_capacity(commands.len(), GFP_KERNEL)?;
+        let failure = Arc::new(AtomicI32::new(0), GFP_KERNEL)?;
         for command in commands {
             let mut single = KVec::with_capacity(1, GFP_KERNEL)?;
             single.push(command, GFP_KERNEL)?;
@@ -244,6 +256,7 @@ impl queue::Queue for Queue {
                 render_cache: self.render_cache.clone(),
                 compute_cache: self.compute_cache.clone(),
                 finish_claimed: AtomicBool::new(false),
+                failure: failure.clone(),
                 completion: self.fences.new_fence(0, Completion)?.into(),
                 _vm_job: self.vm.retain_t8140_job()? }, GFP_KERNEL)?;
             jobs.push(Job { shared: self.shared.clone(), packet, dev: self.dev.clone() }, GFP_KERNEL)?;
