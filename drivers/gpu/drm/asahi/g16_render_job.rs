@@ -39,6 +39,7 @@ pub(crate) struct Render {
     binding: mmu::VmBind,
     pub(crate) stage: Stage,
     stamp: u32,
+    compute_dependency: bool,
     layout: [u32; 4],
     consumed_pages: usize,
     freelist: KVec<u8>,
@@ -143,7 +144,7 @@ impl Render {
                 preemption:[gpu(0x10000)?,gpu(0x10000)?,gpu(0x4000)?],auxiliary:gpu(0x10000)?,
                 uma:gpu(0x4000)?,private_memory,
                 pool_state:gpu(PRIVATE_QWORDS*8)?,page_list:gpu(0x4000)?,
-                binding:uat.bind(vm)?,stage:Stage::Tiling,stamp,layout,
+                binding:uat.bind(vm)?,stage:Stage::Tiling,stamp,compute_dependency:false,layout,
                 consumed_pages:PRIVATE_PAGES, freelist, page_list_image, clear_metrics:[0; 3],
             }, GFP_KERNEL)?
         };
@@ -159,6 +160,11 @@ impl Render {
         crate::g16_compute::encode_uma(&mut uma,job.pool_state.gpu_va()?,PRIVATE_QWORDS as u32,
             PRIVATE_PAGES as u32,job.page_list.gpu_va()?,job.metadata.va()+0x500,
             crate::g16_compute::UmaEngine::Render).map_err(|_| EINVAL)?;
+        // Compute batches own slots 1..4. A terminal render uses its own
+        // slot, so firmware may prepare it while those pools are retained.
+        uma[8..12].copy_from_slice(&5u32.to_le_bytes());
+        uma[..8].copy_from_slice(&job.uma.va().to_le_bytes());
+        job.compute_dependency = false;
         job.uma.write(0,&uma)?;
         // Native updateSubmitInfo (25G83 TEXT 8a0683c..48) increments the
         // host submission count once per engine. Firmware increments UMA+54
@@ -326,6 +332,18 @@ impl Render {
     pub(crate) fn stamp(&self) -> u32 { self.stamp }
     pub(crate) fn index(&self) -> usize { usize::from(self.stage == Stage::Fragment) }
     pub(crate) fn address(&self) -> u64 { self.commands[self.index()].va() }
+    pub(crate) fn wait_for_compute(&mut self, stamp_address: u64, value: u32) -> Result {
+        let mut barrier = [0; 0x40];
+        wire::render_dependency(&mut barrier, stamp_address, crate::g16_compute::SLOT,
+            value, self.stamp).map_err(|_| EINVAL)?;
+        barrier[0x3c..0x40].copy_from_slice(&1u32.to_le_bytes());
+        self.metadata.write(0x380, &barrier)?;
+        self.compute_dependency = true;
+        Ok(())
+    }
+    pub(crate) fn compute_dependency(&self) -> Option<u64> {
+        self.compute_dependency.then_some(self.metadata.va() + 0x380)
+    }
     pub(crate) fn init_address(&self) -> u64 { self.metadata.va()+0x300 }
     pub(crate) fn fragment_dependency(&self) -> u64 { self.metadata.va()+0x340 }
     pub(crate) fn fragment_address(&self) -> u64 { self.commands[1].va() }

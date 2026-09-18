@@ -293,11 +293,14 @@ impl queue::Queue for Queue {
             // A bounded adjacent compute run shares one scheduler credit.
             // Preserve explicit timestamp boundaries and every render boundary;
             // later jobs still depend on the entire preceding batch's fence.
-            while batch && single.len() < crate::g16_runtime::COMPUTE_DEPTH
-                && commands.peek().map_or(false, &batchable) {
-                if let Some(command) = commands.next() {
-                    single.push(command, GFP_KERNEL)?;
-                }
+            while batch && single.len() < crate::g16_runtime::COMPUTE_DEPTH {
+                let Some(next) = commands.peek() else { break; };
+                let render = matches!(next.payload, Payload::Render { .. });
+                if !render && !batchable(next) { break; }
+                if let Some(command) = commands.next() { single.push(command, GFP_KERNEL)?; }
+                // CPU timestamp fan-out and the parameter-buffer lifetime still
+                // end at render retirement; no follower crosses that boundary.
+                if render { break; }
             }
             let packet = Arc::new(Packet { id, vm: self.vm.clone(), commands: single,
                 render_cache: self.render_cache.clone(),

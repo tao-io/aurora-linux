@@ -47,3 +47,23 @@ measurement follows this checkpoint. Full Vulkan CTS is deferred by request.
 TODO: per-client firmware queues and event-slot allocation; mixed
 render/compute GPU dependencies; private-pool sharing/growth and teardown;
 full priorities/preemption qualification; 60 FPS live Factorio menu; broad CTS.
+
+## Pool reuse and compute-to-render submission
+
+`bc34235d20cb` searches the retired compute cache by hardware slot and VM.
+Live evidence `20260918T234801080551Z-factorio-pool-cache-menu` has 12.591 s
+initialization, 14.50 FPS tail (14.08–14.85), and 0.450 s compute preparation
+in 15.098 s, compared with 4.931 s in 15.069 s before matching cache slots.
+The animated menu scene is not frozen; these FPS runs are observations rather
+than a controlled shader-throughput ratio.
+
+A compute prefix can now include its terminal render in one scheduler packet.
+Render uses private-memory hardware slot 5, separate from compute slots 1..4.
+A firmware dependency precedes InitPB/TA; FS retains its ordinary TA dependency
+and partial-render support. No following command crosses the render's CPU
+query-timestamp-copy boundary. This keeps the existing parameter slot lifetime.
+
+`20260918T235150223978Z-factorio-mixed-batch-frame` passes with zero changed
+pixels. `20260918T235216844401Z-factorio-mixed-batch-menu` passes and measures
+15.825 FPS (15.45–16.22), peak 65.75 C. Full asynchronous per-client scheduling,
+GPU-side timestamp fan-out, and 60 FPS remain TODO.

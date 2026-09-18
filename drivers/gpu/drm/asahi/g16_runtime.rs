@@ -137,7 +137,9 @@ impl Inner {
             self.fragment_queue.advance_threshold()?;
             self.queue.set_render_context(r.context())?;
             self.fragment_queue.set_render_context(r.context())?;
-            let (ta,ta_next) = self.queue.append_batch_idle(&[r.init_address(),r.address()])?;
+            let ta_commands = [r.compute_dependency().unwrap_or(0), r.init_address(), r.address()];
+            let start = usize::from(r.compute_dependency().is_none());
+            let (ta,ta_next) = self.queue.append_batch_idle(&ta_commands[start..])?;
             let (frag,frag_next) = self.fragment_queue.append_batch_idle(
                 &[r.fragment_dependency(),r.fragment_address()])?;
             active.queue_next[0] = ta_next;
@@ -245,12 +247,12 @@ impl Runtime {
     /// WorkQueue JobSubmission. One ring publication and doorbell cover the
     /// batch; no follower is appended while its predecessor is being started.
     fn start_batch(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usize) -> Result<usize> {
-        let batchable = |i: usize| packet.commands.get(i).map_or(false, |c|
-            matches!(c.payload, crate::g16_submit::Payload::Compute(_))
-                && c.timestamp_addresses() == [0, 0]);
-        let mut count = 1;
-        if batchable(index) {
-            while count < COMPUTE_DEPTH && batchable(index + count) { count += 1; }
+        let count = packet.commands.len().checked_sub(index).ok_or(EINVAL)?;
+        if count == 0 || count > COMPUTE_DEPTH { return Err(EINVAL); }
+        // A mixed batch contains a compute prefix and at most one final render.
+        for command in &packet.commands[index..index + count - 1] {
+            if !matches!(command.payload, crate::g16_submit::Payload::Compute(_))
+                || command.timestamp_addresses() != [0, 0] { return Err(EINVAL); }
         }
         let mut batch = KVec::with_capacity(count, GFP_KERNEL)?;
         self.inner.inflight.reserve(count, GFP_KERNEL)?;
@@ -269,7 +271,7 @@ impl Runtime {
                 let mut previous = None;
                 let firmware_stamp = inner.compute_queue.notification().fw_stamp;
                 for active in batch.iter_mut() {
-                    let Work::Compute(c) = &mut active.work else { return Err(EINVAL); };
+                    let Work::Compute(c) = &mut active.work else { break; };
                     if let Some(stamp) = previous {
                         addresses[entries] = c.dependency(firmware_stamp, stamp)?;
                         entries += 1;
@@ -283,6 +285,11 @@ impl Runtime {
                 let pipe_next = inner.config.publish_queue(2, address, next.try_into()?,
                     crate::g16_compute::SLOT, false)?;
                 for active in batch.iter_mut() {
+                    if let Work::Render(render) = &mut active.work {
+                        render.wait_for_compute(firmware_stamp, previous.ok_or(EINVAL)?)?;
+                        inner.publish_active(active)?;
+                        continue;
+                    }
                     active.queue_next[2] = next;
                     active.pipe_next[2] = pipe_next;
                     active.published = kernel::time::Instant::<kernel::time::Monotonic>::now();
