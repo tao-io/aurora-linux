@@ -250,7 +250,7 @@ impl Render {
                 stamp_address:job.metadata.va()+0x408+i as u64*16,uma:job.uma.va(),
                 uma_aux:job.uma.gpu_va()?+0x100+i as u64*0x100,
                 timestamp_storage:job.metadata.va()+0x600+i as u64*0x20,
-                context:job.binding.slot(),generation,counter:counter + u64::from(i == 0),uuid,stamp:stamp,
+                context:job.binding.slot(),generation:job.binding.generation(),counter:counter + u64::from(i == 0),uuid,stamp:stamp,
                 event_slot:SLOTS[i] as u32,fragment_slot:SLOTS[1] as u32,
                 fragment_stamp:stamp,pb_id:0,pass_id:0 }).map_err(|_| EINVAL)?;
             let (mut count,mode) = state::registers(&mut registers[..],stage,&state,uuid).map_err(|_| EINVAL)?;

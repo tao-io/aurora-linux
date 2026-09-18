@@ -153,7 +153,14 @@ impl Queue {
     pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump, names: [&str; 2]) -> Result {
         // Includes the complete 128-node firmware scheduler ring at +0xb0.
         dump.buffer(names[0], &mut self.info, 0x24c0)?;
-        dump.buffer(names[1], &mut self.ring_state, 0x60)
+        dump.buffer(names[1], &mut self.ring_state, 0x60)?;
+        if names[0] == "queue-compute" {
+            dump.buffer("compute-notification", &mut self.notification, 0x200)?;
+            dump.buffer("compute-threshold", &mut self.threshold, 8)?;
+            dump.buffer("compute-user-stamp", &mut self.completion, 8)?;
+            dump.buffer("compute-firmware-stamp", &mut self.stamp, 8)?;
+        }
+        Ok(())
     }
     /// InitPB is consumed together with the following TA; publish them as one
     /// batch rather than waiting for a completion the init packet never emits.

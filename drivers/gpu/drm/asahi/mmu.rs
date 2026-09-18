@@ -1204,8 +1204,10 @@ where
     ranges.any(|range| range.overlaps(target.clone()))
 }
 
-/// Slot data for a [`Vm`] slot (nothing, we only care about the indices).
-pub(crate) struct SlotInner();
+/// Address-space binding generation retained with its hardware slot.
+pub(crate) struct SlotInner {
+    generation: u8,
+}
 
 impl slotalloc::SlotItem for SlotInner {
     type Data = ();
@@ -1215,12 +1217,18 @@ impl slotalloc::SlotItem for SlotInner {
 ///
 /// The number of users is counted, and the slot will be freed when it drops to 0.
 #[derive(Debug)]
-pub(crate) struct VmBind(Vm, u32);
+pub(crate) struct VmBind(Vm, u32, u8);
 
 impl VmBind {
     /// Returns the slot that this `Vm` is bound to.
     pub(crate) fn slot(&self) -> u32 {
         self.1
+    }
+
+    /// Firmware generation of this ASID binding, shared by every command
+    /// retaining it. Reacquiring an unchanged slot keeps the generation.
+    pub(crate) fn generation(&self) -> u8 {
+        self.2
     }
 
     /// The bound `Vm` itself, for diagnostics that need to walk its tables.
@@ -1271,7 +1279,7 @@ impl Clone for VmBind {
             self.1,
             binding.active_users
         );
-        VmBind(self.0.clone(), self.1)
+        VmBind(self.0.clone(), self.1, self.2)
     }
 }
 
@@ -4501,7 +4509,7 @@ impl Uat {
                 None
             });
 
-            let slot = self.slots.get(binding.bind_token)?;
+            let mut slot = self.slots.get(binding.bind_token)?;
             if slot.changed() {
                 mod_pr_debug!("Vm Bind [{}]: bind_token={:?}\n", vm.id, slot.token(),);
                 let idx = (slot.slot() as usize) + UAT_USER_CTX_START;
@@ -4578,6 +4586,10 @@ impl Uat {
                 }
                 mem::tlbi_asid(idx as u8);
                 mem::sync();
+                // M4 RunCompute/RunTA/Run3D carry the context allocation
+                // generation, not a submission sequence. Advance only once
+                // the new page-table binding has actually been installed.
+                slot.generation = slot.generation.wrapping_add(1).max(1);
             }
 
             binding.bind_token = Some(slot.token());
@@ -4588,7 +4600,7 @@ impl Uat {
 
         let slot = binding.binding.as_ref().unwrap().slot() + UAT_USER_CTX_START as u32;
         mod_pr_debug!("MMU: slot {} active users {}\n", slot, binding.active_users);
-        Ok(VmBind(vm.clone(), slot))
+        Ok(VmBind(vm.clone(), slot, binding.binding.as_ref().unwrap().generation))
     }
 
     /// Creates a new `Vm` linked to this UAT.
@@ -5006,7 +5018,7 @@ impl Uat {
             slots: slotalloc::SlotAllocator::new(
                 UAT_USER_CTX as u32,
                 (),
-                |_inner, _slot| Some(SlotInner()),
+                |_inner, _slot| Some(SlotInner { generation: 0 }),
                 c_str!("Uat::SlotAllocator"),
                 static_lock_class!(),
                 static_lock_class!(),

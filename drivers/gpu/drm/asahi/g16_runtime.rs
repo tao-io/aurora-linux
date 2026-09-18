@@ -18,8 +18,8 @@ struct Inner {
     queue_context: crate::g16_queue::Context,
     fragment_registered: bool,
     retired_render: Option<(KBox<crate::g16_render_job::Render>, crate::g16_submit::RenderCache)>,
-    /// Recently retired compute owners, oldest first, parked until enough
-    /// later commands have retired for the firmware to be done with them.
+    /// Last retired owner of each hardware private-memory slot. Firmware
+    /// can cache these descriptors until a replacement of that slot retires.
     retired_computes: KVec<(KBox<crate::g16_job::Compute>, crate::g16_submit::ComputeCache)>,
     compute: KBox<crate::g16_job::Compute>,
     config: crate::g16_config::Config,
@@ -32,8 +32,6 @@ struct Inner {
     render_stamp: u32,
     render_counter: u64,
     compute_stamp: u32,
-    /// Next notifier job slot for a compute publication (round robin over
-    /// the notifier's four records; in-flight commands hold distinct slots).
     /// Commands published to the firmware, oldest first. The firmware
     /// executes each queue in order, so retirement is checked at the front.
     inflight: KVec<Active>,
@@ -97,22 +95,12 @@ impl SubmitSummary {
 /// so a deeper window amortizes that turnaround. Each in-flight command
 /// holds one owner (a 32 MiB private pool), which bounds the depth.
 ///
-/// Held at one: a follower published behind an in-flight compute command
-/// of the same packet is occasionally consumed by the firmware without
-/// running, even without user timestamps (catalog segments [2270000,2280000)
-/// and [2290000,2300000), renderpasses under 20 workers, job status all-ones
-/// after 2 s; the in-flight cases pass alone and together at 20 workers).
-/// Restore the window of four once the lost follower is detected and
-/// re-published instead of faulting.
-const COMPUTE_DEPTH: usize = 1;
-/// Retired compute owners parked before they may be recycled. With several
-/// commands dispatched together the firmware still references a retired
-/// command's page (UMA descriptor, completion records) while it finishes the
-/// batch; recycling the page after a single later retirement let the
-/// firmware consume a rewritten entry without running it (catalog segment
-/// [230000,240000): job 655831, status all-ones, queue consumed, no
-/// timestamps). Park at least one hardware batch of four.
-const COMPUTE_PARKED: usize = 4;
+/// Both firmware and user completion stamps now belong to the queue and
+/// event sequences advance at publication, as in WorkQueue/Event. Bound the
+/// batch to four owners; never recycle a command merely because firmware
+/// consumed its ring entry. Its timestamps and both stamps must retire.
+pub(crate) const COMPUTE_DEPTH: usize = 4;
+
 
 /// Outcome of one completion snapshot.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -140,32 +128,6 @@ impl Work {
     }
 }
 impl Inner {
-    /// Whether the front pending command may be published now.
-    fn admits(&self, packet: &crate::g16_submit::Packet, index: usize, payload: &crate::g16_submit::Payload) -> bool {
-        if self.inflight.is_empty() { return true; }
-        // Only commands of one submission are pipelined. A command of a
-        // later packet published while the previous packet's long compute
-        // command (2-25 ms) still ran was consumed by the firmware without
-        // running (catalog segment [230000,240000), twice), so a packet
-        // waits for the engine to drain before it starts.
-        //
-        // Commands carrying user timestamps are never pipelined either way:
-        // the firmware writes the timestamp cells after the command completes,
-        // and a follower published meanwhile was consumed without running
-        // (pipeline.*.timestamp.transfer_tests under 20 workers, three times;
-        // the same cases pass alone and with a depth of one).
-        let has_timestamps = |p: &crate::g16_submit::Packet, i: usize| {
-            p.commands.get(i).map_or(false, |c| c.timestamp_addresses() != [0, 0])
-        };
-        matches!(payload, crate::g16_submit::Payload::Compute(_))
-            && self.inflight.len() < COMPUTE_DEPTH
-            && !has_timestamps(packet, index)
-            && self.inflight.iter().all(|entry| match &entry.work {
-                Work::Compute(c) => c.same_vm(&packet.vm) && entry.packet.id == packet.id
-                    && !has_timestamps(&entry.packet, entry.index),
-                Work::Render(_) => false,
-            })
-    }
     fn publish_active(&mut self, active: &mut Active) -> Result {
         if let Work::Render(r) = &active.work {
             // Publish both retained stages. Waiting on the CPU for final TA
@@ -265,25 +227,84 @@ impl Runtime {
     /// later pending packets fail when the scheduler observes the health.
     fn pump(&mut self) -> Result {
         while let Some((packet, index)) = self.inner.pending.first().map(|(p, i)| (p.clone(), *i)) {
-            let payload = packet.commands.get(index).ok_or(EINVAL)?.payload;
-            if !self.inner.admits(&packet, index, &payload) { break; }
+            if !self.inner.inflight.is_empty() { break; }
             let _ = self.inner.pending.remove(0);
-            if let Err(error) = self.start_command(packet.clone(), index) {
-                packet.finish(Err(error));
-                return Err(error);
-            }
-            // The packet's next command follows immediately, ahead of other
-            // pending work, so one submission fills the in-flight depth
-            // instead of waiting for each predecessor to retire.
-            if index + 1 < packet.commands.len() {
-                self.inner.pending.push((packet, index + 1), GFP_KERNEL)?;
+            let count = match self.start_batch(packet.clone(), index) {
+                Ok(count) => count,
+                Err(error) => { packet.finish(Err(error)); return Err(error); }
+            };
+            if index + count < packet.commands.len() {
+                self.inner.pending.push((packet, index + count), GFP_KERNEL)?;
                 self.inner.pending.rotate_right(1);
             }
         }
         Ok(())
     }
 
-    fn start_command(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usize) -> Result {
+    /// Prepare all owners before making any command visible, like the common
+    /// WorkQueue JobSubmission. One ring publication and doorbell cover the
+    /// batch; no follower is appended while its predecessor is being started.
+    fn start_batch(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usize) -> Result<usize> {
+        let batchable = |i: usize| packet.commands.get(i).map_or(false, |c|
+            matches!(c.payload, crate::g16_submit::Payload::Compute(_))
+                && c.timestamp_addresses() == [0, 0]);
+        let mut count = 1;
+        if batchable(index) {
+            while count < COMPUTE_DEPTH && batchable(index + count) { count += 1; }
+        }
+        let mut batch = KVec::with_capacity(count, GFP_KERNEL)?;
+        self.inner.inflight.reserve(count, GFP_KERNEL)?;
+        self.inner.retired_computes.reserve(count, GFP_KERNEL)?;
+        for offset in 0..count {
+            batch.push(self.prepare_command(packet.clone(), index + offset, offset as u64)?, GFP_KERNEL)?;
+        }
+        let inner = &mut *self.inner;
+        inner.gpu_pending = true;
+        let publish = if count == 1 {
+            inner.publish_active(&mut batch[0])
+        } else {
+            (|| -> Result {
+                let mut addresses = [0u64; COMPUTE_DEPTH * 2];
+                let mut entries = 0;
+                let mut previous = None;
+                let firmware_stamp = inner.compute_queue.notification().fw_stamp;
+                for active in batch.iter_mut() {
+                    let Work::Compute(c) = &mut active.work else { return Err(EINVAL); };
+                    if let Some(stamp) = previous {
+                        addresses[entries] = c.dependency(firmware_stamp, stamp)?;
+                        entries += 1;
+                    }
+                    addresses[entries] = c.address();
+                    entries += 1;
+                    previous = Some(c.stamp());
+                    inner.compute_queue.advance_threshold()?;
+                }
+                let (address, next) = inner.compute_queue.append_batch(&addresses[..entries])?;
+                let pipe_next = inner.config.publish_queue(2, address, next.try_into()?,
+                    crate::g16_compute::SLOT, false)?;
+                for active in batch.iter_mut() {
+                    active.queue_next[2] = next;
+                    active.pipe_next[2] = pipe_next;
+                    active.published = kernel::time::Instant::<kernel::time::Monotonic>::now();
+                    active.started = kernel::time::Instant::<kernel::time::Monotonic>::now();
+                }
+                Pin::new(&mut inner.transport).send_message(0x21, 0x0083000000000002)?;
+                Ok(())
+            })()
+        };
+        // Capacity was reserved before publication. Retain every DMA owner
+        // even if the final mailbox write failed after publishing the ring.
+        for active in batch { inner.inflight.push(active, GFP_KERNEL).expect("reserved batch capacity"); }
+        if let Err(error) = publish {
+            inner.state.health.mark_failed();
+            dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven after batch publication error {:?}\n", error);
+            return Err(error);
+        }
+        Ok(count)
+    }
+
+    fn prepare_command(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usize,
+        batch_offset: u64) -> Result<Active> {
         let preparing = kernel::time::Instant::<kernel::time::Monotonic>::now();
         let inner = &mut *self.inner;
         if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
@@ -312,14 +333,16 @@ impl Runtime {
         } else {
             inner.compute_stamp = inner.compute_stamp.wrapping_add(0x100).max(0x100);
         }
+        let mut notification = inner.compute_queue.notification();
+        notification.event_seq = notification.event_seq.checked_add(batch_offset).ok_or(EOVERFLOW)?;
         let mut work = match payload {
             crate::g16_submit::Payload::Compute(control) => Work::Compute(crate::g16_job::Compute::in_vm(
                 &inner.drm,&inner.uat,&mut inner.config,&packet.vm,inner.compute_queue.address(),Some(control),
-                Some(inner.compute_queue.notification()),generation,inner.compute_stamp,
+                Some(notification),inner.compute_stamp,
                 // All commands share job metadata slot 0 and the queue's
                 // user stamp, as G13/G14 do; per-command slots collide once
                 // more than four commands are dispatched together.
-                packet.compute_cache.lock().pop(), 0)?),
+                packet.compute_cache.lock().pop(), 0, (batch_offset + 1).try_into()?)?),
             crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
                 &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,inner.render_counter - 2,
                 [inner.queue.address(),inner.fragment_queue.address()],
@@ -339,25 +362,10 @@ impl Runtime {
         }
         inner.user_generation = generation;
         inner.device.check_pstate()?;
-        // Allocation must precede publication: failure after the doorbell
-        // cannot be allowed to drop DMA backing still owned by firmware.
-        inner.inflight.reserve(1, GFP_KERNEL)?;
-        // Retain all DMA backing before the first shared publication, including
-        // failure paths that cannot prove whether a mailbox doorbell arrived.
-        let mut active = Active { packet, work, index, queue_next:[0;3],pipe_next:[0;3],
+        Ok(Active { packet, work, index, queue_next:[0;3],pipe_next:[0;3],
             preparation_ns: preparing.elapsed().as_nanos(),
             published: kernel::time::Instant::<kernel::time::Monotonic>::now(),
-            started:kernel::time::Instant::<kernel::time::Monotonic>::now() };
-        inner.gpu_pending = true;
-        let publish = inner.publish_active(&mut active);
-        // Keep the owner whether or not the doorbell was delivered.
-        let retained = inner.inflight.push(active, GFP_KERNEL);
-        if let Err(error) = publish {
-            inner.state.health.mark_failed();
-            dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven after userspace publication error {:?}\n", error);
-            return Err(error);
-        }
-        retained.map_err(|_| ENOMEM)
+            started:kernel::time::Instant::<kernel::time::Monotonic>::now() })
     }
 
     pub(crate) fn fail_job(&mut self, id: u64, error: Error) {
@@ -551,12 +559,16 @@ impl Runtime {
                     // descriptor and backing until a distinct replacement has
                     // retired, just as for the render parameter manager. The
                     // displaced predecessor returns to its queue for reuse.
-                    inner.retired_computes.push((compute, packet.compute_cache.clone()), GFP_KERNEL)?;
-                    if inner.retired_computes.len() > COMPUTE_PARKED {
-                        if let Ok((previous, cache)) = inner.retired_computes.remove(0) {
-                            let _ = cache.lock().push(previous, GFP_KERNEL);
-                        }
+                    let replaced = inner.retired_computes.iter().position(|(previous, _)|
+                        previous.pool_slot() == compute.pool_slot());
+                    if let Some(position) = replaced {
+                        let (previous, cache) = inner.retired_computes.remove(position).map_err(|_| EIO)?;
+                        // Only replacement of this exact hardware slot releases
+                        // its cached descriptor. Retirements in another slot
+                        // cannot establish that the old owner is safe to reuse.
+                        let _ = cache.lock().push(previous, GFP_KERNEL);
                     }
+                    inner.retired_computes.push((compute, packet.compute_cache.clone()), GFP_KERNEL)?;
                 }
             }
             inner.last_retired = Some((packet.id,

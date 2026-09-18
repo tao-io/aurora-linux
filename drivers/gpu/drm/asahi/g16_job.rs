@@ -22,6 +22,7 @@ pub(crate) struct Compute {
     page_list: Buffer,
     counter: Buffer,
     binding: mmu::VmBind,
+    pool_slot: u8,
     stamp: u32,
     consumed_pages: usize,
     /// Pool-state and page-list bytes for this owner's private pool.
@@ -35,17 +36,18 @@ const PRIVATE_PAGES: usize = PRIVATE_BYTES / 0x1000;
 impl Compute {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, config: &mut crate::g16_config::Config, work_queue: u64) -> Result<KBox<Self>> {
         let vm = uat.new_vm(0x81320020, 0x70_0000_0000..0x80_0000_0000)?;
-        Self::in_vm(dev, uat, config, &vm, work_queue, None, None, 1, g16_compute::STAMP, None, 0)
+        Self::in_vm(dev, uat, config, &vm, work_queue, None, None, g16_compute::STAMP, None, 0, 1)
     }
     pub(crate) fn in_vm(dev: &driver::AsahiDevice, uat: &mmu::Uat,
         config: &mut crate::g16_config::Config, vm: &mmu::Vm, work_queue: u64,
-        control: Option<g16_compute::Control>, notification: Option<g16_compute::Notification>, generation: u8, stamp: u32,
-        reusable: Option<KBox<Self>>, event_slot: u8) -> Result<KBox<Self>> {
+        control: Option<g16_compute::Control>, notification: Option<g16_compute::Notification>, stamp: u32,
+        reusable: Option<KBox<Self>>, event_slot: u8, pool_slot: u8) -> Result<KBox<Self>> {
+        if pool_slot == 0 || usize::from(pool_slot) > crate::g16_runtime::COMPUTE_DEPTH { return Err(EINVAL); }
         // Only an owner displaced by a completely retired replacement may be
         // recycled, and only inside the same client GPUVM. Its GEM backing,
         // both command aliases, the 32 MiB private pool and the ASID lease
         // are retained; every firmware-visible record is rebuilt below.
-        let reusable = reusable.filter(|job| control.is_some() && job.binding.matches(vm));
+        let reusable = reusable.filter(|job| control.is_some() && job.binding.matches(vm) && job.pool_slot == pool_slot);
         let mut boxed = if let Some(mut job) = reusable {
             let owner: &mut Self = &mut *job;
             // Every firmware- or GPU-written record is reset before the new
@@ -96,6 +98,7 @@ impl Compute {
             page_list: gpu(0x4000)?,
             counter: gpu(8)?,
             binding: uat.bind(&vm)?,
+            pool_slot,
             stamp,
             consumed_pages: PRIVATE_PAGES,
             freelist,
@@ -120,7 +123,7 @@ impl Compute {
             work_queue, stats: config.compute_stats(), context_store_gpu: job.context_store.gpu_va()?,
             pool_state_gpu: job.pool_state.gpu_va()?, page_list_gpu: job.page_list.gpu_va()?,
             counter: job.counter.va(),
-            context: job.binding.slot(), generation, stamp, event_slot,
+            context: job.binding.slot(), generation: job.binding.generation(), stamp, event_slot,
         };
         if let Some(control) = control {
             g16_compute::encode_dispatch(&mut bytes[..], addresses, 0x4000,
@@ -129,6 +132,11 @@ impl Compute {
             g16_compute::encode(&mut bytes[..], addresses, 0x4000,
                 PRIVATE_PAGES as u32).map_err(|_| EINVAL)?;
         }
+        // The hardware indexes the global gUPM table with this field. A
+        // distinct live pool must never claim another command's slot, even
+        // when firmware has consumed both commands from the same work queue.
+        bytes[0xe08..0xe0c].copy_from_slice(&u32::from(job.pool_slot).to_le_bytes());
+        bytes[0xe00..0xe08].copy_from_slice(&job.command.va().to_le_bytes());
         job.pool_state.write(0, &job.freelist)?;
         job.page_list.write(0, &job.page_list_image)?;
         job.command.write(0, &bytes[..])?;
@@ -144,6 +152,21 @@ impl Compute {
         job.log_context(dev)?;
         Ok(boxed)
     }
+    /// GPU-side dependency on the preceding compute in this batch. The
+    /// firmware stamp advances at engine retirement, independently of the
+    /// batch notifier threshold (waiting on the user stamp can deadlock).
+    pub(crate) fn dependency(&mut self, firmware_stamp: u64, previous: u32) -> Result<u64> {
+        let mut bytes = [0; 0x40];
+        crate::g16_render_command::render_dependency(&mut bytes, firmware_stamp,
+            g16_compute::SLOT, previous, self.stamp).map_err(|_| EINVAL)?;
+        // G16 +3c selects a strict internal dependency, homologous to
+        // WorkQueue Barrier::internal_barrier_type. The zero-valued render
+        // dependency permits partial-render scheduling before full retirement.
+        bytes[0x3c..0x40].copy_from_slice(&1u32.to_le_bytes());
+        self.command.write(0xf40, &bytes)?;
+        Ok(self.command.va() + 0xf40)
+    }
+
     pub(crate) fn set_user_timestamps(&mut self, addresses: [u64; 2]) -> Result {
         if addresses == [0, 0] { return Ok(()); }
         // Timestamp reads the retained pointer pair and publishes nanoseconds.
@@ -210,6 +233,7 @@ impl Compute {
         self.consumed_pages = g16_memory::consumed_pages(&mut self.command, 0xe00, PRIVATE_PAGES)?;
         Ok(())
     }
+    pub(crate) fn pool_slot(&self) -> u8 { self.pool_slot }
     pub(crate) fn same_vm(&self, vm: &mmu::Vm) -> bool { self.binding.matches(vm) }
     pub(crate) fn stamp(&self) -> u32 { self.stamp }
     pub(crate) fn address(&self) -> u64 { self.command.va() }

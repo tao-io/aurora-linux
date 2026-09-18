@@ -131,6 +131,11 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     u32_at(out, 0x810, a.stamp);
     u32_at(out, 0x814, SLOT as u32);
     u32_at(out, 0x818, a.event_slot as u32);
+    // Each dispatch used to form its own completion/visibility boundary.
+    // Preserve that flush when several dispatches share a host submission:
+    // a follower may consume a different GPU VA of the same backing page.
+    // The notifier otherwise defers its cache flush until the batch threshold.
+    u32_at(out, 0x81c, 1);
     u32_at(out, 0x820, 1);
     u32_at(out, 0x824, notification.map_or(0, |n| n.event_seq as u32));
     u64_at(out, 0x834, c + 0x8c0);
