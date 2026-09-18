@@ -75,3 +75,9 @@ prevents attributing the whole FPS difference to this change. Final 19.069 s:
 1.796 s / 36,035,657,728 bytes (14,032,577 bytes per render on average).
 Private-pool clearing dominates preparation; other clears are only 0.079 s.
 No reset requirements, completion checks or GPU clocks were weakened.
+
+SubmitSummary also separates the existing hardware timestamps into tiling,
+TA-end to fragment-start, and fragment spans. The interstage interval is signed
+so overlapping stages cannot wrap into a huge idle-time claim. All three use
+the same firmware 24 MHz clock; no AP-clock correlation is needed. These remain
+aggregates of command timestamps, not sampled engine utilization counters.

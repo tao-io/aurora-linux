@@ -59,6 +59,7 @@ struct SubmitSummary {
     active_ns: [u64; 2],
     gpu_ns: [u64; 2],
     render_clear: [u64; 3],
+    render_stage_ns: [i64; 3],
 }
 impl SubmitSummary {
     fn record(&mut self, render: bool, preparation: i64, active: i64, gpu: u64) {
@@ -402,6 +403,7 @@ impl Runtime {
         let pipe = inner.config.pipe_indices(pipe_index)?;
         let next = active.queue_next[pipe_index];
         let mut gpu_span = [0u64; 2];
+        let mut render_stage_ns = [0i64; 3];
         // Alone in flight, the queue and pipe must be exactly idle behind
         // this command. With a successor already published, the firmware's
         // consumer indices must have passed this command's entries.
@@ -430,6 +432,12 @@ impl Runtime {
                 // Preserve both stages' GPU timings once per completed pass.
                 let timestamps = render.timestamps()?;
                 gpu_span = [timestamps[0][0], timestamps[1][1]];
+                // One hardware clock domain. Keep an overlapping TA/fragment
+                // interval negative rather than misreporting it as idle time.
+                let [[ta_start, ta_end], [fs_start, fs_end]] = timestamps;
+                render_stage_ns = [ta_end as i64 - ta_start as i64,
+                    fs_start as i64 - ta_end as i64, fs_end as i64 - fs_start as i64]
+                    .map(|ticks| ticks * 1000 / 24);
                 crate::cls_dev_dbg!(SubmitTiming, inner.drm, "G16G: render GPU timestamps={:x?} UMA completed={}/2\n", timestamps, render.uma_completed()?);
             } else {
                 if let Work::Compute(compute) = &mut active.work {
@@ -458,6 +466,9 @@ impl Runtime {
                 inner.summary.record(matches!(&active.work, Work::Render(_)),
                     active.preparation_ns, active_ns, gpu_ns);
                 if let Work::Render(r) = &active.work {
+                    for (sum, value) in inner.summary.render_stage_ns.iter_mut().zip(render_stage_ns) {
+                        *sum += value;
+                    }
                     for (sum, value) in inner.summary.render_clear.iter_mut().zip(r.clear_metrics) {
                         *sum += value;
                     }
@@ -513,11 +524,12 @@ impl Runtime {
                         let s = &inner.summary;
                         // Same recognizable retirement record used by the
                         // watchdog guard, followed by aggregate measurements.
-                        dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} summary_span_ns={} render_commands={} compute_commands={} render_prepare_ns={} compute_prepare_ns={} render_active_ns={} compute_active_ns={} render_gpu_ns={} compute_gpu_ns={} render_private_clear_bytes={} render_private_clear_ns={} render_clear_ns={}\n",
+                        dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} summary_span_ns={} render_commands={} compute_commands={} render_prepare_ns={} compute_prepare_ns={} render_active_ns={} compute_active_ns={} render_gpu_ns={} compute_gpu_ns={} render_private_clear_bytes={} render_private_clear_ns={} render_clear_ns={} render_tiling_ns={} render_stage_gap_ns={} render_fragment_ns={}\n",
                             packet.id, index, now, now - s.since_ns,
                             s.commands[0], s.commands[1], s.preparation_ns[0], s.preparation_ns[1],
                             s.active_ns[0], s.active_ns[1], s.gpu_ns[0], s.gpu_ns[1],
-                            s.render_clear[0], s.render_clear[1], s.render_clear[2]);
+                            s.render_clear[0], s.render_clear[1], s.render_clear[2],
+                            s.render_stage_ns[0], s.render_stage_ns[1], s.render_stage_ns[2]);
                         inner.summary = SubmitSummary { since_ns: now, ..Default::default() };
                     }
                 }
