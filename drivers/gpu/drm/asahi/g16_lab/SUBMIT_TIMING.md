@@ -26,3 +26,17 @@ epilog compilation; equivalent MIN/MAX key canonicalization reduced it
 without changing scheduler/firmware behavior. All 11 contended blend timeouts
 remain open. See Mesa's `tests/m4-desktop/README-directx-latency.md` for full
 reports. No compute-depth or completion-proof changes are part of this work.
+
+2026-09-18: routine G16 command context, completion and retirement diagnostics
+now also require SubmitTiming. Extra UMA/status/root reads used only by these
+messages are skipped when disabled. Allocation details use Render/Compute.
+Fault, stall and timeout evidence remains unconditional. This avoids continuous
+journal traffic and formatting while the runtime lock is held; it does not
+change command ordering, completion checks, clocks or the queue depth.
+
+Guarded untouched Factorio menu validation with the same private Mesa build:
+`20260918T125401742537Z-factorio-quiet-menu-fps`, peak 66.5 C, normal desktop
+after reboot, no fault. Gallium invisible HUD measured about 7.5–7.9 FPS, the
+same range as before. This is a logging cleanup, not a demonstrated FPS gain.
+Per-command `gpu-command-timings.py` analysis now requires SubmitTiming at load;
+use application FPS logging for ordinary measurements without that overhead.

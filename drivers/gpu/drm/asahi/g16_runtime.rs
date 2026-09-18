@@ -408,11 +408,11 @@ impl Runtime {
                 // Preserve both stages' GPU timings once per completed pass.
                 let timestamps = render.timestamps()?;
                 gpu_span = [timestamps[0][0], timestamps[1][1]];
-                dev_info!(inner.drm.as_ref(), "G16G: render GPU timestamps={:x?} UMA completed={}/2\n", timestamps, render.uma_completed()?);
+                crate::cls_dev_dbg!(SubmitTiming, inner.drm, "G16G: render GPU timestamps={:x?} UMA completed={}/2\n", timestamps, render.uma_completed()?);
             } else {
                 if let Work::Compute(compute) = &mut active.work {
                     gpu_span = [status[2], status[3]];
-                    dev_info!(inner.drm.as_ref(), "G16G: compute completion status={:x?} UMA completed={}/1\n", compute.status()?, compute.uma_completed()?);
+                    crate::cls_dev_dbg!(SubmitTiming, inner.drm, "G16G: compute completion status={:x?} UMA completed={}/1\n", compute.status()?, compute.uma_completed()?);
                 }
             }
             // Exact retirement: the descriptor's consumer index is final.
@@ -471,7 +471,7 @@ impl Runtime {
                 }
             }
             if index == packet.commands.len() {
-                dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} last_prepare_ns={} last_active_ns={} last_cleanup_ns={} last_gpu_ns={} messages={} waits={} late={} timeouts={}\n", packet.id, index, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), active.preparation_ns, active_ns, cleanup.elapsed().as_nanos(), gpu_ns, inner.state.event_messages.load(core::sync::atomic::Ordering::Acquire), inner.waits, inner.late_retirements, inner.wait_timeouts);
+                crate::cls_dev_dbg!(SubmitTiming, inner.drm, "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} last_prepare_ns={} last_active_ns={} last_cleanup_ns={} last_gpu_ns={} messages={} waits={} late={} timeouts={}\n", packet.id, index, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), active.preparation_ns, active_ns, cleanup.elapsed().as_nanos(), gpu_ns, inner.state.event_messages.load(core::sync::atomic::Ordering::Acquire), inner.waits, inner.late_retirements, inner.wait_timeouts);
                 // Matching engine/notifier generations make the user stamp
                 // follow the firmware's cache flush. No idle-time delay is
                 // needed to make the command's writes visible to the CPU.

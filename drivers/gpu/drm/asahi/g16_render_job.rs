@@ -251,9 +251,9 @@ impl Render {
             job.sequences[i].write(0,&sequence[..wire::sequence_size(stage)])?;
         }
         g16_memory::publish();
-        dev_info!(dev.as_ref(), "G16G: render USC freelist={:#x} capacity={} populated={}\n",
+        crate::cls_dev_dbg!(Render, dev, "G16G: render USC freelist={:#x} capacity={} populated={}\n",
             job.pool_state.gpu_va()?,PRIVATE_QWORDS,PRIVATE_PAGES);
-        dev_info!(dev.as_ref(),"G16G: owned render {}x{} ASID={} PB={} pages tilemap={:#x} TPC={:#x} VDM={:#x} reused={}\n",
+        crate::cls_dev_dbg!(SubmitTiming, dev,"G16G: owned render {}x{} ASID={} PB={} pages tilemap={:#x} TPC={:#x} VDM={:#x} reused={}\n",
             r.width,r.height,job.binding.slot(),page_count,job.tilemap.gpu_va()?,job.tpc.gpu_va()?,r.vdm_base,reused);
         Ok(job)
     }

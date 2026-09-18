@@ -101,7 +101,7 @@ impl Compute {
             freelist,
             page_list_image,
         }, GFP_KERNEL)?;
-        dev_info!(dev.as_ref(), "G16G compute memory: command={:#x} preemption={:#x} auxiliary={:#x} context={:#x} private={:#x}+{:#x} pool={:#x} pages={:#x}\n",
+        crate::cls_dev_dbg!(Compute, dev, "G16G compute memory: command={:#x} preemption={:#x} auxiliary={:#x} context={:#x} private={:#x}+{:#x} pool={:#x} pages={:#x}\n",
             job.command.gpu_va()?, job.preemption.gpu_va()?, job.auxiliary.gpu_va()?,
             job.context_store.gpu_va()?, job.private_memory.va(), PRIVATE_BYTES,
             job.pool_state.gpu_va()?, job.page_list.gpu_va()?);
@@ -165,9 +165,11 @@ impl Compute {
         Ok(())
     }
     pub(crate) fn log_context(&self, dev: &driver::AsahiDevice) -> Result {
-        let mut roots = [(0, 0); 2];
-        self.binding.vm().context_roots(&mut roots)?;
-        dev_info!(dev.as_ref(), "G16G: owned compute user context={} roots={:x?}\n", self.binding.slot(), roots);
+        if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitTiming) {
+            let mut roots = [(0, 0); 2];
+            self.binding.vm().context_roots(&mut roots)?;
+            dev_info!(dev.as_ref(), "G16G: owned compute user context={} roots={:x?}\n", self.binding.slot(), roots);
+        }
         Ok(())
     }
     pub(crate) fn log_progress(&mut self, dev: &driver::AsahiDevice) -> Result {
