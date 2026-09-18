@@ -96,3 +96,13 @@ silently assigned to another bucket. Completion messages, snapshots, late
 retirements and fallback-wait timeouts are cumulative counters; take deltas
 across intervals. Collection remains behind SubmitSummary and reports after
 proven packet completion, without changing admission, waits or retirement.
+
+Guarded geometry qualification: `20260918T172024748821Z-factorio-geometry-menu`
+passed, peak 65 C. Last 19.054 s: 2926 renders, 3165 computes; 9077
+completion messages, 42320 snapshots and only 9 fallback wait timeouts.
+No geometry overflow. Factorio ASID 8 issued 2187 full-size (2512x1552)
+and 243 half-size renders. Their fragment spans totaled 4.5094 s and
+0.04835 s; full-size preparation took 1.1677 s and active spans 6.9771 s.
+The compositor's 490 panel renders added 1.1766 s fragment time. This
+points to per-pass fragment cost and command turnaround, not frequent
+missing interrupts; it does not establish 60 FPS or sampled utilization.
