@@ -81,3 +81,10 @@ TA-end to fragment-start, and fragment spans. The interstage interval is signed
 so overlapping stages cannot wrap into a huge idle-time claim. All three use
 the same firmware 24 MHz clock; no AP-clock correlation is needed. These remain
 aggregates of command timestamps, not sampled engine utilization counters.
+
+Guarded stage separation: `20260918T163145148861Z-factorio-stage-timing-menu`
+retained 19.063 s with 2715 renders and 3533 computes. Render GPU spans totaled
+6.860 s: tiling 0.056859 s, interstage 0.229157 s, fragment 6.574297 s.
+About 96% of that span was fragment execution; mean interstage gap was 84 us.
+This directed the following optimizations toward fragment executables rather
+than removing synchronization between tiling and fragments.
