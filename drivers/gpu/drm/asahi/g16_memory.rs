@@ -215,24 +215,6 @@ pub(crate) fn freelist_images(base: u64, pages: usize) -> Result<(KVec<u8>, KVec
     Ok((pool, list))
 }
 
-pub(crate) fn write_freelist(pool_state: &mut Buffer, page_list: &mut Buffer,
-    base: u64, pages: usize) -> Result {
-    let mut pool = KVec::new();
-    pool.reserve(pages * 8, GFP_KERNEL)?;
-    for page in 0..pages {
-        pool.extend_from_slice(&(base + page as u64 * 0x1000).to_le_bytes(), GFP_KERNEL)?;
-    }
-    pool_state.write(0, &pool)?;
-    let mut list = KVec::new();
-    let blocks = pages * 0x1000 / 0x200000;
-    list.reserve(blocks * 64, GFP_KERNEL)?;
-    for block in 0..blocks {
-        list.extend_from_slice(&((1u64 << 61) | (base + block as u64 * 0x200000)).to_le_bytes(), GFP_KERNEL)?;
-        list.extend_from_slice(&[0; 56], GFP_KERNEL)?;
-    }
-    page_list.write(0, &list)
-}
-
 /// Pages handed out from a retired owner's freelist, from the descriptor's
 /// consumer index at +0x20. The rebuilt ring lists pages in address order,
 /// so the first `consumed` entries are the first `consumed` pages of the

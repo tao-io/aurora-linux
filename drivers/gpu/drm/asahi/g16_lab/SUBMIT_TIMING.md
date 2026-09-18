@@ -52,4 +52,14 @@ counter. The first interval also includes idle time since runtime initialization
 
 The existing experiment watchdog accepts only these fresh, increasing exact
 retirements; summaries do not introduce idle keepalives or relax thermal gates.
-This flag remains opt-in. Hardware validation is pending.
+This flag remains opt-in. Guarded qualification:
+`20260918T154850784274Z-factorio-summary-menu`, peak 71.75 C, completed the
+long menu observation with fresh exact-retirement watchdog progress and no
+GPU fault. Its final 19.093 seconds contained 2537 render and 2531 compute
+commands. Render preparation totaled 2.277 seconds, active spans 9.369 seconds
+and GPU spans 6.464 seconds; compute totals were 0.282, 3.404 and 0.857 seconds.
+The main-menu sample averaged 9.485 FPS; it is not a fixed-scene benchmark.
+
+Render summaries additionally count private-pool bytes cleared and the time
+spent clearing that pool and all render buffers. Timing reads are enabled only
+with SubmitSummary. Fresh owners report zero recycled-buffer clears.

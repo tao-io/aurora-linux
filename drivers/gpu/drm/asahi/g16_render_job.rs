@@ -41,6 +41,9 @@ pub(crate) struct Render {
     stamp: u32,
     layout: [u32; 4],
     consumed_pages: usize,
+    freelist: KVec<u8>,
+    page_list_image: KVec<u8>,
+    pub(crate) clear_metrics: [u64; 3],
 }
 impl Render {
     #[cfg(CONFIG_DEV_COREDUMP)]
@@ -120,6 +123,9 @@ impl Render {
                 Buffer::new_command(dev,uat.kernel_vm(),uat.kernel_lower_vm(),Stage::Fragment.command_size())?];
             let mut views = KVec::new();
             for command in &mut commands { views.push(command.map_gpu_view(vm)?,GFP_KERNEL)?; }
+            let private_memory = gpu(PRIVATE_BYTES)?;
+            let (freelist, page_list_image) = g16_memory::freelist_images(
+                private_memory.gpu_va()?, PRIVATE_PAGES)?;
             KBox::new(Self {
                 _command_views:views, commands, sequences:[fw(0x400)?,fw(0x400)?],
                 metadata:fw(0x4000)?,manager:fw(0xc0)?,pages:gpu(page_count*4)?,
@@ -131,16 +137,19 @@ impl Render {
                 tpc:gpu(geometry.tpc_bytes.try_into()?)?,unknown:gpu(0x4000)?,
                 // Sizes inherited from the qualified M4 context-save experiment.
                 preemption:[gpu(0x10000)?,gpu(0x10000)?,gpu(0x4000)?],auxiliary:gpu(0x10000)?,
-                uma:gpu(0x4000)?,private_memory:gpu(PRIVATE_BYTES)?,
+                uma:gpu(0x4000)?,private_memory,
                 pool_state:gpu(PRIVATE_QWORDS*8)?,page_list:gpu(0x4000)?,
                 binding:uat.bind(vm)?,stage:Stage::Tiling,stamp,layout,
-                consumed_pages:PRIVATE_PAGES,
+                consumed_pages:PRIVATE_PAGES, freelist, page_list_image, clear_metrics:[0; 3],
             }, GFP_KERNEL)?
         };
-        let base = job.private_memory.gpu_va()?;
         {
             let owner: &mut Self = &mut *job;
-            g16_memory::write_freelist(&mut owner.pool_state, &mut owner.page_list, base, PRIVATE_PAGES)?;
+            // The private pool never moves during reuse within this VM. Restore
+            // its immutable CPU images rather than allocating and rebuilding
+            // all 8192 addresses for every render command.
+            owner.pool_state.write(0, &owner.freelist)?;
+            owner.page_list.write(0, &owner.page_list_image)?;
         }
         let mut uma = [0;0xa0];
         crate::g16_compute::encode_uma(&mut uma,job.pool_state.gpu_va()?,PRIVATE_QWORDS as u32,
@@ -274,6 +283,9 @@ impl Render {
     /// Parameter pages are GPU-written payload. Reset their allocator and
     /// scene metadata, retaining payload contents after retirement in this VM.
     fn clear(&mut self) -> Result {
+        let profiling = crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary);
+        let now = || <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get();
+        let start = if profiling { now() } else { 0 };
         for buffer in &mut self.commands { buffer.clear()?; }
         for buffer in &mut self.sequences { buffer.clear()?; }
         for buffer in &mut self.preemption { buffer.clear()?; }
@@ -282,14 +294,24 @@ impl Render {
         // retired descriptor, can be stale; clearing the whole pool through
         // the WC alias cost more than the GPU work of a typical pass.
         let bytes = self.consumed_pages.min(PRIVATE_PAGES) * 4096;
+        let private_start = if profiling { now() } else { 0 };
         self.private_memory.clear_range(0, bytes)?;
+        let private_ns = if profiling { now() - private_start } else { 0 };
         for buffer in [
             &mut self.metadata, &mut self.manager, &mut self.pages,
             &mut self.blocks, &mut self.block_ring,
             &mut self.scratch, &mut self.scene_list, &mut self.tilemap, &mut self.tpc,
             &mut self.unknown, &mut self.auxiliary, &mut self.uma,
-            &mut self.pool_state, &mut self.page_list,
         ] { buffer.clear()?; }
+        // Populated prefixes are overwritten from the cached images below.
+        // Retain the same zeroed ring headroom and block-list tail.
+        let pool_len = self.freelist.len();
+        self.pool_state.clear_range(pool_len, self.pool_state.size() - pool_len)?;
+        let list_len = self.page_list_image.len();
+        self.page_list.clear_range(list_len, self.page_list.size() - list_len)?;
+        self.clear_metrics = if profiling {
+            [bytes as u64, private_ns.max(0) as u64, (now() - start).max(0) as u64]
+        } else { [0; 3] };
         Ok(())
     }
     /// Record the retired pass's private-page consumption for recycling.

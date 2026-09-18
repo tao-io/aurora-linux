@@ -58,6 +58,7 @@ struct SubmitSummary {
     preparation_ns: [u64; 2],
     active_ns: [u64; 2],
     gpu_ns: [u64; 2],
+    render_clear: [u64; 3],
 }
 impl SubmitSummary {
     fn record(&mut self, render: bool, preparation: i64, active: i64, gpu: u64) {
@@ -456,6 +457,11 @@ impl Runtime {
             if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
                 inner.summary.record(matches!(&active.work, Work::Render(_)),
                     active.preparation_ns, active_ns, gpu_ns);
+                if let Work::Render(r) = &active.work {
+                    for (sum, value) in inner.summary.render_clear.iter_mut().zip(r.clear_metrics) {
+                        *sum += value;
+                    }
+                }
             }
             let cleanup = kernel::time::Instant::<kernel::time::Monotonic>::now();
             inner.gpu_pending = !inner.inflight.is_empty();
@@ -507,10 +513,11 @@ impl Runtime {
                         let s = &inner.summary;
                         // Same recognizable retirement record used by the
                         // watchdog guard, followed by aggregate measurements.
-                        dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} summary_span_ns={} render_commands={} compute_commands={} render_prepare_ns={} compute_prepare_ns={} render_active_ns={} compute_active_ns={} render_gpu_ns={} compute_gpu_ns={}\n",
+                        dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} summary_span_ns={} render_commands={} compute_commands={} render_prepare_ns={} compute_prepare_ns={} render_active_ns={} compute_active_ns={} render_gpu_ns={} compute_gpu_ns={} render_private_clear_bytes={} render_private_clear_ns={} render_clear_ns={}\n",
                             packet.id, index, now, now - s.since_ns,
                             s.commands[0], s.commands[1], s.preparation_ns[0], s.preparation_ns[1],
-                            s.active_ns[0], s.active_ns[1], s.gpu_ns[0], s.gpu_ns[1]);
+                            s.active_ns[0], s.active_ns[1], s.gpu_ns[0], s.gpu_ns[1],
+                            s.render_clear[0], s.render_clear[1], s.render_clear[2]);
                         inner.summary = SubmitSummary { since_ns: now, ..Default::default() };
                     }
                 }
