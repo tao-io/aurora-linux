@@ -335,6 +335,13 @@ impl Runtime {
         }
         let mut notification = inner.compute_queue.notification();
         notification.event_seq = notification.event_seq.checked_add(batch_offset).ok_or(EOVERFLOW)?;
+        let pool_slot: u8 = (batch_offset + 1).try_into()?;
+        let compute_owner = if matches!(payload, crate::g16_submit::Payload::Compute(_)) {
+            let mut cache = packet.compute_cache.lock();
+            let index = cache.iter().position(|owner| owner.pool_slot() == pool_slot
+                && owner.same_vm(&packet.vm));
+            index.and_then(|i| cache.remove(i).ok())
+        } else { None };
         let mut work = match payload {
             crate::g16_submit::Payload::Compute(control) => Work::Compute(crate::g16_job::Compute::in_vm(
                 &inner.drm,&inner.uat,&mut inner.config,&packet.vm,inner.compute_queue.address(),Some(control),
@@ -342,7 +349,7 @@ impl Runtime {
                 // All commands share job metadata slot 0 and the queue's
                 // user stamp, as G13/G14 do; per-command slots collide once
                 // more than four commands are dispatched together.
-                packet.compute_cache.lock().pop(), 0, (batch_offset + 1).try_into()?)?),
+                compute_owner, 0, pool_slot)?),
             crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
                 &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,inner.render_counter - 2,
                 [inner.queue.address(),inner.fragment_queue.address()],
