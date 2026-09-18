@@ -63,3 +63,15 @@ The main-menu sample averaged 9.485 FPS; it is not a fixed-scene benchmark.
 Render summaries additionally count private-pool bytes cleared and the time
 spent clearing that pool and all render buffers. Timing reads are enabled only
 with SubmitSummary. Fresh owners report zero recycled-buffer clears.
+
+Render freelist-image reuse (`a6e2e4ec4094`) passed the retained Factorio replay
+with zero differing pixels (`20260918T160129850938Z-factorio-freelist-frame`)
+and all timer/statistics reset, rollover and ordering checks
+(`20260918T160648949608Z-factorio-freelist-query-check`).
+`20260918T160154990032Z-factorio-freelist-menu` measured 11.203 FPS
+(11.000–11.370), peak 65 C, without menu interaction. Dynamic scene variation
+prevents attributing the whole FPS difference to this change. Final 19.069 s:
+2568 render commands, preparation 1.948 s, all clears 1.875 s, private clears
+1.796 s / 36,035,657,728 bytes (14,032,577 bytes per render on average).
+Private-pool clearing dominates preparation; other clears are only 0.079 s.
+No reset requirements, completion checks or GPU clocks were weakened.
