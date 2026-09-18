@@ -47,6 +47,7 @@ struct Inner {
     late_retirements: u64,
     wait_timeouts: u64,
     summary: SubmitSummary,
+    last_retired: Option<(u64, i64)>,
 }
 
 /// Low-volume profiling uses the same proven retirements as fence signalling.
@@ -62,6 +63,9 @@ struct SubmitSummary {
     render_stage_ns: [i64; 3],
     geometry: [RenderSummary; 16],
     geometry_overflow: u64,
+    consecutive_gap_ns: u64,
+    consecutive_gap_count: u64,
+    wait_phases: [[u64; 6]; 3],
 }
 #[derive(Clone, Copy, Default)]
 struct RenderSummary {
@@ -282,6 +286,18 @@ impl Runtime {
     fn start_command(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usize) -> Result {
         let preparing = kernel::time::Instant::<kernel::time::Monotonic>::now();
         let inner = &mut *self.inner;
+        if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
+            if let Some((id, retired)) = inner.last_retired {
+                // Consecutive commands from the same original ioctl have
+                // their dependency satisfied by the preceding retirement.
+                // Measure the scheduler handoff separately from preparation.
+                if id == packet.id {
+                    let now = <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get();
+                    inner.summary.consecutive_gap_ns += (now - retired).max(0) as u64;
+                    inner.summary.consecutive_gap_count += 1;
+                }
+            }
+        }
         inner.config.reset_trace_budget();
         let payload = packet.commands.get(index).ok_or(EINVAL)?.payload;
         let generation = inner.user_generation.wrapping_add(1).max(1);
@@ -536,6 +552,8 @@ impl Runtime {
                     }
                 }
             }
+            inner.last_retired = Some((packet.id,
+                <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get()));
             if index == packet.commands.len() {
                 crate::cls_dev_dbg!(SubmitTiming, inner.drm, "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} last_prepare_ns={} last_active_ns={} last_cleanup_ns={} last_gpu_ns={} messages={} waits={} late={} timeouts={}\n", packet.id, index, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), active.preparation_ns, active_ns, cleanup.elapsed().as_nanos(), gpu_ns, inner.state.event_messages.load(core::sync::atomic::Ordering::Acquire), inner.waits, inner.late_retirements, inner.wait_timeouts);
                 // Matching engine/notifier generations make the user stamp
@@ -554,9 +572,14 @@ impl Runtime {
                             s.active_ns[0], s.active_ns[1], s.gpu_ns[0], s.gpu_ns[1],
                             s.render_clear[0], s.render_clear[1], s.render_clear[2],
                             s.render_stage_ns[0], s.render_stage_ns[1], s.render_stage_ns[2]);
-                        dev_info!(inner.drm.as_ref(), "G16G: completion wait totals monotonic_ns={} messages={} waits={} late={} timeouts={} geometry_overflow={}\n",
+                        dev_info!(inner.drm.as_ref(), "G16G: completion wait totals monotonic_ns={} messages={} waits={} late={} timeouts={} geometry_overflow={} consecutive_gap_ns={} consecutive_gap_count={}\n",
                             now, inner.state.event_messages.load(core::sync::atomic::Ordering::Acquire),
-                            inner.waits, inner.late_retirements, inner.wait_timeouts, s.geometry_overflow);
+                            inner.waits, inner.late_retirements, inner.wait_timeouts, s.geometry_overflow,
+                            s.consecutive_gap_ns, s.consecutive_gap_count);
+                        for (pipe, counts) in s.wait_phases.iter().enumerate() {
+                            dev_info!(inner.drm.as_ref(), "G16G: completion phase samples monotonic_ns={} pipe={} before_start={} executing={} end_before_stamps={} stamps_before_queue={} queue_before_pipe={} missing_compute_timestamps={}\n",
+                                now, pipe, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
+                        }
                         for g in s.geometry.iter().filter(|g| g.count != 0) {
                             dev_info!(inner.drm.as_ref(), "G16G: render geometry summary monotonic_ns={} asid={} width={} height={} commands={} prepare_ns={} active_ns={} fragment_ns={} max_fragment_ns={}\n",
                                 now, g.key[0], g.key[1], g.key[2], g.count,
@@ -568,6 +591,21 @@ impl Runtime {
             }
             self.pump()?;
             return Ok(true);
+        }
+        if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
+            // Snapshot classifications, not utilization or durations. Only read
+            // retained command timestamp cells; never acknowledge device state.
+            let phase = if status[0] == active.work.stamp() as u64 &&
+                           status[1] == active.work.stamp() as u64 {
+                if !queue_done { 3 } else if !pipe_done { 4 } else { 5 }
+            } else {
+                let [start, end] = match &mut active.work {
+                    Work::Compute(_) => [status[2], status[3]],
+                    Work::Render(r) => r.timestamps()?[pipe_index],
+                };
+                if end != 0 { 2 } else if start != 0 { 1 } else { 0 }
+            };
+            inner.summary.wait_phases[pipe_index][phase] += 1;
         }
         if active.started.elapsed() >= Delta::from_secs(2) {
             dev_err!(inner.drm.as_ref(), "G16G: userspace GPU timeout job={} status={:x?} queue={:?} pipe={:?}\n",
@@ -630,7 +668,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

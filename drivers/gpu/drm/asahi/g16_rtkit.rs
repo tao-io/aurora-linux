@@ -8,8 +8,7 @@ use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use kernel::{
     c_str,
     device::Core,
-    new_condvar, new_mutex,
-    sync::{CondVar, Mutex},
+    sync::Completion,
     io::mem::{Mem, MemFlag},
     iosys_map::IoSysMapRef,
     platform,
@@ -18,41 +17,45 @@ use kernel::{
     sync::{aref::ARef, Arc, ArcBorrow},
 };
 
-/// Firmware event notifications counted under a lock, so the completion
-/// worker can sleep until one arrives instead of polling blindly.
+/// IRQ-safe notification tokens for the single GPU completion worker.
 #[pin_data]
 pub(crate) struct EventWait {
+    count: AtomicU64,
     #[pin]
-    count: Mutex<u64>,
-    #[pin]
-    arrived: CondVar,
+    arrived: Completion,
 }
 
 impl EventWait {
     fn new() -> Result<Arc<Self>> {
         Arc::pin_init(
             pin_init!(EventWait {
-                count <- new_mutex!(0, "G16G::EventWait::count"),
-                arrived <- new_condvar!("G16G::EventWait::arrived"),
+                count: AtomicU64::new(0),
+                arrived <- Completion::new(),
             }),
             GFP_KERNEL,
         )
     }
 
     fn record(&self) {
-        *self.count.lock() += 1;
-        self.arrived.notify_all();
+        self.count.fetch_add(1, Ordering::Release);
+        self.arrived.complete();
     }
 
     /// Sleep until a notification later than `seen` has been recorded or
-    /// `jiffies` elapse. Returns whether a notification arrived.
+    /// `jiffies` elapse. Returns whether a notification or pending wakeup exists.
     pub(crate) fn wait_past(&self, seen: u64, jiffies: kernel::time::Jiffies) -> bool {
-        let mut count = self.count.lock();
-        if *count != seen {
-            return true;
+        // Events can arrive while the worker is polling. Discard stale wakeup
+        // tokens before checking the sequence. A concurrent event either moves
+        // the sequence or leaves a token, including between the check and wait.
+        // Bound draining so a busy interrupt source cannot hold this worker.
+        for _ in 0..64 {
+            if !self.arrived.try_wait_for_completion() {
+                if self.count.load(Ordering::Acquire) != seen { return true; }
+                return self.arrived.wait_for_completion_timeout(jiffies);
+            }
         }
-        let _ = self.arrived.wait_interruptible_timeout(&mut count, jiffies);
-        *count != seen
+        // Resnapshot GPU progress before draining another batch of tokens.
+        true
     }
 }
 
@@ -199,14 +202,13 @@ impl rtkit::Operations for Operations {
         })
     }
 
-    fn recv_message(state: ArcBorrow<'_, State>, endpoint: u8, message: u64) {
+    fn recv_message_early(state: ArcBorrow<'_, State>, endpoint: u8, message: u64) -> bool {
         // Firmware retries its event notification until the shared rings are
         // drained, including after the final userspace job. Never take the
         // runtime mutex in the RTKit callback: enqueue the serialized worker.
         if endpoint == 0x20 && message == 0x0042_0000_0000_0000 {
-            // Count under the wait lock first: a worker that read the
-            // atomic count before this message then either sees the moved
-            // locked count or is already on the wait queue when notified.
+            // Complete and queue_work are IRQ-safe. Avoid allocating an RTKit
+            // receive work item and waiting for its worker before waking ours.
             state.events.record();
             state.event_messages.fetch_add(1, Ordering::Release);
             if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitTiming) {
@@ -215,8 +217,12 @@ impl rtkit::Operations for Operations {
                     state.event_messages.load(Ordering::Acquire));
             }
             crate::driver::queue_g16_completion_worker(state.drm.clone());
-            return;
+            return true;
         }
+        false
+    }
+
+    fn recv_message(state: ArcBorrow<'_, State>, endpoint: u8, message: u64) {
         dev_warn!(
             state.dev.as_ref(),
             "G16G: RTKit application ep={:#x} message={:#018x}\n",
