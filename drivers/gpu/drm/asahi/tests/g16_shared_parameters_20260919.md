@@ -50,3 +50,19 @@ remain unchanged. FS still waits on the immediate previous command and own TA.
 The TA anchor advances on every full-order render; it keeps all inherited
 non-fragment dependencies. Packet boundaries remain fully ordered.
 Hardware qualification of independent completion/tiling is pending.
+
+Independent replay153314 failed with host retirement timeout, job119. All
+three scheduler queues are idle, no active nodes; the stalled TA's firmware
+stamp is10b00, but userstamp remains primed10a00. Its fragment firmware AND
+user stamps are10b00, and USC private-pool submitted/completed areboth4.
+TA and FS timestamps are complete. The shared PB descriptor matches the
+manager and all engine selectors. DumpSHA
+91d6a6b28298350a627c52163b1a0112ab42335255ab8422ec849a34f515fcc9.
+Guard recovered desktop; peak67C, no thermal cutoff.
+
+Retirement correction: when the exact own-fragment stamps BOTH equal the
+render event and USC completed equals submitted, accept that stronger proof
+in place of a missing TA userstamp. TA firmware completion and the existing
+queue/pipe checks remain mandatory. OwnFS has an explicit barrier on ownTA.
+This is not accepting queue-idle alone or ignoring a timeout. Build passes;
+replay qualification pending. Original failure remains recorded.

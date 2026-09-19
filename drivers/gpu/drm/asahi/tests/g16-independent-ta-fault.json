@@ -1,0 +1,206 @@
+{
+  "job": 119,
+  "dump_sha256": "91d6a6b28298350a627c52163b1a0112ab42335255ab8422ec849a34f515fcc9",
+  "gate_192900": "0x4",
+  "free_engine_mask_128d60": "0xffff",
+  "queues": {
+    "ta": {
+      "info_cursors_20_24_28": [
+        225,
+        225,
+        225
+      ],
+      "scheduler_slot_2c": "0xffffffff",
+      "active_nodes": [],
+      "context": {
+        "record": "queue-context",
+        "group_00": 0,
+        "slot_01": 0,
+        "priority_03": 2,
+        "queue_weight_04": 4,
+        "weight_share_06": 200,
+        "timeslice_0a": 5880,
+        "process_weight_26": 2
+      },
+      "ring_cursors_00_30_40": [
+        225,
+        225,
+        225
+      ]
+    },
+    "fragment": {
+      "info_cursors_20_24_28": [
+        138,
+        138,
+        138
+      ],
+      "scheduler_slot_2c": "0xffffffff",
+      "active_nodes": [],
+      "context": {
+        "record": "queue-context",
+        "group_00": 0,
+        "slot_01": 0,
+        "priority_03": 2,
+        "queue_weight_04": 4,
+        "weight_share_06": 200,
+        "timeslice_0a": 5880,
+        "process_weight_26": 2
+      },
+      "ring_cursors_00_30_40": [
+        138,
+        138,
+        138
+      ]
+    },
+    "compute": {
+      "info_cursors_20_24_28": [
+        212,
+        212,
+        212
+      ],
+      "scheduler_slot_2c": "0xffffffff",
+      "active_nodes": [],
+      "context": {
+        "record": "queue-context",
+        "group_00": 0,
+        "slot_01": 0,
+        "priority_03": 2,
+        "queue_weight_04": 4,
+        "weight_share_06": 200,
+        "timeslice_0a": 5880,
+        "process_weight_26": 2
+      },
+      "ring_cursors_00_30_40": [
+        212,
+        212,
+        212
+      ]
+    }
+  },
+  "note": "Sealed fault-only sequential observations. No atomicity or completion claim.",
+  "firmware_timing": {
+    "reference_clock_khz_193b6c": 24000,
+    "maintenance_period_193b70": 1,
+    "power_sample_period_193b74": 8,
+    "maintenance_ticks_128da0": 66,
+    "derived_timer_interval_1928e0": 1000
+  },
+  "priority_weight_totals_304": [
+    0,
+    0,
+    200,
+    0
+  ],
+  "priority_shifts_314": [
+    4294967294,
+    4294967295,
+    0,
+    1
+  ],
+  "accounting_dirty_324": 0,
+  "client_notifications": {
+    "ta": {
+      "submitted": 23,
+      "firmware_stamp": "0x10500",
+      "published_stamp": "0x10500",
+      "flush_requested": 0,
+      "asid": 7
+    },
+    "fragment": {
+      "submitted": 23,
+      "firmware_stamp": "0x10500",
+      "published_stamp": "0x10500",
+      "flush_requested": 0,
+      "asid": 7
+    },
+    "compute": {
+      "submitted": 38,
+      "firmware_stamp": "0x7900",
+      "published_stamp": "0x7900",
+      "flush_requested": 0,
+      "asid": 7
+    }
+  },
+  "render_client_notifications": {
+    "ta": {
+      "submitted": 1,
+      "firmware_stamp": "0x10b00",
+      "published_stamp": "0x10a00",
+      "flush_requested": 0,
+      "asid": 7
+    },
+    "fragment": {
+      "submitted": 1,
+      "firmware_stamp": "0x10b00",
+      "published_stamp": "0x10b00",
+      "flush_requested": 0,
+      "asid": 7
+    },
+    "compute": {
+      "submitted": 0,
+      "firmware_stamp": "0x0",
+      "published_stamp": "0x0",
+      "flush_requested": 0,
+      "asid": 7
+    }
+  },
+  "parameter_buffer": {
+    "owner_selectors": {
+      "manager_0c": 0,
+      "command_18": 0,
+      "ta_register_1c830": 0,
+      "fragment_register_1c838": 0
+    },
+    "owner_selectors_agree": true,
+    "page_list_gpu_va_28": "0x713ec14000",
+    "hardware_descriptor": {
+      "slot": 0,
+      "words": [
+        "0x13ec1400",
+        "0x60000500",
+        "0xbf",
+        "0xbf"
+      ],
+      "expected_address_words": [
+        "0x13ec1400",
+        "0x60000000"
+      ],
+      "matches_manager_address": true
+    },
+    "init_cursor_0c": 0,
+    "init_staged_10": 0,
+    "populated_pages_34": 1280,
+    "block_capacity_38": 512,
+    "block_write_3c": 320,
+    "block_read_40": 0,
+    "last_page_54": 1279,
+    "limits_7c_80": [
+      1280,
+      1280
+    ],
+    "ring_00_04": [
+      320,
+      320
+    ],
+    "scene_counts_10_48": [
+      9,
+      9
+    ],
+    "statistics_200": [
+      9,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "ta_fragment_slot_77c": 113,
+    "ta_fragment_stamp_780": "0x10b00",
+    "fragment_event_slot_bd4": 113,
+    "fragment_event_stamp_bd0": "0x10b00",
+    "note": "Counts are firmware snapshots, not proof of exact utilization or retirement."
+  }
+}

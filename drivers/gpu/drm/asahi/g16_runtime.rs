@@ -678,6 +678,21 @@ impl Runtime {
         if firmware.wrapping_sub(active.work.stamp()) as i32 >= 0 {
             status[0] = active.work.stamp() as u64;
         }
+        if pipe_index == 0 {
+            if let Work::Render(render) = &mut active.work {
+                // G16 may omit an individual TA user-stamp write when several
+                // independent TAs complete together. Its own FS cannot finish
+                // before that TA: the firmware barrier retains that edge.
+                // Require both exact FS stamps and both private-pool engine
+                // completions, plus the TA firmware stamp checked below. This
+                // is stronger retirement evidence than a TA user stamp alone.
+                let fragment = render.notifier()?.lock().stamps(1)?;
+                if fragment == [render.stamp(); 2] &&
+                    render.uma_completed()? == render.uma_submitted() {
+                    status[1] = render.stamp() as u64;
+                }
+            }
+        }
         let queue = engine.status()?;
         let pipe = inner.config.pipe_indices(pipe_index)?;
         let next = active.queue_next[pipe_index];
