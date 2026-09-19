@@ -1,0 +1,24 @@
+{
+  "id": "20260919T172041495730Z-factorio-final-kernel-stage",
+  "verdict": "pass",
+  "transport_returncode": 0,
+  "evidence_fetched": true,
+  "directory": "/home/council/dev/dirtyroom_m4/_provenance/experiments/20260919T172041495730Z-factorio-final-kernel-stage",
+  "observations": {
+    "pixel_results": [
+      "PASS: module and initramfs staged; guarded reboot required"
+    ],
+    "pixel_result_count": 1,
+    "thermal_samples": 8,
+    "malformed_thermal_samples": 0,
+    "peak_temperature_c": 75.25,
+    "channel_peaks_c": {
+      "PMP aggregate die hotspot": 75.25,
+      "Ta000m": 65.5,
+      "Te000m": 62.75,
+      "Te001m": 73.75,
+      "Tp000m": 70.0,
+      "Tp001m": 75.25
+    }
+  }
+}

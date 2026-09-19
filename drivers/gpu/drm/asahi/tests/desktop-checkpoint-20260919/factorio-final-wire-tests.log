@@ -1,0 +1,21 @@
+
+running 16 tests
+test concurrent_parameter_owners_select_disjoint_firmware_descriptors ... ok
+test g16_compute::tests::dispatch_and_finish_carry_the_same_event_value ... ok
+test g16_compute::tests::engine_state_queue_and_notifier_are_distinct ... ok
+test g16_compute::tests::populated_freelist_requires_headroom ... ok
+test g16_compute::tests::invalid_address_is_transactional ... ok
+test g16_render::tests::executed_j713_geometry ... ok
+test g16_compute::tests::render_pool_allows_peer_fragment_while_tiler_is_active ... ok
+test g16_render::tests::parameter_buffer_root_selector_and_reserved_bits ... ok
+test g16_render::tests::layered_geometry_scales_allocations_not_per_layer_strides ... ok
+test g16_compute::tests::packed_abi_roles_and_end_record ... ok
+test g16_render::tests::register_layout_preserves_apertures_and_rejects_before_writing ... ok
+test m4_slot_dependency_wire_record ... ok
+test optional_timestamp_removal_preserves_native_wfi_and_finalizers ... ok
+test reject_external_or_unmapped_wait_before_writing ... ok
+test native_start_and_command_counters_agree_without_truncation ... ok
+test g16_compute::tests::repeated_end_timestamps_preserve_sequence_and_restart ... ok
+
+test result: ok. 16 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+

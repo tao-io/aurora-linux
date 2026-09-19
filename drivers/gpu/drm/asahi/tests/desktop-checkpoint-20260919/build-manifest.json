@@ -1,0 +1,17 @@
+{
+  "kernel_code_commit": "02c0379a2da5",
+  "kernel_evidence_commit": "d00481e478b6",
+  "mesa_commit": "3b01213c0c9",
+  "bootloader_code_commit": "b60940d",
+  "bootloader_evidence_commit": "992c1e1",
+  "builds": [
+    "Image modules dtbs",
+    "Mesa arm64 Vulkan",
+    "m1n1 release"
+  ],
+  "files": {
+    "build/linux-asahi-j713/arch/arm64/boot/Image": "58f84c0d48414d1020f46d5190868cbbfbec8985a257c4b0ebcd539a3676558d",
+    "build/linux-asahi-j713/drivers/gpu/drm/asahi/asahi.ko": "f95609840fac173041b9a38d5eeba8e97aff1af11c92af3a4cd4ce61ded409de",
+    "build/mesa-m4-asahi-arm64/src/asahi/vulkan/libvulkan_asahi.so": "056e21719a11d436d897c59e9b083a59cb849e68703af7c8758b6029e707142a"
+  }
+}

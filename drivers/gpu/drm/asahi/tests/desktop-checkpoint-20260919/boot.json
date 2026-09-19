@@ -1,0 +1,99 @@
+{
+  "boot_id": "ea1d88ed-e8bd-49ab-afc6-a55241769989",
+  "kernel": "7.1.9-dirtyroom-asahi2+",
+  "version": "Linux version 7.1.9-dirtyroom-asahi2+ (council@mini) (clang version 22.1.8, LLD 22.1.8) #20 SMP PREEMPT Sat Sep 19 19:18:51 CEST 2026",
+  "services": {
+    "display-manager": "active",
+    "m4-graphics": "active",
+    "m4-ssh-watchdog": "active"
+  },
+  "autologin": "# Development machine: persistent autologin explicitly requested 2026-09-17.\n[Autologin]\nUser=e\nSession=hyprland.desktop\nRelogin=false\n",
+  "files": {
+    "/boot/asahi/Image.asahi2": "58f84c0d48414d1020f46d5190868cbbfbec8985a257c4b0ebcd539a3676558d",
+    "/opt/asahi-m4-port/lib/libvulkan_asahi.so": "056e21719a11d436d897c59e9b083a59cb849e68703af7c8758b6029e707142a"
+  },
+  "connectors": {
+    "card2-eDP-1": "connected"
+  },
+  "hyprland": [
+    {
+      "pid": 765,
+      "uid": 1000,
+      "monitors": [
+        {
+          "id": 0,
+          "name": "eDP-1",
+          "description": "",
+          "make": "",
+          "model": "",
+          "serial": "",
+          "width": 2560,
+          "height": 1664,
+          "physicalWidth": 0,
+          "physicalHeight": 0,
+          "refreshRate": 60.0,
+          "x": 0,
+          "y": 0,
+          "activeWorkspace": {
+            "id": 1,
+            "name": "1"
+          },
+          "specialWorkspace": {
+            "id": 0,
+            "name": ""
+          },
+          "reserved": [
+            0,
+            32,
+            0,
+            0
+          ],
+          "scale": 2.0,
+          "transform": 0,
+          "focused": true,
+          "dpmsStatus": true,
+          "vrr": false,
+          "solitary": "0",
+          "solitaryBlockedBy": [
+            "WINDOWED",
+            "CANDIDATE"
+          ],
+          "activelyTearing": false,
+          "tearingBlockedBy": [
+            "NOT_TORN",
+            "USER",
+            "CANDIDATE"
+          ],
+          "directScanoutTo": "0",
+          "directScanoutBlockedBy": [
+            "USER",
+            "SW",
+            "CANDIDATE"
+          ],
+          "disabled": false,
+          "currentFormat": "XRGB8888",
+          "mirrorOf": "none",
+          "availableModes": [
+            "2560x1664@60.00Hz"
+          ],
+          "colorManagementPreset": "srgb",
+          "sdrBrightness": 1.0,
+          "sdrSaturation": 1.0,
+          "sdrMinLuminance": 0.2,
+          "sdrMaxLuminance": 80,
+          "hardwareCursorsInUse": true
+        }
+      ]
+    }
+  ],
+  "errors": "Sep 19 17:22:21 archlinux kernel: OF: reserved mem: OVERLAP DETECTED!\n                                  m1n1-chainload@10005770000 (0x0000010005770000--0x0000010005f10000) overlaps with asc-firmware@100058f4000 (0x00000100058f4000--0x0000010005918000)\nSep 19 17:22:21 archlinux kernel: hid-generic 0019:0000:0000.0001: device has no listeners, quitting\nSep 19 17:22:21 archlinux kernel: ieee80211 phy0: brcmf_c_set_joinpref_default: Set join_pref error (-52)\nSep 19 17:22:21 archlinux kernel: ieee80211 phy0: brcmf_c_set_joinpref_default: Set join_pref error (-52)\nSep 19 17:22:21 archlinux kernel: dwc3-apple 40a280000.usb: error -ETIMEDOUT: failed to initialize core\nSep 19 17:22:21 archlinux kernel: dwc3-apple 40a280000.usb: Failed to probe DWC3 Core, err=-110\nSep 19 17:22:22 archlinux kernel: dwc3-apple 40a280000.usb: error -ETIMEDOUT: failed to initialize core\nSep 19 17:22:22 archlinux kernel: dwc3-apple 40a280000.usb: Failed to probe DWC3 Core, err=-110\nSep 19 17:22:27 omarchy kernel: ieee80211 phy0: brcmf_dongle_roam: WLC_SET_ROAM_DELTA error (-52)\nSep 19 17:22:27 omarchy kernel: asahi: UAT handoff: firmware exclusion timed out; AP interest withdrawn\nSep 19 17:22:27 omarchy kernel: asahi: UAT handoff: firmware exclusion timed out; AP interest withdrawn\nSep 19 17:22:27 omarchy kernel: asahi: UATPageTable::prepare_map: Page at IOVA 0x2001ff8000 is already owned (PTE: 0xc001031fbb448b)\nSep 19 17:22:27 omarchy kernel: asahi: UATPageTable::prepare_map: Page at IOVA 0x2fffffc000 is already owned (PTE: 0xc001031fbb448b)\nSep 19 17:22:27 omarchy kernel: asahi: UATPageTable::prepare_map: Page at IOVA 0x2001ff8000 is already owned (PTE: 0xc001031fbb448b)\nSep 19 17:22:27 omarchy kernel: asahi: UATPageTable::prepare_map: Page at IOVA 0x2fffffc000 is already owned (PTE: 0xc001031fbb448b)\nSep 19 17:22:28 omarchy kernel: ieee80211 phy0: brcmf_c_set_joinpref_default: Set join_pref error (-52)\n",
+  "hyprland_probe_note": "Initial collector used nonexistent /opt/m4-hyprland/bin/hyprctl; corrected to installed /usr/bin/hyprctl.",
+  "cleanup_removed": [
+    "/root/asahi-cached-programs.json",
+    "/root/asahi-compute-stamps.json",
+    "/opt/asahi-m4-port/lib/libvulkan_asahi-cached-programs.so",
+    "/opt/asahi-m4-port/lib/libvulkan_asahi-compute-stamps.so",
+    "/root/asahi-cached-programs.ko",
+    "/root/Image.factorio-final"
+  ]
+}
