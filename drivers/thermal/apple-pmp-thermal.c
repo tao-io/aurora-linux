@@ -16,8 +16,13 @@
 #include <linux/soc/apple/pmp-temps.h>
 #include <linux/thermal.h>
 
-#define APPLE_PMP_PASSIVE_MC	70000
-#define APPLE_PMP_HYST_MC		10000
+#define APPLE_PMP_PASSIVE_MC	80000
+/* step_wise regulates against the lower threshold after crossing the trip.
+ * A 10 C band held ordinary graphics workloads near minimum CPU frequency
+ * at 64--67 C after a short startup spike. The J713 development policy uses
+ * an 80 C trip and releases below 78 C; sensor faults still clamp fully.
+ */
+#define APPLE_PMP_HYST_MC		2000
 #define APPLE_PMP_POLL_MS		25
 
 struct apple_pmp_cluster {
@@ -266,7 +271,7 @@ static int __init apple_pmp_thermal_init(void)
 	ret = thermal_zone_device_enable(pmp_thermal.zone);
 	if (ret)
 		goto fail;
-	pr_info("apple-pmp-thermal: J713 70 C passive trip, 10 C hysteresis, 25 ms polling; target ~80 C\n");
+	pr_info("apple-pmp-thermal: J713 80 C passive trip, 2 C hysteresis, 25 ms polling\n");
 	return 0;
 fail:
 	apple_pmp_thermal_cleanup();
