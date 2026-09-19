@@ -54,3 +54,13 @@ these 4-byte register numbers as little-endian64-bit words.
 
 Eight native-state host tests pass, including every ID in both runtime banks;
 15 command/dependency tests pass. Hardware qualification follows separately.
+
+
+Kernel79f480d290c9 hardware qualification: boot021be92d, moduleSHA
+470bbbbf2e4b0611d558d4ec8ce88f191127d66d5e03626de51986aeb987f623.
+Desktop boots normally. Replay142127 and installed-default142944 preserve
+all pixels and exact fragment statistics. Live menu142153 passes60seconds;
+installed-default143011 passes120seconds, peak88.75C, no GPU fault. All runs
+retain60second watchdog and six thermal channels. Separate startup142816
+lost its X11 surface then guestSIGSEGV; not a GPU timeout and still unexplained.
+Full CTS deferred;5ms GPU-frame target not achieved.
