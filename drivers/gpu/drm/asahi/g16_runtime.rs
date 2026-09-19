@@ -29,7 +29,7 @@ struct Inner {
     generation: u32,
     gpu_pending: bool,
     busy_since_ns: Option<i64>,
-    user_generation: u8,
+    command_label: u8,
     render_stamp: u32,
     render_counter: u64,
     compute_stamp: u32,
@@ -454,7 +454,7 @@ impl Runtime {
         }
         inner.config.reset_trace_budget();
         let payload = packet.commands.get(index).ok_or(EINVAL)?.payload;
-        let generation = inner.user_generation.wrapping_add(1).max(1);
+        let label = inner.command_label.wrapping_add(1).max(1);
         // Firmware indexes its per-event command records with stamp[14:8].
         // Reusing 0x100 aliases every render to the same record. Advance the
         // event value exactly as the common Asahi queues do, across clients.
@@ -495,7 +495,7 @@ impl Runtime {
                 // more than four commands are dispatched together.
                 compute_owner, 0, pool_slot)?),
             crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
-                &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,inner.render_counter - 2,
+                &inner.drm,&inner.uat,&packet.vm,command,usc,label,inner.render_stamp,inner.render_counter - 2,
                 [inner.queue.address(),inner.fragment_queue.address()],
                 [inner.queue.notification(),inner.fragment_queue.notification()],
                 inner.config.render_stats(), batch_offset.try_into()?, render_owner)?),
@@ -512,7 +512,7 @@ impl Runtime {
                 render.set_fragment_timestamp_copies(packet.commands[index].fragment_copy_addresses())?;
             }
         }
-        inner.user_generation = generation;
+        inner.command_label = label;
         inner.device.check_pstate()?;
         Ok(Active { packet, bank: batch_offset as usize / COMPUTE_DEPTH, work, index, queue_next:[0;3],pipe_next:[0;3],
             preparation_ns: preparing.elapsed().as_nanos(),
@@ -903,7 +903,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, busy_since_ns: None, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, last_gpu_end: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, busy_since_ns: None, command_label: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, last_gpu_end: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {
@@ -1109,11 +1109,17 @@ impl Drop for Runtime {
     }
 }
 
-/// Same 24 MHz physical clock used in queue messages and engine timestamps.
+/// Convert the AP counter to the 24 MHz engine timestamp rate. M4's AP
+/// counter runs at 1 GHz; never compare its raw value to an ASC timestamp.
 fn physical_counter() -> u64 {
     let tick: u64;
-    // SAFETY: The architectural counter is readable at EL1 on admitted J713.
-    unsafe { core::arch::asm!("mrs {t}, cntpct_el0", t = out(reg) tick,
+    let frequency: u64;
+    // SAFETY: Architectural counter/frequency reads at EL1 on admitted J713.
+    unsafe { core::arch::asm!("mrs {f}, cntfrq_el0", "mrs {t}, cntpct_el0",
+        f = out(reg) frequency, t = out(reg) tick,
         options(nomem, nostack, preserves_flags)) };
-    tick
+    let frequency = frequency & 0xffff_ffff;
+    if frequency == 0 { return 0; }
+    // Quotient/remainder avoids overflow after only minutes at 1 GHz.
+    (tick / frequency) * 24_000_000 + (tick % frequency) * 24_000_000 / frequency
 }

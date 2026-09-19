@@ -158,7 +158,10 @@ for line in lines:
     if not match:
         raise ValueError('Malformed publication timing record')
     publication.append((json.loads(match[1]), json.loads(match[2]), int(match[3])))
-if publication:
+if publication and any(row[2] for row in publication):
+    result['publication_timing_rejected'] = dict(invalid=sum(row[2] for row in publication),
+        reason='Counter order is inconsistent; cross-domain timing values omitted')
+elif publication:
     result['publication_gaps'] = {
         label: {kind: sum(row[0][i][j] for row in publication)/24e6
                 for j,kind in enumerate(['already_queued_seconds', 'before_publication_seconds', 'after_publication_seconds'])}

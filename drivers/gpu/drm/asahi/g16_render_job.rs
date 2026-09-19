@@ -73,7 +73,7 @@ impl Render {
     }
 
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, vm: &mmu::Vm,
-        r: UapiRenderCommand, usc: u64, generation: u8, stamp: u32, counter: u64,
+        r: UapiRenderCommand, usc: u64, label: u8, stamp: u32, counter: u64,
         queues: [u64; 2], notifications: [crate::g16_compute::Notification; 2], stats: [u64; 2],
         pool_slot: u8, reusable: Option<KBox<Self>>) -> Result<KBox<Self>> {
         if usize::from(pool_slot) >= crate::g16_runtime::POOL_SLOTS { return Err(EINVAL); }
@@ -253,7 +253,8 @@ impl Render {
         let mut sequence = [0;0x400];
         let mut registers = KBox::new([Register::default();128],GFP_KERNEL)?;
         for (i,stage) in [Stage::Tiling,Stage::Fragment].into_iter().enumerate() {
-            let uuid = 0x16000000 | (u32::from(generation)<<8) | i as u32;
+            // A diagnostic command label, not the ASID binding generation.
+            let uuid = 0x16000000 | (u32::from(label)<<8) | i as u32;
             wire::encode(&mut work[..],&mut sequence,stage,wire::Args {
                 command:job.commands[i].va(),sku:job.sequences[i].va(),queue:queues[i],
                 stats:stats[i],
