@@ -642,6 +642,17 @@ impl Runtime {
                     active.packet.id, active.index, pipe_index,
                     <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(),
                     active.preparation_ns, active_ns);
+                // Preparation can run ahead of retirement. Keep the identity
+                // and all stage durations on one record; adjacency to an
+                // earlier "owned render" message does not identify this pass.
+                if let (Work::Render(render), crate::g16_submit::Payload::Render { command, .. }) =
+                    (&active.work, &active.packet.commands[active.index].payload) {
+                    let [asid, width, height] = render.profiling_key();
+                    dev_info!(inner.drm.as_ref(), "G16G_PASS job={} index={} asid={} width={} height={} cs={:#x} gpu_start={} gpu_end={} ta_ns={} gap_ns={} fs_ns={}\n",
+                        active.packet.id, active.index, asid, width, height,
+                        command.vdm_base, gpu_span[0], gpu_span[1],
+                        render_stage_ns[0], render_stage_ns[1], render_stage_ns[2]);
+                }
             }
             // Firmware pickup, GPU execution and host observation latency in
             // the shared 24 MHz counter, for the retained progress record.
