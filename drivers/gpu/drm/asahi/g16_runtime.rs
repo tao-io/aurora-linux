@@ -346,12 +346,15 @@ impl Runtime {
                 // Build all three queue rings before ringing any doorbell.
                 // Dependencies normally wait on the predecessor's final
                 // engine stamp. A fragment-only render dependency may let
-                // TA run ahead: the TA and FS queues each remain FIFO, and
-                // every FS still waits on its own TA. Never apply this across
+                // TA run ahead: explicitly chain TA->TA and FS->FS, and
+                // every FS still waits on its own TA. Firmware may dispatch
+                // several commands from one queue before they complete;
+                // queue order alone is not an execution dependency.
+                // Never apply this across
                 // a compute command, packet boundary or start timestamp.
                 let mut addresses = [[0u64; COMPUTE_DEPTH * 3]; 3];
                 let mut entries = [0usize; 3];
-                let mut previous_render_packet = None;
+                let mut previous_render = None;
                 let mut previous = inner.inflight.last().map(|active| match &active.work {
                     Work::Compute(c) => (active.packet.notifications.lock().notification(2).fw_stamp,
                         crate::g16_compute::SLOT, c.stamp()),
@@ -361,7 +364,7 @@ impl Runtime {
                 for active in batch.iter_mut() {
                     match &mut active.work {
                         Work::Compute(c) => {
-                            previous_render_packet = None;
+                            previous_render = None;
                             if let Some((address, slot, stamp)) = previous {
                                 addresses[2][entries[2]] = c.dependency(address, slot, stamp)?;
                                 entries[2] += 1;
@@ -380,9 +383,11 @@ impl Runtime {
                                     command.fragment_timestamps.start.handle == 0,
                                 _ => false,
                             };
-                            let early_tiling = fragment_only &&
-                                previous_render_packet == Some(active.packet.id);
-                            if let Some((address, slot, stamp)) = previous.filter(|_| !early_tiling) {
+                            let early_tiling = previous_render.filter(|(packet, _, _)|
+                                fragment_only && *packet == active.packet.id);
+                            let tiling_dependency = early_tiling.map(|(_, address, stamp)|
+                                (address, crate::g16_render_job::SLOTS[0], stamp)).or(previous);
+                            if let Some((address, slot, stamp)) = tiling_dependency {
                                 r.wait_for_prior(address, slot, stamp)?;
                                 addresses[0][entries[0]] = r.compute_dependency().ok_or(EIO)?;
                                 entries[0] += 1;
@@ -390,13 +395,19 @@ impl Runtime {
                             addresses[0][entries[0]] = r.init_address();
                             addresses[0][entries[0] + 1] = r.address();
                             entries[0] += 2;
+                            if early_tiling.is_some() {
+                                let (address, slot, stamp) = previous.ok_or(EIO)?;
+                                addresses[1][entries[1]] = r.wait_for_prior_fragment(address, slot, stamp)?;
+                                entries[1] += 1;
+                            }
                             addresses[1][entries[1]] = r.fragment_dependency();
                             addresses[1][entries[1] + 1] = r.fragment_address();
                             entries[1] += 2;
                             active.packet.notifications.lock().publish(true)?;
                             previous = Some((active.packet.notifications.lock().notification(1).fw_stamp,
                                 crate::g16_render_job::SLOTS[1], r.stamp()));
-                            previous_render_packet = Some(active.packet.id);
+                            previous_render = Some((active.packet.id,
+                                active.packet.notifications.lock().notification(0).fw_stamp, r.stamp()));
                         }
                     }
                 }

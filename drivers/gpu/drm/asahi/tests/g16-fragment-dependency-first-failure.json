@@ -1,0 +1,22 @@
+{
+  "id": "20260919T121015822136Z-factorio-early-tiling",
+  "verdict": "gpu_timeout",
+  "transport_returncode": 255,
+  "evidence_fetched": true,
+  "directory": "/home/council/dev/dirtyroom_m4/_provenance/experiments/20260919T121015822136Z-factorio-early-tiling",
+  "observations": {
+    "pixel_results": [],
+    "pixel_result_count": 0,
+    "thermal_samples": 12,
+    "malformed_thermal_samples": 0,
+    "peak_temperature_c": 78.75,
+    "channel_peaks_c": {
+      "PMP aggregate die hotspot": 76.75,
+      "Ta000m": 67.25,
+      "Te000m": 63.75,
+      "Te001m": 75.5,
+      "Tp000m": 71.0,
+      "Tp001m": 78.75
+    }
+  }
+}

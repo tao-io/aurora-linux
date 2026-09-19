@@ -353,6 +353,16 @@ impl Render {
     pub(crate) fn compute_dependency(&self) -> Option<u64> {
         self.compute_dependency.then_some(self.metadata.va() + 0x380)
     }
+    pub(crate) fn wait_for_prior_fragment(&mut self, stamp_address: u64,
+        slot: u8, value: u32) -> Result<u64> {
+        let mut barrier = [0; 0x40];
+        wire::render_dependency(&mut barrier, stamp_address, slot,
+            value, self.stamp).map_err(|_| EINVAL)?;
+        barrier[0x3c..0x40].copy_from_slice(&1u32.to_le_bytes());
+        // 0x400..0x41f contains stamps; 0x500 begins the UMA counters.
+        self.metadata.write(0x440, &barrier)?;
+        Ok(self.metadata.va() + 0x440)
+    }
     pub(crate) fn init_address(&self) -> u64 { self.metadata.va()+0x300 }
     pub(crate) fn fragment_dependency(&self) -> u64 { self.metadata.va()+0x340 }
     pub(crate) fn fragment_address(&self) -> u64 { self.commands[1].va() }

@@ -1,0 +1,333 @@
+{
+  "job": 134,
+  "dump_sha256": "9cb3cf78868c50fa127a5abaf1438daecae13257d4c72ff8cbce27386c3ae7a3",
+  "gate_192900": "0x2",
+  "free_engine_mask_128d60": "0xff00",
+  "queues": {
+    "ta": {
+      "info_cursors_20_24_28": [
+        35,
+        35,
+        35
+      ],
+      "scheduler_slot_2c": "0x70",
+      "active_nodes": [
+        {
+          "index": 34,
+          "state": 2,
+          "flags_04": "0xdc2004",
+          "command_and_flags_10": "0xfffffc20895dc008",
+          "sequence_28": "0xfffffc208b5f0000",
+          "restart_30": "0xfffffc208b5f021c",
+          "engine_44": 0,
+          "flags_45": "0x0",
+          "uma_class_46": 0
+        },
+        {
+          "index": 35,
+          "state": 2,
+          "flags_04": "0xdc2005",
+          "command_and_flags_10": "0xfffffc208bacc008",
+          "sequence_28": "0xfffffc208dae0000",
+          "restart_30": "0xfffffc208dae021c",
+          "engine_44": 2,
+          "flags_45": "0x0",
+          "uma_class_46": 0
+        },
+        {
+          "index": 36,
+          "state": 2,
+          "flags_04": "0xdc2006",
+          "command_and_flags_10": "0xfffffc208df34008",
+          "sequence_28": "0xfffffc20a9858000",
+          "restart_30": "0xfffffc20a985821c",
+          "engine_44": 4,
+          "flags_45": "0x0",
+          "uma_class_46": 0
+        },
+        {
+          "index": 37,
+          "state": 2,
+          "flags_04": "0xdc2007",
+          "command_and_flags_10": "0xfffffc20a9d40008",
+          "sequence_28": "0xfffffc20abd54000",
+          "restart_30": "0xfffffc20abd5421c",
+          "engine_44": 6,
+          "flags_45": "0x0",
+          "uma_class_46": 0
+        },
+        {
+          "index": 38,
+          "state": 1,
+          "flags_04": "0xdc2008",
+          "command_and_flags_10": "0xfffffc20ac23c008",
+          "sequence_28": "0xfffffc20ae250000",
+          "restart_30": "0xfffffc20ae250000",
+          "engine_44": 255,
+          "flags_45": "0x0",
+          "uma_class_46": 0
+        },
+        {
+          "index": 39,
+          "state": 1,
+          "flags_04": "0xdc2009",
+          "command_and_flags_10": "0xfffffc20ae738008",
+          "sequence_28": "0xfffffc20b074c000",
+          "restart_30": "0xfffffc20b074c000",
+          "engine_44": 255,
+          "flags_45": "0x0",
+          "uma_class_46": 0
+        }
+      ],
+      "context": {
+        "record": "queue-context",
+        "group_00": 0,
+        "slot_01": 0,
+        "priority_03": 2,
+        "queue_weight_04": 4,
+        "weight_share_06": 200,
+        "timeslice_0a": 5880,
+        "process_weight_26": 2
+      },
+      "ring_cursors_00_30_40": [
+        22,
+        35,
+        35
+      ]
+    },
+    "fragment": {
+      "info_cursors_20_24_28": [
+        78,
+        78,
+        78
+      ],
+      "scheduler_slot_2c": "0x71",
+      "active_nodes": [
+        {
+          "index": 34,
+          "state": 2,
+          "flags_04": "0xdc4000",
+          "command_and_flags_10": "0xfffffc20895e4009",
+          "sequence_28": "0xfffffc208b5f8000",
+          "restart_30": "0xfffffc208b5f823c",
+          "engine_44": 1,
+          "flags_45": "0x0",
+          "uma_class_46": 0
+        },
+        {
+          "index": 35,
+          "state": 2,
+          "flags_04": "0xdc4002",
+          "command_and_flags_10": "0xfffffc208bad4009",
+          "sequence_28": "0xfffffc208dae8000",
+          "restart_30": "0xfffffc208dae823c",
+          "engine_44": 3,
+          "flags_45": "0x0",
+          "uma_class_46": 0
+        },
+        {
+          "index": 36,
+          "state": 2,
+          "flags_04": "0xdc4000",
+          "command_and_flags_10": "0xfffffc208ba44009",
+          "sequence_28": "0xfffffc20a9860000",
+          "restart_30": "0xfffffc20a986023c",
+          "engine_44": 5,
+          "flags_45": "0x0",
+          "uma_class_46": 0
+        },
+        {
+          "index": 37,
+          "state": 2,
+          "flags_04": "0xdc4002",
+          "command_and_flags_10": "0xfffffc20a9d48009",
+          "sequence_28": "0xfffffc20abd5c000",
+          "restart_30": "0xfffffc20abd5c23c",
+          "engine_44": 7,
+          "flags_45": "0x0",
+          "uma_class_46": 0
+        },
+        {
+          "index": 38,
+          "state": 1,
+          "flags_04": "0xdc4003",
+          "command_and_flags_10": "0xfffffc20ac244009",
+          "sequence_28": "0xfffffc20ae258000",
+          "restart_30": "0xfffffc20ae258000",
+          "engine_44": 255,
+          "flags_45": "0x0",
+          "uma_class_46": 0
+        },
+        {
+          "index": 39,
+          "state": 1,
+          "flags_04": "0xdc600f",
+          "command_and_flags_10": "0xfffffc20ae740009",
+          "sequence_28": "0xfffffc20b0754000",
+          "restart_30": "0xfffffc20b0754000",
+          "engine_44": 255,
+          "flags_45": "0x10",
+          "uma_class_46": 0
+        }
+      ],
+      "context": {
+        "record": "queue-context",
+        "group_00": 0,
+        "slot_01": 0,
+        "priority_03": 2,
+        "queue_weight_04": 4,
+        "weight_share_06": 200,
+        "timeslice_0a": 5880,
+        "process_weight_26": 2
+      },
+      "ring_cursors_00_30_40": [
+        66,
+        78,
+        78
+      ]
+    },
+    "compute": {
+      "info_cursors_20_24_28": [
+        228,
+        228,
+        228
+      ],
+      "scheduler_slot_2c": "0xf",
+      "active_nodes": [
+        {
+          "index": 0,
+          "state": 1,
+          "flags_04": "0xc3c000",
+          "command_and_flags_10": "0xfffffc20b0ce400a",
+          "sequence_28": "0xfffffc20b0ce4900",
+          "restart_30": "0xfffffc20b0ce4900",
+          "engine_44": 255,
+          "flags_45": "0x0",
+          "uma_class_46": 0
+        },
+        {
+          "index": 127,
+          "state": 1,
+          "flags_04": "0xc3e010",
+          "command_and_flags_10": "0xfffffc20b0c3400a",
+          "sequence_28": "0xfffffc20b0c34900",
+          "restart_30": "0xfffffc20b0c34900",
+          "engine_44": 255,
+          "flags_45": "0x10",
+          "uma_class_46": 0
+        }
+      ],
+      "context": {
+        "record": "queue-context",
+        "group_00": 0,
+        "slot_01": 0,
+        "priority_03": 2,
+        "queue_weight_04": 4,
+        "weight_share_06": 200,
+        "timeslice_0a": 5880,
+        "process_weight_26": 2
+      },
+      "ring_cursors_00_30_40": [
+        224,
+        228,
+        228
+      ]
+    }
+  },
+  "note": "Sealed fault-only sequential observations. No atomicity or completion claim.",
+  "firmware_timing": {
+    "reference_clock_khz_193b6c": 24000,
+    "maintenance_period_193b70": 1,
+    "power_sample_period_193b74": 8,
+    "maintenance_ticks_128da0": 2076,
+    "derived_timer_interval_1928e0": 1000
+  },
+  "priority_weight_totals_304": [
+    0,
+    0,
+    200,
+    0
+  ],
+  "priority_shifts_314": [
+    4294967294,
+    4294967295,
+    0,
+    1
+  ],
+  "accounting_dirty_324": 0,
+  "client_notifications": {
+    "ta": {
+      "submitted": 33,
+      "firmware_stamp": "0x12100",
+      "published_stamp": "0x12100",
+      "flush_requested": 0,
+      "asid": 7
+    },
+    "fragment": {
+      "submitted": 33,
+      "firmware_stamp": "0x12100",
+      "published_stamp": "0x12100",
+      "flush_requested": 0,
+      "asid": 7
+    },
+    "compute": {
+      "submitted": 39,
+      "firmware_stamp": "0x7e00",
+      "published_stamp": "0x7e00",
+      "flush_requested": 0,
+      "asid": 7
+    }
+  },
+  "parameter_buffer": {
+    "page_list_gpu_va_28": "0x7122f28000",
+    "hardware_descriptor": {
+      "slot": 0,
+      "words": [
+        "0x14930400",
+        "0x60000080",
+        "0x0",
+        "0x0"
+      ],
+      "expected_address_words": [
+        "0x122f2800",
+        "0x60000000"
+      ],
+      "matches_manager_address": false
+    },
+    "init_cursor_0c": 0,
+    "init_staged_10": 0,
+    "populated_pages_34": 128,
+    "block_capacity_38": 64,
+    "block_write_3c": 32,
+    "block_read_40": 0,
+    "last_page_54": 127,
+    "limits_7c_80": [
+      128,
+      128
+    ],
+    "ring_00_04": [
+      32,
+      32
+    ],
+    "scene_counts_10_48": [
+      0,
+      0
+    ],
+    "statistics_200": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0
+    ],
+    "ta_fragment_slot_77c": 113,
+    "ta_fragment_stamp_780": "0x12200",
+    "fragment_event_slot_bd4": 113,
+    "fragment_event_stamp_bd0": "0x12200",
+    "note": "Counts are firmware snapshots, not proof of exact utilization or retirement."
+  }
+}
