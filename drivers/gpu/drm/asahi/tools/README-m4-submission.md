@@ -389,3 +389,21 @@ without changing an in-flight notifier's context. The shared work rings,
 engine event slots, two banks and strict execution order remain unchanged.
 This is not engine overlap or preemption. ARM64 module build passes; hardware
 qualification is pending at this development checkpoint.
+
+Client notifier qualification: `20260919T040713105049Z-factorio-client-notifications-frame`
+is pixel-identical (0 differing RGB components, 2560x1664).
+`20260919T040742266758Z-factorio-client-notifications-menu` completes 60 s
+with tail mean 44.40 FPS (39.93–46.59), peak 85.5 C. Scenes vary; no paired
+speedup is inferred. Cross-client followers are now observed already queued.
+`20260919T041154836114Z-factorio-client-notifications-competing` passes all
+readbacks of 1024 background commands and 40 high-priority foreground commands.
+Full CTS and sustained 60 FPS remain pending.
+
+The next correction requests explicit completion-stamp flush on the last
+render of each packet, matching queue/mod.rs and queue/render.rs on G13/G14.
+25G83 TEXT 21944 and 22e78 load TA+894 / FS+bdc into notifier+20; TEXT
+23d38..40 enters stamp publication when that flag is set even if the normal
+threshold scan would defer it. The prior encoder left both fields zero.
+Compute retains its existing per-command alias-visibility flush. Firmware
+excerpts and their source hash are in render-notifier-flush-25g83.txt.
+Hardware qualification of this flush correction follows its build.

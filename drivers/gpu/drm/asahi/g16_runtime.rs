@@ -493,6 +493,10 @@ impl Runtime {
             }
             Work::Render(render) => {
                 render.retain_notifier(packet.notifications.clone());
+                if !packet.commands[index + 1..].iter().any(|command|
+                    matches!(command.payload, crate::g16_submit::Payload::Render { .. })) {
+                    render.request_completion_flush()?;
+                }
                 render.set_attachments(attachments)?;
                 render.set_user_timestamps(packet.commands[index].render_timestamp_addresses())?;
                 render.set_fragment_timestamp_copies(packet.commands[index].fragment_copy_addresses())?;

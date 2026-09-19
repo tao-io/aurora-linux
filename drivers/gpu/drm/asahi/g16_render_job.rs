@@ -50,6 +50,14 @@ pub(crate) struct Render {
     pub(crate) clear_metrics: [u64; 3],
 }
 impl Render {
+    /// Match common Asahi's last-render flush_stamps. M4 25G83 completion
+    /// handlers OR TA+894 / FS+bdc into notifier+20 (TEXT 21944 / 22e78),
+    /// making the ready-notifier path publish stamps without threshold delay.
+    pub(crate) fn request_completion_flush(&mut self) -> Result {
+        self.commands[0].u32(0x894, 1)?;
+        self.commands[1].u32(0xbdc, 1)?;
+        Ok(())
+    }
     pub(crate) fn retain_notifier(&mut self, notifier: crate::g16_queue::Client) {
         self.notifier_owner = Some(notifier);
     }
