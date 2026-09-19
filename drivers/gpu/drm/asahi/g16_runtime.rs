@@ -176,9 +176,18 @@ impl Inner {
             // retirement deadlocks a pass which needs a partial fragment to
             // free parameter pages. The firmware barrier encodes that DAG.
             active.packet.notifications.lock().publish(true)?;
-            let ta_commands = [r.compute_dependency().unwrap_or(0), r.init_address(), r.address()];
-            let start = usize::from(r.compute_dependency().is_none());
-            let (ta,ta_next) = self.queue.append_batch_idle(&ta_commands[start..])?;
+            let mut ta_commands = [0; 3];
+            let mut count = 0;
+            if let Some(address) = r.compute_dependency() {
+                ta_commands[count] = address;
+                count += 1;
+            }
+            if let Some(address) = r.init_address() {
+                ta_commands[count] = address;
+                count += 1;
+            }
+            ta_commands[count] = r.address();
+            let (ta,ta_next) = self.queue.append_batch_idle(&ta_commands[..count+1])?;
             let (frag,frag_next) = self.fragment_queue.append_batch_idle(
                 &[r.fragment_dependency(),r.fragment_address()])?;
             active.queue_next[0] = ta_next;
@@ -280,6 +289,25 @@ impl Runtime {
             .ok_or(EBUSY)?;
         let mut batch = KVec::with_capacity(count, GFP_KERNEL)?;
         self.inner.pending.reserve(1, GFP_KERNEL)?;
+        // Experimental stage overlap shares a physical pool across scenes,
+        // as common Asahi does. Preserve the aggregate capacity of the old
+        // per-pass allocations; this experiment changes initialization, not
+        // the memory budget or partial-render limits. Every scene retains it.
+        let share_parameters = packet.commands.iter().any(|command| matches!(
+            command.payload, crate::g16_submit::Payload::Render { command, .. }
+                if command.flags & (1 << 6) != 0));
+        let shared_parameters = if share_parameters {
+            let mut bytes = 0usize;
+            for command in &packet.commands {
+                if let crate::g16_submit::Payload::Render { command, .. } = command.payload {
+                    let geometry = crate::g16_parameter::geometry(command)?;
+                    bytes = bytes.checked_add(crate::g16_parameter::bytes(&geometry)?)
+                        .ok_or(EOVERFLOW)?;
+                }
+            }
+            Some(crate::g16_parameter::Parameters::new(&self.inner.drm,
+                &self.inner.uat, &packet.vm, bytes, (bank*COMPUTE_DEPTH) as u32, true)?)
+        } else { None };
         let mut engine_offsets = [0usize; 2];
         for offset in 0..count {
             let engine = usize::from(matches!(packet.commands[offset].payload,
@@ -290,7 +318,7 @@ impl Runtime {
             let slot = bank * COMPUTE_DEPTH + engine_offsets[engine];
             engine_offsets[engine] += 1;
             let active = self.prepare_command(packet.clone(), offset,
-                slot as u64).map_err(|error| {
+                slot as u64, shared_parameters.clone()).map_err(|error| {
                 dev_err!(self.inner.drm.as_ref(),
                     "G16G: packet preparation failed job={} bank={} index={} count={} error={:?}\n",
                     packet.id, bank, offset, count, error);
@@ -399,9 +427,12 @@ impl Runtime {
                                 addresses[0][entries[0]] = r.compute_dependency().ok_or(EIO)?;
                                 entries[0] += 1;
                             }
-                            addresses[0][entries[0]] = r.init_address();
-                            addresses[0][entries[0] + 1] = r.address();
-                            entries[0] += 2;
+                            if let Some(address) = r.init_address() {
+                                addresses[0][entries[0]] = address;
+                                entries[0] += 1;
+                            }
+                            addresses[0][entries[0]] = r.address();
+                            entries[0] += 1;
                             if early_tiling.is_some() {
                                 let (address, slot, stamp) = previous.ok_or(EIO)?;
                                 addresses[1][entries[1]] = r.wait_for_prior_fragment(address, slot, stamp)?;
@@ -462,7 +493,7 @@ impl Runtime {
     }
 
     fn prepare_command(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usize,
-        batch_offset: u64) -> Result<Active> {
+        batch_offset: u64, shared_parameters: Option<crate::g16_parameter::Pool>) -> Result<Active> {
         let preparing = kernel::time::Instant::<kernel::time::Monotonic>::now();
         let inner = &mut *self.inner;
         if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
@@ -519,7 +550,7 @@ impl Runtime {
                 &inner.drm,&inner.uat,&packet.vm,command,usc,label,inner.render_stamp,render_counter,
                 [inner.queue.address(),inner.fragment_queue.address()],
                 [notifications[0],notifications[1]],
-                inner.config.render_stats(), batch_offset.try_into()?, render_owner)?),
+                inner.config.render_stats(), batch_offset.try_into()?, render_owner, shared_parameters)?),
         };
         let attachments = &packet.commands[index].attachments;
         match &mut work {

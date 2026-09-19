@@ -2,7 +2,7 @@
 //! GEM/GPUVM ownership for an M4 render pass in a bounded GPU batch. There are no borrowed
 //! lab mappings. A hardware slot retains its last owner until replacement.
 use kernel::prelude::*;
-use crate::{driver, mmu, g16_memory::{self, Buffer}, g16_render::{self, Geometry, Register, Stage, Utile},
+use crate::{driver, mmu, g16_memory::{self, Buffer}, g16_render::{self, Register, Stage},
     g16_render_state::{self as state, State, Program, DepthStencil}, g16_render_command as wire,
     g17_uapi::UapiRenderCommand};
 
@@ -12,7 +12,6 @@ const PRIVATE_PAGES: usize = PRIVATE_BYTES / 4096;
 // Equal capacity faulted on a write at freelist+0x10040 with 8192 pages.
 // Derive the next ring size instead of silently overflowing a full ring.
 const PRIVATE_QWORDS: usize = (PRIVATE_PAGES + 1).next_power_of_two();
-const PB_BLOCK_BYTES: usize = 4 * 32768;
 pub(crate) const SLOTS: [u8; 2] = [0x70, 0x71];
 
 pub(crate) struct Render {
@@ -20,11 +19,8 @@ pub(crate) struct Render {
     commands: [Buffer; 2],
     sequences: [Buffer; 2],
     metadata: Buffer,
-    manager: Buffer,
-    pages: Buffer,
-    blocks: Buffer,
-    block_ring: Buffer,
-    pb_memory: Buffer,
+    parameters: crate::g16_parameter::Pool,
+    init_parameters: bool,
     scratch: Buffer,
     scene_list: Buffer,
     tilemap: Buffer,
@@ -70,8 +66,10 @@ impl Render {
         // Retained pass-owned state only. In particular, partial tiling can
         // exhaust parameter pages while fragment work waits for a dependency.
         // Keep allocator and command evidence together without reading user BOs.
-        dump.buffer("render-parameter-manager", &mut self.manager, 0xc0)?;
-        dump.buffer("render-parameter-ring", &mut self.block_ring, 8)?;
+        let mut parameters = self.parameters.lock();
+        dump.buffer("render-parameter-manager", &mut parameters.manager, 0xc0)?;
+        dump.buffer("render-parameter-ring", &mut parameters.ring, 8)?;
+        drop(parameters);
         dump.buffer("render-scene-metadata", &mut self.metadata, 0x4000)?;
         dump.buffer("render-uma-descriptor", &mut self.uma, 0x300)?;
         dump.buffer("render-pool-state", &mut self.pool_state, PRIVATE_QWORDS * 8)?;
@@ -87,19 +85,11 @@ impl Render {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, vm: &mmu::Vm,
         r: UapiRenderCommand, usc: u64, label: u8, stamp: u32, counter: u64,
         queues: [u64; 2], notifications: [crate::g16_compute::Notification; 2], stats: [u64; 2],
-        pool_slot: u8, reusable: Option<KBox<Self>>) -> Result<KBox<Self>> {
+        pool_slot: u8, reusable: Option<KBox<Self>>,
+        shared: Option<crate::g16_parameter::Pool>) -> Result<KBox<Self>> {
         if usize::from(pool_slot) >= crate::g16_runtime::POOL_SLOTS { return Err(EINVAL); }
-        let utile = |n| match n {16=>Ok(Utile::Pixels16),32=>Ok(Utile::Pixels32),_=>Err(EINVAL)};
-        let mut geometry = Geometry::new_layered(r.width as u32,r.height as u32,
-            utile(r.utile_width)?,utile(r.utile_height)?,1,r.layers).map_err(|_| EINVAL)?;
-        geometry.set_samples(r.samples).map_err(|_| EINVAL)?;
-        // Initial allocation follows pass geometry, rounded to PB blocks. The
-        // firmware can partially store/reload a pass. This is not a UAPI limit.
-        let pb_bytes = (4*1024*1024usize).max(usize::try_from(geometry.tilemap_bytes)? * 128)
-            .checked_add(PB_BLOCK_BYTES-1).ok_or(EOVERFLOW)? & !(PB_BLOCK_BYTES-1);
-        let page_count = pb_bytes / 32768;
-        let block_count = pb_bytes / PB_BLOCK_BYTES;
-        let block_capacity = (block_count+1).next_power_of_two();
+        let geometry = crate::g16_parameter::geometry(r)?;
+        let pb_bytes = crate::g16_parameter::bytes(&geometry)?;
         let layout = [r.width as u32, r.height as u32,
             r.utile_width as u32, r.utile_height as u32];
         // Only an owner displaced by a completely retired replacement may
@@ -114,16 +104,6 @@ impl Render {
             // This owner is already displaced and retired, so replacing a
             // too-small buffer obeys the same lifetime rule as dropping it.
             let gpu = |size| Buffer::new_gpu(dev,uat.kernel_vm(),vm,size);
-            if job.pages.size() < page_count * 4 {
-                job.pages = gpu(page_count * 4)?;
-            }
-            if job.blocks.size() < block_capacity * 8 {
-                job.blocks = Buffer::new(dev,uat.kernel_vm(),block_capacity * 8)?;
-            }
-            if job.pb_memory.size() < pb_bytes {
-                job.pb_memory = Buffer::new_gpu_aligned(dev,uat.kernel_vm(),vm,
-                    pb_bytes,PB_BLOCK_BYTES as u64)?;
-            }
             if job.tilemap.size() < geometry.tilemap_bytes.try_into()? {
                 job.tilemap = gpu(geometry.tilemap_bytes.try_into()?)?;
             }
@@ -131,6 +111,14 @@ impl Render {
                 job.tpc = gpu(geometry.tpc_bytes.try_into()?)?;
             }
             job.clear()?;
+            if let Some(shared) = shared {
+                job.parameters = shared;
+            } else if job.parameters.lock().shared {
+                job.parameters = crate::g16_parameter::Parameters::new(
+                    dev, uat, vm, pb_bytes, u32::from(pool_slot), false)?;
+            } else {
+                job.parameters.lock().rebuild(dev, uat, vm, pb_bytes)?;
+            }
             job.layout = layout;
             job.stage = Stage::Tiling;
             job.stamp = stamp;
@@ -148,9 +136,12 @@ impl Render {
                 private_memory.gpu_va()?, PRIVATE_PAGES)?;
             KBox::new(Self {
                 _command_views:views, commands, sequences:[fw(0x400)?,fw(0x800)?],
-                metadata:fw(0x4000)?,manager:fw(0xc0)?,pages:gpu(page_count*4)?,
-                blocks:fw(block_capacity*8)?,block_ring:fw(8)?,
-                pb_memory:Buffer::new_gpu_aligned(dev,uat.kernel_vm(),vm,pb_bytes,PB_BLOCK_BYTES as u64)?,
+                metadata:fw(0x4000)?,
+                parameters: match shared {
+                    Some(shared) => shared,
+                    None => crate::g16_parameter::Parameters::new(
+                        dev, uat, vm, pb_bytes, u32::from(pool_slot), false)?,
+                }, init_parameters:false,
                 // Zero-backed per-scene list; native PB slot+28 binds its
                 // compact address in both TA and fragment register lists.
                 scratch:gpu(0x4000)?,scene_list:gpu(0x4000)?,tilemap:gpu(geometry.tilemap_bytes.try_into()?)?,
@@ -192,33 +183,11 @@ impl Render {
         job.uma_submitted = job.uma_submitted.checked_add(2).ok_or(EOVERFLOW)?;
         let submitted = job.uma_submitted;
         job.metadata.u64(0x500, submitted)?;
-        let pb_base = state::compact(job.pb_memory.gpu_va()?).map_err(|_| EINVAL)?;
-        {
-            // One staged copy per list instead of a bounds-checked WC store
-            // per entry; the parameter page list has thousands of entries.
-            let mut pages = KVec::new();
-            for i in 0..page_count {
-                let page: u32 = ((pb_base+i as u64*32768)>>15).try_into()?;
-                pages.extend_from_slice(&page.to_le_bytes(), GFP_KERNEL)?;
-            }
-            job.pages.write(0, &pages)?;
-            let mut blocks = KVec::new();
-            for i in 0..block_count {
-                let block: u32 = ((pb_base+i as u64*PB_BLOCK_BYTES as u64)>>15).try_into()?;
-                blocks.extend_from_slice(&block.to_le_bytes(), GFP_KERNEL)?;
-                blocks.extend_from_slice(&[0; 4], GFP_KERNEL)?;
-            }
-            job.blocks.write(0, &blocks)?;
-        }
-        job.block_ring.u32(0,block_count.try_into()?)?;
-        job.block_ring.u32(4,block_count.try_into()?)?;
-        let mut manager = [0;0xc0];
-        wire::parameter_manager(&mut manager,wire::ParameterManager {
-            pages_fw:job.pages.va(),pages_gpu:job.pages.gpu_va()?,blocks:job.blocks.va(),ring:job.block_ring.va(),
-            counter:job.metadata.va()+0x508,discard:0,list_bytes:(page_count*4).try_into()?,pages:page_count.try_into()?,
-            block_capacity:block_capacity.try_into()?,write:block_count.try_into()?,read:0,
-            min_pages:page_count.try_into()?,max_pages:page_count.try_into()?,id:u32::from(pool_slot) }).map_err(|_| EINVAL)?;
-        job.manager.write(0,&manager)?;
+        let (parameter_manager, parameter_id, parameter_pages, shared_pool, init_parameters) = {
+            let mut pool = job.parameters.lock();
+            (pool.manager.va(), pool.id, pool.pages(), pool.shared, pool.claim_init())
+        };
+        job.init_parameters = init_parameters;
         let mut init = [0;0x20];
         // This owner was rebuilt, not incrementally grown. In 25G83, a nonzero
         // InitBuffer+0x10 selects the append path (TEXT 2159c -> 2f100), which
@@ -228,7 +197,7 @@ impl Render {
         // Request full reinitialization: firmware drains the old slot, rebuilds
         // its page list from the block ring and publishes the new descriptor
         // in order (TEXT 215b4 -> 2eb4c). The table is firmware-owned.
-        wire::init_parameter_buffer(&mut init,job.binding.slot(),u32::from(pool_slot),0,0,job.manager.va(),stamp).map_err(|_| EINVAL)?;
+        wire::init_parameter_buffer(&mut init,job.binding.slot(),parameter_id,0,0,parameter_manager,stamp).map_err(|_| EINVAL)?;
         job.metadata.write(0x300,&init)?;
         let mut dependency = [0;0x40];
         wire::render_dependency(&mut dependency,notifications[0].fw_stamp,
@@ -247,7 +216,7 @@ impl Render {
         let mask = if r.flags & 16 != 0 {u64::MAX} else {u32::MAX as u64};
         let program = |p:crate::g17_uapi::UapiProgram| Program {
             address:usc+u64::from(p.usc & !63), resources:p.resource_spec & mask };
-        let state = State { geometry,parameter_buffer_id:u32::from(pool_slot),vdm:r.vdm_base,tilemap:job.tilemap.gpu_va()?,tpc:job.tpc.gpu_va()?,
+        let state = State { geometry,parameter_buffer_id:parameter_id,vdm:r.vdm_base,tilemap:job.tilemap.gpu_va()?,tpc:job.tpc.gpu_va()?,
             unknown:job.unknown.gpu_va()?,preemption:[job.preemption[0].gpu_va()?,job.preemption[1].gpu_va()?,job.preemption[2].gpu_va()?],
             scratch:job.scratch.gpu_va()?,scene_list:job.scene_list.gpu_va()?,auxiliary:job.auxiliary.gpu_va()?,multisample:r.multisample_control,ppp:r.ppp_control,
             // UAPI values are already validated. Merge limits are float bits,
@@ -271,14 +240,14 @@ impl Render {
             wire::encode(&mut work[..],&mut sequence,stage,wire::Args {
                 command:job.commands[i].va(),sku:job.sequences[i].va(),queue:queues[i],
                 stats:stats[i],
-                pb_slot:job.metadata.va(),manager:job.manager.va(),pb_aux:job.metadata.va()+0x100,
+                pb_slot:job.metadata.va(),manager:parameter_manager,pb_aux:job.metadata.va()+0x100,
                 notifier:notifications[i].address,shared_stamp:notifications[i].fw_stamp,
                 stamp_address:notifications[i].stamp,uma:job.uma.va(),
                 uma_aux:job.uma.gpu_va()?+0x100+i as u64*0x100,
                 timestamp_storage:job.metadata.va()+0x600+i as u64*0x20,
                 context:job.binding.slot(),generation:job.binding.generation(),counter:counter + u64::from(i == 0),uuid,stamp:stamp,
                 event_slot:SLOTS[i] as u32,fragment_slot:SLOTS[1] as u32,
-                fragment_stamp:stamp,pb_id:u32::from(pool_slot),pass_id:0 }).map_err(|_| EINVAL)?;
+                fragment_stamp:stamp,pb_id:parameter_id,pass_id:0 }).map_err(|_| EINVAL)?;
             let (mut count,mode) = state::registers(&mut registers[..],stage,&state,uuid).map_err(|_| EINVAL)?;
             // Common Asahi USC execution window selectors (TA/ISP), retaining
             // the real queue base instead of relying on the boot register.
@@ -292,8 +261,8 @@ impl Render {
         g16_memory::publish();
         crate::cls_dev_dbg!(Render, dev, "G16G: render USC freelist={:#x} capacity={} populated={}\n",
             job.pool_state.gpu_va()?,PRIVATE_QWORDS,PRIVATE_PAGES);
-        crate::cls_dev_dbg!(SubmitTiming, dev,"G16G: owned render {}x{} ASID={} PB={} pages tilemap={:#x} TPC={:#x} VDM={:#x} reused={}\n",
-            r.width,r.height,job.binding.slot(),page_count,job.tilemap.gpu_va()?,job.tpc.gpu_va()?,r.vdm_base,reused);
+        crate::cls_dev_dbg!(SubmitTiming, dev,"G16G: owned render {}x{} ASID={} PB={} pages parameter_id={} shared_pool={} init_pool={} tilemap={:#x} TPC={:#x} VDM={:#x} reused={}\n",
+            r.width,r.height,job.binding.slot(),parameter_pages,parameter_id,shared_pool,init_parameters,job.tilemap.gpu_va()?,job.tpc.gpu_va()?,r.vdm_base,reused);
         Ok(job)
     }
     pub(crate) fn set_attachments(&mut self, attachments: &[crate::g16_attachments::Attachments; 2]) -> Result {
@@ -323,8 +292,7 @@ impl Render {
         // The USC allocator is persistent. Do not clear its payload, freelist,
         // page list or descriptor while retaining firmware's saved cursors.
         for buffer in [
-            &mut self.metadata, &mut self.manager, &mut self.pages,
-            &mut self.blocks, &mut self.block_ring,
+            &mut self.metadata,
             &mut self.scratch, &mut self.scene_list, &mut self.tilemap, &mut self.tpc,
             &mut self.unknown, &mut self.auxiliary,
         ] { buffer.clear()?; }
@@ -363,7 +331,9 @@ impl Render {
         self.metadata.write(0x440, &barrier)?;
         Ok(self.metadata.va() + 0x440)
     }
-    pub(crate) fn init_address(&self) -> u64 { self.metadata.va()+0x300 }
+    pub(crate) fn init_address(&self) -> Option<u64> {
+        self.init_parameters.then_some(self.metadata.va()+0x300)
+    }
     pub(crate) fn fragment_dependency(&self) -> u64 { self.metadata.va()+0x340 }
     pub(crate) fn fragment_address(&self) -> u64 { self.commands[1].va() }
     pub(crate) fn pool_slot(&self) -> u8 { self.pool_slot }
@@ -386,6 +356,8 @@ impl Render {
             }
             dev_info!(dev.as_ref(), "G16G: render UMA metrics {}={:x?}\n", stage, words);
         }
+        let mut parameters = self.parameters.lock();
+        let crate::g16_parameter::Parameters { manager, ring, .. } = &mut *parameters;
         let [ta_command, fragment_command] = &mut self.commands;
         let [ta_sequence, fragment_sequence] = &mut self.sequences;
         for (name, buffer, start, length) in [
@@ -393,8 +365,8 @@ impl Render {
             ("command-fragment", fragment_command, 0, Stage::Fragment.command_size()),
             ("sequence-ta", ta_sequence, 0, wire::sequence_size(Stage::Tiling)),
             ("sequence-fragment", fragment_sequence, 0, wire::sequence_size(Stage::Fragment)),
-            ("parameter-manager", &mut self.manager, 0, 0xc0),
-            ("parameter-ring", &mut self.block_ring, 0, 8),
+            ("parameter-manager", manager, 0, 0xc0),
+            ("parameter-ring", ring, 0, 8),
             ("scene", &mut self.metadata, 0, 0x80),
             ("scene-statistics", &mut self.scratch, 0, 0x80),
             ("uma", &mut self.uma, 0, 0xa0),
@@ -415,7 +387,7 @@ impl Render {
         let i = self.index();
         Ok([self.metadata.read_u32(0x400+i*16)? as u64,self.metadata.read_u32(0x408+i*16)? as u64,
             self.commands[i].read_u32(if i==0 {0x918} else {0xc60})? as u64,
-            self.manager.read_u32(0x54)? as u64])
+            self.parameters.lock().manager.read_u32(0x54)? as u64])
     }
     pub(crate) fn set_user_timestamps(&mut self, addresses: [[u64; 2]; 2]) -> Result {
         for (i, pair) in addresses.into_iter().enumerate() {

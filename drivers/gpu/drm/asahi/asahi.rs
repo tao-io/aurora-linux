@@ -40,6 +40,7 @@ mod g16_render;
 mod g16_render_command;
 mod g16_render_state;
 mod g16_render_job;
+mod g16_parameter;
 mod g16_resources;
 mod g17_adt_j700;
 mod g17_asc_bringup;
