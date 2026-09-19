@@ -321,3 +321,9 @@ and frequency limits, and restores the governors in a finally block. In
 60-second menu completes at 37.591 FPS tail (37.13–37.84), peak 88.5 C.
 Both governors are restored to schedutil in retained evidence. No improvement
 over the preceding normal-governor run is established; no persistent change.
+
+`test-g16-packet-split.py` compiles the actual partition loop with a host Vec
+allocation shim. All 107584 combinations pass: ordered alternating/grouped
+streams with 0..40 commands of each engine and every total limit 1..32.
+It checks order, no command loss, the 16-per-engine bounds, and that mixed
+streams fitting one bank are not split at the maximum total setting.
