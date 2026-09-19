@@ -67,3 +67,21 @@ query-timestamp-copy boundary. This keeps the existing parameter slot lifetime.
 pixels. `20260918T235216844401Z-factorio-mixed-batch-menu` passes and measures
 15.825 FPS (15.45–16.22), peak 65.75 C. Full asynchronous per-client scheduling,
 GPU-side timestamp fan-out, and 60 FPS remain TODO.
+
+## Firmware query publication
+
+Fragment-end copies now use repeated native end-timestamp records before
+fragment finalization. In saved J713 25G83 firmware TEXT 19364..19524, each
+reads the same completed engine timestamps and applies the native nanosecond
+conversion to the user pointer pair. Moving finalize also adjusts its relative
+restart target, retaining partial-render handling. CPU retirement no longer
+copies query results. The existing eight-copy limit and retained destination
+mappings remain intact.
+
+`20260919T000753091055Z-factorio-fw-timestamp-query3` passes the 12-query
+render/overflow probe: original plus eight destinations are bit-identical;
+three overflow timestamps remain ordered; CPU and GPU readback agree.
+Six host encoding/bounds checks and the ARM64 module build pass. Broader batches
+are not enabled by this change alone.
+`20260919T000806308535Z-factorio-fw-timestamp-frame` passes with zero changed
+pixels in the retained 2560x1664 frame. Peak temperature 67.25 C.

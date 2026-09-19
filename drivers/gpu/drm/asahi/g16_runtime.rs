@@ -372,6 +372,7 @@ impl Runtime {
             Work::Render(render) => {
                 render.set_attachments(attachments)?;
                 render.set_user_timestamps(packet.commands[index].render_timestamp_addresses())?;
+                render.set_fragment_timestamp_copies(packet.commands[index].fragment_copy_addresses())?;
             }
         }
         inner.user_generation = generation;
@@ -485,7 +486,6 @@ impl Runtime {
                     // adds at most one call; the fragment path cannot recurse.
                     return self.poll_job();
                 }
-                active.packet.commands.get(active.index).ok_or(EINVAL)?.copy_fragment_timestamp()?;
                 // Preserve both stages' GPU timings once per completed pass.
                 let timestamps = render.timestamps()?;
                 gpu_span = [timestamps[0][0], timestamps[1][1]];

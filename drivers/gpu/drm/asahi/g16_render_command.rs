@@ -204,3 +204,33 @@ pub(crate) fn render_dependency(out: &mut [u8], stamp_address: u64,
     put(out, 0x24, stamp_self as u64, 4);
     Ok(())
 }
+
+/// Repeat the native end-timestamp operation before fragment finalization.
+/// 25G83 TEXT 19364..19524 reads the completed engine timestamps (c028/c038)
+/// and writes the same nanosecond conversion to each user pointer pair. No
+/// new engine command may start between these records. Keep the finalize
+/// restart branch relative to the moved record for partial-render retries.
+pub(crate) fn fragment_timestamp_copies(sequence: &mut [u8], pointers: &[u64])
+    -> Result<usize, BuildError> {
+    const END: usize = 0x23c;
+    const FINALIZE: usize = 0x288;
+    const RECORD: usize = 0x4c;
+    let base = sequence_size(Stage::Fragment);
+    let extra = pointers.len() * RECORD;
+    if pointers.len() > 8 || !pointers.iter().all(|p| valid_fw(*p)) {
+        return Err(BuildError::Address);
+    }
+    if sequence.len() < base + extra { return Err(BuildError::BufferTooSmall); }
+    if pointers.is_empty() { return Ok(base); }
+    let mut timestamp = [0; RECORD];
+    timestamp.copy_from_slice(&sequence[END..FINALIZE]);
+    sequence.copy_within(FINALIZE..base, FINALIZE + extra);
+    for (i, pointer) in pointers.iter().enumerate() {
+        let record = &mut sequence[FINALIZE + i * RECORD..FINALIZE + (i + 1) * RECORD];
+        record.copy_from_slice(&timestamp);
+        put(record, 0x24, *pointer, 8);
+    }
+    put(sequence, FINALIZE + extra + 0xa0,
+        (-(FINALIZE as i32 + extra as i32)) as u32 as u64, 4);
+    Ok(base + extra)
+}

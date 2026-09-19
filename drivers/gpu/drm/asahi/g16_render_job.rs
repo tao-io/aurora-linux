@@ -65,7 +65,7 @@ impl Render {
             dump.buffer(["render-ta-command", "render-fragment-command"][i],
                 &mut self.commands[i], stage.command_size())?;
             dump.buffer(["render-ta-sequence", "render-fragment-sequence"][i],
-                &mut self.sequences[i], wire::sequence_size(stage))?;
+                &mut self.sequences[i], if i == 0 { 0x400 } else { 0x800 })?;
         }
         Ok(())
     }
@@ -132,7 +132,7 @@ impl Render {
             let (freelist, page_list_image) = g16_memory::freelist_images(
                 private_memory.gpu_va()?, PRIVATE_PAGES)?;
             KBox::new(Self {
-                _command_views:views, commands, sequences:[fw(0x400)?,fw(0x400)?],
+                _command_views:views, commands, sequences:[fw(0x400)?,fw(0x800)?],
                 metadata:fw(0x4000)?,manager:fw(0xc0)?,pages:gpu(page_count*4)?,
                 blocks:fw(block_capacity*8)?,block_ring:fw(8)?,
                 pb_memory:Buffer::new_gpu_aligned(dev,uat.kernel_vm(),vm,pb_bytes,PB_BLOCK_BYTES as u64)?,
@@ -409,6 +409,25 @@ impl Render {
             self.sequences[i].u64(start + 0x24, pointer)?;
             self.sequences[i].u64(start + 0x50 + 0x24, pointer)?;
         }
+        g16_memory::publish();
+        Ok(())
+    }
+    pub(crate) fn set_fragment_timestamp_copies(&mut self, addresses: [u64; 8]) -> Result {
+        let mut pairs = [0u64; 8];
+        let mut count = 0;
+        for address in addresses.into_iter().filter(|address| *address != 0) {
+            let offset = 0x700 + count * 16;
+            self.metadata.u64(offset, 0)?;
+            self.metadata.u64(offset + 8, address)?;
+            pairs[count] = self.metadata.va() + offset as u64;
+            count += 1;
+        }
+        if count == 0 { return Ok(()); }
+        let mut sequence = [0u8; 0x800];
+        self.sequences[1].read(0, &mut sequence[..wire::sequence_size(Stage::Fragment)])?;
+        let size = wire::fragment_timestamp_copies(&mut sequence, &pairs[..count]).map_err(|_| EINVAL)?;
+        self.sequences[1].write(0, &sequence[..size])?;
+        self.commands[1].u32(0x1c, size.try_into()?)?;
         g16_memory::publish();
         Ok(())
     }

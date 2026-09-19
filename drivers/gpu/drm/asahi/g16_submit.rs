@@ -45,26 +45,9 @@ pub(crate) struct Command {
     fragment_end_copies: [Option<Destination>; 8],
 }
 impl Command {
-    /// The source is a firmware-written GPU timestamp. Preserve it bit for bit;
-    /// this runs only after exact render retirement, before fence publication.
-    pub(crate) fn copy_fragment_timestamp(&self) -> Result {
-        if self.fragment_end_copies.iter().all(Option::is_none) { return Ok(()); }
-        let source = self.timestamps[3].as_ref().ok_or(EINVAL)?;
-        let value = source.mapping.with_cpu_bytes(|raw| {
-            // SAFETY: resolve checked the aligned eight-byte subrange. The
-            // firmware has retired, and the retained mapping owns these bytes.
-            Ok(unsafe { raw.as_ptr().add(source.offset).cast::<u64>().read_volatile() })
-        })?;
-        for target in self.fragment_end_copies.iter().flatten() {
-            target.mapping.with_cpu_bytes(|raw| {
-                // SAFETY: resolve checked bounds/alignment. A single aligned
-                // store also keeps concurrent query-availability reads atomic.
-                unsafe { raw.as_mut_ptr().add(target.offset).cast::<u64>().write_volatile(value) };
-                Ok(())
-            })?;
-        }
-        crate::g16_memory::publish();
-        Ok(())
+    pub(crate) fn fragment_copy_addresses(&self) -> [u64; 8] {
+        core::array::from_fn(|i| self.fragment_end_copies[i].as_ref()
+            .map_or(0, Destination::firmware_address))
     }
     pub(crate) fn timestamp_addresses(&self) -> [u64; 2] {
         core::array::from_fn(|i| self.timestamps[i].as_ref().map_or(0, Destination::firmware_address))
