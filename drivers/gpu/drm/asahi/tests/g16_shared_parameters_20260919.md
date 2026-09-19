@@ -27,3 +27,10 @@ pool performance nor live application stability is claimed yet.
 TODO: reusable per-VM pool cache, growth, partial-render/exhaustion qualification,
 shared pool across packet boundaries, full CTS. New allocation per packet is
 appropriate only for this isolated experiment, not default enablement.
+
+Hardware: bootfba14ca7, modulefc943ef6. Private-pool control152212 matches
+every pixel and all ten counters at6.156..6.254ms. Shared-pool replay152300
+also matches, and logs exactlyone init per ten scenes, but6.844..6.919ms
+is still slower than the private normal path. Unbounded private compute
+overlap had taken~7ms. Neither experimental path should be the default.
+Watchdog/thermals passed, peak67.25C. No live qualification claimed yet.
