@@ -108,4 +108,26 @@ for line in lines:
 if counts:
     result['batches'] = dict(counts_by_commands=counts, active_seconds=packet_ns/1e9,
         scope='Union of published busy intervals' if any('union=1' in line for line in lines) else 'Serialized packets counted once, unlike overlapping per-command active times')
+timeline = []
+for line in lines:
+    if 'G16G: GPU timeline summary' not in line:
+        continue
+    stamp = re.search(r'monotonic_ns=(\d+)', line)
+    if not stamp or int(stamp[1]) not in selected:
+        continue
+    arrays = {name: json.loads(value) for name, value in
+              re.findall(r'(pstate_samples|gap_ticks|gap_counts)=(\[[0-9, ]+\])', line)}
+    arrays['overlaps'] = int(re.search(r'overlaps=(\d+)', line)[1])
+    timeline.append(arrays)
+if timeline:
+    states = [sum(t['pstate_samples'][i] for t in timeline) for i in range(16)]
+    gaps = [sum(t['gap_ticks'][i] for t in timeline) for i in range(2)]
+    counts = [sum(t['gap_counts'][i] for t in timeline) for i in range(2)]
+    result['hardware_timeline'] = dict(
+        pstate_samples={i:n for i,n in enumerate(states) if n},
+        gaps={engine:dict(seconds=ticks/24e6, count=count,
+             mean_microseconds=ticks/24/count if count else None)
+             for engine,ticks,count in zip(['before_render','before_compute'],gaps,counts)},
+        overlaps=sum(t['overlaps'] for t in timeline),
+        scope='24 MHz end-to-next-start gaps include firmware/cache work, VM switches and queue starvation; state counts are polling samples, not durations')
 print(json.dumps(result,indent=2))

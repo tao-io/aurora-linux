@@ -48,6 +48,7 @@ struct Inner {
     wait_timeouts: u64,
     summary: SubmitSummary,
     last_retired: Option<(u64, i64)>,
+    last_gpu_end: Option<u64>,
 }
 
 /// Low-volume profiling uses the same proven retirements as fence signalling.
@@ -68,6 +69,10 @@ struct SubmitSummary {
     consecutive_gap_ns: u64,
     consecutive_gap_count: u64,
     wait_phases: [[u64; 6]; 3],
+    pstate_samples: [u64; 16],
+    engine_gap_ticks: [u64; 2],
+    engine_gap_count: [u64; 2],
+    gpu_overlaps: u64,
 }
 #[derive(Clone, Copy, Default)]
 struct RenderSummary {
@@ -499,7 +504,10 @@ impl Runtime {
         let inner = &mut *self.inner;
         inner.config.drain(&inner.drm)?;
         if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
-        inner.device.check_pstate()?;
+        let pstate = inner.device.check_pstate()?;
+        if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
+            inner.summary.pstate_samples[pstate as usize] += 1;
+        }
         let alone = inner.inflight.len() == 1;
         let active = inner.inflight.first_mut().ok_or(EIO)?;
         let mut status = active.work.status()?;
@@ -580,6 +588,19 @@ impl Runtime {
             // GPU execution time from the command's own 24 MHz timestamps.
             let gpu_ns = gpu_span[1].wrapping_sub(gpu_span[0]).saturating_mul(1000) / 24;
             if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
+                if let Some(previous) = inner.last_gpu_end {
+                    // Same 24 MHz counter for both engines. These gaps include
+                    // queue starvation, firmware/cache work and VM switches;
+                    // they are not shader execution or utilization estimates.
+                    if gpu_span[0] >= previous {
+                        let engine = usize::from(pipe_index == 2);
+                        inner.summary.engine_gap_ticks[engine] += gpu_span[0] - previous;
+                        inner.summary.engine_gap_count[engine] += 1;
+                    } else {
+                        inner.summary.gpu_overlaps += 1;
+                    }
+                }
+                inner.last_gpu_end = Some(gpu_span[1]);
                 inner.summary.record(matches!(&active.work, Work::Render(_)),
                     active.preparation_ns, active_ns, gpu_ns);
                 if let Work::Render(r) = &active.work {
@@ -677,6 +698,9 @@ impl Runtime {
                             now, inner.state.event_messages.load(core::sync::atomic::Ordering::Acquire),
                             inner.waits, inner.late_retirements, inner.wait_timeouts, s.geometry_overflow,
                             s.consecutive_gap_ns, s.consecutive_gap_count);
+                        dev_info!(inner.drm.as_ref(), "G16G: GPU timeline summary monotonic_ns={} pstate_samples={:?} gap_ticks={:?} gap_counts={:?} overlaps={}\n",
+                            now, s.pstate_samples, s.engine_gap_ticks,
+                            s.engine_gap_count, s.gpu_overlaps);
                         for (pipe, counts) in s.wait_phases.iter().enumerate() {
                             dev_info!(inner.drm.as_ref(), "G16G: completion phase samples monotonic_ns={} pipe={} before_start={} executing={} end_before_stamps={} stamps_before_queue={} queue_before_pipe={} missing_compute_timestamps={}\n",
                                 now, pipe, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
@@ -769,7 +793,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, busy_since_ns: None, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, busy_since_ns: None, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, last_gpu_end: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

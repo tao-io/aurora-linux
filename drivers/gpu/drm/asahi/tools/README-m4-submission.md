@@ -205,3 +205,19 @@ at 27.03 FPS (25.11--28.92), peak 88.25 C. Over the final 19.158 s,
 4626 compute preparations total 0.0475 s (10.26 us mean), versus approximately
 230 us before persistent compute state. The scene varies; this is not a paired
 FPS ratio. TODO: 60 FPS, per-client firmware queues/preemption, broad CTS.
+
+## Hardware timeline and performance-state evidence
+
+SubmitSummary now samples the actual performance-state register during normal
+retirement checks and sums consecutive commands' end-to-start gaps in the shared
+24 MHz counter. State counts are polling samples, not durations. Gaps include
+firmware/cache work, queue starvation and VM switches; they are not evidence of
+one particular cause. The summary tool parses these arrays while remaining
+compatible with older logs.
+
+`20260919T015204520709Z-factorio-gpu-timeline-menu`: guarded 60-second unchanged
+menu, 29.10 FPS tail (26.41--30.04), peak 91.75 C. Final 19.101 seconds show
+all 62,803 state samples at state 9 (1470 MHz), 12.561 seconds of command GPU
+spans and 6.536 seconds between commands, with no overlapping spans. Preparation
+is 0.352 seconds and published-busy union 19.015 seconds. This changing scene
+has more render passes than the previous 35--38 FPS scene. 60 FPS remains unmet.
