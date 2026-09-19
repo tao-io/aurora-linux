@@ -284,3 +284,20 @@ The compute scheduler still had active nodes, with missing engine timestamps
 and completion stamps. Ring-entry arithmetic alone does not qualify larger
 private-slot/scheduler capacity. Reverted to the sixteen-command maximum.
 The failed run reached only 76.25 C; this was not a thermal cutoff.
+
+### High-resolution completion fallback
+
+The IRQ completion wait formerly fell back to one jiffy (4 ms at CONFIG_HZ=250)
+when firmware's event preceded its completion stamp. EventWait now arms an
+intrusive high-resolution timer for 100 us on that path. Either a real event
+or the timer wakes the same completion; only real events advance the event
+sequence. The scoped timer handle cancels synchronously before returning and
+retains the owner through its callback. A one-jiffy backup and all command
+timeouts remain. No busy-spin loop or additional DMA lifetime rule is added.
+
+`20260919T032017362655Z-factorio-hrtimer-frame` is pixel-identical.
+`20260919T032111493093Z-factorio-hrtimer-menu` completes 60 seconds at a tail
+mean 38.188 FPS (37.48–39.96), peak 87 C. Compute/compute packet boundaries
+average 2133 us versus 2470 us in the earlier integer-preamble run. Scenes
+and compiler options differ, so this is a latency observation, not an isolated
+FPS speedup. Sixteen-command capacity restored; 60 FPS remains TODO.

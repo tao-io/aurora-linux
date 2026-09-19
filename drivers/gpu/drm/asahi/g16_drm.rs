@@ -121,7 +121,7 @@ impl DrmGpu for Backend {
                         // Sleep until the firmware's next event notification.
                         // The bounded fallback keeps the timeout check alive
                         // and covers a stamp that trails its message further.
-                        timed_out = !events.wait_past(messages, 1);
+                        timed_out = !events.wait_past(messages);
                         trailing = 0;
                     }
                 }

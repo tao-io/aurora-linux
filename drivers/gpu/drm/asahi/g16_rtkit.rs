@@ -6,7 +6,7 @@
 use crate::g16_resources::Region;
 use core::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use kernel::{
-    c_str,
+    c_str, impl_has_hr_timer,
     device::Core,
     sync::Completion,
     io::mem::{Mem, MemFlag},
@@ -15,6 +15,8 @@ use kernel::{
     prelude::*,
     soc::apple::rtkit,
     sync::{aref::ARef, Arc, ArcBorrow},
+    time::{Delta, Monotonic, hrtimer::{HasHrTimer, HrTimer, HrTimerCallback,
+        HrTimerCallbackContext, HrTimerPointer, HrTimerRestart, RelativeMode}},
 };
 
 /// IRQ-safe notification tokens for the single GPU completion worker.
@@ -23,6 +25,8 @@ pub(crate) struct EventWait {
     count: AtomicU64,
     #[pin]
     arrived: Completion,
+    #[pin]
+    timer: HrTimer<Self>,
 }
 
 impl EventWait {
@@ -31,6 +35,7 @@ impl EventWait {
             pin_init!(EventWait {
                 count: AtomicU64::new(0),
                 arrived <- Completion::new(),
+                timer <- HrTimer::new(),
             }),
             GFP_KERNEL,
         )
@@ -42,8 +47,11 @@ impl EventWait {
     }
 
     /// Sleep until a notification later than `seen` has been recorded or
-    /// `jiffies` elapse. Returns whether a notification or pending wakeup exists.
-    pub(crate) fn wait_past(&self, seen: u64, jiffies: kernel::time::Jiffies) -> bool {
+    /// 100 us elapse. A one-jiffy fallback alone takes up to 4 ms at HZ=250,
+    /// even when the GPU stamp arrives just after its notification. The timer
+    /// adds a bounded resnapshot without replacing IRQ wakeups or busy-waiting.
+    /// Only the single completion worker may call this method.
+    pub(crate) fn wait_past(self: &Arc<Self>, seen: u64) -> bool {
         // Events can arrive while the worker is polling. Discard stale wakeup
         // tokens before checking the sequence. A concurrent event either moves
         // the sequence or leaves a token, including between the check and wait.
@@ -51,11 +59,34 @@ impl EventWait {
         for _ in 0..64 {
             if !self.arrived.try_wait_for_completion() {
                 if self.count.load(Ordering::Acquire) != seen { return true; }
-                return self.arrived.wait_for_completion_timeout(jiffies);
+                // The handle keeps EventWait alive and cancels synchronously
+                // on every return, before a subsequent wait can arm the timer.
+                let timer = self.clone().start(Delta::from_micros(100));
+                // Retain one tick as a backup bound; normally either the real
+                // interrupt or our high-resolution timer supplies the token.
+                self.arrived.wait_for_completion_timeout(1);
+                drop(timer);
+                return self.count.load(Ordering::Acquire) != seen;
             }
         }
         // Resnapshot GPU progress before draining another batch of tokens.
         true
+    }
+}
+
+impl HrTimerCallback for EventWait {
+    type Pointer<'a> = Arc<Self>;
+
+    fn run(this: ArcBorrow<'_, Self>, _ctx: HrTimerCallbackContext<'_, Self>) -> HrTimerRestart {
+        // Wake only: a timer expiry is not a firmware completion notification.
+        this.arrived.complete();
+        HrTimerRestart::NoRestart
+    }
+}
+
+impl_has_hr_timer! {
+    impl HasHrTimer<Self> for EventWait {
+        mode: RelativeMode<Monotonic>, field: self.timer
     }
 }
 
