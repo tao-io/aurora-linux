@@ -1,0 +1,70 @@
+diff --git a/drivers/gpu/drm/asahi/g16_render_job.rs b/drivers/gpu/drm/asahi/g16_render_job.rs
+index f6389b74ddda..b67ff74b7473 100644
+--- a/drivers/gpu/drm/asahi/g16_render_job.rs
++++ b/drivers/gpu/drm/asahi/g16_render_job.rs
+@@ -353,6 +353,18 @@ pub(crate) fn wait_for_prior(&mut self, stamp_address: u64, slot: u8, value: u32
+     pub(crate) fn compute_dependency(&self) -> Option<u64> {
+         self.compute_dependency.then_some(self.metadata.va() + 0x380)
+     }
++    /// Backpressure for speculative tiling, separate from the immediate TA
++    /// predecessor. Keep both dependencies: an older fragment's completion
++    /// does not imply that the immediately preceding TA has completed.
++    pub(crate) fn wait_for_tiling_window(&mut self, stamp_address: u64,
++        value: u32) -> Result<u64> {
++        let mut barrier = [0; 0x40];
++        wire::render_dependency(&mut barrier, stamp_address, SLOTS[1],
++            value, self.stamp).map_err(|_| EINVAL)?;
++        barrier[0x3c..0x40].copy_from_slice(&1u32.to_le_bytes());
++        self.metadata.write(0x480, &barrier)?;
++        Ok(self.metadata.va() + 0x480)
++    }
+     pub(crate) fn wait_for_prior_fragment(&mut self, stamp_address: u64,
+         slot: u8, value: u32) -> Result<u64> {
+         let mut barrier = [0; 0x40];
+diff --git a/drivers/gpu/drm/asahi/g16_runtime.rs b/drivers/gpu/drm/asahi/g16_runtime.rs
+index a6526a5dbb6f..685d28b9ea7b 100644
+--- a/drivers/gpu/drm/asahi/g16_runtime.rs
++++ b/drivers/gpu/drm/asahi/g16_runtime.rs
+@@ -352,10 +352,18 @@ fn start_batch(&mut self, mut batch: KVec<Active>) -> Result<()> {
+                 // queue order alone is not an execution dependency.
+                 // Compute boundaries require the separate explicit stage-scope
+                 // flag. Packet boundaries and start timestamps remain ordered.
+-                let mut addresses = [[0u64; COMPUTE_DEPTH * 3]; 3];
++                let mut addresses = [[0u64; COMPUTE_DEPTH * 4]; 3];
+                 let mut entries = [0usize; 3];
+                 let mut previous_render = None;
+                 let mut compute_since_render = false;
++                // Only the experimental compute-crossing path needs this
++                // window. Ordinary fragment-only scheduling is unchanged.
++                // Unlimited TA runahead delays fragment dispatch on G16.
++                let bounded_tiling = batch.iter().any(|active| matches!(
++                    active.packet.commands[active.index].payload,
++                    crate::g16_submit::Payload::Render { command, .. }
++                        if command.flags & (1 << 6) != 0));
++                let mut fragment_window = [None; 2];
+                 let mut previous = inner.inflight.last().map(|active| match &active.work {
+                     Work::Compute(c) => (active.packet.notifications.lock().notification(2).fw_stamp,
+                         crate::g16_compute::SLOT, c.stamp()),
+@@ -399,6 +407,12 @@ fn start_batch(&mut self, mut batch: KVec<Active>) -> Result<()> {
+                                 addresses[0][entries[0]] = r.compute_dependency().ok_or(EIO)?;
+                                 entries[0] += 1;
+                             }
++                            if bounded_tiling && early_tiling.is_some() {
++                                if let Some((address, stamp)) = fragment_window[0] {
++                                    addresses[0][entries[0]] = r.wait_for_tiling_window(address, stamp)?;
++                                    entries[0] += 1;
++                                }
++                            }
+                             addresses[0][entries[0]] = r.init_address();
+                             addresses[0][entries[0] + 1] = r.address();
+                             entries[0] += 2;
+@@ -413,6 +427,9 @@ fn start_batch(&mut self, mut batch: KVec<Active>) -> Result<()> {
+                             active.packet.notifications.lock().publish(true)?;
+                             previous = Some((active.packet.notifications.lock().notification(1).fw_stamp,
+                                 crate::g16_render_job::SLOTS[1], r.stamp()));
++                            fragment_window[0] = fragment_window[1];
++                            fragment_window[1] = Some((
++                                active.packet.notifications.lock().notification(1).fw_stamp, r.stamp()));
+                             compute_since_render = false;
+                             previous_render = Some((active.packet.id,
+                                 active.packet.notifications.lock().notification(0).fw_stamp, r.stamp()));

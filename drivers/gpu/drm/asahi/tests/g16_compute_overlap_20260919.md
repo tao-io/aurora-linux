@@ -17,3 +17,11 @@ Mesa opts in only for its existing nonempty fragment-only API destination
 stage set, without arbitrary preceding shader writes. The new option
 HK_M4_COMPUTE_EARLY_TILING defaults false pending replay/live qualification.
 Kernel+Mesa cross builds pass. Hardware results follow separately.
+
+Unbounded replay144916 preserves pixels/counts but takes6.93..7.10ms,
+versus6.15..6.29ms disabled (144952). First FS waits~0.9ms after TA.
+A two-render lookahead window (archived patch) passes the same pixels/counts
+in150130, but still takes6.40..6.58ms. Its first FS gap is~0.36ms.
+Do not enable either experimental policy by default. The window patch is
+removed from active source; it was not a useful performance improvement.
+All runs guarded with watchdog60s and six thermal sensors; no GPU fault.
