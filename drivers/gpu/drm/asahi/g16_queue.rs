@@ -222,3 +222,78 @@ impl Queue {
             self.info.read_u32(0x80)?])
     }
 }
+
+/// Per-client notification state. Firmware work rings and their scheduling
+/// context remain shared, but a command must never change another client's
+/// notifier ASID or completion cells. Retained command owners hold this object
+/// through firmware's last-slot lifetime, including after userspace closes.
+pub(crate) type Client = kernel::sync::Arc<kernel::sync::Mutex<ClientNotifications>>;
+
+pub(crate) struct ClientNotifications {
+    data: Buffer,
+    _binding: mmu::VmBind,
+    reserved: [u64; 3],
+    submitted: [u64; 3],
+    render_counter: u64,
+}
+impl ClientNotifications {
+    pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat,
+        vm: &mmu::Vm) -> Result<Client> {
+        let binding = uat.bind(vm)?;
+        let mut data = Buffer::new(dev, uat.kernel_vm(), 0x1000)?;
+        for engine in 0..3 {
+            let offset = engine * 0x200;
+            data.u64(offset, data.va() + 0x600 + engine as u64 * 8)?;
+            data.u32(offset + 8, crate::g16_compute::EVENT_GENERATION)?;
+            data.u32(offset + 0x10, 0x50)?;
+            data.u32(offset + 0x24, binding.slot())?;
+            data.write(offset + 0xa8, &[255; 8])?;
+            data.u32(offset + 0x114, 1)?;
+        }
+        kernel::sync::Arc::pin_init(kernel::new_mutex!(Self {
+            data, _binding: binding, reserved: [0; 3], submitted: [0; 3],
+            render_counter: 1,
+        }), GFP_KERNEL)
+    }
+    pub(crate) fn notification(&self, engine: usize) -> crate::g16_compute::Notification {
+        let base = self.data.va();
+        crate::g16_compute::Notification {
+            address: base + engine as u64 * 0x200,
+            threshold: base + 0x600 + engine as u64 * 8,
+            fw_stamp: base + 0x620 + engine as u64 * 16,
+            stamp: base + 0x628 + engine as u64 * 16,
+            event_seq: self.reserved[engine],
+        }
+    }
+    /// Reserve sequence numbers during preparation, without advancing the
+    /// firmware threshold until the corresponding packet is published.
+    pub(crate) fn reserve(&mut self, render: bool)
+        -> Result<([crate::g16_compute::Notification; 3], u64)> {
+        let notifications = core::array::from_fn(|i| self.notification(i));
+        let counter = self.render_counter;
+        if render {
+            let next = self.render_counter.checked_add(2).ok_or(EOVERFLOW)?;
+            self.reserved[0] = self.reserved[0].checked_add(1).ok_or(EOVERFLOW)?;
+            self.reserved[1] = self.reserved[1].checked_add(1).ok_or(EOVERFLOW)?;
+            self.render_counter = next;
+        } else {
+            self.reserved[2] = self.reserved[2].checked_add(1).ok_or(EOVERFLOW)?;
+        }
+        Ok((notifications, counter))
+    }
+    pub(crate) fn publish(&mut self, render: bool) -> Result {
+        for engine in if render { 0..2 } else { 2..3 } {
+            self.submitted[engine] = self.submitted[engine].checked_add(1).ok_or(EOVERFLOW)?;
+            self.data.u64(0x600 + engine * 8, self.submitted[engine])?;
+        }
+        Ok(())
+    }
+    pub(crate) fn stamps(&mut self, engine: usize) -> Result<[u32; 2]> {
+        Ok([self.data.read_u32(0x620 + engine * 16)?,
+            self.data.read_u32(0x628 + engine * 16)?])
+    }
+    #[cfg(CONFIG_DEV_COREDUMP)]
+    pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
+        dump.buffer("client-notifications", &mut self.data, 0x1000)
+    }
+}

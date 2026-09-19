@@ -37,6 +37,7 @@ pub(crate) struct Render {
     pool_state: Buffer,
     page_list: Buffer,
     binding: mmu::VmBind,
+    notifier_owner: Option<crate::g16_queue::Client>,
     pub(crate) stage: Stage,
     stamp: u32,
     pool_slot: u8,
@@ -49,6 +50,9 @@ pub(crate) struct Render {
     pub(crate) clear_metrics: [u64; 3],
 }
 impl Render {
+    pub(crate) fn retain_notifier(&mut self, notifier: crate::g16_queue::Client) {
+        self.notifier_owner = Some(notifier);
+    }
     pub(crate) fn profiling_key(&self) -> [u32; 3] {
         [self.binding.slot(), self.layout[0], self.layout[1]]
     }
@@ -147,7 +151,8 @@ impl Render {
                 preemption:[gpu(0x10000)?,gpu(0x10000)?,gpu(0x4000)?],auxiliary:gpu(0x10000)?,
                 uma:gpu(0x4000)?,private_memory,
                 pool_state:gpu(PRIVATE_QWORDS*8)?,page_list:gpu(0x4000)?,
-                binding:uat.bind(vm)?,stage:Stage::Tiling,stamp,pool_slot,compute_dependency:false,layout,
+                binding:uat.bind(vm)?,
+                notifier_owner: None,stage:Stage::Tiling,stamp,pool_slot,compute_dependency:false,layout,
                 consumed_pages:PRIVATE_PAGES, uma_submitted:0, freelist, page_list_image, clear_metrics:[0; 3],
             }, GFP_KERNEL)?
         };

@@ -31,7 +31,6 @@ struct Inner {
     busy_since_ns: Option<i64>,
     command_label: u8,
     render_stamp: u32,
-    render_counter: u64,
     compute_stamp: u32,
     /// Commands published to the firmware, oldest first. The firmware
     /// executes each queue in order, so retirement is checked at the front.
@@ -162,10 +161,6 @@ enum Work {
     Render(KBox<crate::g16_render_job::Render>),
 }
 impl Work {
-    fn same_vm(&self, vm: &mmu::Vm) -> bool {
-        match self { Self::Compute(c) => c.same_vm(vm), Self::Render(r) => r.same_vm(vm) }
-    }
-
     fn pipe(&self) -> usize { match self { Self::Compute(_) => 2, Self::Render(r) => r.index() } }
     fn stamp(&self) -> u32 {
         match self { Self::Compute(c) => c.stamp(), Self::Render(r) => r.stamp() }
@@ -180,10 +175,7 @@ impl Inner {
             // Publish both retained stages. Waiting on the CPU for final TA
             // retirement deadlocks a pass which needs a partial fragment to
             // free parameter pages. The firmware barrier encodes that DAG.
-            self.queue.advance_threshold()?;
-            self.fragment_queue.advance_threshold()?;
-            self.queue.set_render_context(r.context())?;
-            self.fragment_queue.set_render_context(r.context())?;
+            active.packet.notifications.lock().publish(true)?;
             let ta_commands = [r.compute_dependency().unwrap_or(0), r.init_address(), r.address()];
             let start = usize::from(r.compute_dependency().is_none());
             let (ta,ta_next) = self.queue.append_batch_idle(&ta_commands[start..])?;
@@ -201,7 +193,7 @@ impl Inner {
             return Ok(());
         }
         let Work::Compute(c) = &active.work else { return Err(EIO); };
-        self.compute_queue.advance_threshold()?;
+        active.packet.notifications.lock().publish(false)?;
         let (address,next) = self.compute_queue.append_batch(&[c.address()])?;
         active.queue_next[2] = next;
         active.pipe_next[2] = self.config.publish_queue(2,address,next.try_into()?,
@@ -236,6 +228,9 @@ impl Runtime {
     pub(crate) fn note_wait_timeout(&mut self) { self.inner.wait_timeouts += 1; }
 
     pub(crate) fn healthy(&self) -> bool { self.inner.state.healthy() }
+    pub(crate) fn new_client_notifications(&self, vm: &mmu::Vm) -> Result<crate::g16_queue::Client> {
+        crate::g16_queue::ClientNotifications::new(&self.inner.drm, &self.inner.uat, vm)
+    }
     pub(crate) fn new_user_vm(&mut self, id: u64, range: core::ops::Range<u64>) -> Result<mmu::Vm> {
         use crate::util::RangeExt;
         let driver_range = 0x70_0000_0000..0x80_0000_0000;
@@ -307,15 +302,11 @@ impl Runtime {
         self.pump()
     }
 
-    /// Keep same-VM packets queued, with disjoint hardware slots and a strict
-    /// predecessor dependency. A VM switch waits for all earlier work to retire.
+    /// Append prepared packets with disjoint hardware slots and a strict
+    /// predecessor dependency. Each client owns its notifier ASID and stamps;
+    /// publishing a successor never rewrites an in-flight client's state.
     fn pump(&mut self) -> Result {
         while !self.inner.pending.is_empty() {
-            // Queue notification context is shared. Never change it underneath
-            // a different VM's in-flight work. Same-VM packets keep the context
-            // and cross the boundary through an explicit firmware dependency.
-            if self.inner.inflight.last().is_some_and(|active|
-                !active.work.same_vm(&self.inner.pending[0][0].packet.vm)) { break; }
             let batch = self.inner.pending.remove(0).map_err(|_| EIO)?;
             let packet = batch[0].packet.clone();
             if let Err(error) = packet.previous_result() {
@@ -358,9 +349,9 @@ impl Runtime {
                 let mut addresses = [[0u64; COMPUTE_DEPTH * 3]; 3];
                 let mut entries = [0usize; 3];
                 let mut previous = inner.inflight.last().map(|active| match &active.work {
-                    Work::Compute(c) => (inner.compute_queue.notification().fw_stamp,
+                    Work::Compute(c) => (active.packet.notifications.lock().notification(2).fw_stamp,
                         crate::g16_compute::SLOT, c.stamp()),
-                    Work::Render(r) => (inner.fragment_queue.notification().fw_stamp,
+                    Work::Render(r) => (active.packet.notifications.lock().notification(1).fw_stamp,
                         crate::g16_render_job::SLOTS[1], r.stamp()),
                 });
                 for active in batch.iter_mut() {
@@ -372,9 +363,9 @@ impl Runtime {
                             }
                             addresses[2][entries[2]] = c.address();
                             entries[2] += 1;
-                            previous = Some((inner.compute_queue.notification().fw_stamp,
+                            previous = Some((active.packet.notifications.lock().notification(2).fw_stamp,
                                 crate::g16_compute::SLOT, c.stamp()));
-                            inner.compute_queue.advance_threshold()?;
+                            active.packet.notifications.lock().publish(false)?;
                         }
                         Work::Render(r) => {
                             if let Some((address, slot, stamp)) = previous {
@@ -388,11 +379,8 @@ impl Runtime {
                             addresses[1][entries[1]] = r.fragment_dependency();
                             addresses[1][entries[1] + 1] = r.fragment_address();
                             entries[1] += 2;
-                            inner.queue.advance_threshold()?;
-                            inner.fragment_queue.advance_threshold()?;
-                            inner.queue.set_render_context(r.context())?;
-                            inner.fragment_queue.set_render_context(r.context())?;
-                            previous = Some((inner.fragment_queue.notification().fw_stamp,
+                            active.packet.notifications.lock().publish(true)?;
+                            previous = Some((active.packet.notifications.lock().notification(1).fw_stamp,
                                 crate::g16_render_job::SLOTS[1], r.stamp()));
                         }
                     }
@@ -460,15 +448,11 @@ impl Runtime {
         // event value exactly as the common Asahi queues do, across clients.
         if matches!(payload, crate::g16_submit::Payload::Render { .. }) {
             inner.render_stamp = inner.render_stamp.wrapping_add(0x100).max(0x100);
-            // Shared queue counter: fragment first, vertex next, as in the
-            // common Asahi render producer. Never reuse 1/2 for every pass.
-            inner.render_counter = inner.render_counter.checked_add(2).ok_or(EOVERFLOW)?;
         } else {
             inner.compute_stamp = inner.compute_stamp.wrapping_add(0x100).max(0x100);
         }
-        let mut notification = inner.compute_queue.notification();
-        notification.event_seq = notification.event_seq.checked_add(packet.commands[..index].iter().filter(|c|
-            matches!(c.payload, crate::g16_submit::Payload::Compute(_))).count() as u64).ok_or(EOVERFLOW)?;
+        let (notifications, render_counter) = packet.notifications.lock().reserve(
+            matches!(payload, crate::g16_submit::Payload::Render { .. }))?;
         let pool_slot: u8 = (batch_offset + 1).try_into()?;
         let compute_owner = if matches!(payload, crate::g16_submit::Payload::Compute(_)) {
             let mut cache = packet.compute_cache.lock();
@@ -489,24 +473,26 @@ impl Runtime {
         let mut work = match payload {
             crate::g16_submit::Payload::Compute(control) => Work::Compute(crate::g16_job::Compute::in_vm(
                 &inner.drm,&inner.uat,&mut inner.config,&packet.vm,inner.compute_queue.address(),Some(control),
-                Some(notification),inner.compute_stamp,
+                Some(notifications[2]),inner.compute_stamp,
                 // All commands share job metadata slot 0 and the queue's
                 // user stamp, as G13/G14 do; per-command slots collide once
                 // more than four commands are dispatched together.
                 compute_owner, 0, pool_slot)?),
             crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
-                &inner.drm,&inner.uat,&packet.vm,command,usc,label,inner.render_stamp,inner.render_counter - 2,
+                &inner.drm,&inner.uat,&packet.vm,command,usc,label,inner.render_stamp,render_counter,
                 [inner.queue.address(),inner.fragment_queue.address()],
-                [inner.queue.notification(),inner.fragment_queue.notification()],
+                [notifications[0],notifications[1]],
                 inner.config.render_stats(), batch_offset.try_into()?, render_owner)?),
         };
         let attachments = &packet.commands[index].attachments;
         match &mut work {
             Work::Compute(compute) => {
+                compute.retain_notifier(packet.notifications.clone());
                 compute.set_attachments(&attachments[0])?;
                 compute.set_user_timestamps(packet.commands[index].timestamp_addresses())?;
             }
             Work::Render(render) => {
+                render.retain_notifier(packet.notifications.clone());
                 render.set_attachments(attachments)?;
                 render.set_user_timestamps(packet.commands[index].render_timestamp_addresses())?;
                 render.set_fragment_timestamp_copies(packet.commands[index].fragment_copy_addresses())?;
@@ -584,14 +570,13 @@ impl Runtime {
         let mut status = active.work.status()?;
         let pipe_index = active.work.pipe();
         let engine = match pipe_index { 0=>&mut inner.queue,1=>&mut inner.fragment_queue,_=>&mut inner.compute_queue };
-        // Each engine owns one firmware and user stamp. Firmware can coalesce
+        // Each client engine owns one firmware and user stamp. Firmware can coalesce
         // notifications across a batch; a private stamp cell per render loses
         // earlier completions when only the last event record is written.
-        let shared = engine.completion_stamp()?;
+        let [firmware, shared] = active.packet.notifications.lock().stamps(pipe_index)?;
         if shared.wrapping_sub(active.work.stamp()) as i32 >= 0 {
             status[1] = active.work.stamp() as u64;
         }
-        let firmware = engine.firmware_stamp()?;
         if firmware.wrapping_sub(active.work.stamp()) as i32 >= 0 {
             status[0] = active.work.stamp() as u64;
         }
@@ -865,6 +850,7 @@ impl Runtime {
         let Some(active) = inner.inflight.first_mut() else { return; };
         if let Err(error) = (|| -> Result {
             let mut dump = crate::g16_fault::Dump::new(active.packet.id)?;
+            active.packet.notifications.lock().capture_fault(&mut dump)?;
             inner.config.capture_fault(&mut dump)?;
             inner.queue_context.capture_fault(&mut dump)?;
             inner.queue.capture_fault(&mut dump, ["queue-ta", "ring-state-ta"])?;
@@ -903,7 +889,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, busy_since_ns: None, command_label: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, last_gpu_end: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, busy_since_ns: None, command_label: 1, render_stamp: 0, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, last_gpu_end: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

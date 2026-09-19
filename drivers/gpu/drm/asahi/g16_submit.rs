@@ -70,6 +70,7 @@ pub(crate) type ComputeCache = Arc<Mutex<Option<KVec<KBox<crate::g16_job::Comput
 pub(crate) struct Packet {
     pub(crate) id: u64,
     pub(crate) vm: mmu::Vm,
+    pub(crate) notifications: crate::g16_queue::Client,
     pub(crate) commands: KVec<Command>,
     pub(crate) render_cache: RenderCache,
     pub(crate) compute_cache: ComputeCache,
@@ -187,6 +188,7 @@ pub(crate) struct Queue {
     shared: Shared,
     dev: driver::AsahiDevRef,
     vm: mmu::Vm,
+    notifications: crate::g16_queue::Client,
     usc: u64,
     fences: FenceContexts,
     render_cache: RenderCache,
@@ -218,8 +220,12 @@ impl Queue {
             2 => sched::Priority::Normal, 3 => sched::Priority::Low,
             _ => return Err(EINVAL),
         };
+        let notifications = {
+            let guard = shared.lock();
+            Option::as_ref(&*guard).ok_or(ENODEV)?.new_client_notifications(&vm)?
+        };
         Ok(Self { entity: sched::Entity::new(&scheduler, priority)?, _scheduler: scheduler,
-            shared, dev, vm, usc,
+            shared, dev, vm, usc, notifications,
             render_cache: Arc::pin_init(new_mutex!(Some(KVec::new())), GFP_KERNEL)?,
             compute_cache: Arc::pin_init(new_mutex!(Some(KVec::new())), GFP_KERNEL)?,
             fences: FenceContexts::new(1, c_str!("asahi_m4_queue"), kernel::static_lock_class!())? })
@@ -300,6 +306,7 @@ impl queue::Queue for Queue {
                 single.push(command, GFP_KERNEL)?;
             }
             let packet = Arc::new(Packet { id, vm: self.vm.clone(), commands: single,
+                notifications: self.notifications.clone(),
                 render_cache: self.render_cache.clone(),
                 compute_cache: self.compute_cache.clone(),
                 finish_claimed: AtomicBool::new(false),

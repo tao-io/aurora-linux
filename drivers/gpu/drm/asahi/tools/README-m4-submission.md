@@ -376,3 +376,16 @@ The earlier raw-CNTPCT diagnostic run is rejected because AP frequency is
 1 GHz and GPU frequency is 24 MHz. Its cross-domain gaps are invalid; the
 parser explicitly refuses those metrics. Firmware engine timestamps and
 scaled AP ticks have consistent ordering in this corrected measurement.
+
+## Client notification ownership
+
+Each logical client queue now owns three engine notifiers, thresholds and
+completion stamp pairs. Its ASID binding remains retained with that state.
+Prepared and cached command owners keep a reference until their existing
+last-hardware-slot replacement rule permits release. Sequence reservation
+during preparation remains separate from threshold advancement at publication.
+Cross-client followers can now append behind explicit firmware dependencies
+without changing an in-flight notifier's context. The shared work rings,
+engine event slots, two banks and strict execution order remain unchanged.
+This is not engine overlap or preemption. ARM64 module build passes; hardware
+qualification is pending at this development checkpoint.

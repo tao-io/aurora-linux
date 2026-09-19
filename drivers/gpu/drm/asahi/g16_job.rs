@@ -22,6 +22,7 @@ pub(crate) struct Compute {
     page_list: Buffer,
     counter: Buffer,
     binding: mmu::VmBind,
+    notifier_owner: Option<crate::g16_queue::Client>,
     pool_slot: u8,
     stamp: u32,
     consumed_pages: usize,
@@ -35,6 +36,9 @@ const PRIVATE_BYTES: usize = 0x2000000;
 const PRIVATE_PAGES: usize = PRIVATE_BYTES / 0x1000;
 
 impl Compute {
+    pub(crate) fn retain_notifier(&mut self, notifier: crate::g16_queue::Client) {
+        self.notifier_owner = Some(notifier);
+    }
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, config: &mut crate::g16_config::Config, work_queue: u64) -> Result<KBox<Self>> {
         let vm = uat.new_vm(0x81320020, 0x70_0000_0000..0x80_0000_0000)?;
         Self::in_vm(dev, uat, config, &vm, work_queue, None, None, g16_compute::STAMP, None, 0, 1)
@@ -94,6 +98,7 @@ impl Compute {
             page_list: gpu(0x4000)?,
             counter: gpu(8)?,
             binding: uat.bind(&vm)?,
+                notifier_owner: None,
             pool_slot,
             stamp,
             consumed_pages: PRIVATE_PAGES,
