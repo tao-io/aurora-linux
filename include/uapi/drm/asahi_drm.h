@@ -271,6 +271,11 @@ enum drm_asahi_feature {
 	 * publish the same end timestamp to additional bound destinations.
 	 */
 	DRM_ASAHI_FEATURE_COMPUTE_TIMESTAMP_COPIES = (1UL) << 5,
+
+	/** @DRM_ASAHI_FEATURE_FRAGMENT_DEPENDENCY: Render commands may request
+	 * fragment-only dependencies with DRM_ASAHI_RENDER_FRAGMENT_DEPENDENCY.
+	 */
+	DRM_ASAHI_FEATURE_FRAGMENT_DEPENDENCY = (1UL) << 6,
 };
 
 #define DRM_ASAHI_PARAM_GROUP_VM_STATUS 1
@@ -900,6 +905,17 @@ enum drm_asahi_render_flags {
 	 * render payload instead of silently truncating 64-bit G17 values.
 	 */
 	DRM_ASAHI_RENDER_RSRC_SPEC_HI = (1U << 4),
+
+	/**
+	 * @DRM_ASAHI_RENDER_FRAGMENT_DEPENDENCY: The preceding render's results
+	 * are needed only by fragment processing, not tiling/vertex processing.
+	 * The kernel may overlap tiling with an immediately preceding render
+	 * in the same submitted packet. Fragment order is retained. Compute,
+	 * packet boundaries and timestamp-start dependencies remain ordered.
+	 * Requires DRM_ASAHI_FEATURE_FRAGMENT_DEPENDENCY. Userspace must retain
+	 * the normal header barriers; this flag changes only their stage scope.
+	 */
+	DRM_ASAHI_RENDER_FRAGMENT_DEPENDENCY = (1U << 5),
 
 	/**
 	 * @DRM_ASAHI_RENDER_DBIAS_IS_INT: Use integer depth bias formula.

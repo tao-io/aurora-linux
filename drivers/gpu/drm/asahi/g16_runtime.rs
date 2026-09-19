@@ -344,10 +344,14 @@ impl Runtime {
         } else {
             (|| -> Result {
                 // Build all three queue rings before ringing any doorbell.
-                // Every command depends on its predecessor's engine stamp;
-                // render additionally keeps its ordinary TA->FS dependency.
+                // Dependencies normally wait on the predecessor's final
+                // engine stamp. A fragment-only render dependency may let
+                // TA run ahead: the TA and FS queues each remain FIFO, and
+                // every FS still waits on its own TA. Never apply this across
+                // a compute command, packet boundary or start timestamp.
                 let mut addresses = [[0u64; COMPUTE_DEPTH * 3]; 3];
                 let mut entries = [0usize; 3];
+                let mut previous_render_packet = None;
                 let mut previous = inner.inflight.last().map(|active| match &active.work {
                     Work::Compute(c) => (active.packet.notifications.lock().notification(2).fw_stamp,
                         crate::g16_compute::SLOT, c.stamp()),
@@ -357,6 +361,7 @@ impl Runtime {
                 for active in batch.iter_mut() {
                     match &mut active.work {
                         Work::Compute(c) => {
+                            previous_render_packet = None;
                             if let Some((address, slot, stamp)) = previous {
                                 addresses[2][entries[2]] = c.dependency(address, slot, stamp)?;
                                 entries[2] += 1;
@@ -368,7 +373,16 @@ impl Runtime {
                             active.packet.notifications.lock().publish(false)?;
                         }
                         Work::Render(r) => {
-                            if let Some((address, slot, stamp)) = previous {
+                            let fragment_only = match active.packet.commands[active.index].payload {
+                                crate::g16_submit::Payload::Render { command, .. } =>
+                                    command.flags & (1 << 5) != 0 &&
+                                    command.vertex_timestamps.start.handle == 0 &&
+                                    command.fragment_timestamps.start.handle == 0,
+                                _ => false,
+                            };
+                            let early_tiling = fragment_only &&
+                                previous_render_packet == Some(active.packet.id);
+                            if let Some((address, slot, stamp)) = previous.filter(|_| !early_tiling) {
                                 r.wait_for_prior(address, slot, stamp)?;
                                 addresses[0][entries[0]] = r.compute_dependency().ok_or(EIO)?;
                                 entries[0] += 1;
@@ -382,6 +396,7 @@ impl Runtime {
                             active.packet.notifications.lock().publish(true)?;
                             previous = Some((active.packet.notifications.lock().notification(1).fw_stamp,
                                 crate::g16_render_job::SLOTS[1], r.stamp()));
+                            previous_render_packet = Some(active.packet.id);
                         }
                     }
                 }
