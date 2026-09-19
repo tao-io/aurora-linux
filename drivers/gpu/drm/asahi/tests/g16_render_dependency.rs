@@ -114,3 +114,33 @@ fn concurrent_parameter_owners_select_disjoint_firmware_descriptors() {
         assert_eq!(hardware_table[slot], expected, "another owner replaced the page list");
     }
 }
+
+#[test]
+fn optional_timestamp_removal_preserves_native_wfi_and_finalizers() {
+    // Three independently laid out engines share the 0x4c timestamp record.
+    for (start,total,restart,finish) in [(0x1bc,0x300,0x64,12u32),
+        (0x1cc,0x300,0x80,6), (0x1ec,0x380,0xa0,8)] {
+        let mut sequence = [0x5au8; 0x400];
+        sequence[start..start+4].copy_from_slice(&0x80000003u32.to_le_bytes());
+        sequence[start+0x4c..start+0x50].copy_from_slice(&1u32.to_le_bytes());
+        sequence[start+0x50..start+0x54].copy_from_slice(&3u32.to_le_bytes());
+        sequence[start+0x9c..start+0xa0].copy_from_slice(&finish.to_le_bytes());
+        let original = sequence;
+        let size = g16_compute::omit_timestamps(&mut sequence,start,total,restart).unwrap();
+        assert_eq!(size,total-0x98);
+        assert_eq!(&sequence[..start],&original[..start]);
+        assert_eq!(&sequence[start..start+4],&1u32.to_le_bytes());
+        assert_eq!(&sequence[start+4..start+8],&finish.to_le_bytes());
+        let at = start+4+restart;
+        assert_eq!(&sequence[start+4..at],&original[start+0x9c..start+0x9c+restart]);
+        assert_eq!(&sequence[at..at+4],&(-((start+4) as i32)).to_le_bytes());
+        assert_eq!(&sequence[at+4..size],&original[start+0xa0+restart..total]);
+        assert!(sequence[size..total].iter().all(|v| *v == 0));
+        assert_eq!(&sequence[total..],&original[total..]);
+        let mut malformed = original;
+        malformed[start+0x4c] = 0;
+        let before = malformed;
+        assert!(g16_compute::omit_timestamps(&mut malformed,start,total,restart).is_err());
+        assert_eq!(malformed,before);
+    }
+}

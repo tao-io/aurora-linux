@@ -60,6 +60,9 @@ pub(crate) enum DebugFlags {
     // One aggregate per second, emitted only after exact GPU retirement.
     SubmitSummary = 24,
 
+    // Keep application queries and packet boundaries; omit optional engine profiling.
+    MinimalTimestamps = 25,
+
     // 32-35: Allocator debugging
     FillAllocations = 32,
     DebugAllocations = 33,

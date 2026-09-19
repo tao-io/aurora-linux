@@ -429,6 +429,20 @@ impl Render {
         g16_memory::publish();
         Ok(())
     }
+    pub(crate) fn omit_internal_timestamps(&mut self, omit: [bool; 2]) -> Result {
+        for (i, stage) in [Stage::Tiling, Stage::Fragment].into_iter().enumerate() {
+            if !omit[i] { continue; }
+            let mut sequence = [0u8; 0x380];
+            let total = wire::sequence_size(stage);
+            self.sequences[i].read(0, &mut sequence[..total])?;
+            let size = crate::g16_compute::omit_timestamps(&mut sequence,
+                if i == 0 { 0x1cc } else { 0x1ec }, total,
+                if i == 0 { 0x80 } else { 0xa0 }).map_err(|_| EINVAL)?;
+            self.sequences[i].write(0, &sequence[..total])?;
+            self.commands[i].u32(if i == 0 { 0x778 } else { 0x1c }, size.try_into()?)?;
+        }
+        Ok(())
+    }
     pub(crate) fn timestamps(&mut self) -> Result<[[u64; 2]; 2]> {
         Ok([[self.metadata.read_u64(0x600)?, self.metadata.read_u64(0x608)?],
             [self.metadata.read_u64(0x620)?, self.metadata.read_u64(0x628)?]])

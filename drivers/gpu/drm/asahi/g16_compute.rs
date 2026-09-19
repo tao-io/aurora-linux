@@ -193,6 +193,27 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     Ok(())
 }
 
+/// Remove only the optional timestamp pair, preserving WFI and Finalize's
+/// relative restart. Call before timestamp fanout, and only without API queries.
+pub(crate) fn omit_timestamps(sequence: &mut [u8], start: usize,
+    total: usize, restart_offset: usize) -> Result<usize, ()> {
+    let finalize = start + 0x9c;
+    let new_finalize = start + 4;
+    if sequence.len() < total || finalize + restart_offset + 4 > total ||
+        sequence[start..start+4] != 0x80000003u32.to_le_bytes() ||
+        sequence[start+0x4c..start+0x50] != 1u32.to_le_bytes() ||
+        sequence[start+0x50..start+0x54] != 3u32.to_le_bytes() {
+        return Err(());
+    }
+    sequence.copy_within(start+0x4c..start+0x50, start);
+    sequence.copy_within(finalize..total, new_finalize);
+    let length = total - 0x98;
+    let restart = new_finalize + restart_offset;
+    sequence[restart..restart+4].copy_from_slice(&(-(new_finalize as i32)).to_le_bytes());
+    sequence[length..total].fill(0);
+    Ok(length)
+}
+
 /// Existing 25G83 Timestamp records read the completed engine counter. Fan
 /// out that value before FinalizeCompute, retaining its relative restart.
 pub(crate) fn timestamp_copies(sequence: &mut [u8], pointers: &[u64]) -> Result<usize, ()> {

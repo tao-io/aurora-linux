@@ -575,12 +575,20 @@ impl Runtime {
                 inner.config.render_stats(), batch_offset.try_into()?, render_owner, shared_parameters)?),
         };
         let attachments = &packet.commands[index].attachments;
+        // Keep exact full-packet brackets even in the minimal diagnostic mode.
+        // User timestamps and their fanout always retain native records.
+        let minimal = crate::debug::debug_enabled(crate::debug::DebugFlags::MinimalTimestamps)
+            && index != 0 && index + 1 != packet.commands.len();
         match &mut work {
             Work::Compute(compute) => {
                 compute.retain_notifier(packet.notifications.clone());
                 compute.set_attachments(&attachments[0])?;
                 compute.set_user_timestamps(packet.commands[index].timestamp_addresses())?;
                 compute.set_timestamp_copies(packet.commands[index].end_copy_addresses())?;
+                if minimal && packet.commands[index].timestamp_addresses() == [0, 0] &&
+                    packet.commands[index].end_copy_addresses() == [0; 8] {
+                    compute.omit_internal_timestamps()?;
+                }
             }
             Work::Render(render) => {
                 render.retain_notifier(notifier);
@@ -591,6 +599,11 @@ impl Runtime {
                 render.set_attachments(attachments)?;
                 render.set_user_timestamps(packet.commands[index].render_timestamp_addresses())?;
                 render.set_fragment_timestamp_copies(packet.commands[index].end_copy_addresses())?;
+                if minimal {
+                    let pairs = packet.commands[index].render_timestamp_addresses();
+                    render.omit_internal_timestamps([pairs[0] == [0, 0],
+                        pairs[1] == [0, 0] && packet.commands[index].end_copy_addresses() == [0; 8]])?;
+                }
             }
         }
         inner.command_label = label;
@@ -729,8 +742,9 @@ impl Runtime {
                 // One hardware clock domain. Keep an overlapping TA/fragment
                 // interval negative rather than misreporting it as idle time.
                 let [[ta_start, ta_end], [fs_start, fs_end]] = timestamps;
-                render_stage_ns = [ta_end as i64 - ta_start as i64,
-                    fs_start as i64 - ta_end as i64, fs_end as i64 - fs_start as i64]
+                render_stage_ns = [if ta_start != 0 { ta_end as i64 - ta_start as i64 } else { 0 },
+                    if fs_start != 0 && ta_end != 0 { fs_start as i64 - ta_end as i64 } else { 0 },
+                    if fs_start != 0 { fs_end as i64 - fs_start as i64 } else { 0 }]
                     .map(|ticks| ticks * 1000 / 24);
                 crate::cls_dev_dbg!(SubmitTiming, inner.drm, "G16G: render GPU timestamps={:x?} UMA completed={}/{}\n", timestamps, render.uma_completed()?, render.uma_submitted());
             } else {
@@ -766,13 +780,14 @@ impl Runtime {
             // Firmware pickup, GPU execution and host observation latency in
             // the shared 24 MHz counter, for the retained progress record.
             // GPU execution time from the command's own 24 MHz timestamps.
-            let gpu_ns = gpu_span[1].wrapping_sub(gpu_span[0]).saturating_mul(1000) / 24;
+            let measured = gpu_span[0] != 0 && gpu_span[1] >= gpu_span[0];
+            let gpu_ns = if measured { (gpu_span[1] - gpu_span[0]).saturating_mul(1000) / 24 } else { 0 };
             if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
                 if let Some((previous, packet_id, previous_engine)) = inner.last_gpu_end {
                     // Same 24 MHz counter for both engines. These gaps include
                     // queue starvation, firmware/cache work and VM switches;
                     // they are not shader execution or utilization estimates.
-                    if gpu_span[0] >= previous {
+                    if measured && gpu_span[0] >= previous {
                         let engine = usize::from(pipe_index == 2);
                         inner.summary.engine_gap_ticks[engine] += gpu_span[0] - previous;
                         inner.summary.engine_gap_count[engine] += 1;
@@ -795,11 +810,11 @@ impl Runtime {
                             inner.summary.publication_gap_ticks[class][1] += publish - previous;
                             inner.summary.publication_gap_ticks[class][2] += gpu_span[0] - publish;
                         }
-                    } else {
+                    } else if measured {
                         inner.summary.gpu_overlaps += 1;
                     }
                 }
-                inner.last_gpu_end = Some((gpu_span[1], active.packet.id, usize::from(pipe_index == 2)));
+                inner.last_gpu_end = measured.then_some((gpu_span[1], active.packet.id, usize::from(pipe_index == 2)));
                 inner.summary.record(matches!(&active.work, Work::Render(_)),
                     active.preparation_ns, active_ns, gpu_ns);
                 if let Work::Render(r) = &active.work {
