@@ -20,3 +20,9 @@ The host requires that pair as extra compute retirement proof. Preserve the
 requirement and retain ALL compute timestamp pairs; scope this experiment to
 unrequested render-engine pairs. Sealed fault retained in provenance163800.
 The decoder now accepts both explicitly known 4KiB/8KiB compute command sizes.
+
+Corrected render-only run164219 passes exact pixels and all query totals.
+Full packet brackets5.971..6.083ms, versus fullprofiling5.971..6.096ms.
+No meaningful gain established. Per-engine sums are unavailable in minimal
+mode, explicitly null. Restore normalflags25165824 and module868fa406;
+keep this opt-in diagnostic as evidence rather than a claimed speedup.
