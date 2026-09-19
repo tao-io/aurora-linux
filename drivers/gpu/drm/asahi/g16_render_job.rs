@@ -75,7 +75,7 @@ impl Render {
         r: UapiRenderCommand, usc: u64, generation: u8, stamp: u32, counter: u64,
         queues: [u64; 2], notifications: [crate::g16_compute::Notification; 2], stats: [u64; 2],
         pool_slot: u8, reusable: Option<KBox<Self>>) -> Result<KBox<Self>> {
-        if usize::from(pool_slot) >= crate::g16_runtime::COMPUTE_DEPTH { return Err(EINVAL); }
+        if usize::from(pool_slot) >= crate::g16_runtime::POOL_SLOTS { return Err(EINVAL); }
         let utile = |n| match n {16=>Ok(Utile::Pixels16),32=>Ok(Utile::Pixels32),_=>Err(EINVAL)};
         let mut geometry = Geometry::new_layered(r.width as u32,r.height as u32,
             utile(r.utile_width)?,utile(r.utile_height)?,1,r.layers).map_err(|_| EINVAL)?;
@@ -164,7 +164,7 @@ impl Render {
             crate::g16_compute::UmaEngine::Render).map_err(|_| EINVAL)?;
         // Compute and render owners have disjoint private-slot ranges.
         // Firmware may prepare all owners while their pools remain retained.
-        uma[8..12].copy_from_slice(&(1 + crate::g16_runtime::COMPUTE_DEPTH as u32 + u32::from(pool_slot)).to_le_bytes());
+        uma[8..12].copy_from_slice(&(1 + crate::g16_runtime::POOL_SLOTS as u32 + u32::from(pool_slot)).to_le_bytes());
         uma[..8].copy_from_slice(&job.uma.va().to_le_bytes());
         job.compute_dependency = false;
         job.uma.write(0,&uma)?;

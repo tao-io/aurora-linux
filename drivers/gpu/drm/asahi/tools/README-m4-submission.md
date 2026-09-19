@@ -147,3 +147,22 @@ identical and overflow reads ordered. Live `20260919T005024295412Z-factorio-prep
 averages 21.497 FPS (20.67--21.95), sampled peak 88.75 C under the requested
 80 C passive policy and independent 95 C cutoff. Full CTS remains deferred;
 60 FPS and queued consecutive firmware packets remain TODO.
+
+## Keep consecutive same-VM packets queued
+
+The two admitted packets now own disjoint slot banks: compute/private 1..16,
+render/private 17..32, render parameter 0..15. Firmware's UMA lookup explicitly
+accepts indices through 255 (25G83 TEXT 2af4c..54); the retained table has 16 KiB.
+A cancelled preparation releases its bank without rotating into a still-live
+bank. Same-VM followers append behind a strict dependency on the previous
+packet's final engine stamp; different-VM followers wait for retirement before
+changing the shared notification context. All ring consumer indices must leave
+space. Busy accounting now measures the union of published intervals.
+
+`20260919T005648832035Z-factorio-queued-packets-frame`: zero differing pixels.
+`20260919T005713130464Z-factorio-queued-packets-queries`: Pass.
+`20260919T005739706755Z-factorio-queued-packets-menu`: 22.788 FPS tail
+(22.14--23.25), with an earlier portion near 28; peak 89.25 C. The final
+14.081 s contains 11.557 s published busy intervals and 7.808 s GPU spans.
+The animated scene changes; 60 FPS remains unmet. Persistent private pools,
+per-client firmware queues and broad CTS remain TODO.

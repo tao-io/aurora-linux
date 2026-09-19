@@ -107,5 +107,5 @@ for line in lines:
     packet_ns += r['packet_active_ns']
 if counts:
     result['batches'] = dict(counts_by_commands=counts, active_seconds=packet_ns/1e9,
-        scope='Serialized packets counted once, unlike overlapping per-command active times')
+        scope='Union of published busy intervals' if any('union=1' in line for line in lines) else 'Serialized packets counted once, unlike overlapping per-command active times')
 print(json.dumps(result,indent=2))

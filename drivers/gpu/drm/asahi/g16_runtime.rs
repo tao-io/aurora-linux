@@ -28,6 +28,7 @@ struct Inner {
     device: Device,
     generation: u32,
     gpu_pending: bool,
+    busy_since_ns: Option<i64>,
     user_generation: u8,
     render_stamp: u32,
     render_counter: u64,
@@ -35,8 +36,8 @@ struct Inner {
     /// Commands published to the firmware, oldest first. The firmware
     /// executes each queue in order, so retirement is checked at the front.
     inflight: KVec<Active>,
-    /// Fully prepared CPU-side owners. Only pump publishes them, after the
-    /// preceding packet has retired. The scheduler admits at most one ahead.
+    /// Prepared owners waiting for a different VM to retire. Same-VM packets
+    /// can already be queued behind a strict firmware dependency.
     pending: KVec<KVec<Active>>,
     /// Firmware event messages counted at the last snapshot that found the
     /// front command unretired, and snapshots that retired a command without
@@ -94,6 +95,8 @@ impl SubmitSummary {
 /// rendering. All engines use queue-owned completion stamps. The bounded
 /// packet also bounds retained memory and compositor scheduling latency.
 pub(crate) const COMPUTE_DEPTH: usize = 8;
+/// Two disjoint banks for the scheduler's two admitted packets.
+pub(crate) const POOL_SLOTS: usize = COMPUTE_DEPTH * 2;
 
 
 /// Outcome of one completion snapshot.
@@ -113,6 +116,10 @@ enum Work {
     Render(KBox<crate::g16_render_job::Render>),
 }
 impl Work {
+    fn same_vm(&self, vm: &mmu::Vm) -> bool {
+        match self { Self::Compute(c) => c.same_vm(vm), Self::Render(r) => r.same_vm(vm) }
+    }
+
     fn pipe(&self) -> usize { match self { Self::Compute(_) => 2, Self::Render(r) => r.index() } }
     fn stamp(&self) -> u32 {
         match self { Self::Compute(c) => c.stamp(), Self::Render(r) => r.stamp() }
@@ -159,6 +166,7 @@ impl Inner {
 }
 struct Active {
     packet: Arc<crate::g16_submit::Packet>,
+    bank: usize,
     work: Work,
     index: usize,
     queue_next: [u32; 3],
@@ -216,22 +224,30 @@ impl Runtime {
         if packet.commands.is_empty() { return Err(EINVAL); }
         let count = packet.commands.len();
         if count > COMPUTE_DEPTH { return Err(EINVAL); }
-        // No prepared owner is visible to firmware. It may use the same slot
-        // number as an active owner, but never that owner's backing allocation.
+        // Each admitted packet owns a disjoint bank and backing allocations.
+        // Even cancelled preparation cannot alias an in-flight bank.
+        let bank = (0..2).find(|bank|
+            !self.inner.inflight.iter().any(|active| active.bank == *bank) &&
+            !self.inner.pending.iter().any(|batch| batch[0].bank == *bank))
+            .ok_or(EBUSY)?;
         let mut batch = KVec::with_capacity(count, GFP_KERNEL)?;
         self.inner.pending.reserve(1, GFP_KERNEL)?;
         for offset in 0..count {
-            batch.push(self.prepare_command(packet.clone(), offset, offset as u64)?, GFP_KERNEL)?;
+            batch.push(self.prepare_command(packet.clone(), offset, (bank * COMPUTE_DEPTH + offset) as u64)?, GFP_KERNEL)?;
         }
         self.inner.pending.push(batch, GFP_KERNEL).expect("reserved prepared packet");
         self.pump()
     }
 
-    /// Publish only after the preceding packet has retired. Preparation may
-    /// overlap GPU execution; queue publication and hardware slot replacement
-    /// still cannot overlap across packets.
+    /// Keep same-VM packets queued, with disjoint hardware slots and a strict
+    /// predecessor dependency. A VM switch waits for all earlier work to retire.
     fn pump(&mut self) -> Result {
-        while self.inner.inflight.is_empty() && !self.inner.pending.is_empty() {
+        while !self.inner.pending.is_empty() {
+            // Queue notification context is shared. Never change it underneath
+            // a different VM's in-flight work. Same-VM packets keep the context
+            // and cross the boundary through an explicit firmware dependency.
+            if self.inner.inflight.last().is_some_and(|active|
+                !active.work.same_vm(&self.inner.pending[0][0].packet.vm)) { break; }
             let batch = self.inner.pending.remove(0).map_err(|_| EIO)?;
             let packet = batch[0].packet.clone();
             if let Err(error) = packet.previous_result() {
@@ -246,16 +262,19 @@ impl Runtime {
         Ok(())
     }
 
-    /// Publish the prepared ring atomically; never append followers while
-    /// firmware is starting their predecessor.
+    /// Append the complete prepared packet, then notify firmware. Ring-space
+    /// checks include all consumer indices, preserving retained predecessors.
     fn start_batch(&mut self, mut batch: KVec<Active>) -> Result<()> {
         let count = batch.len();
         self.inner.inflight.reserve(count, GFP_KERNEL)?;
         self.inner.retired_computes.reserve(count, GFP_KERNEL)?;
         self.inner.retired_renders.reserve(count, GFP_KERNEL)?;
         let inner = &mut *self.inner;
+        if inner.inflight.is_empty() {
+            inner.busy_since_ns = Some(<kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get());
+        }
         inner.gpu_pending = true;
-        let publish = if count == 1 {
+        let publish = if count == 1 && inner.inflight.is_empty() {
             batch[0].published = kernel::time::Instant::<kernel::time::Monotonic>::now();
             batch[0].started = kernel::time::Instant::<kernel::time::Monotonic>::now();
             inner.publish_active(&mut batch[0])
@@ -266,7 +285,12 @@ impl Runtime {
                 // render additionally keeps its ordinary TA->FS dependency.
                 let mut addresses = [[0u64; COMPUTE_DEPTH * 3]; 3];
                 let mut entries = [0usize; 3];
-                let mut previous = None;
+                let mut previous = inner.inflight.last().map(|active| match &active.work {
+                    Work::Compute(c) => (inner.compute_queue.notification().fw_stamp,
+                        crate::g16_compute::SLOT, c.stamp()),
+                    Work::Render(r) => (inner.fragment_queue.notification().fw_stamp,
+                        crate::g16_render_job::SLOTS[1], r.stamp()),
+                });
                 for active in batch.iter_mut() {
                     match &mut active.work {
                         Work::Compute(c) => {
@@ -307,7 +331,7 @@ impl Runtime {
                     if entries[i] == 0 { continue; }
                     let queue = match i { 0 => &mut inner.queue, 1 => &mut inner.fragment_queue,
                         _ => &mut inner.compute_queue };
-                    let (address, index) = queue.append_batch_idle(&addresses[i][..entries[i]])?;
+                    let (address, index) = queue.append_batch(&addresses[i][..entries[i]])?;
                     next[i] = index;
                     let slot = if i == 2 { crate::g16_compute::SLOT }
                         else { crate::g16_render_job::SLOTS[i] };
@@ -414,7 +438,7 @@ impl Runtime {
         }
         inner.user_generation = generation;
         inner.device.check_pstate()?;
-        Ok(Active { packet, work, index, queue_next:[0;3],pipe_next:[0;3],
+        Ok(Active { packet, bank: batch_offset as usize / COMPUTE_DEPTH, work, index, queue_next:[0;3],pipe_next:[0;3],
             preparation_ns: preparing.elapsed().as_nanos(),
             published: kernel::time::Instant::<kernel::time::Monotonic>::now(),
             started:kernel::time::Instant::<kernel::time::Monotonic>::now() })
@@ -581,6 +605,12 @@ impl Runtime {
             }
             let cleanup = kernel::time::Instant::<kernel::time::Monotonic>::now();
             inner.gpu_pending = !inner.inflight.is_empty();
+            if inner.inflight.is_empty() {
+                if let Some(start) = inner.busy_since_ns.take() {
+                    let end = <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get();
+                    inner.summary.packet_active_ns += (end - start).max(0) as u64;
+                }
+            }
             let packet = active.packet.clone();
             let index = active.index + 1;
             // Exact firmware/engine retirement permits releasing command,
@@ -628,7 +658,6 @@ impl Runtime {
                 packet.finish(Ok(()));
                 if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
                     inner.summary.packets[index] += 1;
-                    inner.summary.packet_active_ns += active_ns.max(0) as u64;
                 }
                 if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
                     let now = <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get();
@@ -642,7 +671,7 @@ impl Runtime {
                             s.active_ns[0], s.active_ns[1], s.gpu_ns[0], s.gpu_ns[1],
                             s.render_clear[0], s.render_clear[1], s.render_clear[2],
                             s.render_stage_ns[0], s.render_stage_ns[1], s.render_stage_ns[2]);
-                        dev_info!(inner.drm.as_ref(), "G16G: batch summary monotonic_ns={} packet_counts={:?} packet_active_ns={}\n",
+                        dev_info!(inner.drm.as_ref(), "G16G: batch summary monotonic_ns={} packet_counts={:?} packet_active_ns={} union=1\n",
                             now, s.packets, s.packet_active_ns);
                         dev_info!(inner.drm.as_ref(), "G16G: completion wait totals monotonic_ns={} messages={} waits={} late={} timeouts={} geometry_overflow={} consecutive_gap_ns={} consecutive_gap_count={}\n",
                             now, inner.state.event_messages.load(core::sync::atomic::Ordering::Acquire),
@@ -740,7 +769,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, busy_since_ns: None, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

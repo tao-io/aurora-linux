@@ -42,7 +42,7 @@ impl Compute {
         config: &mut crate::g16_config::Config, vm: &mmu::Vm, work_queue: u64,
         control: Option<g16_compute::Control>, notification: Option<g16_compute::Notification>, stamp: u32,
         reusable: Option<KBox<Self>>, event_slot: u8, pool_slot: u8) -> Result<KBox<Self>> {
-        if pool_slot == 0 || usize::from(pool_slot) > crate::g16_runtime::COMPUTE_DEPTH { return Err(EINVAL); }
+        if pool_slot == 0 || usize::from(pool_slot) > crate::g16_runtime::POOL_SLOTS { return Err(EINVAL); }
         // Only an owner displaced by a completely retired replacement may be
         // recycled, and only inside the same client GPUVM. Its GEM backing,
         // both command aliases, the 32 MiB private pool and the ASID lease
