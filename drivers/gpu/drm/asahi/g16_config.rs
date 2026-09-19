@@ -57,6 +57,9 @@ pub(crate) struct Config {
     cached_programs: Option<Buffer>,
     cached_program_cursor: usize,
     iomap_bytes: KBox<[u8; 42 * 0x28]>,
+    cooling: crate::g16_thermal::Cooling,
+    thermal_limit: u32,
+    thermal_observed: u32,
 }
 
 // SAFETY: `loader` maps retained normal firmware RAM, not thread-local memory.
@@ -100,7 +103,8 @@ impl Config {
         // descriptor table at data+0x1332f0 is host-owned until initdata is sent.
         let loader = unsafe { Mem::try_new(resource, MemFlag::WC.into()) }?;
         let mut config = Self { objects: KVec::new(), pipes: KVec::new(), iomaps: KVec::new(),
-            loader, trace_seen: [0; 2], cached_programs: None, cached_program_cursor: 0, iomap_bytes: KBox::new([0; 42 * 0x28], GFP_KERNEL)? };
+            loader, trace_seen: [0; 2], cached_programs: None, cached_program_cursor: 0, iomap_bytes: KBox::new([0; 42 * 0x28], GFP_KERNEL)?,
+            cooling: crate::g16_thermal::Cooling::new()?, thermal_limit: 0, thermal_observed: u32::MAX };
         for (index, size) in SIZES.iter().enumerate() {
             config.objects.push(if index == Object::UmaTable as usize || index == Object::ParameterTable as usize {
                 Buffer::new_gpu(dev, vm, gpu_vm, *size)?
@@ -162,6 +166,29 @@ impl Config {
     }
     fn va(&self, object: Object) -> u64 { self.objects[object as usize].va() }
     fn object(&mut self, object: Object) -> &mut Buffer { &mut self.objects[object as usize] }
+
+    pub(crate) fn update_thermal_limit(&mut self, dev: &driver::AsahiDevice) -> Result {
+        let limit = self.cooling.limit().min(crate::g16_power::requested_state()?);
+        if limit == self.thermal_limit { return Ok(()); }
+        // Host ceiling inputs to the 25G83 performance selector. Keep the
+        // full voltage/frequency tables and firmware-owned current state;
+        // Fender/PMP performs the actual ordered voltage/clock transition.
+        for offset in [0x88, 0x8c, 0x98] {
+            self.object(Object::Globals).u32(offset, limit * 100)?;
+        }
+        g16_memory::publish();
+        self.thermal_limit = limit;
+        dev_info!(dev, "G16G: thermal ceiling state={} frequency={} MHz\n",
+            limit, crate::g16_power::FREQUENCIES_MHZ[limit as usize]);
+        Ok(())
+    }
+    pub(crate) fn observe_thermal_state(&mut self, dev: &driver::AsahiDevice, state: u32) {
+        if state != self.thermal_observed {
+            self.thermal_observed = state;
+            dev_info!(dev, "G16G: thermal observed state={} ceiling={} frequency={} MHz\n",
+                state, self.thermal_limit, crate::g16_power::FREQUENCIES_MHZ[state as usize]);
+        }
+    }
     fn ptr(&mut self, owner: Object, offset: usize, target: Object, delta: u64) -> Result {
         let va = self.va(target).checked_add(delta).ok_or(EOVERFLOW)?;
         self.object(owner).u64(offset, va)
@@ -262,7 +289,7 @@ impl Config {
                     crate::g16_power::SRAM_VOLTAGES_MV[state])?;
             }
         }
-        // Fixed performance policy: the 25G83 selector consumes hundredths
+        // Initial performance ceiling: the 25G83 selector consumes hundredths
         // of a state. Zero-filled caps request zero duty, not an unlimited
         // controller. No captured runtime state or foreign pointers are copied.
         let units = pstate * 100;

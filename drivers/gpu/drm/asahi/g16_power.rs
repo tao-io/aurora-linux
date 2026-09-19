@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 
-//! J713/25G83 performance-state metadata and fixed performance policy.
+//! J713/25G83 performance-state metadata and maximum performance policy.
 //! Tables are the native J713 constructor's compacted states, not PLL writes.
 //! The GPU firmware requests each transition through its PMP/Fender interface.
-//! This development policy does not implement load tracking or GPU throttling;
-//! bounded tests must retain the external watchdog and temperature monitor.
+//! g16_thermal lowers the firmware ceiling using the package thermal policy.
+//! Load-based DVFS remains TODO; bounded tests retain independent guards.
 
 use kernel::prelude::*;
 

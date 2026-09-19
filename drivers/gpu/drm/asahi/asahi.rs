@@ -31,6 +31,8 @@ mod g16_initdata;
 mod g16_memory;
 mod g16_config;
 mod g16_power;
+mod g16_thermal;
+mod g16_thermal_policy;
 mod g16_queue;
 mod g16_compute;
 mod g16_attachments;
@@ -101,7 +103,7 @@ kernel::module_platform_driver! {
         },
         g16_pstate: u32 {
             default: 9,
-            description: "J713 fixed firmware performance state (1..9, 338..1470 MHz); bounded monitored development use",
+            description: "J713 maximum firmware performance state (1..9, 338..1470 MHz); thermal cooling may lower it",
         },
         fault_control: u32 {
             default: 0xb,

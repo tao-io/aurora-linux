@@ -7,6 +7,8 @@
 #include <linux/cpu.h>
 #include <linux/cpu_cooling.h>
 #include <linux/cpufreq.h>
+#include <linux/ktime.h>
+#include <linux/math64.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
@@ -16,11 +18,12 @@
 #include <linux/soc/apple/pmp-temps.h>
 #include <linux/thermal.h>
 
-#define APPLE_PMP_PASSIVE_MC	80000
+#define APPLE_PMP_PASSIVE_MC	88000
 /* step_wise regulates against the lower threshold after crossing the trip.
  * A 10 C band held ordinary graphics workloads near minimum CPU frequency
  * at 64--67 C after a short startup spike. The J713 development policy uses
- * an 80 C trip and releases below 78 C; sensor faults still clamp fully.
+ * an 88 C trip and releases below 86 C. Rapid rises clamp at a projected
+ * 95 C, with a 100 C emergency trip independent of experiment userspace.
  */
 #define APPLE_PMP_HYST_MC		2000
 #define APPLE_PMP_POLL_MS		25
@@ -38,6 +41,9 @@ static struct {
 	struct apple_pmp_cluster clusters[2];
 	struct mutex lock; /* Serializes sensor reads, mode changes and guard updates. */
 	unsigned int good_reads;
+	long previous_mc;
+	u64 previous_ns;
+	bool fast_clamp;
 	bool enabled;
 } pmp_thermal;
 
@@ -76,12 +82,17 @@ static bool apple_pmp_cooling_ready(void)
 static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
 {
 	long value;
+	s64 elapsed;
+	u64 now;
+	long projected;
 	int ret;
 
 	guard(mutex)(&pmp_thermal.lock);
 	ret = apple_pmp_temp_hotspot(pmp_thermal.sram, &value);
 	if (ret) {
 		pmp_thermal.good_reads = 0;
+		pmp_thermal.previous_ns = 0;
+		pmp_thermal.fast_clamp = true;
 		apple_pmp_guard(true);
 		pr_warn_ratelimited("apple-pmp-thermal: sensor error %d; CPU minimum caps retained\n",
 				    ret);
@@ -89,10 +100,31 @@ static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
 	}
 
 	*temp = value;
-	if (pmp_thermal.good_reads < 3)
-		pmp_thermal.good_reads++;
+	now = ktime_get_ns();
+	elapsed = now - pmp_thermal.previous_ns;
+	/* Extra sysfs reads must not accelerate recovery or amplify the slope. */
+	if (pmp_thermal.previous_ns && elapsed < 20 * NSEC_PER_MSEC && value < 92000)
+		return 0;
+	projected = value;
+	if (pmp_thermal.previous_ns && elapsed > 0 && elapsed < 250 * NSEC_PER_MSEC)
+		projected += div64_s64(max(value - pmp_thermal.previous_mc, 0L) *
+				      100 * NSEC_PER_MSEC, elapsed);
+	pmp_thermal.previous_ns = now;
+	pmp_thermal.previous_mc = value;
+	if (value >= 92000 || projected >= 95000) {
+		pmp_thermal.fast_clamp = true;
+		pmp_thermal.good_reads = 0;
+		apple_pmp_guard(true);
+	} else if (value < 88000) {
+		if (pmp_thermal.good_reads < 10)
+			pmp_thermal.good_reads++;
+		if (pmp_thermal.good_reads == 10)
+			pmp_thermal.fast_clamp = false;
+	} else {
+		pmp_thermal.good_reads = 0;
+	}
 	/* Do not remove startup/fault protection before hot-zone cooling is active. */
-	if (pmp_thermal.enabled && pmp_thermal.good_reads == 3 &&
+	if (pmp_thermal.enabled && !pmp_thermal.fast_clamp && pmp_thermal.good_reads == 10 &&
 	    (value < APPLE_PMP_PASSIVE_MC || apple_pmp_cooling_ready())) {
 		ret = apple_pmp_guard(false);
 		if (ret)
@@ -116,13 +148,22 @@ static bool apple_pmp_should_bind(struct thermal_zone_device *zone,
 				  struct cooling_spec *spec)
 {
 	unsigned int i;
+	bool urgent = trip->temperature >= 92000;
+
+	if (trip->type != THERMAL_TRIP_PASSIVE)
+		return false;
+	if (!strcmp(cdev->type, "asahi-g16g")) {
+		spec->lower = urgent ? cdev->max_state : 0;
+		spec->upper = cdev->max_state;
+		return true;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(pmp_thermal.clusters); i++) {
 		struct apple_pmp_cluster *c = &pmp_thermal.clusters[i];
 
 		if (cdev != c->cdev)
 			continue;
-		spec->lower = c->floor;
+		spec->lower = urgent ? cdev->max_state : c->floor;
 		spec->upper = cdev->max_state;
 		return true;
 	}
@@ -141,6 +182,15 @@ static const struct thermal_trip apple_pmp_trips[] = {
 		.hysteresis = APPLE_PMP_HYST_MC,
 		.type = THERMAL_TRIP_PASSIVE,
 	},
+	{
+		.temperature = 92000,
+		.hysteresis = 4000,
+		.type = THERMAL_TRIP_PASSIVE,
+	},
+	{
+		.temperature = 100000,
+		.type = THERMAL_TRIP_CRITICAL,
+	},
 };
 
 static const struct thermal_zone_params apple_pmp_params = {
@@ -152,6 +202,9 @@ static int apple_pmp_check_bindings(struct thermal_trip *trip, void *data)
 {
 	struct thermal_zone_device *zone = data;
 	unsigned int i;
+
+	if (trip->type != THERMAL_TRIP_PASSIVE)
+		return 0;
 
 	for (i = 0; i < ARRAY_SIZE(pmp_thermal.clusters); i++)
 		if (!thermal_trip_is_bound_to_cdev(zone, trip, pmp_thermal.clusters[i].cdev))
@@ -271,7 +324,7 @@ static int __init apple_pmp_thermal_init(void)
 	ret = thermal_zone_device_enable(pmp_thermal.zone);
 	if (ret)
 		goto fail;
-	pr_info("apple-pmp-thermal: J713 80 C passive trip, 2 C hysteresis, 25 ms polling\n");
+	pr_info("apple-pmp-thermal: J713 CPU/GPU cooling at 88 C, rapid-rise/92 C clamp, 100 C emergency, 25 ms polling\n");
 	return 0;
 fail:
 	apple_pmp_thermal_cleanup();
@@ -287,5 +340,5 @@ static void __exit apple_pmp_thermal_exit(void)
 module_init(apple_pmp_thermal_init);
 module_exit(apple_pmp_thermal_exit);
 
-MODULE_DESCRIPTION("Apple J713 PMP hotspot CPU thermal policy");
+MODULE_DESCRIPTION("Apple J713 PMP package CPU/GPU thermal policy");
 MODULE_LICENSE("Dual MIT/GPL");

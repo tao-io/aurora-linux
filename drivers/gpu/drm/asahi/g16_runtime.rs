@@ -171,6 +171,7 @@ impl Work {
 }
 impl Inner {
     fn publish_active(&mut self, active: &mut Active) -> Result {
+        self.config.update_thermal_limit(&self.drm)?;
         if let Work::Render(r) = &active.work {
             // Publish both retained stages. Waiting on the CPU for final TA
             // retirement deadlocks a pass which needs a partial fragment to
@@ -647,6 +648,12 @@ impl Runtime {
     /// snapshots, so queued ioctls and device removal can make progress.
     pub(crate) fn service_job(&mut self) -> Service {
         if self.inner.state.health.failed() { return Service::Idle; }
+        let inner = &mut *self.inner;
+        if let Err(error) = inner.config.update_thermal_limit(&inner.drm) {
+            self.inner.state.health.mark_failed();
+            dev_err!(self.inner.drm.as_ref(), "G16G: cannot publish thermal ceiling {:?}\n", error);
+            return Service::Idle;
+        }
         if self.inner.inflight.is_empty() {
             let inner = &mut *self.inner;
             if let Err(error) = inner.config.drain(&inner.drm) {
@@ -683,6 +690,7 @@ impl Runtime {
         inner.config.drain(&inner.drm)?;
         if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
         let pstate = inner.device.check_pstate()?;
+        inner.config.observe_thermal_state(&inner.drm, pstate);
         if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
             inner.summary.pstate_samples[pstate as usize] += 1;
         }

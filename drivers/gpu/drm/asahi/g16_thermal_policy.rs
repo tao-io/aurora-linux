@@ -1,0 +1,97 @@
+// SPDX-License-Identifier: GPL-2.0-only OR MIT
+
+//! Sensor-failure and rapid-rise backstop, independent of the thermal governor.
+//! Standalone tests: rustc --test g16_thermal_policy.rs -o /tmp/g16-thermal-test.
+
+pub(crate) struct Policy {
+    last_ns: i64,
+    previous_mc: Option<i32>,
+    limited: bool,
+    good_reads: u32,
+}
+
+impl Policy {
+    pub(crate) fn new() -> Self {
+        Self { last_ns: 0, previous_mc: None, limited: true, good_reads: 0 }
+    }
+
+    pub(crate) fn read_due(&self, now: i64) -> bool {
+        self.last_ns == 0 || now - self.last_ns >= 20_000_000
+    }
+
+    pub(crate) fn sample(&mut self, now: i64, temp: Option<i32>) {
+        let elapsed = now - self.last_ns;
+        let projected = match (temp, self.previous_mc) {
+            (Some(t), Some(previous)) if elapsed > 0 && elapsed < 250_000_000 =>
+                t as i64 + (t as i64 - previous as i64).max(0) * 100_000_000 / elapsed,
+            (Some(t), _) => t as i64,
+            _ => i64::MAX,
+        };
+        self.last_ns = now;
+        self.previous_mc = temp;
+        if temp.is_none_or(|t| t >= 92_000) || projected >= 95_000 {
+            self.limited = true;
+            self.good_reads = 0;
+        } else if temp.is_some_and(|t| t < 88_000) {
+            self.good_reads = (self.good_reads + 1).min(10);
+            if self.good_reads == 10 { self.limited = false; }
+        } else {
+            self.good_reads = 0;
+        }
+    }
+
+    pub(crate) fn limit(&self, cooling_state: u32) -> u32 {
+        if self.limited { 1 } else { 9 - cooling_state.min(8) }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    fn cool(p: &mut Policy, start: i64) {
+        for i in 1..=10 { p.sample(start + i * 20_000_000, Some(70_000)); }
+    }
+    #[test]
+    fn startup_and_sensor_failure_require_recovery() {
+        let mut p = Policy::new();
+        assert_eq!(p.limit(0), 1);
+        cool(&mut p, 0);
+        assert_eq!(p.limit(0), 9);
+        p.sample(220_000_000, None);
+        assert_eq!(p.limit(0), 1);
+        cool(&mut p, 220_000_000);
+        assert_eq!(p.limit(0), 9);
+    }
+    #[test]
+    fn forecast_clamps_before_target() {
+        let mut p = Policy::new();
+        cool(&mut p, 0);
+        p.sample(500_000_000, Some(86_000));
+        assert_eq!(p.limit(0), 9); // Do not project across idle gaps.
+        p.sample(520_000_000, Some(88_000));
+        assert_eq!(p.limit(0), 1); // 98 C projected, 88 C measured.
+    }
+    #[test]
+    fn hard_temperature_and_hysteresis() {
+        let mut p = Policy::new();
+        cool(&mut p, 0);
+        p.sample(500_000_000, Some(92_000));
+        assert_eq!(p.limit(0), 1);
+        for i in 1..=9 { p.sample(500_000_000+i*20_000_000, Some(87_000)); }
+        assert_eq!(p.limit(0), 1);
+        p.sample(700_000_000, Some(89_000)); // Interrupt recovery.
+        p.sample(720_000_000, Some(87_000));
+        assert_eq!(p.limit(0), 1);
+        cool(&mut p, 720_000_000);
+        assert_eq!(p.limit(0), 9);
+    }
+    #[test]
+    fn governor_always_caps_and_sampling_is_bounded() {
+        let mut p = Policy::new();
+        cool(&mut p, 0);
+        assert_eq!(p.limit(3), 6);
+        assert_eq!(p.limit(8), 1);
+        assert!(!p.read_due(219_999_999));
+        assert!(p.read_due(220_000_000));
+    }
+}
