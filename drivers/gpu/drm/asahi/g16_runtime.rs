@@ -101,7 +101,13 @@ impl SubmitSummary {
 /// own parameter slot. TA and fragment remain jointly available for partial
 /// rendering. All engines use queue-owned completion stamps. The bounded
 /// packet also bounds retained memory and compositor scheduling latency.
-pub(crate) const COMPUTE_DEPTH: usize = 8;
+pub(crate) const COMPUTE_DEPTH: usize = 16;
+/// Smaller packets trade throughput for more compositor scheduling points.
+pub(crate) fn packet_limit() -> usize {
+    (*crate::module_parameters::g16_packet_commands.value() as usize).clamp(1, COMPUTE_DEPTH)
+}
+// At most 2 banks * 16 renders * 3 TA entries = 96, below the 256-slot
+// queue's half-ring retirement window. UMA indices 1..64 fit the 16 KiB table.
 /// Two disjoint banks for the scheduler's two admitted packets.
 pub(crate) const POOL_SLOTS: usize = COMPUTE_DEPTH * 2;
 

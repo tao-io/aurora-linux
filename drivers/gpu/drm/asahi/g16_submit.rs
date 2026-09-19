@@ -268,13 +268,14 @@ impl queue::Queue for Queue {
         let mut jobs = KVec::with_capacity(commands.len(), GFP_KERNEL)?;
         let failure = Arc::new(AtomicI32::new(0), GFP_KERNEL)?;
         let mut commands = commands.into_iter();
+        let packet_limit = crate::g16_runtime::packet_limit();
         while let Some(command) = commands.next() {
-            let mut single = KVec::with_capacity(crate::g16_runtime::COMPUTE_DEPTH, GFP_KERNEL)?;
+            let mut single = KVec::with_capacity(packet_limit, GFP_KERNEL)?;
             single.push(command, GFP_KERNEL)?;
             // Firmware dependencies preserve all command and query-write
-            // ordering. Return the scheduler credit after at most four commands
+            // ordering. Return the scheduler credit after a bounded command count
             // so ready compositor work can run between bounded packets.
-            while single.len() < crate::g16_runtime::COMPUTE_DEPTH {
+            while single.len() < packet_limit {
                 let Some(command) = commands.next() else { break; };
                 single.push(command, GFP_KERNEL)?;
             }

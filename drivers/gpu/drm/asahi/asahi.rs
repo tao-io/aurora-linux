@@ -94,6 +94,10 @@ kernel::module_platform_driver! {
             // permissions: 0o644,
             description: "Debug flags",
         },
+        g16_packet_commands: u32 {
+            default: 8,
+            description: "M4 maximum commands per scheduler packet (clamped to 1..16)",
+        },
         g16_pstate: u32 {
             default: 9,
             description: "J713 fixed firmware performance state (1..9, 338..1470 MHz); bounded monitored development use",

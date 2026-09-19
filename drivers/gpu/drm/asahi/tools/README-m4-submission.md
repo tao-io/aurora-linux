@@ -237,3 +237,20 @@ samples and is not representative. Of the 7.060 s total gaps, 4.266 s cross
 packet boundaries. All 64,253 performance-state samples are state 9. This
 narrows the next optimization to submission handoffs as well as reducing GPU
 commands; it does not establish firmware-only overhead or 60 FPS.
+
+### Configurable packet capacity (2026-09-19)
+
+`g16_packet_commands=1..16` selects a bounded scheduler packet; default stays
+8. Two disjoint banks reserve at most 96 TA ring entries and 64 UMA slots.
+The larger capacity increases retained private/parameter memory and reduces
+compositor scheduling points; it is an experiment, not a default speedup.
+
+- `20260919T024333203229Z-factorio-packet-sixteen-frame`: retained frame
+  exact match (zero differing pixels).
+- `20260919T024414438314Z-factorio-packet-sixteen-menu`: bounded 60-second
+  live main menu completed, tail mean 38.294 FPS, peak sensor 90 C. Different
+  menu scenes prevent an isolated comparison with earlier 8-command runs.
+- `20260919T024625194394Z-factorio-fixed-eight-packet-sixteen`: subsequent
+  replay failed during snapshot upload, VM ENOMEM at call 5821. Desktop
+  remained usable. Allocation diagnosis remains TODO; 16 is not qualified
+  for default use. No claim of 60 FPS or complete submission support.
