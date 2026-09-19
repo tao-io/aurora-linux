@@ -73,6 +73,9 @@ struct SubmitSummary {
     engine_gap_count: [u64; 2],
     classified_gap_ticks: [u64; 8],
     classified_gap_counts: [u64; 8],
+    publication_gap_ticks: [[u64; 3]; 8],
+    final_retirement_ticks: [u64; 3], // count, total, maximum
+    publication_invalid: u64,
     gpu_overlaps: u64,
 }
 impl Default for SubmitSummary {
@@ -97,6 +100,9 @@ impl Default for SubmitSummary {
             engine_gap_count: Default::default(),
             classified_gap_ticks: Default::default(),
             classified_gap_counts: Default::default(),
+            publication_gap_ticks: Default::default(),
+            final_retirement_ticks: Default::default(),
+            publication_invalid: 0,
             gpu_overlaps: Default::default(),
         }
     }
@@ -214,6 +220,7 @@ struct Active {
     started: kernel::time::Instant<kernel::time::Monotonic>,
     preparation_ns: i64,
     published: kernel::time::Instant<kernel::time::Monotonic>,
+    publication_tick: u64,
 }
 
 pub(crate) struct Runtime {
@@ -335,6 +342,10 @@ impl Runtime {
             inner.busy_since_ns = Some(<kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get());
         }
         inner.gpu_pending = true;
+        if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
+            let tick = physical_counter();
+            for active in batch.iter_mut() { active.publication_tick = tick; }
+        }
         let publish = if count == 1 && inner.inflight.is_empty() {
             batch[0].published = kernel::time::Instant::<kernel::time::Monotonic>::now();
             batch[0].started = kernel::time::Instant::<kernel::time::Monotonic>::now();
@@ -505,7 +516,7 @@ impl Runtime {
         inner.device.check_pstate()?;
         Ok(Active { packet, bank: batch_offset as usize / COMPUTE_DEPTH, work, index, queue_next:[0;3],pipe_next:[0;3],
             preparation_ns: preparing.elapsed().as_nanos(),
-            published: kernel::time::Instant::<kernel::time::Monotonic>::now(),
+            published: kernel::time::Instant::<kernel::time::Monotonic>::now(), publication_tick: 0,
             started:kernel::time::Instant::<kernel::time::Monotonic>::now() })
     }
 
@@ -663,6 +674,18 @@ impl Runtime {
                         let class = boundary * 4 + previous_engine * 2 + engine;
                         inner.summary.classified_gap_ticks[class] += gpu_span[0] - previous;
                         inner.summary.classified_gap_counts[class] += 1;
+                        let publish = active.publication_tick;
+                        // This sample precedes queue producer writes. Split
+                        // an idle interval at host publication, not at the
+                        // later CPU observation of firmware completion.
+                        if publish == 0 || publish > gpu_span[0] {
+                            inner.summary.publication_invalid += 1;
+                        } else if publish <= previous {
+                            inner.summary.publication_gap_ticks[class][0] += gpu_span[0] - previous;
+                        } else {
+                            inner.summary.publication_gap_ticks[class][1] += publish - previous;
+                            inner.summary.publication_gap_ticks[class][2] += gpu_span[0] - publish;
+                        }
                     } else {
                         inner.summary.gpu_overlaps += 1;
                     }
@@ -745,6 +768,16 @@ impl Runtime {
             inner.last_retired = Some((packet.id,
                 <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get()));
             if index == packet.commands.len() {
+                if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
+                    let tick = physical_counter();
+                    if tick >= gpu_span[1] && gpu_span[1] != 0 {
+                        let delta = tick - gpu_span[1];
+                        let totals = &mut inner.summary.final_retirement_ticks;
+                        totals[0] += 1;
+                        totals[1] += delta;
+                        totals[2] = totals[2].max(delta);
+                    } else { inner.summary.publication_invalid += 1; }
+                }
                 crate::cls_dev_dbg!(SubmitTiming, inner.drm, "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} last_prepare_ns={} last_active_ns={} last_cleanup_ns={} last_gpu_ns={} messages={} waits={} late={} timeouts={}\n", packet.id, index, <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), active.preparation_ns, active_ns, cleanup.elapsed().as_nanos(), gpu_ns, inner.state.event_messages.load(core::sync::atomic::Ordering::Acquire), inner.waits, inner.late_retirements, inner.wait_timeouts);
                 // Matching engine/notifier generations make the user stamp
                 // follow the firmware's cache flush. No idle-time delay is
@@ -776,6 +809,8 @@ impl Runtime {
                             s.engine_gap_count, s.gpu_overlaps);
                         dev_info!(inner.drm.as_ref(), "G16G: GPU boundary summary monotonic_ns={} gap_ticks={:?} gap_counts={:?}\n",
                             now, s.classified_gap_ticks, s.classified_gap_counts);
+                        dev_info!(inner.drm.as_ref(), "G16G: GPU publication summary monotonic_ns={} gap_ticks={:?} final_retire={:?} invalid={}\n",
+                            now, s.publication_gap_ticks, s.final_retirement_ticks, s.publication_invalid);
                         for (pipe, counts) in s.wait_phases.iter().enumerate() {
                             dev_info!(inner.drm.as_ref(), "G16G: completion phase samples monotonic_ns={} pipe={} before_start={} executing={} end_before_stamps={} stamps_before_queue={} queue_before_pipe={} missing_compute_timestamps={}\n",
                                 now, pipe, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
@@ -1072,4 +1107,13 @@ impl Drop for Runtime {
         // Incomplete or failed jobs retain Inner above. Callbacks drain before UAT and power are released.
         unsafe { ManuallyDrop::drop(&mut self.inner) };
     }
+}
+
+/// Same 24 MHz physical clock used in queue messages and engine timestamps.
+fn physical_counter() -> u64 {
+    let tick: u64;
+    // SAFETY: The architectural counter is readable at EL1 on admitted J713.
+    unsafe { core::arch::asm!("mrs {t}, cntpct_el0", t = out(reg) tick,
+        options(nomem, nostack, preserves_flags)) };
+    tick
 }

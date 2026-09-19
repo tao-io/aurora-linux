@@ -338,3 +338,14 @@ remain. The new bound is exercised without the former enlarged-slot timeout,
 but its cause is still unproven. Full concurrency/CTS qualification and 60 FPS
 remain TODO. The final nine summary intervals are retained in
 `mixed-packet-summary.json`; they include the compositor as well as the game.
+
+### Publication versus execution gap accounting
+
+With SubmitSummary enabled, each packet records CNT PCT before publishing any
+queue producer. Engine timestamps use that same 24 MHz physical clock. Each
+end-to-start gap is split into already-queued time, time before publication,
+and time after publication. The last includes queue construction/notification
+on the host, not just firmware scheduling. Packet-final GPU end to host
+retirement is reported separately; no early command is mistaken for the end
+of its batch. Invalid clock order is counted, never silently clamped.
+This is opt-in diagnostic accounting; no completion or ownership rule changes.

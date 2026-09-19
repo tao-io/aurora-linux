@@ -147,4 +147,27 @@ if boundary:
         count=sum(row['gap_counts'][i] for row in boundary)
         result['packet_boundaries'][label] = dict(seconds=ticks/24e6, count=count,
             mean_microseconds=ticks/24/count if count else None)
+publication = []
+for line in lines:
+    if 'G16G: GPU publication summary' not in line:
+        continue
+    stamp = re.search(r'monotonic_ns=(\d+)', line)
+    if not stamp or int(stamp[1]) not in selected:
+        continue
+    match = re.search(r'gap_ticks=(\[.*\]) final_retire=(\[[^]]*\]) invalid=(\d+)', line)
+    if not match:
+        raise ValueError('Malformed publication timing record')
+    publication.append((json.loads(match[1]), json.loads(match[2]), int(match[3])))
+if publication:
+    result['publication_gaps'] = {
+        label: {kind: sum(row[0][i][j] for row in publication)/24e6
+                for j,kind in enumerate(['already_queued_seconds', 'before_publication_seconds', 'after_publication_seconds'])}
+        for i,label in enumerate(['queued_RR','queued_RC','queued_CR','queued_CC',
+                                 'boundary_RR','boundary_RC','boundary_CR','boundary_CC'])}
+    count = sum(row[1][0] for row in publication)
+    result['final_gpu_end_to_host_retirement'] = dict(count=count,
+        mean_microseconds=sum(row[1][1] for row in publication)/24/count if count else None,
+        maximum_microseconds=max(row[1][2] for row in publication)/24,
+        invalid=sum(row[2] for row in publication),
+        note='Physical 24 MHz clock; packet-final GPU end to host retirement. Publication starts before queue producer writes; post-publication gaps include that small host cost.')
 print(json.dumps(result,indent=2))
