@@ -166,3 +166,23 @@ space. Busy accounting now measures the union of published intervals.
 14.081 s contains 11.557 s published busy intervals and 7.808 s GPU spans.
 The animated scene changes; 60 FPS remains unmet. Persistent private pools,
 per-client firmware queues and broad CTS remain TODO.
+
+## Persistent render USC allocator
+
+A displaced, fully retired render owner now keeps its UMA descriptor, freelist,
+page list and private payload together. The firmware saves allocator cursors at
+UMA+20..2c while draining (25G83 TEXT 2b618..670), and reloads those cursors at
+2afec..2b008. Host submitted counts advance by two per TA/fragment pass; reuse
+requires the matching completed count. Fresh owners still receive zero-backed
+storage and initial freelists. Parameter buffers and command state still reset.
+No backing is reused across VMs or before its retained-owner retirement rule.
+
+`20260919T010401266925Z-factorio-persistent-render-pool-frame`: zero differing
+pixels. `20260919T010635353186Z-factorio-persistent-render-pool-queries`: Pass.
+The 60-second untouched menu observation
+`20260919T010434836218Z-factorio-persistent-render-pool-menu` passes, tail
+22.79 FPS (21.40--23.74), peak 85.5 C. In the final 19.102 s, 5282 render
+preparations total 0.231 s (43.8 us mean) and private-payload clearing is zero,
+versus 0.338 ms per render before persistence. Dynamic menu changes preclude
+an isolated FPS ratio. 60 FPS, persistent compute pools, per-client firmware
+queues and broad CTS remain TODO.

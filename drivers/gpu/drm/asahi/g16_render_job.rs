@@ -43,6 +43,7 @@ pub(crate) struct Render {
     compute_dependency: bool,
     layout: [u32; 4],
     consumed_pages: usize,
+    uma_submitted: u64,
     freelist: KVec<u8>,
     page_list_image: KVec<u8>,
     pub(crate) clear_metrics: [u64; 3],
@@ -147,34 +148,37 @@ impl Render {
                 uma:gpu(0x4000)?,private_memory,
                 pool_state:gpu(PRIVATE_QWORDS*8)?,page_list:gpu(0x4000)?,
                 binding:uat.bind(vm)?,stage:Stage::Tiling,stamp,pool_slot,compute_dependency:false,layout,
-                consumed_pages:PRIVATE_PAGES, freelist, page_list_image, clear_metrics:[0; 3],
+                consumed_pages:PRIVATE_PAGES, uma_submitted:0, freelist, page_list_image, clear_metrics:[0; 3],
             }, GFP_KERNEL)?
         };
-        {
+        if job.uma_submitted == 0 {
             let owner: &mut Self = &mut *job;
-            // The private pool never moves during reuse within this VM. Restore
-            // its immutable CPU images rather than allocating and rebuilding
-            // all 8192 addresses for every render command.
+            // Initialize once. Firmware owns the freelist and its cursors
+            // thereafter; both backing addresses remain fixed within this VM.
             owner.pool_state.write(0, &owner.freelist)?;
             owner.page_list.write(0, &owner.page_list_image)?;
         }
-        let mut uma = [0;0xa0];
-        crate::g16_compute::encode_uma(&mut uma,job.pool_state.gpu_va()?,PRIVATE_QWORDS as u32,
-            PRIVATE_PAGES as u32,job.page_list.gpu_va()?,job.metadata.va()+0x500,
-            crate::g16_compute::UmaEngine::Render).map_err(|_| EINVAL)?;
-        // Compute and render owners have disjoint private-slot ranges.
-        // Firmware may prepare all owners while their pools remain retained.
-        uma[8..12].copy_from_slice(&(1 + crate::g16_runtime::POOL_SLOTS as u32 + u32::from(pool_slot)).to_le_bytes());
-        uma[..8].copy_from_slice(&job.uma.va().to_le_bytes());
+        if job.uma_submitted == 0 {
+            let mut uma = [0;0xa0];
+            crate::g16_compute::encode_uma(&mut uma,job.pool_state.gpu_va()?,PRIVATE_QWORDS as u32,
+                PRIVATE_PAGES as u32,job.page_list.gpu_va()?,job.metadata.va()+0x500,
+                crate::g16_compute::UmaEngine::Render).map_err(|_| EINVAL)?;
+            // Compute and render owners have disjoint private-slot ranges.
+            // Firmware may prepare all owners while their pools remain retained.
+            uma[8..12].copy_from_slice(&(1 + crate::g16_runtime::POOL_SLOTS as u32 + u32::from(pool_slot)).to_le_bytes());
+            uma[..8].copy_from_slice(&job.uma.va().to_le_bytes());
+            job.uma.write(0,&uma)?;
+        }
         job.compute_dependency = false;
-        job.uma.write(0,&uma)?;
-        // Native updateSubmitInfo (25G83 TEXT 8a0683c..48) increments the
-        // host submission count once per engine. Firmware increments UMA+54
-        // on final TA/fragment completion and only drains the gUPM slot when
-        // it equals *UMA+4c (TEXT 2b550..670). This rebuilt owner has exactly
-        // two users. Leaving the host count at zero skips that drain and can
-        // carry the preceding client's freelist into the next ASID.
-        job.metadata.u64(0x500, 2)?;
+        // Native updateSubmitInfo increments once per submitted engine. The
+        // firmware drains the pool when completed == submitted, and saves its
+        // read/write/free cursors at UMA+20..2c (25G83 TEXT 2b618..670). Keep
+        // that descriptor and the GPU-maintained freelist/payload together.
+        // A reused owner has been displaced by a fully retired replacement;
+        // no firmware/GPU consumer can still reference its counter here.
+        job.uma_submitted = job.uma_submitted.checked_add(2).ok_or(EOVERFLOW)?;
+        let submitted = job.uma_submitted;
+        job.metadata.u64(0x500, submitted)?;
         let pb_base = state::compact(job.pb_memory.gpu_va()?).map_err(|_| EINVAL)?;
         {
             // One staged copy per list instead of a bounds-checked WC store
@@ -290,39 +294,28 @@ impl Render {
     }
     /// Reset command state while retaining GEM backing, both GPU aliases and
     /// the ASID lease. In particular, clear old completion
-    /// stamps, preemption records and parameter/USC allocator state before
-    /// their new event values and freelists are encoded.
+    /// stamps, preemption records and parameter allocator state before
+    /// their new event values are encoded. The USC allocator remains intact.
     /// Parameter pages are GPU-written payload. Reset their allocator and
     /// scene metadata, retaining payload contents after retirement in this VM.
     fn clear(&mut self) -> Result {
+        if self.uma_completed()? != self.uma_submitted { return Err(EBUSY); }
         let profiling = crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary);
         let now = || <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get();
         let start = if profiling { now() } else { 0 };
         for buffer in &mut self.commands { buffer.clear()?; }
         for buffer in &mut self.sequences { buffer.clear()?; }
         for buffer in &mut self.preemption { buffer.clear()?; }
-        // The 32 MiB USC private pool holds firmware/GPU allocator state in
-        // the pages it handed out. Only those pages, recorded from the
-        // retired descriptor, can be stale; clearing the whole pool through
-        // the WC alias cost more than the GPU work of a typical pass.
-        let bytes = self.consumed_pages.min(PRIVATE_PAGES) * 4096;
-        let private_start = if profiling { now() } else { 0 };
-        self.private_memory.clear_range(0, bytes)?;
-        let private_ns = if profiling { now() - private_start } else { 0 };
+        // The USC allocator is persistent. Do not clear its payload, freelist,
+        // page list or descriptor while retaining firmware's saved cursors.
         for buffer in [
             &mut self.metadata, &mut self.manager, &mut self.pages,
             &mut self.blocks, &mut self.block_ring,
             &mut self.scratch, &mut self.scene_list, &mut self.tilemap, &mut self.tpc,
-            &mut self.unknown, &mut self.auxiliary, &mut self.uma,
+            &mut self.unknown, &mut self.auxiliary,
         ] { buffer.clear()?; }
-        // Populated prefixes are overwritten from the cached images below.
-        // Retain the same zeroed ring headroom and block-list tail.
-        let pool_len = self.freelist.len();
-        self.pool_state.clear_range(pool_len, self.pool_state.size() - pool_len)?;
-        let list_len = self.page_list_image.len();
-        self.page_list.clear_range(list_len, self.page_list.size() - list_len)?;
         self.clear_metrics = if profiling {
-            [bytes as u64, private_ns.max(0) as u64, (now() - start).max(0) as u64]
+            [0, 0, (now() - start).max(0) as u64]
         } else { [0; 3] };
         Ok(())
     }
@@ -352,6 +345,7 @@ impl Render {
     pub(crate) fn pool_slot(&self) -> u8 { self.pool_slot }
     pub(crate) fn same_vm(&self, vm: &mmu::Vm) -> bool { self.binding.matches(vm) }
     pub(crate) fn context(&self) -> u32 { self.binding.slot() }
+    pub(crate) fn uma_submitted(&self) -> u64 { self.uma_submitted }
     pub(crate) fn uma_completed(&mut self) -> Result<u64> {
         self.uma.read_u64(0x54)
     }

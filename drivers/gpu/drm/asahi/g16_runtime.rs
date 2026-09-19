@@ -555,7 +555,7 @@ impl Runtime {
                 render_stage_ns = [ta_end as i64 - ta_start as i64,
                     fs_start as i64 - ta_end as i64, fs_end as i64 - fs_start as i64]
                     .map(|ticks| ticks * 1000 / 24);
-                crate::cls_dev_dbg!(SubmitTiming, inner.drm, "G16G: render GPU timestamps={:x?} UMA completed={}/2\n", timestamps, render.uma_completed()?);
+                crate::cls_dev_dbg!(SubmitTiming, inner.drm, "G16G: render GPU timestamps={:x?} UMA completed={}/{}\n", timestamps, render.uma_completed()?, render.uma_submitted());
             } else {
                 if let Work::Compute(compute) = &mut active.work {
                     gpu_span = [status[2], status[3]];
