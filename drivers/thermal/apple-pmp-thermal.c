@@ -111,7 +111,8 @@ static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
 				      100 * NSEC_PER_MSEC, elapsed);
 	pmp_thermal.previous_ns = now;
 	pmp_thermal.previous_mc = value;
-	if (value >= 92000 || projected >= 95000) {
+	/* A cold load step is not a sustained heating slope. */
+	if (value >= 92000 || (value >= 85000 && projected >= 95000)) {
 		pmp_thermal.fast_clamp = true;
 		pmp_thermal.good_reads = 0;
 		apple_pmp_guard(true);

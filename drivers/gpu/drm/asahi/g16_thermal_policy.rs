@@ -29,7 +29,10 @@ impl Policy {
         };
         self.last_ns = now;
         self.previous_mc = temp;
-        if temp.is_none_or(|t| t >= 92_000) || projected >= 95_000 {
+        // Cold load steps are not a sustained heating slope. Predict only
+        // near the passive trip, otherwise ordinary bursts lose performance.
+        if temp.is_none_or(|t| t >= 92_000) ||
+            (temp.is_some_and(|t| t >= 85_000) && projected >= 95_000) {
             self.limited = true;
             self.good_reads = 0;
         } else if temp.is_some_and(|t| t < 88_000) {
@@ -70,6 +73,15 @@ mod tests {
         assert_eq!(p.limit(0), 9); // Do not project across idle gaps.
         p.sample(520_000_000, Some(88_000));
         assert_eq!(p.limit(0), 1); // 98 C projected, 88 C measured.
+    }
+    #[test]
+    fn cold_load_step_does_not_force_minimum_clocks() {
+        let mut p = Policy::new();
+        cool(&mut p, 0);
+        p.sample(220_000_000, Some(80_000)); // Forecast 130 C is spurious.
+        assert_eq!(p.limit(0), 9);
+        p.sample(240_000_000, Some(85_000)); // Now close enough to intervene.
+        assert_eq!(p.limit(0), 1);
     }
     #[test]
     fn hard_temperature_and_hysteresis() {
