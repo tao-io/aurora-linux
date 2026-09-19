@@ -1,0 +1,6 @@
+{
+  "/lib/modules/7.1.9-dirtyroom-asahi2+/kernel/drivers/gpu/drm/asahi/asahi.ko": "cf343fe07573efebad18e04de28410467df53746fae58d5027a7a7264d787bd9",
+  "/boot/asahi/initramfs.asahi2.cpio": "67cb55f68f1cb0b134eb18f38184af00af85e549a0a382704f3d504bce3dfaac",
+  "backup": "/root/factorio-early-tiling-ready-before",
+  "boot_id": "e24da116-f027-4733-89b9-9ac18379bf97"
+}
