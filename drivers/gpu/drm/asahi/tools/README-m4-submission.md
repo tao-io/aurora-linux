@@ -301,3 +301,23 @@ mean 38.188 FPS (37.48–39.96), peak 87 C. Compute/compute packet boundaries
 average 2133 us versus 2470 us in the earlier integer-preamble run. Scenes
 and compiler options differ, so this is a latency observation, not an isolated
 FPS speedup. Sixteen-command capacity restored; 60 FPS remains TODO.
+
+### Independent per-engine packet capacity
+
+The packet builder now counts render and compute commands separately, at most
+16 of each, while the optional total limit can reach 32. Slot allocation uses
+each engine's ordinal within its existing bank. Parameter slots remain 0..31,
+compute UMA indices remain 1..32, and render UMA indices remain 33..64. Two
+admitted packets still require at most 96 TA, 64 fragment and 64 compute ring
+entries. All predecessor dependencies and VM-switch draining remain intact.
+The default total limit remains eight. This is not the rejected depth-20
+experiment: no hardware slot range or per-engine capacity is enlarged.
+ARM64 module build passes; hardware qualification is recorded below when run.
+
+`with-cpu-performance.py GUARD_OUTPUT COMMAND [ARG ...]` temporarily selects
+performance CPU governors inside the existing guard, retains thermal policy
+and frequency limits, and restores the governors in a finally block. In
+`20260919T032315998715Z-factorio-performance-governor-menu`, the bounded
+60-second menu completes at 37.591 FPS tail (37.13–37.84), peak 88.5 C.
+Both governors are restored to schedutil in retained evidence. No improvement
+over the preceding normal-governor run is established; no persistent change.

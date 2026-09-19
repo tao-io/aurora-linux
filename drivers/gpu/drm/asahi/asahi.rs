@@ -96,7 +96,7 @@ kernel::module_platform_driver! {
         },
         g16_packet_commands: u32 {
             default: 8,
-            description: "M4 maximum commands per scheduler packet (clamped to 1..16)",
+            description: "M4 maximum commands per scheduler packet (1..32, at most 16 per engine)",
         },
         g16_pstate: u32 {
             default: 9,

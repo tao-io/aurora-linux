@@ -53,11 +53,10 @@ struct Inner {
 
 /// Low-volume profiling uses the same proven retirements as fence signalling.
 /// Durations cover serialized commands; active time includes host observation.
-#[derive(Default)]
 struct SubmitSummary {
     since_ns: i64,
     commands: [u64; 2],
-    packets: [u64; COMPUTE_DEPTH + 1],
+    packets: [u64; MAX_PACKET_COMMANDS + 1],
     packet_active_ns: u64,
     preparation_ns: [u64; 2],
     active_ns: [u64; 2],
@@ -76,6 +75,33 @@ struct SubmitSummary {
     classified_gap_counts: [u64; 8],
     gpu_overlaps: u64,
 }
+impl Default for SubmitSummary {
+    fn default() -> Self {
+        Self {
+            since_ns: Default::default(),
+            commands: Default::default(),
+            packets: [0; MAX_PACKET_COMMANDS + 1],
+            packet_active_ns: Default::default(),
+            preparation_ns: Default::default(),
+            active_ns: Default::default(),
+            gpu_ns: Default::default(),
+            render_clear: Default::default(),
+            render_stage_ns: Default::default(),
+            geometry: Default::default(),
+            geometry_overflow: Default::default(),
+            consecutive_gap_ns: Default::default(),
+            consecutive_gap_count: Default::default(),
+            wait_phases: Default::default(),
+            pstate_samples: Default::default(),
+            engine_gap_ticks: Default::default(),
+            engine_gap_count: Default::default(),
+            classified_gap_ticks: Default::default(),
+            classified_gap_counts: Default::default(),
+            gpu_overlaps: Default::default(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Default)]
 struct RenderSummary {
     key: [u32; 3],
@@ -95,16 +121,17 @@ impl SubmitSummary {
     }
 }
 
-/// Maximum mixed-engine packet from one client VM. Prepare and publish all
+/// Maximum commands per engine in one packet. Prepare and publish all
 /// commands together; strict firmware dependencies retain submission order.
 /// Each in-flight owner has its own private-memory slot and each render its
 /// own parameter slot. TA and fragment remain jointly available for partial
 /// rendering. All engines use queue-owned completion stamps. The bounded
 /// packet also bounds retained memory and compositor scheduling latency.
 pub(crate) const COMPUTE_DEPTH: usize = 16;
+pub(crate) const MAX_PACKET_COMMANDS: usize = COMPUTE_DEPTH * 2;
 /// Smaller packets trade throughput for more compositor scheduling points.
 pub(crate) fn packet_limit() -> usize {
-    (*crate::module_parameters::g16_packet_commands.value() as usize).clamp(1, COMPUTE_DEPTH)
+    (*crate::module_parameters::g16_packet_commands.value() as usize).clamp(1, MAX_PACKET_COMMANDS)
 }
 // At most 2 banks * 16 renders * 3 TA entries = 96, below the 256-slot
 // queue's half-ring retirement window. UMA indices 1..64 fit the 16 KiB table.
@@ -236,7 +263,13 @@ impl Runtime {
         if !self.healthy() { return Err(EIO); }
         if packet.commands.is_empty() { return Err(EINVAL); }
         let count = packet.commands.len();
-        if count > COMPUTE_DEPTH { return Err(EINVAL); }
+        if count > MAX_PACKET_COMMANDS { return Err(EINVAL); }
+        let mut engine_counts = [0usize; 2];
+        for command in &packet.commands {
+            let engine = usize::from(matches!(command.payload, crate::g16_submit::Payload::Compute(_)));
+            engine_counts[engine] += 1;
+            if engine_counts[engine] > COMPUTE_DEPTH { return Err(EINVAL); }
+        }
         // Each admitted packet owns a disjoint bank and backing allocations.
         // Even cancelled preparation cannot alias an in-flight bank.
         let bank = (0..2).find(|bank|
@@ -245,9 +278,17 @@ impl Runtime {
             .ok_or(EBUSY)?;
         let mut batch = KVec::with_capacity(count, GFP_KERNEL)?;
         self.inner.pending.reserve(1, GFP_KERNEL)?;
+        let mut engine_offsets = [0usize; 2];
         for offset in 0..count {
+            let engine = usize::from(matches!(packet.commands[offset].payload,
+                crate::g16_submit::Payload::Compute(_)));
+            // Compute and render already have disjoint UMA ranges. Count
+            // each independently instead of wasting one engine's slot for
+            // every command of the other type. Hardware capacities stay fixed.
+            let slot = bank * COMPUTE_DEPTH + engine_offsets[engine];
+            engine_offsets[engine] += 1;
             let active = self.prepare_command(packet.clone(), offset,
-                (bank * COMPUTE_DEPTH + offset) as u64).map_err(|error| {
+                slot as u64).map_err(|error| {
                 dev_err!(self.inner.drm.as_ref(),
                     "G16G: packet preparation failed job={} bank={} index={} count={} error={:?}\n",
                     packet.id, bank, offset, count, error);

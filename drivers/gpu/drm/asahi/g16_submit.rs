@@ -274,22 +274,29 @@ impl queue::Queue for Queue {
             }, GFP_KERNEL)?;
         }
         parser.finish().map_err(|_| EINVAL)?;
-        // Each independently retired hardware command returns the scheduler
-        // credit, allowing another client (particularly the compositor) to
-        // run between commands of a large submission. Keep TA+fragment as one
-        // render command: partial renders require both stages to be live.
+        // Return the scheduler credit at bounded packet boundaries. Keep
+        // TA+fragment as one render command: partial renders require both
+        // stages to be live. Count compute and render storage independently;
+        // neither engine may exceed its fixed per-bank hardware capacity.
         let mut jobs = KVec::with_capacity(commands.len(), GFP_KERNEL)?;
         let failure = Arc::new(AtomicI32::new(0), GFP_KERNEL)?;
-        let mut commands = commands.into_iter();
+        let mut commands = commands.into_iter().peekable();
         let packet_limit = crate::g16_runtime::packet_limit();
         while let Some(command) = commands.next() {
             let mut single = KVec::with_capacity(packet_limit, GFP_KERNEL)?;
+            let engine = usize::from(matches!(command.payload, Payload::Compute(_)));
+            let mut engine_counts = [0usize; 2];
+            engine_counts[engine] = 1;
             single.push(command, GFP_KERNEL)?;
             // Firmware dependencies preserve all command and query-write
             // ordering. Return the scheduler credit after a bounded command count
             // so ready compositor work can run between bounded packets.
             while single.len() < packet_limit {
-                let Some(command) = commands.next() else { break; };
+                let Some(next) = commands.peek() else { break; };
+                let engine = usize::from(matches!(next.payload, Payload::Compute(_)));
+                if engine_counts[engine] == crate::g16_runtime::COMPUTE_DEPTH { break; }
+                let command = commands.next().expect("peeked command");
+                engine_counts[engine] += 1;
                 single.push(command, GFP_KERNEL)?;
             }
             let packet = Arc::new(Packet { id, vm: self.vm.clone(), commands: single,
