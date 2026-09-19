@@ -42,11 +42,12 @@ pub(crate) struct Command {
     pub(crate) payload: Payload,
     pub(crate) attachments: [crate::g16_attachments::Attachments; 2],
     timestamps: [Option<Destination>; 4],
-    fragment_end_copies: [Option<Destination>; 8],
+    // End-timestamp fanout applies to the payload's final engine.
+    end_copies: [Option<Destination>; 8],
 }
 impl Command {
-    pub(crate) fn fragment_copy_addresses(&self) -> [u64; 8] {
-        core::array::from_fn(|i| self.fragment_end_copies[i].as_ref()
+    pub(crate) fn end_copy_addresses(&self) -> [u64; 8] {
+        core::array::from_fn(|i| self.end_copies[i].as_ref()
             .map_or(0, Destination::firmware_address))
     }
     pub(crate) fn timestamp_addresses(&self) -> [u64; 2] {
@@ -251,7 +252,7 @@ impl queue::Queue for Queue {
                 commands.push(Command { payload: Payload::Render { command:payload, usc:self.usc },
                     attachments: [encode_attachments(&self.vm, &vertex_attachments)?,
                                   encode_attachments(&self.vm, &fragment_attachments)?],
-                    fragment_end_copies: copies,
+                    end_copies: copies,
                     timestamps:[Destination::resolve(objects, payload.vertex_timestamps.start)?,
                         Destination::resolve(objects, payload.vertex_timestamps.end)?,
                         Destination::resolve(objects, payload.fragment_timestamps.start)?,
@@ -265,7 +266,17 @@ impl queue::Queue for Queue {
             if payload.flags != 0 || payload.sampler_count != 0 || payload.sampler_heap != 0 {
                 return Err(ENOTSUPP);
             }
-            let cmd = g17_uapi::translate_compute_command(payload, attachments,
+            let mut copies = core::array::from_fn(|_| None);
+            for (target, request) in copies.iter_mut().zip(payload.end_copies) {
+                if request.handle == 0 && request.offset != 0 { return Err(EINVAL); }
+                *target = Destination::resolve(objects, request)?;
+            }
+            if copies.iter().any(Option::is_some) && payload.timestamps.end.handle == 0 {
+                return Err(EINVAL);
+            }
+            let mut base_payload = payload;
+            base_payload.end_copies = [g17_uapi::UapiTimestamp { handle: 0, offset: 0 }; 8];
+            let cmd = g17_uapi::translate_compute_command(base_payload, attachments,
                 g17_uapi::QueueUscWindow { base: self.usc, user_start: 0x4000,
                     user_end: crate::g16_drm::USER_TOP }, &AddressSpace(&self.vm))
                 .map_err(|_| EINVAL)?;
@@ -274,7 +285,7 @@ impl queue::Queue for Queue {
                     end: cmd.control_stream_end, usc_base: self.usc }),
                 attachments: [encode_attachments(&self.vm, &cmd.attachments)?,
                               crate::g16_attachments::Attachments::EMPTY],
-                fragment_end_copies: core::array::from_fn(|_| None),
+                end_copies: copies,
                 timestamps: [Destination::resolve(objects, cmd.timestamps.start)?,
                     Destination::resolve(objects, cmd.timestamps.end)?, None, None],
             }, GFP_KERNEL)?;

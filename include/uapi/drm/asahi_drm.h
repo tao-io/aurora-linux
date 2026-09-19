@@ -266,6 +266,11 @@ enum drm_asahi_feature {
 	 * its fragment-end timestamp to additional bound timestamp destinations.
 	 */
 	DRM_ASAHI_FEATURE_RENDER_TIMESTAMP_COPIES = (1UL) << 4,
+
+	/** @DRM_ASAHI_FEATURE_COMPUTE_TIMESTAMP_COPIES: Compute retirement can
+	 * publish the same end timestamp to additional bound destinations.
+	 */
+	DRM_ASAHI_FEATURE_COMPUTE_TIMESTAMP_COPIES = (1UL) << 5,
 };
 
 #define DRM_ASAHI_PARAM_GROUP_VM_STATUS 1
@@ -1276,6 +1281,13 @@ struct drm_asahi_cmd_compute {
 
 	/** @ts: Timestamps for the compute command */
 	struct drm_asahi_timestamps ts;
+
+	/** @ts_end_copies: Optional copies of ts.end, published before completion.
+	 * Requires COMPUTE_TIMESTAMP_COPIES and a nonzero ts.end handle.
+	 * Entries use the same validation and lifetime rules as ts.end. Unused
+	 * entries are zero. Old short command payloads imply all-zero copies.
+	 */
+	struct drm_asahi_timestamp ts_end_copies[8];
 };
 
 /**

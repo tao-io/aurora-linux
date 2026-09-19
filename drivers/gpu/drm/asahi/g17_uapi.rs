@@ -32,7 +32,7 @@ use g17_submission::{
 
 pub(crate) const UAPI_COMMAND_HEADER_SIZE: usize = 8;
 pub(crate) const UAPI_RENDER_SIZE: usize = 320;
-pub(crate) const UAPI_COMPUTE_SIZE: usize = 64;
+pub(crate) const UAPI_COMPUTE_SIZE: usize = 128;
 pub(crate) const UAPI_ATTACHMENT_SIZE: usize = 24;
 pub(crate) const UAPI_MAX_ATTACHMENTS: usize = 16;
 pub(crate) const UAPI_MAX_HARDWARE_COMMANDS: u32 = 64;
@@ -406,6 +406,7 @@ pub(crate) struct UapiComputeCommand {
     pub(crate) sampler_heap: u64,
     pub(crate) helper: UapiHelperProgram,
     pub(crate) timestamps: UapiTimestamps,
+    pub(crate) end_copies: [UapiTimestamp; 8],
 }
 
 impl UapiComputeCommand {
@@ -419,6 +420,10 @@ impl UapiComputeCommand {
             sampler_heap: get_u64(&raw, 0x18),
             helper: helper(&raw, 0x20),
             timestamps: timestamps(&raw, 0x30),
+            end_copies: core::array::from_fn(|i| UapiTimestamp {
+                handle: get_u32(&raw, 0x40 + i * 8),
+                offset: get_u32(&raw, 0x44 + i * 8),
+            }),
         })
     }
 }
@@ -990,6 +995,11 @@ pub(crate) fn translate_compute_command<A: GpuAddressSpace>(
     address_space: &A,
 ) -> Result<TranslatedComputeCommand, UapiTranslateError> {
     queue.validate()?;
+    // The legacy G17 path does not advertise timestamp fanout. M4 resolves
+    // and retains these destinations before using this common base validator.
+    if command.end_copies.iter().any(|t| t.handle != 0 || t.offset != 0) {
+        return Err(UapiTranslateError::FlagsUnsupported);
+    }
     if command.flags & !COMPUTE_G17P_ADD3_PROOF != 0 {
         return Err(UapiTranslateError::FlagsUnknownBits);
     }
@@ -1648,6 +1658,7 @@ mod tests {
                             config: 0,
                             data: 0,
                         },
+                        end_copies: [UapiTimestamp { handle: 0, offset: 0 }; 8],
                         timestamps: UapiTimestamps {
                             start: UapiTimestamp {
                                 handle: 0,

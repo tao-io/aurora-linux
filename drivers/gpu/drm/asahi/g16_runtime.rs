@@ -490,6 +490,7 @@ impl Runtime {
                 compute.retain_notifier(packet.notifications.clone());
                 compute.set_attachments(&attachments[0])?;
                 compute.set_user_timestamps(packet.commands[index].timestamp_addresses())?;
+                compute.set_timestamp_copies(packet.commands[index].end_copy_addresses())?;
             }
             Work::Render(render) => {
                 render.retain_notifier(packet.notifications.clone());
@@ -499,7 +500,7 @@ impl Runtime {
                 }
                 render.set_attachments(attachments)?;
                 render.set_user_timestamps(packet.commands[index].render_timestamp_addresses())?;
-                render.set_fragment_timestamp_copies(packet.commands[index].fragment_copy_addresses())?;
+                render.set_fragment_timestamp_copies(packet.commands[index].end_copy_addresses())?;
             }
         }
         inner.command_label = label;

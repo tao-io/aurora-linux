@@ -73,7 +73,7 @@ impl Compute {
         // The engine fetches the register list in bootstrap context zero, then
         // switches to the client ASID. Retain exactly this command GEM in both
         // contexts; no user mappings or unrelated bootstrap pages are mirrored.
-        let mut command = Buffer::new_command(dev, uat.kernel_vm(), uat.kernel_lower_vm(), g16_compute::SIZE)?;
+        let mut command = Buffer::new_command(dev, uat.kernel_vm(), uat.kernel_lower_vm(), 0x2000)?;
         let command_client = command.map_gpu_view(&vm)?;
         let private_memory = g16_memory::GpuBuffer::new(dev, vm, PRIVATE_BYTES)?;
         let (freelist, page_list_image) = g16_memory::freelist_images(private_memory.va(), PRIVATE_PAGES)?;
@@ -184,6 +184,30 @@ impl Compute {
         g16_memory::publish();
         Ok(())
     }
+    /// Repeat the existing firmware end-timestamp record before finalize.
+    /// Keep the original SKU/state at +900; only its executable sequence is
+    /// copied into unused storage in the same retained command allocation.
+    pub(crate) fn set_timestamp_copies(&mut self, addresses: [u64; 8]) -> Result {
+        let mut pairs = [0u64; 8];
+        let mut count = 0;
+        for address in addresses.into_iter().filter(|a| *a != 0) {
+            let offset = 0x1800 + count * 16;
+            self.command.u64(offset, 0)?;
+            self.command.u64(offset + 8, address)?;
+            pairs[count] = self.command.va() + offset as u64;
+            count += 1;
+        }
+        if count == 0 { return Ok(()); }
+        let mut sequence = [0u8; 0x600];
+        self.command.read(0x900, &mut sequence[..0x300])?;
+        let size = g16_compute::timestamp_copies(&mut sequence, &pairs[..count])
+            .map_err(|_| EINVAL)?;
+        self.command.write(0x1000, &sequence[..size])?;
+        self.command.u64(0x760, self.command.va() + 0x1000)?;
+        self.command.u32(0x768, size.try_into()?)?;
+        g16_memory::publish();
+        Ok(())
+    }
     pub(crate) fn uma_submitted(&self) -> u64 { self.uma_submitted }
     pub(crate) fn uma_completed(&mut self) -> Result<u64> {
         self.command.read_u64(0xe54)
@@ -224,7 +248,7 @@ impl Compute {
         mappings[16..24].copy_from_slice(&(self.binding.vm().translate_iova(gpu)? as u64).to_le_bytes());
         dump.record("compute-command-mappings", gpu, mappings.len(),
             |out| { out.copy_from_slice(&mappings); Ok(()) })?;
-        dump.buffer("compute-command", &mut self.command, g16_compute::SIZE)?;
+        dump.buffer("compute-command", &mut self.command, 0x2000)?;
         dump.buffer("compute-preemption", &mut self.preemption, 0x4000)?;
         dump.buffer("compute-auxiliary", &mut self.auxiliary, 0x4000)?;
         dump.buffer("compute-context-store", &mut self.context_store, 0x40000)?;
@@ -234,7 +258,7 @@ impl Compute {
     }
     #[cfg(CONFIG_DEV_COREDUMP)]
     pub(crate) fn capture_retired_command(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
-        dump.buffer("compute-retired-command", &mut self.command, g16_compute::SIZE)
+        dump.buffer("compute-retired-command", &mut self.command, 0x2000)
     }
     /// Record the retired dispatch's private-page consumption for recycling.
     pub(crate) fn record_consumption(&mut self) -> Result {

@@ -193,6 +193,32 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     Ok(())
 }
 
+/// Existing 25G83 Timestamp records read the completed engine counter. Fan
+/// out that value before FinalizeCompute, retaining its relative restart.
+pub(crate) fn timestamp_copies(sequence: &mut [u8], pointers: &[u64]) -> Result<usize, ()> {
+    const END: usize = 0x20c;
+    const FINALIZE: usize = 0x258;
+    const RECORD: usize = 0x4c;
+    const BASE: usize = 0x300;
+    if pointers.len() > 8 || pointers.iter().any(|p| *p < 0xffff_fc00_0000_0000 || p & 7 != 0) {
+        return Err(());
+    }
+    let extra = pointers.len() * RECORD;
+    if sequence.len() < BASE + extra { return Err(()); }
+    if pointers.is_empty() { return Ok(BASE); }
+    let mut timestamp = [0; RECORD];
+    timestamp.copy_from_slice(&sequence[END..FINALIZE]);
+    sequence.copy_within(FINALIZE..BASE, FINALIZE + extra);
+    for (i, pointer) in pointers.iter().enumerate() {
+        let record = &mut sequence[FINALIZE + i * RECORD..FINALIZE + (i + 1) * RECORD];
+        record.copy_from_slice(&timestamp);
+        record[0x24..0x2c].copy_from_slice(&pointer.to_le_bytes());
+    }
+    let restart = FINALIZE + extra + 0x64;
+    sequence[restart..restart + 4].copy_from_slice(&(-(FINALIZE as i32 + extra as i32)).to_le_bytes());
+    Ok(BASE + extra)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -202,6 +228,39 @@ mod tests {
             pool_state_gpu: 0x7000200000, page_list_gpu: 0x7000300000,
             counter: 0xfffffc2000040000, context: 1, generation: 1, stamp: STAMP, event_slot: 0 }
     }
+    #[test]
+    fn repeated_end_timestamps_preserve_sequence_and_restart() {
+        let mut command = [0; SIZE];
+        encode(&mut command, addresses(), 16384, 512).unwrap();
+        let original = &command[0x900..0xc00];
+        for count in 0..=8 {
+            let mut seq = [0x5a; 0x600];
+            seq[..0x300].copy_from_slice(original);
+            let pointers: [u64; 8] = core::array::from_fn(|i| 0xfffffc2000021800 + i as u64 * 16);
+            let length = timestamp_copies(&mut seq, &pointers[..count]).unwrap();
+            let extra = count * 0x4c;
+            assert_eq!(length, 0x300 + extra);
+            assert_eq!(&seq[..0x258], &original[..0x258]);
+            for i in 0..count {
+                let record = &seq[0x258 + i * 0x4c..0x258 + (i+1) * 0x4c];
+                assert_eq!(&record[..0x24], &original[0x20c..0x230]);
+                assert_eq!(&record[0x24..0x2c], &pointers[i].to_le_bytes());
+                assert_eq!(&record[0x2c..], &original[0x238..0x258]);
+            }
+            assert_eq!(&seq[0x258 + extra..0x2bc + extra], &original[0x258..0x2bc]);
+            assert_eq!(&seq[0x2bc + extra..0x2c0 + extra], &(-(0x258 + extra as i32)).to_le_bytes());
+            assert_eq!(&seq[0x2c0 + extra..length], &original[0x2c0..]);
+            assert!(seq[length..].iter().all(|b| *b == 0x5a));
+        }
+        let mut short = [0x5a; 0x300];
+        assert!(timestamp_copies(&mut short, &[0xfffffc2000021800]).is_err());
+        assert!(short.iter().all(|b| *b == 0x5a));
+        let mut seq = [0; 0x600];
+        assert!(timestamp_copies(&mut seq, &[0; 1]).is_err());
+        assert!(timestamp_copies(&mut seq, &[0xfffffc2000021801]).is_err());
+        assert!(timestamp_copies(&mut seq, &[0xfffffc2000021800; 9]).is_err());
+    }
+
     #[test]
     fn packed_abi_roles_and_end_record() {
         let mut bytes = [0; SIZE];
