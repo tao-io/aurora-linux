@@ -130,4 +130,21 @@ if timeline:
              for engine,ticks,count in zip(['before_render','before_compute'],gaps,counts)},
         overlaps=sum(t['overlaps'] for t in timeline),
         scope='24 MHz end-to-next-start gaps include firmware/cache work, VM switches and queue starvation; state counts are polling samples, not durations')
+boundary = []
+for line in lines:
+    if 'G16G: GPU boundary summary' not in line:
+        continue
+    stamp = re.search(r'monotonic_ns=(\d+)', line)
+    if not stamp or int(stamp[1]) not in selected:
+        continue
+    boundary.append({name:json.loads(value) for name,value in
+        re.findall(r'(gap_ticks|gap_counts)=(\[[0-9, ]+\])', line)})
+if boundary:
+    result['packet_boundaries'] = {}
+    for i, label in enumerate(['queued_RR','queued_RC','queued_CR','queued_CC',
+                               'boundary_RR','boundary_RC','boundary_CR','boundary_CC']):
+        ticks=sum(row['gap_ticks'][i] for row in boundary)
+        count=sum(row['gap_counts'][i] for row in boundary)
+        result['packet_boundaries'][label] = dict(seconds=ticks/24e6, count=count,
+            mean_microseconds=ticks/24/count if count else None)
 print(json.dumps(result,indent=2))

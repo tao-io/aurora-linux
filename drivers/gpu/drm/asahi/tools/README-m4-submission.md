@@ -221,3 +221,19 @@ all 62,803 state samples at state 9 (1470 MHz), 12.561 seconds of command GPU
 spans and 6.536 seconds between commands, with no overlapping spans. Preparation
 is 0.352 seconds and published-busy union 19.015 seconds. This changing scene
 has more render passes than the previous 35--38 FPS scene. 60 FPS remains unmet.
+
+## Packet-boundary gap classification
+
+The low-volume summary now separates RR/RC/CR/CC engine transitions inside a
+fully published packet from transitions across packet boundaries. The latter
+include both same-VM handoffs and client switches, so they are not a pure
+context-switch cost. Existing GPU timestamps and retirement ordering are unchanged.
+
+`20260919T022534624026Z-factorio-gpu-boundary-menu` completes the guarded
+60-second menu, tail 37.53 FPS (33.93--38.17), peak 89 C. Queued transitions
+average RR 277 us, RC 263 us, CR 347 us, CC 159 us. Boundary transitions average
+RR 1109 us (2164 events), RC 992 us (728), CC 1572 us (718); CR has only five
+samples and is not representative. Of the 7.060 s total gaps, 4.266 s cross
+packet boundaries. All 64,253 performance-state samples are state 9. This
+narrows the next optimization to submission handoffs as well as reducing GPU
+commands; it does not establish firmware-only overhead or 60 FPS.

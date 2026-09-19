@@ -48,7 +48,7 @@ struct Inner {
     wait_timeouts: u64,
     summary: SubmitSummary,
     last_retired: Option<(u64, i64)>,
-    last_gpu_end: Option<u64>,
+    last_gpu_end: Option<(u64, u64, usize)>,
 }
 
 /// Low-volume profiling uses the same proven retirements as fence signalling.
@@ -72,6 +72,8 @@ struct SubmitSummary {
     pstate_samples: [u64; 16],
     engine_gap_ticks: [u64; 2],
     engine_gap_count: [u64; 2],
+    classified_gap_ticks: [u64; 8],
+    classified_gap_counts: [u64; 8],
     gpu_overlaps: u64,
 }
 #[derive(Clone, Copy, Default)]
@@ -588,7 +590,7 @@ impl Runtime {
             // GPU execution time from the command's own 24 MHz timestamps.
             let gpu_ns = gpu_span[1].wrapping_sub(gpu_span[0]).saturating_mul(1000) / 24;
             if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
-                if let Some(previous) = inner.last_gpu_end {
+                if let Some((previous, packet_id, previous_engine)) = inner.last_gpu_end {
                     // Same 24 MHz counter for both engines. These gaps include
                     // queue starvation, firmware/cache work and VM switches;
                     // they are not shader execution or utilization estimates.
@@ -596,11 +598,18 @@ impl Runtime {
                         let engine = usize::from(pipe_index == 2);
                         inner.summary.engine_gap_ticks[engine] += gpu_span[0] - previous;
                         inner.summary.engine_gap_count[engine] += 1;
+                        // First four classes are inside one published packet;
+                        // last four cross packet boundaries. Each group is
+                        // RR, RC, CR, CC. Within-packet work is queued up front.
+                        let boundary = usize::from(packet_id != active.packet.id || active.index == 0);
+                        let class = boundary * 4 + previous_engine * 2 + engine;
+                        inner.summary.classified_gap_ticks[class] += gpu_span[0] - previous;
+                        inner.summary.classified_gap_counts[class] += 1;
                     } else {
                         inner.summary.gpu_overlaps += 1;
                     }
                 }
-                inner.last_gpu_end = Some(gpu_span[1]);
+                inner.last_gpu_end = Some((gpu_span[1], active.packet.id, usize::from(pipe_index == 2)));
                 inner.summary.record(matches!(&active.work, Work::Render(_)),
                     active.preparation_ns, active_ns, gpu_ns);
                 if let Work::Render(r) = &active.work {
@@ -701,6 +710,8 @@ impl Runtime {
                         dev_info!(inner.drm.as_ref(), "G16G: GPU timeline summary monotonic_ns={} pstate_samples={:?} gap_ticks={:?} gap_counts={:?} overlaps={}\n",
                             now, s.pstate_samples, s.engine_gap_ticks,
                             s.engine_gap_count, s.gpu_overlaps);
+                        dev_info!(inner.drm.as_ref(), "G16G: GPU boundary summary monotonic_ns={} gap_ticks={:?} gap_counts={:?}\n",
+                            now, s.classified_gap_ticks, s.classified_gap_counts);
                         for (pipe, counts) in s.wait_phases.iter().enumerate() {
                             dev_info!(inner.drm.as_ref(), "G16G: completion phase samples monotonic_ns={} pipe={} before_start={} executing={} end_before_stamps={} stamps_before_queue={} queue_before_pipe={} missing_compute_timestamps={}\n",
                                 now, pipe, counts[0], counts[1], counts[2], counts[3], counts[4], counts[5]);
