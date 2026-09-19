@@ -110,3 +110,24 @@ pixels, peak 72 C. Live menu timing follows. Active-duration sums overlap within
 a batch and must not be interpreted as serialized wall time or GPU utilization.
 TODO: per-client firmware queues, cross-client engine concurrency and priorities,
 persistent shared private pools, broad CTS, and 60 FPS main-menu qualification.
+
+## Eight-command batch measurement
+
+The bound is now eight commands, with disjoint compute/private slots 1..8,
+render/private slots 9..16 and parameter slots 0..7. The bound still limits
+DMA ownership and scheduler credit occupancy. Batch summaries count each
+packet's active interval once; individual command intervals overlap. The
+mirrored `gpu-summary-timings.py LOG --tail-seconds 15` reports both, explicitly.
+
+- `20260919T002435318037Z-factorio-depth-eight-frame`: Pass, zero changed pixels.
+- `20260919T002501131985Z-factorio-depth-eight-menu`: 20.159 FPS tail
+  (19.35–20.89), initialization 11.088 s, peak 67 C. In 14.122 s: 7.911 s
+  packet-active, 1.610 s command preparation, 4.905 s GPU timestamp spans.
+  The prior four-command menu was 17.718 FPS; scene/pass counts differ, so
+  this is not a controlled throughput ratio.
+- `20260919T002611221383Z-factorio-depth-eight-queries`: all eight additional
+  firmware timestamps remain identical; three overflow timestamps ordered;
+  CPU/GPU query results agree.
+
+Normal FIFO/vsync main-menu 60 FPS remains unmet. The next measurement isolates
+presentation pacing with a separate diagnostic launcher, not the normal one.

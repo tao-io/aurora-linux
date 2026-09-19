@@ -54,6 +54,8 @@ struct Inner {
 struct SubmitSummary {
     since_ns: i64,
     commands: [u64; 2],
+    packets: [u64; COMPUTE_DEPTH + 1],
+    packet_active_ns: u64,
     preparation_ns: [u64; 2],
     active_ns: [u64; 2],
     gpu_ns: [u64; 2],
@@ -90,7 +92,7 @@ impl SubmitSummary {
 /// own parameter slot. TA and fragment remain jointly available for partial
 /// rendering. All engines use queue-owned completion stamps. The bounded
 /// packet also bounds retained memory and compositor scheduling latency.
-pub(crate) const COMPUTE_DEPTH: usize = 4;
+pub(crate) const COMPUTE_DEPTH: usize = 8;
 
 
 /// Outcome of one completion snapshot.
@@ -619,6 +621,10 @@ impl Runtime {
                 // needed to make the command's writes visible to the CPU.
                 packet.finish(Ok(()));
                 if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
+                    inner.summary.packets[index] += 1;
+                    inner.summary.packet_active_ns += active_ns.max(0) as u64;
+                }
+                if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
                     let now = <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get();
                     if now - inner.summary.since_ns >= 1_000_000_000 {
                         let s = &inner.summary;
@@ -630,6 +636,8 @@ impl Runtime {
                             s.active_ns[0], s.active_ns[1], s.gpu_ns[0], s.gpu_ns[1],
                             s.render_clear[0], s.render_clear[1], s.render_clear[2],
                             s.render_stage_ns[0], s.render_stage_ns[1], s.render_stage_ns[2]);
+                        dev_info!(inner.drm.as_ref(), "G16G: batch summary monotonic_ns={} packet_counts={:?} packet_active_ns={}\n",
+                            now, s.packets, s.packet_active_ns);
                         dev_info!(inner.drm.as_ref(), "G16G: completion wait totals monotonic_ns={} messages={} waits={} late={} timeouts={} geometry_overflow={} consecutive_gap_ns={} consecutive_gap_count={}\n",
                             now, inner.state.event_messages.load(core::sync::atomic::Ordering::Acquire),
                             inner.waits, inner.late_retirements, inner.wait_timeouts, s.geometry_overflow,

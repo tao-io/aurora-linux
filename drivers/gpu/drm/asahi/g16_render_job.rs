@@ -162,9 +162,9 @@ impl Render {
         crate::g16_compute::encode_uma(&mut uma,job.pool_state.gpu_va()?,PRIVATE_QWORDS as u32,
             PRIVATE_PAGES as u32,job.page_list.gpu_va()?,job.metadata.va()+0x500,
             crate::g16_compute::UmaEngine::Render).map_err(|_| EINVAL)?;
-        // Compute owners use slots 1..4 and render owners use slots 5..8.
+        // Compute and render owners have disjoint private-slot ranges.
         // Firmware may prepare all owners while their pools remain retained.
-        uma[8..12].copy_from_slice(&(5 + u32::from(pool_slot)).to_le_bytes());
+        uma[8..12].copy_from_slice(&(1 + crate::g16_runtime::COMPUTE_DEPTH as u32 + u32::from(pool_slot)).to_le_bytes());
         uma[..8].copy_from_slice(&job.uma.va().to_le_bytes());
         job.compute_dependency = false;
         job.uma.write(0,&uma)?;
