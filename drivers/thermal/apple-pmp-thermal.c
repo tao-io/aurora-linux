@@ -7,6 +7,7 @@
 #include <linux/cpu.h>
 #include <linux/cpu_cooling.h>
 #include <linux/cpufreq.h>
+#include <linux/hwmon.h>
 #include <linux/ktime.h>
 #include <linux/math64.h>
 #include <linux/module.h>
@@ -45,7 +46,95 @@ static struct {
 	u64 previous_ns;
 	bool fast_clamp;
 	bool enabled;
+	bool debug_critical_dumped; /* DEBUG_REMOVE_IN_PROD */
 } pmp_thermal;
+
+/* DEBUG_REMOVE_IN_PROD: retain the actual samples used for the decision,
+ * including invalid/unavailable channels. A later read could miss the spike.
+ */
+struct apple_pmp_debug_snapshot {
+	u64 started_ns;
+	u64 finished_ns;
+	long values[PMP_TEMP_CHANNELS];
+	int errors[PMP_TEMP_CHANNELS];
+};
+
+static int apple_pmp_debug_sample(struct apple_pmp_debug_snapshot *snapshot,
+				  long *value)
+{
+	bool found = false;
+	int first_error = 0;
+	unsigned int i;
+
+	memset(snapshot, 0, sizeof(*snapshot));
+	snapshot->started_ns = ktime_get_ns();
+	for (i = 0; i < PMP_TEMP_CHANNELS; i++) {
+		int ret = apple_pmp_temp_sample(pmp_thermal.sram, i,
+						&snapshot->values[i]);
+
+		snapshot->errors[i] = ret;
+		if (ret) {
+			if (ret != -ENODATA && !first_error)
+				first_error = ret;
+			continue;
+		}
+		if (!found || snapshot->values[i] > *value)
+			*value = snapshot->values[i];
+		found = true;
+	}
+	snapshot->finished_ns = ktime_get_ns();
+	return first_error ?: (found ? 0 : -ENODATA);
+}
+
+/* Defer slow console output; do not hold up critical-trip processing. */
+static void apple_pmp_debug_dump(const struct apple_pmp_debug_snapshot *snapshot,
+				 const char *reason, long value, int error)
+{
+	unsigned int i;
+
+	hwmon_debug_printk(KERN_EMERG "DEBUG_REMOVE_IN_PROD apple-pmp: %s hotspot_mc=%ld error=%d sample_start_ns=%llu sample_end_ns=%llu\n",
+		 reason, value, error, snapshot->started_ns, snapshot->finished_ns);
+	for (i = 0; i < PMP_TEMP_CHANNELS; i++)
+		hwmon_debug_printk(KERN_EMERG "DEBUG_REMOVE_IN_PROD apple-pmp: %s mc=%ld error=%d\n",
+			 apple_pmp_temp_records[i].name, snapshot->values[i],
+			 snapshot->errors[i]);
+	for (i = 0; i < ARRAY_SIZE(pmp_thermal.clusters); i++) {
+		struct cpufreq_policy *policy = pmp_thermal.clusters[i].policy;
+
+		if (policy)
+			hwmon_debug_printk(KERN_EMERG "DEBUG_REMOVE_IN_PROD apple-pmp: cpu%u min_khz=%u max_khz=%u\n",
+				 policy->cpu, policy->min, policy->max);
+	}
+	if (IS_REACHABLE(CONFIG_HWMON))
+		hwmon_debug_dump_temperatures();
+}
+
+/* DEBUG_REMOVE_IN_PROD: safe logging test; changes no temperatures or trips. */
+static int apple_pmp_debug_trigger(const char *val, const struct kernel_param *kp)
+{
+	struct apple_pmp_debug_snapshot snapshot;
+	long value = 0;
+	bool trigger;
+	int ret = kstrtobool(val, &trigger);
+
+	if (ret || !trigger)
+		return ret ?: -EINVAL;
+	/* Module parameters may be parsed before probe initializes the mutex. */
+	if (!READ_ONCE(pmp_thermal.zone))
+		return -ENODEV;
+	guard(mutex)(&pmp_thermal.lock);
+	if (!pmp_thermal.zone || !pmp_thermal.sram)
+		return -ENODEV;
+	ret = apple_pmp_debug_sample(&snapshot, &value);
+	apple_pmp_debug_dump(&snapshot, "manual-dump-not-critical", value, ret);
+	return ret;
+}
+
+static const struct kernel_param_ops apple_pmp_debug_ops = {
+	.set = apple_pmp_debug_trigger,
+};
+module_param_cb(debug_dump_thermals, &apple_pmp_debug_ops, NULL, 0200);
+MODULE_PARM_DESC(debug_dump_thermals, "DEBUG_REMOVE_IN_PROD: write Y to log temperatures without changing trips");
 
 /* Fail closed independently of the governor, including while the zone is off. */
 static int apple_pmp_guard(bool clamp)
@@ -81,14 +170,15 @@ static bool apple_pmp_cooling_ready(void)
 
 static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
 {
-	long value;
+	struct apple_pmp_debug_snapshot snapshot; /* DEBUG_REMOVE_IN_PROD */
+	long value = 0;
 	s64 elapsed;
 	u64 now;
 	long projected;
 	int ret;
 
 	guard(mutex)(&pmp_thermal.lock);
-	ret = apple_pmp_temp_hotspot(pmp_thermal.sram, &value);
+	ret = apple_pmp_debug_sample(&snapshot, &value); /* DEBUG_REMOVE_IN_PROD */
 	if (ret) {
 		pmp_thermal.good_reads = 0;
 		pmp_thermal.previous_ns = 0;
@@ -130,6 +220,11 @@ static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
 		ret = apple_pmp_guard(false);
 		if (ret)
 			apple_pmp_guard(true);
+	}
+	/* DEBUG_REMOVE_IN_PROD: first real critical sample, before core poweroff. */
+	if (value >= 100000 && !pmp_thermal.debug_critical_dumped) {
+		pmp_thermal.debug_critical_dumped = true;
+		apple_pmp_debug_dump(&snapshot, "critical-sample", value, 0);
 	}
 	return ret;
 }

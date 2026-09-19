@@ -49,6 +49,51 @@ class ThermalsTest(unittest.TestCase):
         with self.assertRaises(OSError):
             self.guard.start()
 
+    def test_all_sensors_duplicate_labels_and_hotplug_are_recorded(self):
+        self.guard.discover()
+        for n, value in [(8, '33200'), (9, '44000')]:
+            device = self.root / f'class/hwmon/hwmon{n}'
+            device.mkdir()
+            (device / 'name').write_text('macsmc_hwmon')
+            (device / 'temp1_label').write_text('Same label')
+            (device / 'temp1_input').write_text(value)
+        (self.zone / 'temp').write_text('58000')
+        record = self.guard.sample()
+        sensors = record['all_thermals']
+        self.assertEqual(sensors['class/hwmon/hwmon8/temp1_input']['temperature_mc'], 33200)
+        self.assertEqual(sensors['class/hwmon/hwmon9/temp1_input']['temperature_mc'], 44000)
+        self.assertEqual(sensors['class/thermal/thermal_zone3/temp']['temperature_mc'], 58000)
+        (self.root / 'class/hwmon/hwmon8/temp1_input').unlink()
+        (self.root / 'class/hwmon/hwmon9/temp2_input').write_text('-1000')
+        sensors = self.guard.sample()['all_thermals']
+        self.assertIn('error', sensors['class/hwmon/hwmon8/temp1_input'])
+        self.assertNotIn('temperature_mc', sensors['class/hwmon/hwmon8/temp1_input'])
+        self.assertEqual(sensors['class/hwmon/hwmon9/temp2_input']['temperature_mc'], -1000)
+
+    def test_critical_sample_does_not_wait_for_optional_sensors(self):
+        self.guard.discover()
+        self.guard.sample()
+        previous = self.guard.all_thermals
+        def fail_if_called(readings):
+            self.fail('known emergency must not wait for optional sensors')
+        self.guard.collect_all_thermals = fail_if_called
+        (self.pmp / 'temp1_input').write_text('100000')
+        with self.assertRaisesRegex(RuntimeError, 'cutoff'):
+            self.guard.sample()
+        record = json.loads((self.root / 'temperatures.jsonl').read_text().splitlines()[-1])
+        self.assertTrue(record['all_thermals_cached'])
+        self.assertEqual(record['all_thermals'], previous)
+
+    def test_supplemental_read_error_is_evidence_not_a_new_trip_policy(self):
+        self.guard.discover()
+        device = self.root / 'class/hwmon/hwmon8'
+        device.mkdir()
+        (device / 'name').write_text('macsmc_hwmon')
+        (device / 'temp1_input').write_text('bad')
+        record = self.guard.sample()
+        self.assertIn('error', record['all_thermals']['class/hwmon/hwmon8/temp1_input'])
+        self.assertFalse(self.stops)
+
     def test_every_sensor_trips_at_exact_cutoff(self):
         self.guard.discover()
         for i in range(1, 7):

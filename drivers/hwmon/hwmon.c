@@ -17,12 +17,15 @@
 #include <linux/i2c.h>
 #include <linux/idr.h>
 #include <linux/kstrtox.h>
+#include <linux/ktime.h>
 #include <linux/list.h>
+#include <linux/math64.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/pci.h>
 #include <linux/property.h>
 #include <linux/slab.h>
+#include <linux/spinlock.h>
 #include <linux/string.h>
 #include <linux/thermal.h>
 
@@ -54,7 +57,14 @@ struct hwmon_device_attribute {
 	u32 attr;
 	int index;
 	char name[MAX_SYSFS_ATTR_NAME_LENGTH];
+	/* DEBUG_REMOVE_IN_PROD: never perform slow bus I/O during shutdown. */
+	long debug_temp_mc;
+	u64 debug_sample_ns;
+	int debug_error;
 };
+
+/* DEBUG_REMOVE_IN_PROD: protects only the diagnostic cache, never sensor I/O. */
+static DEFINE_SPINLOCK(hwmon_debug_lock);
 
 #define to_hwmon_attr(d) \
 	container_of(d, struct hwmon_device_attribute, dev_attr)
@@ -144,6 +154,49 @@ static const struct class hwmon_class = {
 	.dev_groups = hwmon_dev_attr_groups,
 	.dev_release = hwmon_dev_release,
 };
+
+/* DEBUG_REMOVE_IN_PROD: process context; cached sysfs samples with explicit age.
+ * No hwmon driver mutex or hardware transaction may delay thermal shutdown.
+ * Legacy custom attributes have no cache; PMP logs its triggering read itself.
+ */
+static int hwmon_debug_dump_device(struct device *dev, void *unused)
+{
+	struct hwmon_device *hwdev = to_hwmon_device(dev);
+	struct attribute **attrs = hwdev->group.attrs;
+	unsigned long flags;
+	unsigned int i;
+
+	if (!attrs)
+		return 0;
+	for (i = 0; attrs[i]; i++) {
+		struct hwmon_device_attribute *a = to_hwmon_attr(to_dev_attr(attrs[i]));
+		u64 ns;
+		long value;
+		int error;
+
+		if (a->type != hwmon_temp || a->attr != hwmon_temp_input)
+			continue;
+		spin_lock_irqsave(&hwmon_debug_lock, flags);
+		ns = a->debug_sample_ns;
+		value = a->debug_temp_mc;
+		error = a->debug_error;
+		spin_unlock_irqrestore(&hwmon_debug_lock, flags);
+		if (!ns)
+			hwmon_debug_printk(KERN_EMERG "DEBUG_REMOVE_IN_PROD thermal %s %s/%s: never sampled\n",
+					dev_name(dev), hwdev->name, a->name);
+		else
+			hwmon_debug_printk(KERN_EMERG "DEBUG_REMOVE_IN_PROD thermal %s %s/%s: cached_mc=%ld error=%d age_us=%llu\n",
+					dev_name(dev), hwdev->name, a->name, value, error,
+					div_u64(ktime_get_ns() - ns, NSEC_PER_USEC));
+	}
+	return 0;
+}
+
+void hwmon_debug_dump_temperatures(void)
+{
+	class_for_each_device(&hwmon_class, NULL, NULL, hwmon_debug_dump_device);
+}
+EXPORT_SYMBOL_GPL(hwmon_debug_dump_temperatures);
 
 static DEFINE_IDA(hwmon_ida);
 
@@ -437,6 +490,16 @@ static ssize_t hwmon_attr_show(struct device *dev,
 
 	ret = hattr->ops->read(dev, hattr->type, hattr->attr, hattr->index,
 			       (hattr->type == hwmon_energy64) ? (long *)&val64 : &val);
+	/* DEBUG_REMOVE_IN_PROD: retain errors as well as successful reads. */
+	if (hattr->type == hwmon_temp && hattr->attr == hwmon_temp_input) {
+		unsigned long flags;
+
+		spin_lock_irqsave(&hwmon_debug_lock, flags);
+		hattr->debug_temp_mc = ret < 0 ? 0 : val;
+		hattr->debug_error = ret;
+		hattr->debug_sample_ns = ktime_get_ns();
+		spin_unlock_irqrestore(&hwmon_debug_lock, flags);
+	}
 	if (ret < 0)
 		return ret;
 
@@ -1340,4 +1403,3 @@ module_exit(hwmon_exit);
 MODULE_AUTHOR("Mark M. Hoffman <mhoffman@lightlink.com>");
 MODULE_DESCRIPTION("hardware monitoring sysfs/class support");
 MODULE_LICENSE("GPL");
-

@@ -51,6 +51,9 @@ class ExperimentThermals:
         self.failure = None
         self.stop_event = threading.Event()
         self.thread = None
+        self.all_sensor_paths = {}
+        self.all_thermals = {}
+        self.all_peaks = {}
 
     def discover(self):
         devices = [p for p in (self.sysfs / 'class/hwmon').glob('hwmon*')
@@ -67,6 +70,40 @@ class ExperimentThermals:
             raise RuntimeError('CPU apple-pmp-die thermal policy is missing')
         self.zone = zones[0]
 
+    def collect_all_thermals(self, readings):
+        """Record all exposed hwmon/thermal inputs, without qualifying new gates.
+
+        Stable path keys preserve duplicate labels. Rediscover hotplugged sensors
+        and retain missing/error entries rather than silently dropping them.
+        Only the established PMP channels drive the emergency stop policy.
+        """
+        for device in sorted((self.sysfs / 'class/hwmon').glob('hwmon*')):
+            for path in sorted(device.glob('temp*_input')):
+                self.all_sensor_paths[path] = (device / 'name',
+                    path.with_name(path.name.replace('_input', '_label')))
+        for device in sorted((self.sysfs / 'class/thermal').glob('thermal_zone*')):
+            self.all_sensor_paths[device / 'temp'] = (device / 'type', device / 'type')
+        pmp_readings = {path: readings[label] for path, label in zip(self.sensors, self.labels)}
+        records = {}
+        for path, (provider, label) in sorted(self.all_sensor_paths.items()):
+            key = str(path.relative_to(self.sysfs))
+            record = dict(self.all_thermals.get(key, {}))
+            record.pop('temperature_mc', None)
+            record.pop('error', None)
+            record['sample_start_monotonic_seconds'] = time.monotonic()
+            try:
+                record['provider'] = provider.read_text().strip()
+                record['label'] = label.read_text().strip() if label.exists() else path.stem
+                value = pmp_readings[path] if path in pmp_readings else int(path.read_text())
+                record['temperature_mc'] = value
+                self.all_peaks[key] = max(value, self.all_peaks.get(key, value))
+            except (OSError, ValueError) as error:
+                record['error'] = repr(error)
+            record['sample_end_monotonic_seconds'] = time.monotonic()
+            records[key] = record
+        self.all_thermals = records
+        return records
+
     def sample(self):
         if (self.zone / 'mode').read_text().strip() != 'enabled':
             raise RuntimeError('CPU thermal policy is disabled')
@@ -75,6 +112,10 @@ class ExperimentThermals:
             raise RuntimeError(f'invalid PMP temperature readings: {readings}')
         record = {'monotonic_seconds': time.monotonic(), 'unix_seconds': time.time(),
                   'temperatures_mc': readings, 'cpu_policies': {}}
+        critical = max(readings.values()) >= self.stop_limit_mc
+        # Never delay a known emergency with optional SMC bus transactions.
+        record['all_thermals'] = self.all_thermals if critical else self.collect_all_thermals(readings)
+        record['all_thermals_cached'] = critical
         for p in (self.sysfs / 'devices/system/cpu/cpufreq').glob('policy*'):
             record['cpu_policies'][p.name] = {
                 name: int((p / name).read_text()) for name in ('scaling_cur_freq', 'scaling_max_freq')}
@@ -83,7 +124,7 @@ class ExperimentThermals:
         with (self.result / 'temperatures.jsonl').open('a') as log:
             log.write(json.dumps(record) + '\n')
             log.flush()
-            if self.last_sync is None or time.monotonic() - self.last_sync >= self.sync_interval_seconds:
+            if critical or self.last_sync is None or time.monotonic() - self.last_sync >= self.sync_interval_seconds:
                 os.fdatasync(log.fileno())
                 self.last_sync = time.monotonic()
         self.samples += 1
@@ -97,6 +138,7 @@ class ExperimentThermals:
                 'interval_seconds': self.interval_seconds, 'samples': self.samples,
                 'sync_interval_seconds': self.sync_interval_seconds,
                 'peak_temperatures_mc': dict(self.peaks), 'failure': self.failure,
+                'all_peak_temperatures_mc': dict(self.all_peaks),
                 'dedicated_gpu_sensor_verified': False, 'log': 'temperatures.jsonl',
                 'cpu_frequency_caps': self.cpu_frequency_caps}
 

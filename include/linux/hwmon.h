@@ -12,6 +12,24 @@
 #ifndef _HWMON_H_
 #define _HWMON_H_
 
+#include <linux/printk.h>
+#include <linux/stdarg.h>
+
+/* DEBUG_REMOVE_IN_PROD: printk_deferred itself is not exported to modules.
+ * Use its exported emission path, preserving KERN_EMERG and deferring console
+ * I/O. Never disable interrupts or wait for a slow console at a critical trip.
+ */
+static inline __printf(1, 2) void hwmon_debug_printk(const char *fmt, ...)
+{
+#ifdef CONFIG_PRINTK
+	va_list args;
+
+	va_start(args, fmt);
+	vprintk_emit(0, LOGLEVEL_SCHED, NULL, fmt, args);
+	va_end(args);
+#endif
+}
+
 #include <linux/bitops.h>
 #include <linux/cleanup.h>
 
@@ -486,6 +504,9 @@ devm_hwmon_device_register_with_info(struct device *dev,
 				const struct attribute_group **extra_groups);
 
 void hwmon_device_unregister(struct device *dev);
+
+/* DEBUG_REMOVE_IN_PROD: cached readings only; no sensor I/O at shutdown. */
+void hwmon_debug_dump_temperatures(void);
 
 int hwmon_notify_event(struct device *dev, enum hwmon_sensor_types type,
 		       u32 attr, int channel);
