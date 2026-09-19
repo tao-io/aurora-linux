@@ -360,3 +360,19 @@ this diagnostic correction does not change firmware queue messages, shader
 execution or query timestamps. The latter already use the correct AP frequency
 in the get_time ioctl. The render command label was also renamed to avoid
 confusing it with the independently maintained ASID binding generation.
+
+## Validated publication clock
+
+`20260919T035919555296Z-factorio-publication-clock-menu` completes with
+zero invalid clock-order samples after CNTFRQ scaling. In the final 19.136 s,
+GPU spans total 12.224 s and end-to-next-start gaps total 6.910 s. Of the
+gaps, 2.022 s precedes host publication, 1.889 s follows it, and 2.999 s
+occurs with the follower already queued. Packet-final GPU end to CPU
+retirement averages 474 us. `publication-clock-summary.json` retains the
+full classification. Peak sensor 88 C; no thermal cutoff. This is all-client
+timing, including compositor, and does not establish 60 FPS.
+
+The earlier raw-CNTPCT diagnostic run is rejected because AP frequency is
+1 GHz and GPU frequency is 24 MHz. Its cross-domain gaps are invalid; the
+parser explicitly refuses those metrics. Firmware engine timestamps and
+scaled AP ticks have consistent ordering in this corrected measurement.
