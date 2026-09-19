@@ -247,7 +247,7 @@ impl Render {
         let mask = if r.flags & 16 != 0 {u64::MAX} else {u32::MAX as u64};
         let program = |p:crate::g17_uapi::UapiProgram| Program {
             address:usc+u64::from(p.usc & !63), resources:p.resource_spec & mask };
-        let state = State { geometry,vdm:r.vdm_base,tilemap:job.tilemap.gpu_va()?,tpc:job.tpc.gpu_va()?,
+        let state = State { geometry,parameter_buffer_id:u32::from(pool_slot),vdm:r.vdm_base,tilemap:job.tilemap.gpu_va()?,tpc:job.tpc.gpu_va()?,
             unknown:job.unknown.gpu_va()?,preemption:[job.preemption[0].gpu_va()?,job.preemption[1].gpu_va()?,job.preemption[2].gpu_va()?],
             scratch:job.scratch.gpu_va()?,scene_list:job.scene_list.gpu_va()?,auxiliary:job.auxiliary.gpu_va()?,multisample:r.multisample_control,ppp:r.ppp_control,
             // UAPI values are already validated. Merge limits are float bits,

@@ -15,6 +15,7 @@ fn native_m4_merge_dimensions_and_tilebuffer_contract() {
         for blocks in [0,2,4,16] {
             let a=0x1000010000;
             let s=State {
+                parameter_buffer_id:0,
                 geometry:Geometry::new(width,width,Utile::Pixels32,Utile::Pixels32,1).unwrap(),
                 vdm:a,tilemap:a,tpc:a,unknown:a,preemption:[a,a,a],scratch:a,auxiliary:a,scene_list:a,
                 multisample:0x88,ppp:0,merge_upper:[merge,merge],tilebuffer_blocks:blocks,
@@ -95,6 +96,7 @@ fn native_multisample_tilebuffer_control() {
         let mut geometry=Geometry::new(1024,1024,Utile::Pixels32,height,1).unwrap();
         geometry.set_samples(samples).unwrap();
         let mut s=State {
+            parameter_buffer_id:0,
             geometry,
             vdm:a,tilemap:a,tpc:a,unknown:a,preemption:[a,a,a],scratch:a,auxiliary:a,scene_list:a,
             multisample:0x88,ppp:0,merge_upper:[0x3addb3d9;2],tilebuffer_blocks:blocks,
@@ -123,5 +125,34 @@ fn native_multisample_tilebuffer_control() {
             0xfffffc2010000000,0xfffffc2012340000,0xfffffc2012350000,0).unwrap();
         assert_eq!(&command[0x9c0..0x9c8],&0x4c000u64.to_le_bytes());
         assert_eq!(&command[0x9b8..0x9c0],&native.to_le_bytes());
+    }
+}
+
+#[test]
+fn both_engines_select_the_owned_parameter_buffer() {
+    // Native M4 25G83 captures193422 and155413 have TA1c830/FS1c838
+    // pairs 2/2 and13/13, matching RunTA+18. Exercise both runtime banks;
+    // updating only manager+0xc leaves the GPU reading another owner's PB.
+    let a=0x1000010000;
+    for id in 0..32 {
+        let s=State {
+            parameter_buffer_id:id,
+            geometry:Geometry::new(128,128,Utile::Pixels32,Utile::Pixels32,1).unwrap(),
+            vdm:a,tilemap:a,tpc:a,unknown:a,preemption:[a,a,a],scratch:a,auxiliary:a,scene_list:a,
+            multisample:0x88,ppp:0,merge_upper:[0x3c5db3d9;2],tilebuffer_blocks:4,
+            background:Program::default(),eot:Program::default(),
+            partial_background:Program::default(),partial_eot:Program::default(),
+            depth_bias:0,scissor:a,query:0,depth:DepthStencil::default(),stencil:DepthStencil::default(),
+            depth_dimensions:0,zls_control:0,depth_clear:0x3f800000,stencil_clear:0x300,
+            process_empty_tiles:true,integer_depth_bias:false,
+        };
+        for (stage, address) in [(Stage::Tiling,0x1c830),(Stage::Fragment,0x1c838)] {
+            let mut registers=[Register::default();128];
+            let (n,_)=g16_render_state::registers(&mut registers,stage,&s,42).unwrap();
+            let selected:Vec<_>=registers[..n].iter().filter(|r|r.offset==address).collect();
+            assert_eq!(selected.len(),1);
+            assert!(!selected[0].flagged);
+            assert_eq!(selected[0].value,u64::from(id));
+        }
     }
 }
