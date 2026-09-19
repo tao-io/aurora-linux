@@ -327,3 +327,14 @@ allocation shim. All 107584 combinations pass: ordered alternating/grouped
 streams with 0..40 commands of each engine and every total limit 1..32.
 It checks order, no command loss, the 16-per-engine bounds, and that mixed
 streams fitting one bank are not split at the maximum total setting.
+
+Hardware follow-up: `20260919T033502167675Z-factorio-mixed-packet-frame`
+reproduces the original 2560x1664 frame exactly (0 differing components).
+`20260919T033534544353Z-factorio-mixed-packet-menu` completes 60 seconds of
+unchanged 2512x1552 animation, including 20-command mixed packets. Tail mean
+33.534 FPS, range 27.99–42.77, peak 90.25 C; scene changes prevent an isolated
+performance comparison. Normal schedutil governors and graphical autologin
+remain. The new bound is exercised without the former enlarged-slot timeout,
+but its cause is still unproven. Full concurrency/CTS qualification and 60 FPS
+remain TODO. The final nine summary intervals are retained in
+`mixed-packet-summary.json`; they include the compositor as well as the game.

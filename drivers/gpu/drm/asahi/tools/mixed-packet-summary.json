@@ -1,0 +1,164 @@
+{
+  "intervals": 9,
+  "span_seconds": 9.152869106,
+  "scope": "All clients; timestamp spans, not hardware utilization",
+  "engines": {
+    "render": {
+      "commands": 4465,
+      "prepare_seconds": 0.182358177,
+      "prepare_mean_ms": 0.040841696976483766,
+      "active_seconds": 61.539661239,
+      "active_mean_ms": 13.782678888913773,
+      "gpu_seconds": 5.562269085,
+      "gpu_mean_ms": 1.2457489552071668
+    },
+    "compute": {
+      "commands": 1868,
+      "prepare_seconds": 0.022342476,
+      "prepare_mean_ms": 0.011960640256959315,
+      "active_seconds": 13.895092612,
+      "active_mean_ms": 7.438486408993576,
+      "gpu_seconds": 0.362405683,
+      "gpu_mean_ms": 0.1940073249464668
+    }
+  },
+  "render_clears": {
+    "private_bytes": 0,
+    "private_mean_bytes": 0.0,
+    "private_seconds": 0.0,
+    "total_seconds": 0.094266465
+  },
+  "render_stages_seconds": {
+    "tiling": 0.128271764,
+    "stage_gap": 0.338568786,
+    "fragment": 5.095425549
+  },
+  "render_geometry": [
+    {
+      "asid": 7,
+      "width": 2512,
+      "height": 1552,
+      "commands": 3365,
+      "prepare_ns": 137434988,
+      "active_ns": 50502602976,
+      "fragment_ns": 3735875822,
+      "max_fragment_ns": 5378083
+    },
+    {
+      "asid": 2,
+      "width": 2560,
+      "height": 1664,
+      "commands": 625,
+      "prepare_ns": 28422336,
+      "active_ns": 2987497257,
+      "fragment_ns": 994586586,
+      "max_fragment_ns": 3679583
+    },
+    {
+      "asid": 7,
+      "width": 1256,
+      "height": 776,
+      "commands": 293,
+      "prepare_ns": 10128415,
+      "active_ns": 5592720678,
+      "fragment_ns": 311947240,
+      "max_fragment_ns": 2077875
+    },
+    {
+      "asid": 7,
+      "width": 628,
+      "height": 388,
+      "commands": 182,
+      "prepare_ns": 6372438,
+      "active_ns": 2456840328,
+      "fragment_ns": 53015901,
+      "max_fragment_ns": 329375
+    }
+  ],
+  "consecutive_command_handoff": {
+    "commands": 0,
+    "seconds": 0.0,
+    "mean_microseconds": null,
+    "scope": "Consecutive commands of one ioctl; excludes client interleaving"
+  },
+  "completion_wait_deltas": {
+    "messages": 5569,
+    "waits": 106386,
+    "late": 2773,
+    "timeouts": 18315,
+    "span_seconds": 9.152869106,
+    "geometry_overflow": 0
+  },
+  "batches": {
+    "counts_by_commands": {
+      "1": 292,
+      "2": 257,
+      "20": 182,
+      "3": 37,
+      "16": 111
+    },
+    "active_seconds": 8.629058184,
+    "scope": "Union of published busy intervals"
+  },
+  "hardware_timeline": {
+    "pstate_samples": {
+      "9": 117184
+    },
+    "gaps": {
+      "before_render": {
+        "seconds": 1.787964875,
+        "count": 4465,
+        "mean_microseconds": 400.4400615901456
+      },
+      "before_compute": {
+        "seconds": 1.426599125,
+        "count": 1868,
+        "mean_microseconds": 763.704028372591
+      }
+    },
+    "overlaps": 0,
+    "scope": "24 MHz end-to-next-start gaps include firmware/cache work, VM switches and queue starvation; state counts are polling samples, not durations"
+  },
+  "packet_boundaries": {
+    "queued_RR": {
+      "seconds": 0.9422488333333333,
+      "count": 3474,
+      "mean_microseconds": 271.2287948570332
+    },
+    "queued_RC": {
+      "seconds": 0.10305795833333334,
+      "count": 404,
+      "mean_microseconds": 255.09395627062705
+    },
+    "queued_CR": {
+      "seconds": 0.26300908333333334,
+      "count": 697,
+      "mean_microseconds": 377.34445241511236
+    },
+    "queued_CC": {
+      "seconds": 0.286014,
+      "count": 879,
+      "mean_microseconds": 325.3856655290102
+    },
+    "boundary_RR": {
+      "seconds": 0.561355875,
+      "count": 292,
+      "mean_microseconds": 1922.4516267123288
+    },
+    "boundary_RC": {
+      "seconds": 0.321682625,
+      "count": 294,
+      "mean_microseconds": 1094.1585884353742
+    },
+    "boundary_CR": {
+      "seconds": 0.021351083333333333,
+      "count": 2,
+      "mean_microseconds": 10675.541666666666
+    },
+    "boundary_CC": {
+      "seconds": 0.7158445416666667,
+      "count": 291,
+      "mean_microseconds": 2459.9468785796103
+    }
+  }
+}
