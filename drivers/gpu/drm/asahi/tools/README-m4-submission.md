@@ -274,3 +274,13 @@ was not reproduced with allocation diagnostics; its exact allocation remains
 unidentified. A separate eight-loop attempt stopped on stale thermal monitoring
 (`20260919T030009070032Z-factorio-packet-memory-after-menu-loop`) and triggered
 normal watchdog recovery. No performance result is taken from that run.
+
+### Rejected twenty-command capacity
+
+`20260919T031455017316Z-factorio-packet-twenty-frame` timed out after a boot
+with depth 20. The 1,958,504-byte sealed dump is retained (SHA256
+`b1031f5ebd151e5c1c71c3cf5df970b386bebe6c49ee3308b5717940073278b3`).
+The compute scheduler still had active nodes, with missing engine timestamps
+and completion stamps. Ring-entry arithmetic alone does not qualify larger
+private-slot/scheduler capacity. Reverted to the sixteen-command maximum.
+The failed run reached only 76.25 C; this was not a thermal cutoff.
