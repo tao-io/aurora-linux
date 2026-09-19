@@ -12,4 +12,8 @@ tools/gpu-pass-profile.py joins Mesa HK_M4_SHADER_PROFILE records by submitted
 VDM address within an explicitly selected ASID. Multiple shaders/address reuse
 remain an observed set, not individually attributed GPU cost. Synthetic checks
 cover interleaving, ASID separation, reuse, signed stage gaps and tail selection.
-Hardware qualification is pending at commit time.
+Hardware capture 20260919T054025709713Z passes (30-second menu, peak 87.75 C).
+The follow-up 054302402085Z with Mesa BEGIN/SUBMIT boundaries pairs 8,401
+retirements to recorded submission lifetimes, including recycled addresses.
+Only equal complete per-address sequence counts are paired; mismatches remain
+explicit unions. This is diagnostic timing, not a throughput qualification.
