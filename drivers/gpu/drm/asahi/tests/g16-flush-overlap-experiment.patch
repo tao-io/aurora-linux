@@ -1,0 +1,16 @@
+diff --git a/drivers/gpu/drm/asahi/g16_runtime.rs b/drivers/gpu/drm/asahi/g16_runtime.rs
+index 0d591c8f8f1b..ca3b982414a2 100644
+--- a/drivers/gpu/drm/asahi/g16_runtime.rs
++++ b/drivers/gpu/drm/asahi/g16_runtime.rs
+@@ -531,7 +531,10 @@ fn prepare_command(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usi
+             }
+             Work::Render(render) => {
+                 render.retain_notifier(packet.notifications.clone());
+-                if !packet.commands[index + 1..].iter().any(|command|
++                let compute_overlap = packet.commands.iter().any(|command|
++                    matches!(command.payload, crate::g16_submit::Payload::Render { command, .. }
++                        if command.flags & (1 << 6) != 0));
++                if compute_overlap || !packet.commands[index + 1..].iter().any(|command|
+                     matches!(command.payload, crate::g16_submit::Payload::Render { .. })) {
+                     render.request_completion_flush()?;
+                 }

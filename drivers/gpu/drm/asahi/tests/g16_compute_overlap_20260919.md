@@ -31,3 +31,7 @@ All rings still publish before any doorbell; DAG barriers are unchanged.
 Replays150644/150725 pass exact pixels and query counts. Experimental
 compute-crossing remains6.99..7.03ms, ordinary path6.15..6.25ms: ordering
 alone does NOT explain the initial fragment delay. No speedup claimed.
+
+Forced flush at every render in flag6 packets (archived patch) also fails
+to improve timings:151149 exact pixels/counts,6.91..7.03ms. Normalpath
+was unchanged. Remove the experiment from active source.
