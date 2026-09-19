@@ -167,8 +167,14 @@ pub(crate) fn parameter_manager(out: &mut [u8], a: ParameterManager) -> Result<(
         || a.write >= a.block_capacity || a.read >= a.block_capacity
         || a.min_pages > a.max_pages || a.max_pages > a.list_bytes / 4 { return Err(BuildError::Address); }
     out[..0xc0].fill(0);
+    // Full InitBuffer rebuild indexes hardware descriptors from manager+0xc
+    // (25G83 TEXT 2eb70/2ec90), not InitBuffer+8 or RunTA+18. The runtime
+    // reserves one physical slot per in-flight owner; bind that slot here.
+    // Leaving this zero aliases every owner's page list in descriptor zero,
+    // which serial rendering hides but overlapping TA/FS can corrupt.
     for (off,value,size) in [
-        (0x10,a.id as u64,4), (0x20,a.pages_fw,8), (0x28,a.pages_gpu,8),
+        (0xc,a.id as u64,4), (0x10,a.id as u64,4),
+        (0x20,a.pages_fw,8), (0x28,a.pages_gpu,8),
         (0x30,a.list_bytes as u64,4), (0x34,a.pages as u64,4), (0x38,a.block_capacity as u64,4),
         (0x3c,a.write as u64,4), (0x40,a.read as u64,4), (0x44,a.blocks,8), (0x4c,a.ring,8),
         (0x54,(a.pages-1) as u64,4), (0x58,0x20000,4), (0x64,a.counter,8),

@@ -88,3 +88,29 @@ fn reject_external_or_unmapped_wait_before_writing() {
         Err(g16_render::BuildError::BufferTooSmall));
     assert_eq!(short, [0xa5; 0x3f]);
 }
+
+#[test]
+fn concurrent_parameter_owners_select_disjoint_firmware_descriptors() {
+    let p = 0xfffffc2012340000;
+    let mut hardware_table = [0u64; 32];
+    let mut managers = Vec::new();
+    for id in 0..32 {
+        let pages = 0x7100000000 + u64::from(id) * 0x4000;
+        let mut manager = [0u8; 0xc0];
+        g16_render_command::parameter_manager(&mut manager,
+            g16_render_command::ParameterManager {
+                pages_fw:p, pages_gpu:pages, blocks:p, ring:p, counter:p,
+                discard:0, list_bytes:512, pages:128, block_capacity:64,
+                write:32, read:0, min_pages:128, max_pages:128, id,
+            }).unwrap();
+        // Model the witnessed firmware lookup (TEXT2eb70/2ec90). Register
+        // all owners before consuming any, as overlapped tiling can do.
+        let slot = u32::from_le_bytes(manager[12..16].try_into().unwrap()) as usize;
+        hardware_table[slot] = pages;
+        managers.push((manager, pages));
+    }
+    for (manager, expected) in managers {
+        let slot = u32::from_le_bytes(manager[12..16].try_into().unwrap()) as usize;
+        assert_eq!(hardware_table[slot], expected, "another owner replaced the page list");
+    }
+}
