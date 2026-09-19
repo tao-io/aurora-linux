@@ -585,10 +585,6 @@ impl Runtime {
                 compute.set_attachments(&attachments[0])?;
                 compute.set_user_timestamps(packet.commands[index].timestamp_addresses())?;
                 compute.set_timestamp_copies(packet.commands[index].end_copy_addresses())?;
-                if minimal && packet.commands[index].timestamp_addresses() == [0, 0] &&
-                    packet.commands[index].end_copy_addresses() == [0; 8] {
-                    compute.omit_internal_timestamps()?;
-                }
             }
             Work::Render(render) => {
                 render.retain_notifier(notifier);

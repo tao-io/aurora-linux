@@ -13,3 +13,10 @@ in /etc/modprobe.d/99-factorio-submit-summary.conf and initramfs, then reboot.
 Normal flags 25165824; experimental flags 58720256. Stage helper records old
 and new configuration, keeps watchdog progress enabled, delegates rollback.
 Hardware qualification pending. Full CTS deferred.
+
+First minimal boot rejected retirement at desktop job42: exact firmware/user
+stamps b00, all queue/pipe indices drained, but omitted compute timestamps zero.
+The host requires that pair as extra compute retirement proof. Preserve the
+requirement and retain ALL compute timestamp pairs; scope this experiment to
+unrequested render-engine pairs. Sealed fault retained in provenance163800.
+The decoder now accepts both explicitly known 4KiB/8KiB compute command sizes.

@@ -208,15 +208,6 @@ impl Compute {
         g16_memory::publish();
         Ok(())
     }
-    pub(crate) fn omit_internal_timestamps(&mut self) -> Result {
-        let mut sequence = [0u8; 0x300];
-        self.command.read(0x900, &mut sequence)?;
-        let size = g16_compute::omit_timestamps(&mut sequence, 0x1bc, 0x300, 0x64)
-            .map_err(|_| EINVAL)?;
-        self.command.write(0x900, &sequence)?;
-        self.command.u32(0x768, size.try_into()?)?;
-        Ok(())
-    }
     pub(crate) fn uma_submitted(&self) -> u64 { self.uma_submitted }
     pub(crate) fn uma_completed(&mut self) -> Result<u64> {
         self.command.read_u64(0xe54)
