@@ -407,3 +407,12 @@ threshold scan would defer it. The prior encoder left both fields zero.
 Compute retains its existing per-command alias-visibility flush. Firmware
 excerpts and their source hash are in render-notifier-flush-25g83.txt.
 Hardware qualification of this flush correction follows its build.
+
+Render flush qualification: `20260919T041453674433Z-factorio-render-flush-frame`
+is pixel-identical. `20260919T041525416094Z-factorio-render-flush-menu` passes
+60 s, tail 40.421 FPS (36.52–41.27), peak 86.75 C. Final 19.432 s has
+0.208 s of render-to-render packet gaps, versus 0.565 s in the preceding
+19.020 s sample; overall scenes and pass costs differ. Packet-final retirement
+still averages 1.611 ms across all clients/types. Render flush is retained
+as the native completion contract; this is not a claimed overall FPS gain.
+Full timings: render-flush-summary.json. 60 FPS remains unmet.

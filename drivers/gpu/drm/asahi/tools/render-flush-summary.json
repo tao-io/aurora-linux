@@ -1,0 +1,204 @@
+{
+  "intervals": 19,
+  "span_seconds": 19.431905598,
+  "scope": "All clients; timestamp spans, not hardware utilization",
+  "engines": {
+    "render": {
+      "commands": 8930,
+      "prepare_seconds": 0.375309621,
+      "prepare_mean_ms": 0.042027953079507276,
+      "active_seconds": 122.238752266,
+      "active_mean_ms": 13.688550085778274,
+      "gpu_seconds": 11.980532107,
+      "gpu_mean_ms": 1.341604939193729
+    },
+    "compute": {
+      "commands": 4991,
+      "prepare_seconds": 0.066216564,
+      "prepare_mean_ms": 0.013267193748747748,
+      "active_seconds": 35.478421869,
+      "active_mean_ms": 7.108479637146864,
+      "gpu_seconds": 0.915215816,
+      "gpu_mean_ms": 0.18337323502304148
+    }
+  },
+  "render_clears": {
+    "private_bytes": 0,
+    "private_mean_bytes": 0.0,
+    "private_seconds": 0.0,
+    "total_seconds": 0.192449154
+  },
+  "render_stages_seconds": {
+    "tiling": 0.271783965,
+    "stage_gap": 0.678991205,
+    "fragment": 11.02975098
+  },
+  "render_geometry": [
+    {
+      "asid": 8,
+      "width": 2512,
+      "height": 1552,
+      "commands": 6688,
+      "prepare_ns": 272552821,
+      "active_ns": 89928773564,
+      "fragment_ns": 8008138687,
+      "max_fragment_ns": 5126250
+    },
+    {
+      "asid": 2,
+      "width": 2560,
+      "height": 1664,
+      "commands": 1529,
+      "prepare_ns": 78713028,
+      "active_ns": 21528606106,
+      "fragment_ns": 2350952287,
+      "max_fragment_ns": 3704500
+    },
+    {
+      "asid": 8,
+      "width": 1256,
+      "height": 776,
+      "commands": 713,
+      "prepare_ns": 24043772,
+      "active_ns": 10781372596,
+      "fragment_ns": 670660006,
+      "max_fragment_ns": 1631083
+    }
+  ],
+  "consecutive_command_handoff": {
+    "commands": 0,
+    "seconds": 0.0,
+    "mean_microseconds": null,
+    "scope": "Consecutive commands of one ioctl; excludes client interleaving"
+  },
+  "completion_wait_deltas": {
+    "messages": 14148,
+    "waits": 213518,
+    "late": 6584,
+    "timeouts": 35684,
+    "span_seconds": 19.431905598,
+    "geometry_overflow": 0
+  },
+  "batches": {
+    "counts_by_commands": {
+      "1": 713,
+      "2": 610,
+      "17": 193,
+      "18": 39,
+      "16": 481,
+      "3": 103
+    },
+    "active_seconds": 18.093315845,
+    "scope": "Union of published busy intervals"
+  },
+  "hardware_timeline": {
+    "pstate_samples": {
+      "9": 236369
+    },
+    "gaps": {
+      "before_render": {
+        "seconds": 2.889217,
+        "count": 8930,
+        "mean_microseconds": 323.5405375139978
+      },
+      "before_compute": {
+        "seconds": 3.6464666666666665,
+        "count": 4991,
+        "mean_microseconds": 730.6084285046417
+      }
+    },
+    "overlaps": 0,
+    "scope": "24 MHz end-to-next-start gaps include firmware/cache work, VM switches and queue starvation; state counts are polling samples, not durations"
+  },
+  "packet_boundaries": {
+    "queued_RR": {
+      "seconds": 1.6110352083333332,
+      "count": 6078,
+      "mean_microseconds": 265.0600869255237
+    },
+    "queued_RC": {
+      "seconds": 0.33553995833333333,
+      "count": 1426,
+      "mean_microseconds": 235.30151355773725
+    },
+    "queued_CR": {
+      "seconds": 1.0013463333333332,
+      "count": 2139,
+      "mean_microseconds": 468.1376032413901
+    },
+    "queued_CC": {
+      "seconds": 0.32812375,
+      "count": 2139,
+      "mean_microseconds": 153.4005376344086
+    },
+    "boundary_RR": {
+      "seconds": 0.207838875,
+      "count": 704,
+      "mean_microseconds": 295.22567471590907
+    },
+    "boundary_RC": {
+      "seconds": 1.2461642916666666,
+      "count": 722,
+      "mean_microseconds": 1725.9893236380426
+    },
+    "boundary_CR": {
+      "seconds": 0.06899658333333333,
+      "count": 9,
+      "mean_microseconds": 7666.2870370370365
+    },
+    "boundary_CC": {
+      "seconds": 1.7366386666666667,
+      "count": 704,
+      "mean_microseconds": 2466.816287878788
+    }
+  },
+  "publication_gaps": {
+    "queued_RR": {
+      "already_queued_seconds": 1.6110352083333332,
+      "before_publication_seconds": 0.0,
+      "after_publication_seconds": 0.0
+    },
+    "queued_RC": {
+      "already_queued_seconds": 0.33553995833333333,
+      "before_publication_seconds": 0.0,
+      "after_publication_seconds": 0.0
+    },
+    "queued_CR": {
+      "already_queued_seconds": 1.0013463333333332,
+      "before_publication_seconds": 0.0,
+      "after_publication_seconds": 0.0
+    },
+    "queued_CC": {
+      "already_queued_seconds": 0.32812375,
+      "before_publication_seconds": 0.0,
+      "after_publication_seconds": 0.0
+    },
+    "boundary_RR": {
+      "already_queued_seconds": 0.19247983333333332,
+      "before_publication_seconds": 0.003016375,
+      "after_publication_seconds": 0.012342666666666667
+    },
+    "boundary_RC": {
+      "already_queued_seconds": 0.09080754166666667,
+      "before_publication_seconds": 0.95456425,
+      "after_publication_seconds": 0.2007925
+    },
+    "boundary_CR": {
+      "already_queued_seconds": 0.0,
+      "before_publication_seconds": 0.06072579166666667,
+      "after_publication_seconds": 0.008270791666666666
+    },
+    "boundary_CC": {
+      "already_queued_seconds": 0.032611416666666664,
+      "before_publication_seconds": 0.7979327916666666,
+      "after_publication_seconds": 0.9060944583333334
+    }
+  },
+  "final_gpu_end_to_host_retirement": {
+    "count": 2139,
+    "mean_microseconds": 1610.7933029453015,
+    "maximum_microseconds": 7977.833333333333,
+    "invalid": 0,
+    "note": "Physical 24 MHz clock; packet-final GPU end to host retirement. Publication starts before queue producer writes; post-publication gaps include that small host cost."
+  }
+}
