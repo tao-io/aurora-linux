@@ -57,6 +57,9 @@ impl Render {
     pub(crate) fn retain_notifier(&mut self, notifier: crate::g16_queue::Client) {
         self.notifier_owner = Some(notifier);
     }
+    pub(crate) fn notifier(&self) -> Result<&crate::g16_queue::Client> {
+        self.notifier_owner.as_ref().ok_or(EIO)
+    }
     pub(crate) fn profiling_key(&self) -> [u32; 3] {
         [self.binding.slot(), self.layout[0], self.layout[1]]
     }
@@ -66,6 +69,7 @@ impl Render {
         // Retained pass-owned state only. In particular, partial tiling can
         // exhaust parameter pages while fragment work waits for a dependency.
         // Keep allocator and command evidence together without reading user BOs.
+        self.notifier()?.lock().capture_render_fault(dump)?;
         let mut parameters = self.parameters.lock();
         dump.buffer("render-parameter-manager", &mut parameters.manager, 0xc0)?;
         dump.buffer("render-parameter-ring", &mut parameters.ring, 8)?;

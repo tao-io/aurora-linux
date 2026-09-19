@@ -265,6 +265,16 @@ impl ClientNotifications {
             event_seq: self.reserved[engine],
         }
     }
+    /// A fresh one-scene notifier starts immediately before its event, even
+    /// after the global event value crosses the signed half-range or wraps.
+    pub(crate) fn prime_render_stamps(&mut self, previous: u32) -> Result {
+        if self.reserved != [0; 3] || self.submitted != [0; 3] { return Err(EBUSY); }
+        for engine in 0..2 {
+            self.data.u32(0x620 + engine * 16, previous)?;
+            self.data.u32(0x628 + engine * 16, previous)?;
+        }
+        Ok(())
+    }
     /// Reserve sequence numbers during preparation, without advancing the
     /// firmware threshold until the corresponding packet is published.
     pub(crate) fn reserve(&mut self, render: bool)
@@ -295,5 +305,9 @@ impl ClientNotifications {
     #[cfg(CONFIG_DEV_COREDUMP)]
     pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
         dump.buffer("client-notifications", &mut self.data, 0x1000)
+    }
+    #[cfg(CONFIG_DEV_COREDUMP)]
+    pub(crate) fn capture_render_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
+        dump.buffer("render-client-notifications", &mut self.data, 0x1000)
     }
 }

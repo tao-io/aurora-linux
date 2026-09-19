@@ -34,3 +34,19 @@ also matches, and logs exactlyone init per ten scenes, but6.844..6.919ms
 is still slower than the private normal path. Unbounded private compute
 overlap had taken~7ms. Neither experimental path should be the default.
 Watchdog/thermals passed, peak67.25C. No live qualification claimed yet.
+
+Eight targeted synchronization2 cases152624 allPass (fragment/vertex consumers
+after fragment/compute writes), peak73.5C. Full CTS still deferred.
+
+Next experiment: independent tiling behind the most recent full-order TA
+anchor. Merely removing the immediate TA chain is UNSAFE with cumulative
+completion stamps: a later TA can finish first and satisfy an earlier wait.
+Each shared-pool scene therefore owns an entire retained ClientNotifications
+object (not just private stamp cells in one coalescing notifier). Publication,
+barriers, retirement and fault capture all select that scene's notifier.
+New stamps are primed to event-0x100 before publication to preserve signed
+comparison ordering across wrap. Compute and default render notifications
+remain unchanged. FS still waits on the immediate previous command and own TA.
+The TA anchor advances on every full-order render; it keeps all inherited
+non-fragment dependencies. Packet boundaries remain fully ordered.
+Hardware qualification of independent completion/tiling is pending.

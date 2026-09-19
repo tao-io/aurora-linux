@@ -175,7 +175,7 @@ impl Inner {
             // Publish both retained stages. Waiting on the CPU for final TA
             // retirement deadlocks a pass which needs a partial fragment to
             // free parameter pages. The firmware barrier encodes that DAG.
-            active.packet.notifications.lock().publish(true)?;
+            r.notifier()?.lock().publish(true)?;
             let mut ta_commands = [0; 3];
             let mut count = 0;
             if let Some(address) = r.compute_dependency() {
@@ -383,13 +383,18 @@ impl Runtime {
                 let mut addresses = [[0u64; COMPUTE_DEPTH * 3]; 3];
                 let mut entries = [0usize; 3];
                 let mut previous_render = None;
+                let mut ordered_tiling = None;
                 let mut compute_since_render = false;
-                let mut previous = inner.inflight.last().map(|active| match &active.work {
+                let shared_tiling = batch.iter().any(|active| matches!(
+                    active.packet.commands[active.index].payload,
+                    crate::g16_submit::Payload::Render { command, .. }
+                        if command.flags & (1 << 6) != 0));
+                let mut previous = inner.inflight.last().map(|active| -> Result<_> { Ok(match &active.work {
                     Work::Compute(c) => (active.packet.notifications.lock().notification(2).fw_stamp,
                         crate::g16_compute::SLOT, c.stamp()),
-                    Work::Render(r) => (active.packet.notifications.lock().notification(1).fw_stamp,
+                    Work::Render(r) => (r.notifier()?.lock().notification(1).fw_stamp,
                         crate::g16_render_job::SLOTS[1], r.stamp()),
-                });
+                }) }).transpose()?;
                 for active in batch.iter_mut() {
                     match &mut active.work {
                         Work::Compute(c) => {
@@ -420,7 +425,14 @@ impl Runtime {
                             let early_tiling = previous_render.filter(|(packet, _, _)|
                                 fragment_only && *packet == active.packet.id &&
                                     (!compute_since_render || across_compute));
-                            let tiling_dependency = early_tiling.map(|(_, address, stamp)|
+                            // In the shared-pool experiment, independent TAs
+                            // retain the most recent full-order anchor, not
+                            // an artificial chain through fragment-only work.
+                            // FS ordering and each scene's TA->FS edge remain.
+                            let ta_predecessor = if shared_tiling && early_tiling.is_some() {
+                                ordered_tiling.or(early_tiling)
+                            } else { early_tiling };
+                            let tiling_dependency = ta_predecessor.map(|(_, address, stamp)|
                                 (address, crate::g16_render_job::SLOTS[0], stamp)).or(previous);
                             if let Some((address, slot, stamp)) = tiling_dependency {
                                 r.wait_for_prior(address, slot, stamp)?;
@@ -441,12 +453,13 @@ impl Runtime {
                             addresses[1][entries[1]] = r.fragment_dependency();
                             addresses[1][entries[1] + 1] = r.fragment_address();
                             entries[1] += 2;
-                            active.packet.notifications.lock().publish(true)?;
-                            previous = Some((active.packet.notifications.lock().notification(1).fw_stamp,
+                            r.notifier()?.lock().publish(true)?;
+                            previous = Some((r.notifier()?.lock().notification(1).fw_stamp,
                                 crate::g16_render_job::SLOTS[1], r.stamp()));
                             compute_since_render = false;
                             previous_render = Some((active.packet.id,
-                                active.packet.notifications.lock().notification(0).fw_stamp, r.stamp()));
+                                r.notifier()?.lock().notification(0).fw_stamp, r.stamp()));
+                            if early_tiling.is_none() { ordered_tiling = previous_render; }
                         }
                     }
                 }
@@ -519,7 +532,16 @@ impl Runtime {
         } else {
             inner.compute_stamp = inner.compute_stamp.wrapping_add(0x100).max(0x100);
         }
-        let (notifications, render_counter) = packet.notifications.lock().reserve(
+        // Independent TAs need independent completion records, not merely
+        // independent stamp cells: one coalescing notifier can otherwise
+        // overwrite an earlier scene's pending stamp with a later one.
+        let notifier = if shared_parameters.is_some() &&
+            matches!(payload, crate::g16_submit::Payload::Render { .. }) {
+            let client = crate::g16_queue::ClientNotifications::new(&inner.drm, &inner.uat, &packet.vm)?;
+            client.lock().prime_render_stamps(inner.render_stamp.wrapping_sub(0x100))?;
+            client
+        } else { packet.notifications.clone() };
+        let (notifications, render_counter) = notifier.lock().reserve(
             matches!(payload, crate::g16_submit::Payload::Render { .. }))?;
         let pool_slot: u8 = (batch_offset + 1).try_into()?;
         let compute_owner = if matches!(payload, crate::g16_submit::Payload::Compute(_)) {
@@ -561,7 +583,7 @@ impl Runtime {
                 compute.set_timestamp_copies(packet.commands[index].end_copy_addresses())?;
             }
             Work::Render(render) => {
-                render.retain_notifier(packet.notifications.clone());
+                render.retain_notifier(notifier);
                 if !packet.commands[index + 1..].iter().any(|command|
                     matches!(command.payload, crate::g16_submit::Payload::Render { .. })) {
                     render.request_completion_flush()?;
@@ -643,10 +665,13 @@ impl Runtime {
         let mut status = active.work.status()?;
         let pipe_index = active.work.pipe();
         let engine = match pipe_index { 0=>&mut inner.queue,1=>&mut inner.fragment_queue,_=>&mut inner.compute_queue };
-        // Each client engine owns one firmware and user stamp. Firmware can coalesce
-        // notifications across a batch; a private stamp cell per render loses
-        // earlier completions when only the last event record is written.
-        let [firmware, shared] = active.packet.notifications.lock().stamps(pipe_index)?;
+        // Read the notifier which owns this command's completion record.
+        // Experimental independent scenes each own the complete notifier,
+        // so coalescing cannot publish another scene's stamp on their behalf.
+        let [firmware, shared] = match &active.work {
+            Work::Render(r) => r.notifier()?.lock().stamps(pipe_index)?,
+            Work::Compute(_) => active.packet.notifications.lock().stamps(pipe_index)?,
+        };
         if shared.wrapping_sub(active.work.stamp()) as i32 >= 0 {
             status[1] = active.work.stamp() as u64;
         }
