@@ -66,3 +66,7 @@ in place of a missing TA userstamp. TA firmware completion and the existing
 queue/pipe checks remain mandatory. OwnFS has an explicit barrier on ownTA.
 This is not accepting queue-idle alone or ignoring a timeout. Build passes;
 replay qualification pending. Original failure remains recorded.
+
+Retirement fix754cccf0ab3b replay153923 passes allfiveframes, everypixel and
+alltenquerytotals. WholeGPU6.716..6.890ms, stillslowerthan normal6.2ms.
+Peak73.5C, watchdog/thermalsPASS. Doesnotjustifydefaultenablement.
