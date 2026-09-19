@@ -22,3 +22,8 @@ unmap them while ASC runs. A fault dump retains the first 4 MiB of AP-visible
 program data, which is not necessarily the firmware's cached state.
 
 Build and 16 host wire tests passed. Hardware measurement pending.
+
+Hardware: 171104 cached ON and 171129 OFF both reproduce exact pixels and
+all ten query results. Complete-frame median 5.994625 ms ON, 6.083208 ms OFF
+(five frames each). This small difference does not justify enabling a bounded
+allocator or establish a robust production gain. Normal desktop remains OFF.
