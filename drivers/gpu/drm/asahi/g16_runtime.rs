@@ -187,8 +187,8 @@ impl Inner {
                 crate::g16_render_job::SLOTS[0],false)?;
             active.pipe_next[1] = self.config.publish_queue(1,frag,frag_next.try_into()?,
                 crate::g16_render_job::SLOTS[1],!self.fragment_registered)?;
-            Pin::new(&mut self.transport).send_message(0x21,0x0083000000000000)?;
             Pin::new(&mut self.transport).send_message(0x21,0x0083000000000001)?;
+            Pin::new(&mut self.transport).send_message(0x21,0x0083000000000000)?;
             self.fragment_registered = true;
             return Ok(());
         }
@@ -438,7 +438,10 @@ impl Runtime {
                     active.published = kernel::time::Instant::<kernel::time::Monotonic>::now();
                     active.started = kernel::time::Instant::<kernel::time::Monotonic>::now();
                 }
-                for i in 0..3 {
+                // Match the common Asahi queue: make the fragment consumer
+                // visible to firmware before waking its tiling producer.
+                // Every ring and dependency is already published above.
+                for i in [1, 0, 2] {
                     if entries[i] != 0 {
                         Pin::new(&mut inner.transport).send_message(0x21, 0x0083000000000000 | i as u64)?;
                     }

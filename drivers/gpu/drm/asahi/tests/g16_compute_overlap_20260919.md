@@ -25,3 +25,9 @@ in150130, but still takes6.40..6.58ms. Its first FS gap is~0.36ms.
 Do not enable either experimental policy by default. The window patch is
 removed from active source; it was not a useful performance improvement.
 All runs guarded with watchdog60s and six thermal sensors; no GPU fault.
+
+Fragment-first doorbells match common Asahi queue/mod.rs run order.
+All rings still publish before any doorbell; DAG barriers are unchanged.
+Replays150644/150725 pass exact pixels and query counts. Experimental
+compute-crossing remains6.99..7.03ms, ordinary path6.15..6.25ms: ordering
+alone does NOT explain the initial fragment delay. No speedup claimed.
