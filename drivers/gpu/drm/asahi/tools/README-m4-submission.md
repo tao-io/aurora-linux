@@ -131,3 +131,19 @@ mirrored `gpu-summary-timings.py LOG --tail-seconds 15` reports both, explicitly
 
 Normal FIFO/vsync main-menu 60 FPS remains unmet. The next measurement isolates
 presentation pacing with a separate diagnostic launcher, not the normal one.
+
+## Prepare one CPU successor
+
+The scheduler admits two packets: one published and one fully prepared.
+Preparation may allocate/clear private backing while firmware executes its
+predecessor, but publication and hardware-slot replacement remain serialized.
+The new explicitly named `submit_serialized_batch` API chains scheduled fences;
+the runtime must enforce execution order and propagate the shared earlier error.
+The output syncobj still receives the last job's finished fence.
+
+`20260919T004917311684Z-factorio-prepare-ahead-frame`: zero differing pixels.
+`20260919T005001354680Z-factorio-prepare-ahead-queries`: Pass, all eight copies
+identical and overflow reads ordered. Live `20260919T005024295412Z-factorio-prepare-ahead-menu`
+averages 21.497 FPS (20.67--21.95), sampled peak 88.75 C under the requested
+80 C passive policy and independent 95 C cutoff. Full CTS remains deferred;
+60 FPS and queued consecutive firmware packets remain TODO.

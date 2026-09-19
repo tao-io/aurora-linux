@@ -299,11 +299,15 @@ impl<T: JobImpl> Entity<T> {
     /// Allocate an entire ordered batch before publishing any job.
     ///
     /// Input dependencies gate the first job. Each successor explicitly waits
-    /// for its predecessor's finished fence. The caller holds the entity
+    /// for its predecessor's scheduled fence, allowing CPU preparation to
+    /// overlap execution. The driver MUST serialize publication/completion
+    /// in run order and propagate earlier failures to every later job. This
+    /// is not suitable for independently executing hardware queues.
+    /// The caller holds the entity
     /// exclusively until every job has been pushed, in allocation order.
     /// Returns the final job's finished fence. An allocation failure publishes
     /// nothing, including when adding a dependency fails partway through.
-    pub fn submit_batch(&mut self, credits: u32, inners: KVec<T>,
+    pub fn submit_serialized_batch(&mut self, credits: u32, inners: KVec<T>,
         dependencies: KVec<Fence>) -> Result<Fence> {
         if inners.is_empty() { return Err(crate::error::code::EINVAL); }
         let mut jobs = KVec::with_capacity(inners.len(), GFP_KERNEL)?;
@@ -314,10 +318,10 @@ impl<T: JobImpl> Entity<T> {
             for fence in dependencies.drain(..) { job.add_dependency(fence)?; }
             if let Some(fence) = previous.take() { job.add_dependency(fence)?; }
             let mut job = job.arm();
-            previous = Some(job.fences().finished());
+            previous = Some(job.fences().scheduled());
             jobs.push(job, GFP_KERNEL)?;
         }
-        let finished = previous.expect("nonempty batch");
+        let finished = jobs.last_mut().expect("nonempty batch").fences().finished();
         for job in jobs { job.push(); }
         Ok(finished)
     }

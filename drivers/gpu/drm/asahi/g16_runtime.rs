@@ -35,8 +35,9 @@ struct Inner {
     /// Commands published to the firmware, oldest first. The firmware
     /// executes each queue in order, so retirement is checked at the front.
     inflight: KVec<Active>,
-    /// Packet commands admitted by the scheduler but not yet published.
-    pending: KVec<(Arc<crate::g16_submit::Packet>, usize)>,
+    /// Fully prepared CPU-side owners. Only pump publishes them, after the
+    /// preceding packet has retired. The scheduler admits at most one ahead.
+    pending: KVec<KVec<Active>>,
     /// Firmware event messages counted at the last snapshot that found the
     /// front command unretired, and snapshots that retired a command without
     /// any newer message: retirements a message-driven worker would miss.
@@ -213,45 +214,50 @@ impl Runtime {
     pub(crate) fn publish(&mut self, packet: Arc<crate::g16_submit::Packet>) -> Result {
         if !self.healthy() { return Err(EIO); }
         if packet.commands.is_empty() { return Err(EINVAL); }
-        self.inner.pending.push((packet, 0), GFP_KERNEL)?;
+        let count = packet.commands.len();
+        if count > COMPUTE_DEPTH { return Err(EINVAL); }
+        // No prepared owner is visible to firmware. It may use the same slot
+        // number as an active owner, but never that owner's backing allocation.
+        let mut batch = KVec::with_capacity(count, GFP_KERNEL)?;
+        self.inner.pending.reserve(1, GFP_KERNEL)?;
+        for offset in 0..count {
+            batch.push(self.prepare_command(packet.clone(), offset, offset as u64)?, GFP_KERNEL)?;
+        }
+        self.inner.pending.push(batch, GFP_KERNEL).expect("reserved prepared packet");
         self.pump()
     }
 
-    /// Publish pending commands in order while the admission policy allows.
-    /// A publication failure marks the runtime failed and fails that packet;
-    /// later pending packets fail when the scheduler observes the health.
+    /// Publish only after the preceding packet has retired. Preparation may
+    /// overlap GPU execution; queue publication and hardware slot replacement
+    /// still cannot overlap across packets.
     fn pump(&mut self) -> Result {
-        while let Some((packet, index)) = self.inner.pending.first().map(|(p, i)| (p.clone(), *i)) {
-            if !self.inner.inflight.is_empty() { break; }
-            let _ = self.inner.pending.remove(0);
-            let count = match self.start_batch(packet.clone(), index) {
-                Ok(count) => count,
-                Err(error) => { packet.finish(Err(error)); return Err(error); }
-            };
-            if index + count < packet.commands.len() {
-                self.inner.pending.push((packet, index + count), GFP_KERNEL)?;
-                self.inner.pending.rotate_right(1);
+        while self.inner.inflight.is_empty() && !self.inner.pending.is_empty() {
+            let batch = self.inner.pending.remove(0).map_err(|_| EIO)?;
+            let packet = batch[0].packet.clone();
+            if let Err(error) = packet.previous_result() {
+                packet.finish(Err(error));
+                continue;
+            }
+            if let Err(error) = self.start_batch(batch) {
+                packet.finish(Err(error));
+                return Err(error);
             }
         }
         Ok(())
     }
 
-    /// Prepare all owners before making any command visible, like the common
-    /// WorkQueue JobSubmission. One ring publication and doorbell cover the
-    /// batch; no follower is appended while its predecessor is being started.
-    fn start_batch(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usize) -> Result<usize> {
-        let count = packet.commands.len().checked_sub(index).ok_or(EINVAL)?;
-        if count == 0 || count > COMPUTE_DEPTH { return Err(EINVAL); }
-        let mut batch = KVec::with_capacity(count, GFP_KERNEL)?;
+    /// Publish the prepared ring atomically; never append followers while
+    /// firmware is starting their predecessor.
+    fn start_batch(&mut self, mut batch: KVec<Active>) -> Result<()> {
+        let count = batch.len();
         self.inner.inflight.reserve(count, GFP_KERNEL)?;
         self.inner.retired_computes.reserve(count, GFP_KERNEL)?;
         self.inner.retired_renders.reserve(count, GFP_KERNEL)?;
-        for offset in 0..count {
-            batch.push(self.prepare_command(packet.clone(), index + offset, offset as u64)?, GFP_KERNEL)?;
-        }
         let inner = &mut *self.inner;
         inner.gpu_pending = true;
         let publish = if count == 1 {
+            batch[0].published = kernel::time::Instant::<kernel::time::Monotonic>::now();
+            batch[0].started = kernel::time::Instant::<kernel::time::Monotonic>::now();
             inner.publish_active(&mut batch[0])
         } else {
             (|| -> Result {
@@ -331,7 +337,7 @@ impl Runtime {
             dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven after batch publication error {:?}\n", error);
             return Err(error);
         }
-        Ok(count)
+        Ok(())
     }
 
     fn prepare_command(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usize,
@@ -422,10 +428,10 @@ impl Runtime {
             dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven, job {} error {:?}; retaining DMA owners\n", id, error);
             return;
         }
-        if let Some(position) = inner.pending.iter().position(|(packet, _)| packet.id == id) {
+        if let Some(position) = inner.pending.iter().position(|batch| batch[0].packet.id == id) {
             // Never published: no firmware or GPU owner references it.
-            if let Ok((packet, _)) = inner.pending.remove(position) {
-                packet.finish(Err(error));
+            if let Ok(batch) = inner.pending.remove(position) {
+                batch[0].packet.finish(Err(error));
             }
         }
     }

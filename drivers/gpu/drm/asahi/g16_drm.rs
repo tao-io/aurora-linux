@@ -35,11 +35,10 @@ impl Registered {
         // Install the teardown owner before publishing the backend. On any
         // later construction failure Drop breaks the runtime -> DRM cycle.
         let owner = Self { registration: KBox::pin_init(new_mutex!(None), GFP_KERNEL)?, shared: shared.clone(), health: health.clone() };
-        // Rendering and compute currently admit one hardware command at a
-        // time. Keep other clients in DRM's scheduler until it can choose
-        // them, rather than adding an eight-packet FIFO inside our runtime
-        // which bypasses the scheduler's priority and fairness decisions.
-        let scheduler = Arc::new(drm::sched::Scheduler::new(drm.as_ref(), 4, 1, 0,
+        // One executing packet and one prepared successor. The runtime still
+        // serializes firmware publication, hardware slots and completion; the
+        // extra credit hides CPU preparation behind the executing packet.
+        let scheduler = Arc::new(drm::sched::Scheduler::new(drm.as_ref(), 4, 2, 0,
             3000, kernel::c_str!("asahi_m4_sched"))?, GFP_KERNEL)?;
         let backend: Arc<dyn DrmGpu> = Arc::new(Backend {
             shared, scheduler, ids: gpu::SequenceIDs::default(), core_mask: mask, health,

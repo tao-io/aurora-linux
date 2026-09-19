@@ -81,6 +81,10 @@ pub(crate) struct Packet {
     _vm_job: mmu::T8140VmJobGuard,
 }
 impl Packet {
+    pub(crate) fn previous_result(&self) -> Result {
+        let failure = self.failure.load(Ordering::Relaxed);
+        if failure == 0 { Ok(()) } else { Err(Error::from_errno(failure)) }
+    }
     pub(crate) fn finish(&self, result: Result) {
         // Publication failure is reported by both the runtime and DRM job;
         // cancellation may also arrive after retirement. Only the first
@@ -287,7 +291,7 @@ impl queue::Queue for Queue {
         for sync in syncs.drain(0..in_sync_count) {
             if let Some(fence) = sync.fence { dependencies.push(fence, GFP_KERNEL)?; }
         }
-        let finished = self.entity.submit_batch(1, jobs, dependencies)?;
+        let finished = self.entity.submit_serialized_batch(1, jobs, dependencies)?;
         for mut sync in syncs {
             if let Some(chain) = sync.chain_fence.take() {
                 sync.syncobj.add_point(chain, &finished, sync.timeline_value);
