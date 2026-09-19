@@ -1,0 +1,24 @@
+--- a/drivers/gpu/drm/asahi/g16_runtime.rs
++++ b/drivers/gpu/drm/asahi/g16_runtime.rs
+@@ -584,6 +584,7 @@
+             }
+             Work::Render(render) => {
+                 render.retain_notifier(notifier);
++                render.request_fragment_completion_flush()?;
+                 if !packet.commands[index + 1..].iter().any(|command|
+                     matches!(command.payload, crate::g16_submit::Payload::Render { .. })) {
+                     render.request_completion_flush()?;
+--- a/drivers/gpu/drm/asahi/g16_render_job.rs
++++ b/drivers/gpu/drm/asahi/g16_render_job.rs
+@@ -53,6 +53,11 @@
+         self.commands[0].u32(0x894, 1)?;
+         self.commands[1].u32(0xbdc, 1)?;
+         Ok(())
++    }
++    /// Publish a fragment completion promptly without forcing the tiling
++    /// engine's notifier on every scene.
++    pub(crate) fn request_fragment_completion_flush(&mut self) -> Result {
++        self.commands[1].u32(0xbdc, 1)
+     }
+     pub(crate) fn retain_notifier(&mut self, notifier: crate::g16_queue::Client) {
+         self.notifier_owner = Some(notifier);
