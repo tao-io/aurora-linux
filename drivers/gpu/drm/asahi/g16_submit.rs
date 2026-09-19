@@ -62,10 +62,10 @@ impl Command {
 // recent firmware owner separately; only its retired predecessor returns here.
 // This avoids losing every game allocation when the compositor submits next.
 // Queue/packet ownership bounds lifetime without a global VM-pinning cache.
-pub(crate) type RenderCache = Arc<Mutex<KVec<KBox<crate::g16_render_job::Render>>>>;
+pub(crate) type RenderCache = Arc<Mutex<Option<KVec<KBox<crate::g16_render_job::Render>>>>>;
 // Same displacement rule for compute owners: firmware caches the UMA
 // descriptor, so only the predecessor of a retired replacement returns.
-pub(crate) type ComputeCache = Arc<Mutex<KVec<KBox<crate::g16_job::Compute>>>>;
+pub(crate) type ComputeCache = Arc<Mutex<Option<KVec<KBox<crate::g16_job::Compute>>>>>;
 
 pub(crate) struct Packet {
     pub(crate) id: u64,
@@ -193,6 +193,19 @@ pub(crate) struct Queue {
     compute_cache: ComputeCache,
 }
 
+impl Drop for Queue {
+    fn drop(&mut self) {
+        // Firmware's last slot owners remain in Runtime, independently of
+        // this reusable cache. A retained slot must not keep every displaced
+        // allocation of a closed userspace queue alive. Closing also prevents
+        // pending jobs from repopulating the cache after this destructor.
+        let renders = self.render_cache.lock().take();
+        let computes = self.compute_cache.lock().take();
+        drop(renders);
+        drop(computes);
+    }
+}
+
 impl Queue {
     pub(crate) fn new(shared: Shared, scheduler: Arc<sched::Scheduler<Job>>,
         dev: driver::AsahiDevRef, vm: mmu::Vm, priority: u32, usc: u64) -> Result<Self> {
@@ -207,8 +220,8 @@ impl Queue {
         };
         Ok(Self { entity: sched::Entity::new(&scheduler, priority)?, _scheduler: scheduler,
             shared, dev, vm, usc,
-            render_cache: Arc::pin_init(new_mutex!(KVec::new()), GFP_KERNEL)?,
-            compute_cache: Arc::pin_init(new_mutex!(KVec::new()), GFP_KERNEL)?,
+            render_cache: Arc::pin_init(new_mutex!(Some(KVec::new())), GFP_KERNEL)?,
+            compute_cache: Arc::pin_init(new_mutex!(Some(KVec::new())), GFP_KERNEL)?,
             fences: FenceContexts::new(1, c_str!("asahi_m4_queue"), kernel::static_lock_class!())? })
     }
 }

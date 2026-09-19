@@ -254,3 +254,23 @@ compositor scheduling points; it is an experiment, not a default speedup.
   replay failed during snapshot upload, VM ENOMEM at call 5821. Desktop
   remained usable. Allocation diagnosis remains TODO; 16 is not qualified
   for default use. No claim of 60 FPS or complete submission support.
+
+### Closed queue cache lifetime
+
+A retained firmware slot held a strong reference to its entire former queue's
+reuse cache. Queue destruction now closes and empties that cache. A later
+retirement cannot refill a closed cache; Runtime still retains each firmware
+slot's last owner until a replacement of that exact slot retires. In-flight
+DMA backing and private allocator state are never released by cache teardown.
+
+`20260919T030453002176Z-factorio-closed-cache-frame` and
+`20260919T030512286938Z-factorio-closed-cache-shader-frame` both reproduce the
+original frame exactly. First post-replay shared memory is 5881 MiB versus
+7846 MiB before this fix (same sixteen-command setting; desktop remains live).
+`20260919T030555419791Z-factorio-closed-cache-menu` completes 60 seconds of the
+live menu, peak 87.75 C. This is bounded lifetime/rendering evidence, not a
+complete memory-accounting or concurrency qualification. The original ENOMEM
+was not reproduced with allocation diagnostics; its exact allocation remains
+unidentified. A separate eight-loop attempt stopped on stale thermal monitoring
+(`20260919T030009070032Z-factorio-packet-memory-after-menu-loop`) and triggered
+normal watchdog recovery. No performance result is taken from that run.

@@ -420,15 +420,19 @@ impl Runtime {
         let pool_slot: u8 = (batch_offset + 1).try_into()?;
         let compute_owner = if matches!(payload, crate::g16_submit::Payload::Compute(_)) {
             let mut cache = packet.compute_cache.lock();
-            let index = cache.iter().position(|owner| owner.pool_slot() == pool_slot
-                && owner.same_vm(&packet.vm));
-            index.and_then(|i| cache.remove(i).ok())
+            Option::as_mut(&mut *cache).and_then(|cache| {
+                let index = cache.iter().position(|owner| owner.pool_slot() == pool_slot
+                    && owner.same_vm(&packet.vm));
+                index.and_then(|i| cache.remove(i).ok())
+            })
         } else { None };
         let render_owner = if matches!(payload, crate::g16_submit::Payload::Render { .. }) {
             let mut cache = packet.render_cache.lock();
-            let index = cache.iter().position(|owner| owner.pool_slot() == batch_offset as u8
-                && owner.same_vm(&packet.vm));
-            index.and_then(|i| cache.remove(i).ok())
+            Option::as_mut(&mut *cache).and_then(|cache| {
+                let index = cache.iter().position(|owner| owner.pool_slot() == batch_offset as u8
+                    && owner.same_vm(&packet.vm));
+                index.and_then(|i| cache.remove(i).ok())
+            })
         } else { None };
         let mut work = match payload {
             crate::g16_submit::Payload::Compute(control) => Work::Compute(crate::g16_job::Compute::in_vm(
@@ -667,7 +671,10 @@ impl Runtime {
                         previous.pool_slot() == render.pool_slot());
                     if let Some(position) = replaced {
                         let (previous, cache) = inner.retired_renders.remove(position).map_err(|_| EIO)?;
-                        let _ = cache.lock().push(previous, GFP_KERNEL);
+                        let mut guard = cache.lock();
+                        if let Some(cache) = Option::as_mut(&mut *guard) {
+                            let _ = cache.push(previous, GFP_KERNEL);
+                        }
                     }
                     inner.retired_renders.push((render, packet.render_cache.clone()), GFP_KERNEL)
                         .expect("reserved render retirement capacity");
@@ -686,7 +693,10 @@ impl Runtime {
                         // Only replacement of this exact hardware slot releases
                         // its cached descriptor. Retirements in another slot
                         // cannot establish that the old owner is safe to reuse.
-                        let _ = cache.lock().push(previous, GFP_KERNEL);
+                        let mut guard = cache.lock();
+                        if let Some(cache) = Option::as_mut(&mut *guard) {
+                            let _ = cache.push(previous, GFP_KERNEL);
+                        }
                     }
                     inner.retired_computes.push((compute, packet.compute_cache.clone()), GFP_KERNEL)?;
                 }
