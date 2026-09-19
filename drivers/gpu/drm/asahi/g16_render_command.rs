@@ -152,6 +152,26 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
     Ok(())
 }
 
+/// Relocate a complete native program while preserving all external pointers.
+/// Finalize's UMA header pointer is the only absolute self-reference; its
+/// relative restart and repeated timestamp records remain byte-identical.
+pub(crate) fn relocate_program(sequence: &mut [u8], stage: Stage, address: u64) -> Result<(), BuildError> {
+    let base = sequence_size(stage);
+    if !valid_fw(address) || sequence.len() < base || sequence.len() > 0x800 ||
+        (sequence.len() - base) % 0x4c != 0 ||
+        (stage == Stage::Tiling && sequence.len() != base) { return Err(BuildError::Address); }
+    let extra = sequence.len() - base;
+    let (finalize, restart, pointer, uma, opcode) = if stage == Stage::Tiling {
+        (0x268, 0x80, 0x78, 0x190, 6u32)
+    } else { (0x288 + extra, 0xa0, 0x98, 0x1b0, 8u32) };
+    if sequence[finalize..finalize+4] != opcode.to_le_bytes() ||
+        sequence[finalize+restart..finalize+restart+4] != (-(finalize as i32)).to_le_bytes() {
+        return Err(BuildError::Address);
+    }
+    put(sequence, finalize + pointer, address + uma, 8);
+    Ok(())
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct ParameterManager {
     pub pages_fw: u64, pub pages_gpu: u64, pub blocks: u64, pub ring: u64,

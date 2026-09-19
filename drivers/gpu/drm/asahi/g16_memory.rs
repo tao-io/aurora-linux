@@ -54,6 +54,12 @@ impl Buffer {
     pub(crate) fn new(dev: &driver::AsahiDevice, vm: &mmu::Vm, size: usize) -> Result<Self> {
         Self::allocate(dev, vm, size, prot::PROT_FW_SHARED_RW)
     }
+    /// One-time AP publication; owner must retain until ASC stops. Never
+    /// recycle these cached pages without a qualified firmware cache flush.
+    pub(crate) fn new_immutable_private(dev: &driver::AsahiDevice, vm: &mmu::Vm,
+        size: usize) -> Result<Self> {
+        Self::allocate(dev, vm, size, prot::PROT_FW_PRIV_RW)
+    }
     fn allocate(dev: &driver::AsahiDevice, vm: &mmu::Vm, size: usize,
         protection: prot::Prot) -> Result<Self> {
         if size == 0 || size.checked_add(mmu::UAT_PGMSK).is_none() { return Err(EINVAL); }

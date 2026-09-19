@@ -54,6 +54,8 @@ pub(crate) struct Config {
     iomaps: KVec<mmu::KernelMapping>,
     loader: Mem,
     trace_seen: [u32; 2],
+    cached_programs: Option<Buffer>,
+    cached_program_cursor: usize,
     iomap_bytes: KBox<[u8; 42 * 0x28]>,
 }
 
@@ -63,6 +65,28 @@ pub(crate) struct Config {
 unsafe impl Send for Config {}
 
 impl Config {
+    /// A bounded diagnostic arena. Each program gets a fresh 16KiB page,
+    /// written once by AP and retained until Runtime stops ASC. No recycling,
+    /// unmap, cache invalidation, or cached/shared alias assumption is needed.
+    pub(crate) fn cache_program(&mut self, dev: &driver::AsahiDevice,
+        vm: &mmu::Vm, bytes: &mut [u8], stage: crate::g16_render::Stage) -> Result<u64> {
+        const CAPACITY: usize = 16 * 1024 * 1024;
+        if bytes.len() > mmu::UAT_PGSZ { return Err(EINVAL); }
+        let next = self.cached_program_cursor.checked_add(mmu::UAT_PGSZ).ok_or(EOVERFLOW)?;
+        if next > CAPACITY { return Err(ENOSPC); }
+        if self.cached_programs.is_none() {
+            self.cached_programs = Some(Buffer::new_immutable_private(dev, vm, CAPACITY)?);
+        }
+        let arena = self.cached_programs.as_mut().ok_or(EIO)?;
+        let address = arena.va() + self.cached_program_cursor as u64;
+        crate::g16_render_command::relocate_program(bytes, stage, address).map_err(|_| EINVAL)?;
+        arena.write(self.cached_program_cursor, bytes)?;
+        self.cached_program_cursor = next;
+        g16_memory::publish();
+        crate::cls_dev_dbg!(SubmitTiming, dev, "G16G: immutable cached program va={:#x} bytes={} retained={}\n", address, bytes.len(), next);
+        Ok(address)
+    }
+
     pub(crate) fn new(pdev: &platform::Device<Core>, dev: &driver::AsahiDevice,
         vm: &mmu::Vm, gpu_vm: &mmu::Vm, firmware: &Firmware) -> Result<Self> {
         let resource = pdev.as_ref().of_node().ok_or(ENODEV)?
@@ -76,7 +100,7 @@ impl Config {
         // descriptor table at data+0x1332f0 is host-owned until initdata is sent.
         let loader = unsafe { Mem::try_new(resource, MemFlag::WC.into()) }?;
         let mut config = Self { objects: KVec::new(), pipes: KVec::new(), iomaps: KVec::new(),
-            loader, trace_seen: [0; 2], iomap_bytes: KBox::new([0; 42 * 0x28], GFP_KERNEL)? };
+            loader, trace_seen: [0; 2], cached_programs: None, cached_program_cursor: 0, iomap_bytes: KBox::new([0; 42 * 0x28], GFP_KERNEL)? };
         for (index, size) in SIZES.iter().enumerate() {
             config.objects.push(if index == Object::UmaTable as usize || index == Object::ParameterTable as usize {
                 Buffer::new_gpu(dev, vm, gpu_vm, *size)?
@@ -405,6 +429,12 @@ impl Config {
     #[cfg(CONFIG_DEV_COREDUMP)]
     pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
         use Object::*;
+        if let Some(arena) = self.cached_programs.as_mut() {
+            // A bounded prefix of AP-published program bytes; firmware may
+            // hold cache state not visible through this CPU mapping.
+            let count = self.cached_program_cursor.min(4 * 1024 * 1024);
+            if count != 0 { dump.buffer("cached-program-prefix", arena, count)?; }
+        }
         // The loader mapping contains only the admitted firmware data RAM.
         let map = self.loader.iosys_map(0, 0x13c000)?;
         dump.record("firmware-data", 0xfffffc0000060000, 0x13c000, |out| {

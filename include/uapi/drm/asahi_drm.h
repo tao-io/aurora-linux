@@ -288,6 +288,12 @@ enum drm_asahi_feature {
 	 * host stamp flushes may then be coalesced until the packet's last compute.
 	 */
 	DRM_ASAHI_FEATURE_COMPUTE_WIDE_VISIBILITY = (1UL) << 8,
+
+	/** @DRM_ASAHI_FEATURE_CACHED_PROGRAM_PROBE: Bounded M4 firmware-cache
+	 * diagnostic. Copies render microsequences once into retained private
+	 * pages; capacity exhaustion returns an error. Not a reusable allocator.
+	 */
+	DRM_ASAHI_FEATURE_CACHED_PROGRAM_PROBE = (1UL) << 9,
 };
 
 #define DRM_ASAHI_PARAM_GROUP_VM_STATUS 1
@@ -890,6 +896,11 @@ struct drm_asahi_attachment {
 };
 
 enum drm_asahi_render_flags {
+	/** @DRM_ASAHI_RENDER_CACHED_PROGRAM_PROBE: Use bounded immutable
+	 * firmware-private program copies. Requires CACHED_PROGRAM_PROBE.
+	 */
+	DRM_ASAHI_RENDER_CACHED_PROGRAM_PROBE = (1L << 7),
+
 	/**
 	 * @DRM_ASAHI_RENDER_VERTEX_SCRATCH: A vertex stage shader uses scratch
 	 * memory.

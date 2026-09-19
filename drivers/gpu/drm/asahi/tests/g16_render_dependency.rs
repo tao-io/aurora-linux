@@ -34,6 +34,25 @@ fn native_start_and_command_counters_agree_without_truncation() {
         assert_eq!(&command[4..12], &counter.to_le_bytes());
         assert_eq!(&sku[offset..offset+8], &counter.to_le_bytes());
         assert_eq!(&sku[offset+8..offset+12], &0x70u32.to_le_bytes());
+        for count in 0..=if stage == Stage::Fragment { 8 } else { 0 } {
+            let mut relocated = [0u8;0x800];
+            let base = g16_render_command::sequence_size(stage);
+            relocated[..base].copy_from_slice(&sku[..base]);
+            let pointers: [u64;8] = core::array::from_fn(|i| p+0x10000+i as u64*16);
+            let length = if stage == Stage::Fragment {
+                g16_render_command::fragment_timestamp_copies(&mut relocated,&pointers[..count]).unwrap()
+            } else { base };
+            let mut expected = relocated;
+            let (pointer,uma) = if stage == Stage::Tiling { (0x268+0x78,0x190) }
+                else { (0x288+count*0x4c+0x98,0x1b0) };
+            expected[pointer..pointer+8].copy_from_slice(&(p+0x20000+uma).to_le_bytes());
+            g16_render_command::relocate_program(&mut relocated[..length],stage,p+0x20000).unwrap();
+            assert_eq!(relocated,expected);
+            let before = relocated;
+            assert!(g16_render_command::relocate_program(&mut relocated[..length],stage,0).is_err());
+            assert_eq!(relocated,before);
+        }
+
         // Native 193311/193422: all three fragment mode mirrors and the
         // vertex finalizer are 1. Mode-2 command flags remain clear.
         if stage == Stage::Fragment {

@@ -583,11 +583,15 @@ impl Runtime {
             Work::Compute(compute) => {
                 compute.retain_notifier(packet.notifications.clone());
                 if matches!(payload, crate::g16_submit::Payload::Compute(c) if c.wide_visibility) &&
+                    packet.commands[index].timestamp_addresses() == [0, 0] &&
+                    packet.commands[index].end_copy_addresses() == [0; 8] &&
                     packet.commands[index + 1..].iter().any(|command|
                         matches!(command.payload, crate::g16_submit::Payload::Compute(_))) {
                     // GPU consumers use firmware stamps and the retained wide
                     // barrier. The last compute still flushes all host stamps,
-                    // like the ordinary Asahi queue path; packet boundaries
+                    // like the ordinary Asahi queue path. API timestamps are
+                    // written by firmware after the GPU barrier, so still
+                    // require their own publication flush. Packet boundaries
                     // and exact retirement checks remain unchanged.
                     compute.coalesce_stamp_flush()?;
                 }
@@ -604,6 +608,10 @@ impl Runtime {
                 render.set_attachments(attachments)?;
                 render.set_user_timestamps(packet.commands[index].render_timestamp_addresses())?;
                 render.set_fragment_timestamp_copies(packet.commands[index].end_copy_addresses())?;
+                if matches!(payload, crate::g16_submit::Payload::Render { command, .. }
+                    if command.flags & (1 << 7) != 0) {
+                    render.cache_programs(&mut inner.config, &inner.drm, inner.uat.kernel_vm())?;
+                }
                 if minimal {
                     let pairs = packet.commands[index].render_timestamp_addresses();
                     render.omit_internal_timestamps([pairs[0] == [0, 0],

@@ -443,6 +443,23 @@ impl Render {
         }
         Ok(())
     }
+    pub(crate) fn cache_programs(&mut self, config: &mut crate::g16_config::Config,
+        dev: &driver::AsahiDevice, vm: &mmu::Vm) -> Result {
+        // Diagnostic modes have different layouts; reject their combination.
+        if crate::debug::debug_enabled(crate::debug::DebugFlags::MinimalTimestamps) {
+            return Err(EINVAL);
+        }
+        for (i, stage) in [Stage::Tiling, Stage::Fragment].into_iter().enumerate() {
+            let length = self.commands[i].read_u32(if i == 0 { 0x778 } else { 0x1c })? as usize;
+            if length > 0x800 { return Err(EINVAL); }
+            let mut bytes = [0u8; 0x800];
+            self.sequences[i].read(0, &mut bytes[..length])?;
+            let address = config.cache_program(dev, vm, &mut bytes[..length], stage)?;
+            self.commands[i].u64(if i == 0 { 0x770 } else { 0x14 }, address)?;
+        }
+        g16_memory::publish();
+        Ok(())
+    }
     pub(crate) fn timestamps(&mut self) -> Result<[[u64; 2]; 2]> {
         Ok([[self.metadata.read_u64(0x600)?, self.metadata.read_u64(0x608)?],
             [self.metadata.read_u64(0x620)?, self.metadata.read_u64(0x628)?]])
