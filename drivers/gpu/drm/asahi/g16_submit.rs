@@ -357,12 +357,13 @@ fn encode_attachments(vm: &mmu::Vm, list: &g17_uapi::UapiAttachmentList)
 fn validate_render(r: g17_uapi::UapiRenderCommand, usc: u64, space: &AddressSpace<'_>) -> Result {
     use g17_uapi::{GpuAddressSpace, GpuAccess};
     let empty = g17_uapi::UapiHelperProgram { binary:0, config:0, data:0 };
-    if r.flags & !(2|16|(1<<5)|(1<<18)) != 0 || !matches!(r.samples, 1 | 2 | 4)
+    if r.flags & !(2|16|(1<<5)|(1<<6)|(1<<18)) != 0 || !matches!(r.samples, 1 | 2 | 4)
         || r.sampler_count != 0 || r.sampler_heap != 0
         || r.vertex_helper != empty || r.fragment_helper != empty
         || r.depth.compression_base != 0 || r.stencil.compression_base != 0
         || r.depth.compression_stride != 0 || r.stencil.compression_stride != 0
         || r.ppp_control & !0x203 != 0 { return Err(ENOTSUPP); }
+    if r.flags & (1 << 6) != 0 && r.flags & (1 << 5) == 0 { return Err(EINVAL); }
     // sample_size describes color tilebuffer storage. Depth/stencil-only
     // passes legitimately require zero bytes of color storage.
     if r.layers == 0 || r.layers > 2048 || r.width == 0 || r.height == 0 || r.width > 16384 || r.height > 16384

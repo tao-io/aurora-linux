@@ -350,11 +350,12 @@ impl Runtime {
                 // every FS still waits on its own TA. Firmware may dispatch
                 // several commands from one queue before they complete;
                 // queue order alone is not an execution dependency.
-                // Never apply this across
-                // a compute command, packet boundary or start timestamp.
+                // Compute boundaries require the separate explicit stage-scope
+                // flag. Packet boundaries and start timestamps remain ordered.
                 let mut addresses = [[0u64; COMPUTE_DEPTH * 3]; 3];
                 let mut entries = [0usize; 3];
                 let mut previous_render = None;
+                let mut compute_since_render = false;
                 let mut previous = inner.inflight.last().map(|active| match &active.work {
                     Work::Compute(c) => (active.packet.notifications.lock().notification(2).fw_stamp,
                         crate::g16_compute::SLOT, c.stamp()),
@@ -364,7 +365,7 @@ impl Runtime {
                 for active in batch.iter_mut() {
                     match &mut active.work {
                         Work::Compute(c) => {
-                            previous_render = None;
+                            compute_since_render = true;
                             if let Some((address, slot, stamp)) = previous {
                                 addresses[2][entries[2]] = c.dependency(address, slot, stamp)?;
                                 entries[2] += 1;
@@ -383,8 +384,14 @@ impl Runtime {
                                     command.fragment_timestamps.start.handle == 0,
                                 _ => false,
                             };
+                            let across_compute = match active.packet.commands[active.index].payload {
+                                crate::g16_submit::Payload::Render { command, .. } =>
+                                    command.flags & (1 << 6) != 0,
+                                _ => false,
+                            };
                             let early_tiling = previous_render.filter(|(packet, _, _)|
-                                fragment_only && *packet == active.packet.id);
+                                fragment_only && *packet == active.packet.id &&
+                                    (!compute_since_render || across_compute));
                             let tiling_dependency = early_tiling.map(|(_, address, stamp)|
                                 (address, crate::g16_render_job::SLOTS[0], stamp)).or(previous);
                             if let Some((address, slot, stamp)) = tiling_dependency {
@@ -406,6 +413,7 @@ impl Runtime {
                             active.packet.notifications.lock().publish(true)?;
                             previous = Some((active.packet.notifications.lock().notification(1).fw_stamp,
                                 crate::g16_render_job::SLOTS[1], r.stamp()));
+                            compute_since_render = false;
                             previous_render = Some((active.packet.id,
                                 active.packet.notifications.lock().notification(0).fw_stamp, r.stamp()));
                         }

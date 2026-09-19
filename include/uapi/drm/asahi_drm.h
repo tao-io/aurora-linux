@@ -276,6 +276,12 @@ enum drm_asahi_feature {
 	 * fragment-only dependencies with DRM_ASAHI_RENDER_FRAGMENT_DEPENDENCY.
 	 */
 	DRM_ASAHI_FEATURE_FRAGMENT_DEPENDENCY = (1UL) << 6,
+
+	/** @DRM_ASAHI_FEATURE_FRAGMENT_DEPENDENCY_COMPUTE: Tiling may also
+	 * overlap intervening compute commands under an explicit fragment-only
+	 * dependency. Requires DRM_ASAHI_RENDER_FRAGMENT_DEPENDENCY_COMPUTE.
+	 */
+	DRM_ASAHI_FEATURE_FRAGMENT_DEPENDENCY_COMPUTE = (1UL) << 7,
 };
 
 #define DRM_ASAHI_PARAM_GROUP_VM_STATUS 1
@@ -916,6 +922,15 @@ enum drm_asahi_render_flags {
 	 * the normal header barriers; this flag changes only their stage scope.
 	 */
 	DRM_ASAHI_RENDER_FRAGMENT_DEPENDENCY = (1U << 5),
+
+	/**
+	 * @DRM_ASAHI_RENDER_FRAGMENT_DEPENDENCY_COMPUTE: Extend the fragment-only
+	 * dependency through intervening compute commands in this packet. TA
+	 * still waits for preceding TA; FS waits for the preceding compute and
+	 * its own TA. Requires both the matching feature and FRAGMENT_DEPENDENCY.
+	 * Vertex consumers, packet boundaries and start timestamps stay ordered.
+	 */
+	DRM_ASAHI_RENDER_FRAGMENT_DEPENDENCY_COMPUTE = (1U << 6),
 
 	/**
 	 * @DRM_ASAHI_RENDER_DBIAS_IS_INT: Use integer depth bias formula.
