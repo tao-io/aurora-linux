@@ -263,27 +263,16 @@ impl queue::Queue for Queue {
         // render command: partial renders require both stages to be live.
         let mut jobs = KVec::with_capacity(commands.len(), GFP_KERNEL)?;
         let failure = Arc::new(AtomicI32::new(0), GFP_KERNEL)?;
-        let batchable = |command: &Command| {
-            matches!(command.payload, Payload::Compute(_))
-                && command.timestamp_addresses() == [0, 0]
-        };
-        let mut commands = commands.into_iter().peekable();
+        let mut commands = commands.into_iter();
         while let Some(command) = commands.next() {
-            let batch = batchable(&command);
-            let mut single = KVec::with_capacity(
-                if batch { crate::g16_runtime::COMPUTE_DEPTH } else { 1 }, GFP_KERNEL)?;
+            let mut single = KVec::with_capacity(crate::g16_runtime::COMPUTE_DEPTH, GFP_KERNEL)?;
             single.push(command, GFP_KERNEL)?;
-            // A bounded adjacent compute run shares one scheduler credit.
-            // Preserve explicit timestamp boundaries and every render boundary;
-            // later jobs still depend on the entire preceding batch's fence.
-            while batch && single.len() < crate::g16_runtime::COMPUTE_DEPTH {
-                let Some(next) = commands.peek() else { break; };
-                let render = matches!(next.payload, Payload::Render { .. });
-                if !render && !batchable(next) { break; }
-                if let Some(command) = commands.next() { single.push(command, GFP_KERNEL)?; }
-                // CPU timestamp fan-out and the parameter-buffer lifetime still
-                // end at render retirement; no follower crosses that boundary.
-                if render { break; }
+            // Firmware dependencies preserve all command and query-write
+            // ordering. Return the scheduler credit after at most four commands
+            // so ready compositor work can run between bounded packets.
+            while single.len() < crate::g16_runtime::COMPUTE_DEPTH {
+                let Some(command) = commands.next() else { break; };
+                single.push(command, GFP_KERNEL)?;
             }
             let packet = Arc::new(Packet { id, vm: self.vm.clone(), commands: single,
                 render_cache: self.render_cache.clone(),

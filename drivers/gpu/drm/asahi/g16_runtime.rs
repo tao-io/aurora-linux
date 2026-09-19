@@ -17,7 +17,7 @@ struct Inner {
     fragment_queue: crate::g16_queue::Queue,
     queue_context: crate::g16_queue::Context,
     fragment_registered: bool,
-    retired_render: Option<(KBox<crate::g16_render_job::Render>, crate::g16_submit::RenderCache)>,
+    retired_renders: KVec<(KBox<crate::g16_render_job::Render>, crate::g16_submit::RenderCache)>,
     /// Last retired owner of each hardware private-memory slot. Firmware
     /// can cache these descriptors until a replacement of that slot retires.
     retired_computes: KVec<(KBox<crate::g16_job::Compute>, crate::g16_submit::ComputeCache)>,
@@ -84,21 +84,12 @@ impl SubmitSummary {
     }
 }
 
-/// Compute commands the compute queue may hold at once, all from one client
-/// VM: the native driver gives each context its own firmware queue, and two
-/// contexts queued together in our shared compute queue produced a firmware
-/// recovery snapshot. Renders keep the firmware's parameter-buffer slot for
-/// their binding until they retire and remain exclusive: nothing is
-/// published while a render is in flight and a render waits for an empty
-/// engine. The firmware dispatches the commands it finds at once and starts
-/// commands published during a run only about 1.1 ms after that run ends,
-/// so a deeper window amortizes that turnaround. Each in-flight command
-/// holds one owner (a 32 MiB private pool), which bounds the depth.
-///
-/// Both firmware and user completion stamps now belong to the queue and
-/// event sequences advance at publication, as in WorkQueue/Event. Bound the
-/// batch to four owners; never recycle a command merely because firmware
-/// consumed its ring entry. Its timestamps and both stamps must retire.
+/// Maximum mixed-engine packet from one client VM. Prepare and publish all
+/// commands together; strict firmware dependencies retain submission order.
+/// Each in-flight owner has its own private-memory slot and each render its
+/// own parameter slot. TA and fragment remain jointly available for partial
+/// rendering. All engines use queue-owned completion stamps. The bounded
+/// packet also bounds retained memory and compositor scheduling latency.
 pub(crate) const COMPUTE_DEPTH: usize = 4;
 
 
@@ -249,14 +240,10 @@ impl Runtime {
     fn start_batch(&mut self, packet: Arc<crate::g16_submit::Packet>, index: usize) -> Result<usize> {
         let count = packet.commands.len().checked_sub(index).ok_or(EINVAL)?;
         if count == 0 || count > COMPUTE_DEPTH { return Err(EINVAL); }
-        // A mixed batch contains a compute prefix and at most one final render.
-        for command in &packet.commands[index..index + count - 1] {
-            if !matches!(command.payload, crate::g16_submit::Payload::Compute(_))
-                || command.timestamp_addresses() != [0, 0] { return Err(EINVAL); }
-        }
         let mut batch = KVec::with_capacity(count, GFP_KERNEL)?;
         self.inner.inflight.reserve(count, GFP_KERNEL)?;
         self.inner.retired_computes.reserve(count, GFP_KERNEL)?;
+        self.inner.retired_renders.reserve(count, GFP_KERNEL)?;
         for offset in 0..count {
             batch.push(self.prepare_command(packet.clone(), index + offset, offset as u64)?, GFP_KERNEL)?;
         }
@@ -266,36 +253,71 @@ impl Runtime {
             inner.publish_active(&mut batch[0])
         } else {
             (|| -> Result {
-                let mut addresses = [0u64; COMPUTE_DEPTH * 2];
-                let mut entries = 0;
+                // Build all three queue rings before ringing any doorbell.
+                // Every command depends on its predecessor's engine stamp;
+                // render additionally keeps its ordinary TA->FS dependency.
+                let mut addresses = [[0u64; COMPUTE_DEPTH * 3]; 3];
+                let mut entries = [0usize; 3];
                 let mut previous = None;
-                let firmware_stamp = inner.compute_queue.notification().fw_stamp;
                 for active in batch.iter_mut() {
-                    let Work::Compute(c) = &mut active.work else { break; };
-                    if let Some(stamp) = previous {
-                        addresses[entries] = c.dependency(firmware_stamp, stamp)?;
-                        entries += 1;
+                    match &mut active.work {
+                        Work::Compute(c) => {
+                            if let Some((address, slot, stamp)) = previous {
+                                addresses[2][entries[2]] = c.dependency(address, slot, stamp)?;
+                                entries[2] += 1;
+                            }
+                            addresses[2][entries[2]] = c.address();
+                            entries[2] += 1;
+                            previous = Some((inner.compute_queue.notification().fw_stamp,
+                                crate::g16_compute::SLOT, c.stamp()));
+                            inner.compute_queue.advance_threshold()?;
+                        }
+                        Work::Render(r) => {
+                            if let Some((address, slot, stamp)) = previous {
+                                r.wait_for_prior(address, slot, stamp)?;
+                                addresses[0][entries[0]] = r.compute_dependency().ok_or(EIO)?;
+                                entries[0] += 1;
+                            }
+                            addresses[0][entries[0]] = r.init_address();
+                            addresses[0][entries[0] + 1] = r.address();
+                            entries[0] += 2;
+                            addresses[1][entries[1]] = r.fragment_dependency();
+                            addresses[1][entries[1] + 1] = r.fragment_address();
+                            entries[1] += 2;
+                            inner.queue.advance_threshold()?;
+                            inner.fragment_queue.advance_threshold()?;
+                            inner.queue.set_render_context(r.context())?;
+                            inner.fragment_queue.set_render_context(r.context())?;
+                            previous = Some((inner.fragment_queue.notification().fw_stamp,
+                                crate::g16_render_job::SLOTS[1], r.stamp()));
+                        }
                     }
-                    addresses[entries] = c.address();
-                    entries += 1;
-                    previous = Some(c.stamp());
-                    inner.compute_queue.advance_threshold()?;
                 }
-                let (address, next) = inner.compute_queue.append_batch(&addresses[..entries])?;
-                let pipe_next = inner.config.publish_queue(2, address, next.try_into()?,
-                    crate::g16_compute::SLOT, false)?;
+                let mut next = [0u32; 3];
+                let mut pipe_next = [0u32; 3];
+                for i in 0..3 {
+                    if entries[i] == 0 { continue; }
+                    let queue = match i { 0 => &mut inner.queue, 1 => &mut inner.fragment_queue,
+                        _ => &mut inner.compute_queue };
+                    let (address, index) = queue.append_batch_idle(&addresses[i][..entries[i]])?;
+                    next[i] = index;
+                    let slot = if i == 2 { crate::g16_compute::SLOT }
+                        else { crate::g16_render_job::SLOTS[i] };
+                    pipe_next[i] = inner.config.publish_queue(i, address, index.try_into()?,
+                        slot, i == 1 && !inner.fragment_registered)?;
+                }
                 for active in batch.iter_mut() {
-                    if let Work::Render(render) = &mut active.work {
-                        render.wait_for_compute(firmware_stamp, previous.ok_or(EINVAL)?)?;
-                        inner.publish_active(active)?;
-                        continue;
-                    }
-                    active.queue_next[2] = next;
-                    active.pipe_next[2] = pipe_next;
+                    active.queue_next = next;
+                    active.pipe_next = pipe_next;
                     active.published = kernel::time::Instant::<kernel::time::Monotonic>::now();
                     active.started = kernel::time::Instant::<kernel::time::Monotonic>::now();
                 }
-                Pin::new(&mut inner.transport).send_message(0x21, 0x0083000000000002)?;
+                for i in 0..3 {
+                    if entries[i] != 0 {
+                        Pin::new(&mut inner.transport).send_message(0x21, 0x0083000000000000 | i as u64)?;
+                    }
+                }
+                if entries[1] != 0 { inner.fragment_registered = true; }
                 Ok(())
             })()
         };
@@ -341,11 +363,18 @@ impl Runtime {
             inner.compute_stamp = inner.compute_stamp.wrapping_add(0x100).max(0x100);
         }
         let mut notification = inner.compute_queue.notification();
-        notification.event_seq = notification.event_seq.checked_add(batch_offset).ok_or(EOVERFLOW)?;
+        notification.event_seq = notification.event_seq.checked_add(packet.commands[..index].iter().filter(|c|
+            matches!(c.payload, crate::g16_submit::Payload::Compute(_))).count() as u64).ok_or(EOVERFLOW)?;
         let pool_slot: u8 = (batch_offset + 1).try_into()?;
         let compute_owner = if matches!(payload, crate::g16_submit::Payload::Compute(_)) {
             let mut cache = packet.compute_cache.lock();
             let index = cache.iter().position(|owner| owner.pool_slot() == pool_slot
+                && owner.same_vm(&packet.vm));
+            index.and_then(|i| cache.remove(i).ok())
+        } else { None };
+        let render_owner = if matches!(payload, crate::g16_submit::Payload::Render { .. }) {
+            let mut cache = packet.render_cache.lock();
+            let index = cache.iter().position(|owner| owner.pool_slot() == batch_offset as u8
                 && owner.same_vm(&packet.vm));
             index.and_then(|i| cache.remove(i).ok())
         } else { None };
@@ -360,8 +389,8 @@ impl Runtime {
             crate::g16_submit::Payload::Render { command,usc } => Work::Render(crate::g16_render_job::Render::new(
                 &inner.drm,&inner.uat,&packet.vm,command,usc,generation,inner.render_stamp,inner.render_counter - 2,
                 [inner.queue.address(),inner.fragment_queue.address()],
-                [inner.queue.notification().address,inner.fragment_queue.notification().address],
-                inner.config.render_stats(), packet.render_cache.lock().pop())?),
+                [inner.queue.notification(),inner.fragment_queue.notification()],
+                inner.config.render_stats(), batch_offset.try_into()?, render_owner)?),
         };
         let attachments = &packet.commands[index].attachments;
         match &mut work {
@@ -443,19 +472,18 @@ impl Runtime {
         let active = inner.inflight.first_mut().ok_or(EIO)?;
         let mut status = active.work.status()?;
         let pipe_index = active.work.pipe();
-        if pipe_index == 2 {
-            // The shared user stamp holds the newest retired value; this
-            // command is retired once it has reached or passed its own.
-            let shared = inner.compute_queue.completion_stamp()?;
-            if shared.wrapping_sub(active.work.stamp()) as i32 >= 0 {
-                status[1] = active.work.stamp() as u64;
-            }
-            let firmware = inner.compute_queue.firmware_stamp()?;
-            if firmware.wrapping_sub(active.work.stamp()) as i32 >= 0 {
-                status[0] = active.work.stamp() as u64;
-            }
-        }
         let engine = match pipe_index { 0=>&mut inner.queue,1=>&mut inner.fragment_queue,_=>&mut inner.compute_queue };
+        // Each engine owns one firmware and user stamp. Firmware can coalesce
+        // notifications across a batch; a private stamp cell per render loses
+        // earlier completions when only the last event record is written.
+        let shared = engine.completion_stamp()?;
+        if shared.wrapping_sub(active.work.stamp()) as i32 >= 0 {
+            status[1] = active.work.stamp() as u64;
+        }
+        let firmware = engine.firmware_stamp()?;
+        if firmware.wrapping_sub(active.work.stamp()) as i32 >= 0 {
+            status[0] = active.work.stamp() as u64;
+        }
         let queue = engine.status()?;
         let pipe = inner.config.pipe_indices(pipe_index)?;
         let next = active.queue_next[pipe_index];
@@ -551,20 +579,17 @@ impl Runtime {
             // private-memory pool and ASID lease before the next command.
             match active.work {
                 Work::Render(render) => {
-                    // Firmware caches the parameter manager slot. Only after
-                    // its replacement retires may the predecessor be freed or
-                    // reused by a matching VM/pass geometry. A cache miss
-                    // allocates normally and drops the spare.
-                    if let Some((previous, cache)) = inner.retired_render.replace(
-                        (render, packet.render_cache.clone())) {
-                        // Never put a cache reference inside its own Render:
-                        // keeping ownership here avoids an Arc reference cycle.
-                        // Retain all displaced owners: two game passes can
-                        // retire before the compositor gives its owner back.
-                        // Replacing one spare would discard the other pass.
-                        // Allocation failure merely drops this safe spare.
+                    // Parameter and private-pool slots have independent
+                    // lifetimes. Only replacement of this same slot retires
+                    // firmware's last cached references to its previous owner.
+                    let replaced = inner.retired_renders.iter().position(|(previous, _)|
+                        previous.pool_slot() == render.pool_slot());
+                    if let Some(position) = replaced {
+                        let (previous, cache) = inner.retired_renders.remove(position).map_err(|_| EIO)?;
                         let _ = cache.lock().push(previous, GFP_KERNEL);
                     }
+                    inner.retired_renders.push((render, packet.render_cache.clone()), GFP_KERNEL)
+                        .expect("reserved render retirement capacity");
                 }
                 Work::Compute(compute) => {
                     // Firmware caches the UMA descriptor by its canonical VA.
@@ -701,7 +726,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_render:None,retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, user_generation: 1, render_stamp: 0, render_counter: 1, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

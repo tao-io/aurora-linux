@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
-//! GEM/GPUVM ownership for a serialized M4 render pass. There are no borrowed
+//! GEM/GPUVM ownership for an M4 render pass in a bounded GPU batch. There are no borrowed
 //! lab mappings. A hardware slot retains its last owner until replacement.
 use kernel::prelude::*;
 use crate::{driver, mmu, g16_memory::{self, Buffer}, g16_render::{self, Geometry, Register, Stage, Utile},
@@ -39,6 +39,7 @@ pub(crate) struct Render {
     binding: mmu::VmBind,
     pub(crate) stage: Stage,
     stamp: u32,
+    pool_slot: u8,
     compute_dependency: bool,
     layout: [u32; 4],
     consumed_pages: usize,
@@ -72,8 +73,9 @@ impl Render {
 
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, vm: &mmu::Vm,
         r: UapiRenderCommand, usc: u64, generation: u8, stamp: u32, counter: u64,
-        queues: [u64; 2], notifications: [u64; 2], stats: [u64; 2],
-        reusable: Option<KBox<Self>>) -> Result<KBox<Self>> {
+        queues: [u64; 2], notifications: [crate::g16_compute::Notification; 2], stats: [u64; 2],
+        pool_slot: u8, reusable: Option<KBox<Self>>) -> Result<KBox<Self>> {
+        if usize::from(pool_slot) >= crate::g16_runtime::COMPUTE_DEPTH { return Err(EINVAL); }
         let utile = |n| match n {16=>Ok(Utile::Pixels16),32=>Ok(Utile::Pixels32),_=>Err(EINVAL)};
         let mut geometry = Geometry::new_layered(r.width as u32,r.height as u32,
             utile(r.utile_width)?,utile(r.utile_height)?,1,r.layers).map_err(|_| EINVAL)?;
@@ -90,7 +92,7 @@ impl Render {
         // Only an owner displaced by a completely retired replacement may
         // be recycled. Never borrow the firmware's most recently used owner,
         // and never reuse private mappings across distinct client GPUVMs.
-        let reusable = reusable.filter(|job| job.binding.matches(vm));
+        let reusable = reusable.filter(|job| job.binding.matches(vm) && job.pool_slot == pool_slot);
         let reused = reusable.is_some();
         let mut job = if let Some(mut job) = reusable {
             // A render size change does not invalidate the command/context
@@ -144,7 +146,7 @@ impl Render {
                 preemption:[gpu(0x10000)?,gpu(0x10000)?,gpu(0x4000)?],auxiliary:gpu(0x10000)?,
                 uma:gpu(0x4000)?,private_memory,
                 pool_state:gpu(PRIVATE_QWORDS*8)?,page_list:gpu(0x4000)?,
-                binding:uat.bind(vm)?,stage:Stage::Tiling,stamp,compute_dependency:false,layout,
+                binding:uat.bind(vm)?,stage:Stage::Tiling,stamp,pool_slot,compute_dependency:false,layout,
                 consumed_pages:PRIVATE_PAGES, freelist, page_list_image, clear_metrics:[0; 3],
             }, GFP_KERNEL)?
         };
@@ -160,9 +162,9 @@ impl Render {
         crate::g16_compute::encode_uma(&mut uma,job.pool_state.gpu_va()?,PRIVATE_QWORDS as u32,
             PRIVATE_PAGES as u32,job.page_list.gpu_va()?,job.metadata.va()+0x500,
             crate::g16_compute::UmaEngine::Render).map_err(|_| EINVAL)?;
-        // Compute batches own slots 1..4. A terminal render uses its own
-        // slot, so firmware may prepare it while those pools are retained.
-        uma[8..12].copy_from_slice(&5u32.to_le_bytes());
+        // Compute owners use slots 1..4 and render owners use slots 5..8.
+        // Firmware may prepare all owners while their pools remain retained.
+        uma[8..12].copy_from_slice(&(5 + u32::from(pool_slot)).to_le_bytes());
         uma[..8].copy_from_slice(&job.uma.va().to_le_bytes());
         job.compute_dependency = false;
         job.uma.write(0,&uma)?;
@@ -198,7 +200,7 @@ impl Render {
             pages_fw:job.pages.va(),pages_gpu:job.pages.gpu_va()?,blocks:job.blocks.va(),ring:job.block_ring.va(),
             counter:job.metadata.va()+0x508,discard:0,list_bytes:(page_count*4).try_into()?,pages:page_count.try_into()?,
             block_capacity:block_capacity.try_into()?,write:block_count.try_into()?,read:0,
-            min_pages:page_count.try_into()?,max_pages:page_count.try_into()?,id:0 }).map_err(|_| EINVAL)?;
+            min_pages:page_count.try_into()?,max_pages:page_count.try_into()?,id:u32::from(pool_slot) }).map_err(|_| EINVAL)?;
         job.manager.write(0,&manager)?;
         let mut init = [0;0x20];
         // This owner was rebuilt, not incrementally grown. In 25G83, a nonzero
@@ -209,10 +211,10 @@ impl Render {
         // Request full reinitialization: firmware drains the old slot, rebuilds
         // its page list from the block ring and publishes the new descriptor
         // in order (TEXT 215b4 -> 2eb4c). The table is firmware-owned.
-        wire::init_parameter_buffer(&mut init,job.binding.slot(),0,0,0,job.manager.va(),stamp).map_err(|_| EINVAL)?;
+        wire::init_parameter_buffer(&mut init,job.binding.slot(),u32::from(pool_slot),0,0,job.manager.va(),stamp).map_err(|_| EINVAL)?;
         job.metadata.write(0x300,&init)?;
         let mut dependency = [0;0x40];
-        wire::render_dependency(&mut dependency,job.metadata.va()+0x408,
+        wire::render_dependency(&mut dependency,notifications[0].fw_stamp,
             SLOTS[0],stamp,stamp).map_err(|_| EINVAL)?;
         job.metadata.write(0x340,&dependency)?;
         // PB scene scratch has explicit GPU and firmware aliases. Statistics
@@ -252,13 +254,13 @@ impl Render {
                 command:job.commands[i].va(),sku:job.sequences[i].va(),queue:queues[i],
                 stats:stats[i],
                 pb_slot:job.metadata.va(),manager:job.manager.va(),pb_aux:job.metadata.va()+0x100,
-                notifier:notifications[i],shared_stamp:job.metadata.va()+0x400+i as u64*16,
-                stamp_address:job.metadata.va()+0x408+i as u64*16,uma:job.uma.va(),
+                notifier:notifications[i].address,shared_stamp:notifications[i].fw_stamp,
+                stamp_address:notifications[i].stamp,uma:job.uma.va(),
                 uma_aux:job.uma.gpu_va()?+0x100+i as u64*0x100,
                 timestamp_storage:job.metadata.va()+0x600+i as u64*0x20,
                 context:job.binding.slot(),generation:job.binding.generation(),counter:counter + u64::from(i == 0),uuid,stamp:stamp,
                 event_slot:SLOTS[i] as u32,fragment_slot:SLOTS[1] as u32,
-                fragment_stamp:stamp,pb_id:0,pass_id:0 }).map_err(|_| EINVAL)?;
+                fragment_stamp:stamp,pb_id:u32::from(pool_slot),pass_id:0 }).map_err(|_| EINVAL)?;
             let (mut count,mode) = state::registers(&mut registers[..],stage,&state,uuid).map_err(|_| EINVAL)?;
             // Common Asahi USC execution window selectors (TA/ISP), retaining
             // the real queue base instead of relying on the boot register.
@@ -332,9 +334,9 @@ impl Render {
     pub(crate) fn stamp(&self) -> u32 { self.stamp }
     pub(crate) fn index(&self) -> usize { usize::from(self.stage == Stage::Fragment) }
     pub(crate) fn address(&self) -> u64 { self.commands[self.index()].va() }
-    pub(crate) fn wait_for_compute(&mut self, stamp_address: u64, value: u32) -> Result {
+    pub(crate) fn wait_for_prior(&mut self, stamp_address: u64, slot: u8, value: u32) -> Result {
         let mut barrier = [0; 0x40];
-        wire::render_dependency(&mut barrier, stamp_address, crate::g16_compute::SLOT,
+        wire::render_dependency(&mut barrier, stamp_address, slot,
             value, self.stamp).map_err(|_| EINVAL)?;
         barrier[0x3c..0x40].copy_from_slice(&1u32.to_le_bytes());
         self.metadata.write(0x380, &barrier)?;
@@ -347,6 +349,8 @@ impl Render {
     pub(crate) fn init_address(&self) -> u64 { self.metadata.va()+0x300 }
     pub(crate) fn fragment_dependency(&self) -> u64 { self.metadata.va()+0x340 }
     pub(crate) fn fragment_address(&self) -> u64 { self.commands[1].va() }
+    pub(crate) fn pool_slot(&self) -> u8 { self.pool_slot }
+    pub(crate) fn same_vm(&self, vm: &mmu::Vm) -> bool { self.binding.matches(vm) }
     pub(crate) fn context(&self) -> u32 { self.binding.slot() }
     pub(crate) fn uma_completed(&mut self) -> Result<u64> {
         self.uma.read_u64(0x54)

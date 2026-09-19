@@ -85,3 +85,28 @@ Six host encoding/bounds checks and the ARM64 module build pass. Broader batches
 are not enabled by this change alone.
 `20260919T000806308535Z-factorio-fw-timestamp-frame` passes with zero changed
 pixels in the retained 2560x1664 frame. Peak temperature 67.25 C.
+
+## Bounded mixed-engine batches
+
+A packet now contains up to four render/compute commands from one GPUVM.
+Every command has a strict predecessor dependency; each render keeps its
+ordinary TA/fragment dependency for partial rendering. All queue rings are
+prepared before doorbells. Timestamp writes now happen before the next engine
+can run, including explicit user timestamps. Compute private slots are 1..4,
+render private slots 5..8, and render parameter slots 0..3. Retired owners and
+cache lookup track the exact hardware slot and VM. Every packet still returns
+the scheduler credit before the next bounded packet.
+
+The first desktop batch exposed completion coalescing: both engines executed
+and all rings drained, but the first render's private firmware stamp remained
+zero while its user stamp reached 0x300. Evidence is the job-6 dump collected
+in `20260919T001302637610Z-factorio-full-slots-stage`. A separate parameter-ID
+mismatch was also corrected. All three engines now use queue-owned firmware
+and user stamps, with wrap-aware completion comparisons, matching WorkQueue.
+The intermediate private-stamp builds are not qualified.
+
+`20260919T001654673104Z-factorio-full-shared-frame` passes with zero differing
+pixels, peak 72 C. Live menu timing follows. Active-duration sums overlap within
+a batch and must not be interpreted as serialized wall time or GPU utilization.
+TODO: per-client firmware queues, cross-client engine concurrency and priorities,
+persistent shared private pools, broad CTS, and 60 FPS main-menu qualification.

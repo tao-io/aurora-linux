@@ -155,10 +155,10 @@ impl Compute {
     /// GPU-side dependency on the preceding compute in this batch. The
     /// firmware stamp advances at engine retirement, independently of the
     /// batch notifier threshold (waiting on the user stamp can deadlock).
-    pub(crate) fn dependency(&mut self, firmware_stamp: u64, previous: u32) -> Result<u64> {
+    pub(crate) fn dependency(&mut self, firmware_stamp: u64, slot: u8, previous: u32) -> Result<u64> {
         let mut bytes = [0; 0x40];
         crate::g16_render_command::render_dependency(&mut bytes, firmware_stamp,
-            g16_compute::SLOT, previous, self.stamp).map_err(|_| EINVAL)?;
+            slot, previous, self.stamp).map_err(|_| EINVAL)?;
         // G16 +3c selects a strict internal dependency, homologous to
         // WorkQueue Barrier::internal_barrier_type. The zero-valued render
         // dependency permits partial-render scheduling before full retirement.
