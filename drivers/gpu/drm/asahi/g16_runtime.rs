@@ -582,6 +582,15 @@ impl Runtime {
         match &mut work {
             Work::Compute(compute) => {
                 compute.retain_notifier(packet.notifications.clone());
+                if matches!(payload, crate::g16_submit::Payload::Compute(c) if c.wide_visibility) &&
+                    packet.commands[index + 1..].iter().any(|command|
+                        matches!(command.payload, crate::g16_submit::Payload::Compute(_))) {
+                    // GPU consumers use firmware stamps and the retained wide
+                    // barrier. The last compute still flushes all host stamps,
+                    // like the ordinary Asahi queue path; packet boundaries
+                    // and exact retirement checks remain unchanged.
+                    compute.coalesce_stamp_flush()?;
+                }
                 compute.set_attachments(&attachments[0])?;
                 compute.set_user_timestamps(packet.commands[index].timestamp_addresses())?;
                 compute.set_timestamp_copies(packet.commands[index].end_copy_addresses())?;

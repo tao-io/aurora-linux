@@ -263,7 +263,8 @@ impl queue::Queue for Queue {
                 else { return Err(EINVAL); };
             // Native sampler/helper programming is a separate M4 wire path.
             // Reject it explicitly until translated; never silently discard it.
-            if payload.flags != 0 || payload.sampler_count != 0 || payload.sampler_heap != 0 {
+            let wide_flag = kernel::uapi::drm_asahi_compute_flags_DRM_ASAHI_COMPUTE_WIDE_VISIBILITY as u32;
+            if payload.flags & !wide_flag != 0 || payload.sampler_count != 0 || payload.sampler_heap != 0 {
                 return Err(ENOTSUPP);
             }
             let mut copies = core::array::from_fn(|_| None);
@@ -275,6 +276,7 @@ impl queue::Queue for Queue {
                 return Err(EINVAL);
             }
             let mut base_payload = payload;
+            base_payload.flags &= !wide_flag;
             base_payload.end_copies = [g17_uapi::UapiTimestamp { handle: 0, offset: 0 }; 8];
             let cmd = g17_uapi::translate_compute_command(base_payload, attachments,
                 g17_uapi::QueueUscWindow { base: self.usc, user_start: 0x4000,
@@ -282,7 +284,8 @@ impl queue::Queue for Queue {
                 .map_err(|_| EINVAL)?;
             commands.push(Command {
                 payload: Payload::Compute(crate::g16_compute::Control { base: cmd.control_stream_base,
-                    end: cmd.control_stream_end, usc_base: self.usc }),
+                    end: cmd.control_stream_end, usc_base: self.usc,
+                    wide_visibility: payload.flags & wide_flag != 0 }),
                 attachments: [encode_attachments(&self.vm, &cmd.attachments)?,
                               crate::g16_attachments::Attachments::EMPTY],
                 end_copies: copies,

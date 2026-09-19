@@ -447,6 +447,7 @@ impl File {
         if facts.chip_id == 0x8132 {
             params.features |= uapi::drm_asahi_feature_DRM_ASAHI_FEATURE_RENDER_TIMESTAMP_COPIES as u64;
             params.features |= uapi::drm_asahi_feature_DRM_ASAHI_FEATURE_COMPUTE_TIMESTAMP_COPIES as u64;
+            params.features |= uapi::drm_asahi_feature_DRM_ASAHI_FEATURE_COMPUTE_WIDE_VISIBILITY as u64;
             params.features |= uapi::drm_asahi_feature_DRM_ASAHI_FEATURE_FRAGMENT_DEPENDENCY as u64;
             params.features |= uapi::drm_asahi_feature_DRM_ASAHI_FEATURE_FRAGMENT_DEPENDENCY_COMPUTE as u64;
         }

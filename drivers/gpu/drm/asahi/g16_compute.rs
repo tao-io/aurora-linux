@@ -55,6 +55,7 @@ pub(crate) struct Control {
     pub base: u64,
     pub end: u64,
     pub usc_base: u64,
+    pub wide_visibility: bool,
 }
 
 /// Encode an owned-context dispatch with initialized USC private memory.
@@ -63,7 +64,7 @@ pub(crate) struct Control {
 /// qualification shader does not request spills; no captured pool is copied.
 pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32, pages: u32) -> Result<(), ()> {
     encode_dispatch(out, a, pool_qwords, pages,
-        Control { base: a.cdm_gpu, end: a.cdm_gpu + 0x30, usc_base: 0 }, None)
+        Control { base: a.cdm_gpu, end: a.cdm_gpu + 0x30, usc_base: 0, wide_visibility: false }, None)
 }
 
 pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
@@ -313,7 +314,7 @@ mod tests {
             stamp: 0xfffffc2000078000, fw_stamp: 0xfffffc200007c000, event_seq: 0x100000003 };
         let mut bytes = [0; SIZE];
         encode_dispatch(&mut bytes, a, 16384, 512,
-            Control { base: a.cdm_gpu, end: a.cdm_gpu + 0x30, usc_base: 0 }, Some(n)).unwrap();
+            Control { base: a.cdm_gpu, end: a.cdm_gpu + 0x30, usc_base: 0, wide_visibility: false }, Some(n)).unwrap();
         let ptr = |off| u64::from_le_bytes(bytes[off..off + 8].try_into().unwrap());
         for off in [0x91c, 0xb5c] { assert_eq!(ptr(off), a.stats); }
         for off in [0x924, 0xad8, 0xb28, 0xb64] { assert_eq!(ptr(off), a.work_queue); }

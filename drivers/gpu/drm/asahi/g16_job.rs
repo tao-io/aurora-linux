@@ -208,6 +208,10 @@ impl Compute {
         g16_memory::publish();
         Ok(())
     }
+    pub(crate) fn coalesce_stamp_flush(&mut self) -> Result {
+        // JobMeta::flush_stamps. UUID at +820 and all execution stamps remain.
+        self.command.u32(0x81c, 0)
+    }
     pub(crate) fn uma_submitted(&self) -> u64 { self.uma_submitted }
     pub(crate) fn uma_completed(&mut self) -> Result<u64> {
         self.command.read_u64(0xe54)

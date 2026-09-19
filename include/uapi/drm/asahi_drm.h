@@ -282,6 +282,12 @@ enum drm_asahi_feature {
 	 * dependency. Requires DRM_ASAHI_RENDER_FRAGMENT_DEPENDENCY_COMPUTE.
 	 */
 	DRM_ASAHI_FEATURE_FRAGMENT_DEPENDENCY_COMPUTE = (1UL) << 7,
+
+	/** @DRM_ASAHI_FEATURE_COMPUTE_WIDE_VISIBILITY: Compute streams may
+	 * declare their trailing native memory publication barrier. Intermediate
+	 * host stamp flushes may then be coalesced until the packet's last compute.
+	 */
+	DRM_ASAHI_FEATURE_COMPUTE_WIDE_VISIBILITY = (1UL) << 8,
 };
 
 #define DRM_ASAHI_PARAM_GROUP_VM_STATUS 1
@@ -1330,6 +1336,13 @@ enum drm_asahi_compute_flags {
 	 * three-buffer table from this command's three compute attachments.
 	 */
 	DRM_ASAHI_COMPUTE_G17P_ADD3_PROOF = (1L << 0),
+
+	/** @DRM_ASAHI_COMPUTE_WIDE_VISIBILITY: Stream ends with a native wide
+	 * visibility barrier publishing all preceding shader memory writes.
+	 * Requires DRM_ASAHI_FEATURE_COMPUTE_WIDE_VISIBILITY. This does not
+	 * remove execution dependencies, API timestamps, or final host visibility.
+	 */
+	DRM_ASAHI_COMPUTE_WIDE_VISIBILITY = (1L << 1),
 };
 
 /**
