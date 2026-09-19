@@ -246,7 +246,14 @@ impl Runtime {
         let mut batch = KVec::with_capacity(count, GFP_KERNEL)?;
         self.inner.pending.reserve(1, GFP_KERNEL)?;
         for offset in 0..count {
-            batch.push(self.prepare_command(packet.clone(), offset, (bank * COMPUTE_DEPTH + offset) as u64)?, GFP_KERNEL)?;
+            let active = self.prepare_command(packet.clone(), offset,
+                (bank * COMPUTE_DEPTH + offset) as u64).map_err(|error| {
+                dev_err!(self.inner.drm.as_ref(),
+                    "G16G: packet preparation failed job={} bank={} index={} count={} error={:?}\n",
+                    packet.id, bank, offset, count, error);
+                error
+            })?;
+            batch.push(active, GFP_KERNEL)?;
         }
         self.inner.pending.push(batch, GFP_KERNEL).expect("reserved prepared packet");
         self.pump()

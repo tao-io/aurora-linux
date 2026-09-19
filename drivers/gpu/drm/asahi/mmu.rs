@@ -2660,7 +2660,10 @@ impl Vm {
         guard: bool,
     ) -> Result<KernelMapping> {
         let size = object_range.range();
-        let sgt = gem.owned_sg_table()?;
+        let sgt = gem.owned_sg_table().map_err(|error| {
+            pr_err!("asahi: kernel mapping backing failed size={} error={:?}\n", size, error);
+            error
+        })?;
         let mut inner = self.inner.exec_lock(Some(gem), false)?;
         let vm_bo = self.inner.obtain_bo(gem)?;
 
@@ -2694,6 +2697,8 @@ impl Vm {
         let mut node = match node_result {
             Ok(node) => node,
             Err(err) => {
+                pr_err!("asahi: kernel mapping VA failed size={} range={:#x}..{:#x} error={:?}\n",
+                    size, range.start, range.end, err);
                 core::mem::drop(inner);
                 return Err(err);
             }
@@ -2708,7 +2713,10 @@ impl Vm {
         // Drop the exec_lock first, so that if map_node failed the
         // KernelMappingInner destructur does not deadlock.
         core::mem::drop(inner);
-        ret?;
+        ret.map_err(|error| {
+            pr_err!("asahi: kernel mapping page table failed size={} error={:?}\n", size, error);
+            error
+        })?;
         Ok(KernelMapping(ManuallyDrop::new(node)))
     }
 
