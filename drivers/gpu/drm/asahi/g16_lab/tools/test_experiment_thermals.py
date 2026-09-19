@@ -42,7 +42,7 @@ class ThermalsTest(unittest.TestCase):
 
     def test_startup_hot_or_missing_sensor_refuses(self):
         (self.pmp / 'temp1_input').write_text('95000')
-        with self.assertRaisesRegex(RuntimeError, 'cutoff'):
+        with self.assertRaisesRegex(RuntimeError, 'cool below'):
             self.guard.start()
         self.assertIsNone(self.guard.thread)
         (self.pmp / 'temp1_input').unlink()
@@ -53,7 +53,7 @@ class ThermalsTest(unittest.TestCase):
         self.guard.discover()
         for i in range(1, 7):
             path = self.pmp / f'temp{i}_input'
-            path.write_text('95000')
+            path.write_text('100000')
             with self.assertRaisesRegex(RuntimeError, 'cutoff'):
                 self.guard.sample()
             path.write_text('57000')
@@ -71,10 +71,17 @@ class ThermalsTest(unittest.TestCase):
     def test_monitor_latches_hot_reading_and_stops(self):
         self.guard.interval_seconds = 0.01
         self.guard.start()
-        (self.pmp / 'temp5_input').write_text('96000')
+        (self.pmp / 'temp5_input').write_text('100000')
         self.guard.thread.join(timeout=1)
         self.assertEqual(self.stops, [True])
         self.assertIsNotNone(self.guard.failure)
+
+    def test_kernel_control_headroom_is_not_an_emergency_stop(self):
+        self.guard.start()
+        (self.pmp / 'temp5_input').write_text('99000')
+        self.guard.sample()
+        self.guard.check()
+        self.assertFalse(self.stops)
 
     def test_disabled_policy_invalid_and_stale_readings(self):
         self.guard.start()
