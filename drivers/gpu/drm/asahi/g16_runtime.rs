@@ -559,7 +559,7 @@ impl Runtime {
             } else {
                 if let Work::Compute(compute) = &mut active.work {
                     gpu_span = [status[2], status[3]];
-                    crate::cls_dev_dbg!(SubmitTiming, inner.drm, "G16G: compute completion status={:x?} UMA completed={}/1\n", compute.status()?, compute.uma_completed()?);
+                    crate::cls_dev_dbg!(SubmitTiming, inner.drm, "G16G: compute completion status={:x?} UMA completed={}/{}\n", compute.status()?, compute.uma_completed()?, compute.uma_submitted());
                 }
             }
             // Exact retirement: the descriptor's consumer index is final.

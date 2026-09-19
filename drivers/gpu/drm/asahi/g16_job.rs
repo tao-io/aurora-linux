@@ -25,6 +25,7 @@ pub(crate) struct Compute {
     pool_slot: u8,
     stamp: u32,
     consumed_pages: usize,
+    uma_submitted: u64,
     /// Pool-state and page-list bytes for this owner's private pool.
     freelist: KVec<u8>,
     page_list_image: KVec<u8>,
@@ -46,25 +47,20 @@ impl Compute {
         // Only an owner displaced by a completely retired replacement may be
         // recycled, and only inside the same client GPUVM. Its GEM backing,
         // both command aliases, the 32 MiB private pool and the ASID lease
-        // are retained; every firmware-visible record is rebuilt below.
+        // are retained; command records are rebuilt while USC state persists.
         let reusable = reusable.filter(|job| control.is_some() && job.binding.matches(vm) && job.pool_slot == pool_slot);
+        let mut saved_uma = [0; 0xa0];
         let mut boxed = if let Some(mut job) = reusable {
             let owner: &mut Self = &mut *job;
-            // Every firmware- or GPU-written record is reset before the new
-            // command is encoded. The pool keeps its contents except the
-            // pages the retired dispatch consumed from the freelist. The
-            // freelist ring and page list are rewritten in full below, so
-            // only their tails are cleared. The context store is written by
-            // a preemption and read back only through the preemption record,
-            // which is rebuilt from zero here.
+            // The displaced owner is no longer cached by firmware. Preserve
+            // the GPU-maintained USC allocator as one unit: descriptor
+            // cursors, freelist, page list and payload. Native updateSubmitInfo
+            // uses cumulative engine counts; resetting just the allocator or
+            // just its payload breaks that contract.
+            if owner.uma_completed()? != owner.uma_submitted { return Err(EBUSY); }
+            owner.command.read(0xe00, &mut saved_uma)?;
             for buffer in [&mut owner.command, &mut owner.output, &mut owner.preemption,
-                &mut owner.auxiliary, &mut owner.counter] { buffer.clear()?; }
-            let pool_len = owner.freelist.len();
-            owner.pool_state.clear_range(pool_len, owner.pool_state.size() - pool_len)?;
-            let list_len = owner.page_list_image.len();
-            owner.page_list.clear_range(list_len, owner.page_list.size() - list_len)?;
-            let bytes = owner.consumed_pages.min(PRIVATE_PAGES) * 0x1000;
-            owner.private_memory.clear_range(0, bytes)?;
+                &mut owner.auxiliary] { buffer.clear()?; }
             owner.stamp = stamp;
             job
         } else {
@@ -101,6 +97,7 @@ impl Compute {
             pool_slot,
             stamp,
             consumed_pages: PRIVATE_PAGES,
+            uma_submitted: 0,
             freelist,
             page_list_image,
         }, GFP_KERNEL)?;
@@ -137,13 +134,18 @@ impl Compute {
         // when firmware has consumed both commands from the same work queue.
         bytes[0xe08..0xe0c].copy_from_slice(&u32::from(job.pool_slot).to_le_bytes());
         bytes[0xe00..0xe08].copy_from_slice(&job.command.va().to_le_bytes());
-        job.pool_state.write(0, &job.freelist)?;
-        job.page_list.write(0, &job.page_list_image)?;
+        if job.uma_submitted == 0 {
+            job.pool_state.write(0, &job.freelist)?;
+            job.page_list.write(0, &job.page_list_image)?;
+        } else {
+            bytes[0xe00..0xea0].copy_from_slice(&saved_uma);
+        }
         job.command.write(0, &bytes[..])?;
-        // One submitted engine uses this freshly initialized UMA owner.
         // Match firmware's UMA+54 completion count so TEXT 2b518 drains the
-        // cached gUPM slot before another client's pool is installed.
-        job.counter.u64(0, 1)?;
+        // cached gUPM slot and saves its cursors before another owner is bound.
+        job.uma_submitted = job.uma_submitted.checked_add(1).ok_or(EOVERFLOW)?;
+        let submitted = job.uma_submitted;
+        job.counter.u64(0, submitted)?;
         job.shader.write(0, &g16_dispatch::image(job.output.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.esl.write(0, &g16_dispatch::esl(job.shader.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.cdm.write(0, &g16_dispatch::cdm(job.esl.gpu_va()?).map_err(|_| EINVAL)?)?;
@@ -177,6 +179,7 @@ impl Compute {
         g16_memory::publish();
         Ok(())
     }
+    pub(crate) fn uma_submitted(&self) -> u64 { self.uma_submitted }
     pub(crate) fn uma_completed(&mut self) -> Result<u64> {
         self.command.read_u64(0xe54)
     }

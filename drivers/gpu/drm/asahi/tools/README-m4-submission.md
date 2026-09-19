@@ -186,3 +186,22 @@ preparations total 0.231 s (43.8 us mean) and private-payload clearing is zero,
 versus 0.338 ms per render before persistence. Dynamic menu changes preclude
 an isolated FPS ratio. 60 FPS, persistent compute pools, per-client firmware
 queues and broad CTS remain TODO.
+
+## Persistent compute USC allocator (2026-09-19)
+
+Compute now follows the render owner's qualified allocator lifetime: only
+same-VM, same-slot owners displaced by a completely retired replacement may be
+reused, and UMA completed must equal submitted. Preserve the embedded UMA
+record (command+e00..e9f), freelist, page list and private payload as one unit;
+advance submitted by one engine instead of resetting to one. Rebuild the
+command/preemption/output records. Fresh owners retain their zero initialization.
+Firmware drain/reload evidence is the same 25G83 routine cited above.
+
+`20260919T012807757708Z-factorio-persistent-compute-pool-frame`: original
+reference matches exactly. `20260919T013219575689Z-factorio-persistent-compute-pool-queries`:
+timestamp copies/order pass. The 60-second actual menu profile
+`20260919T012837898331Z-factorio-persistent-compute-pool-menu` passes, ending
+at 27.03 FPS (25.11--28.92), peak 88.25 C. Over the final 19.158 s,
+4626 compute preparations total 0.0475 s (10.26 us mean), versus approximately
+230 us before persistent compute state. The scene varies; this is not a paired
+FPS ratio. TODO: 60 FPS, per-client firmware queues/preemption, broad CTS.
