@@ -8,15 +8,16 @@ pub(crate) struct Policy {
     previous_mc: Option<i32>,
     limited: bool,
     good_reads: u32,
+    good_ns: i64,
 }
 
 impl Policy {
     pub(crate) fn new() -> Self {
-        Self { last_ns: 0, previous_mc: None, limited: true, good_reads: 0 }
+        Self { last_ns: 0, previous_mc: None, limited: true, good_reads: 0, good_ns: 0 }
     }
 
     pub(crate) fn read_due(&self, now: i64) -> bool {
-        self.last_ns == 0 || now - self.last_ns >= 20_000_000
+        self.last_ns == 0 || now - self.last_ns >= 5_000_000
     }
 
     pub(crate) fn sample(&mut self, now: i64, temp: Option<i32>) {
@@ -35,11 +36,17 @@ impl Policy {
             (temp.is_some_and(|t| t >= 85_000) && projected >= 95_000) {
             self.limited = true;
             self.good_reads = 0;
+            self.good_ns = now;
         } else if temp.is_some_and(|t| t < 88_000) {
-            self.good_reads = (self.good_reads + 1).min(10);
+            // Faster hot sampling must not shorten the ~200ms cool recovery.
+            if now - self.good_ns >= 20_000_000 {
+                self.good_ns = now;
+                self.good_reads = (self.good_reads + 1).min(10);
+            }
             if self.good_reads == 10 { self.limited = false; }
         } else {
             self.good_reads = 0;
+            self.good_ns = now;
         }
     }
 
@@ -53,6 +60,24 @@ mod tests {
     use super::*;
     fn cool(p: &mut Policy, start: i64) {
         for i in 1..=10 { p.sample(start + i * 20_000_000, Some(70_000)); }
+    }
+    #[test]
+    fn five_ms_samples_do_not_accelerate_cool_recovery() {
+        let mut p = Policy::new();
+        for i in 1..40 {
+            p.sample(i * 5_000_000, Some(70_000));
+            assert_eq!(p.limit(0), 1);
+        }
+        p.sample(200_000_000, Some(70_000));
+        assert_eq!(p.limit(0), 9);
+        p.sample(205_000_000, Some(100_000));
+        assert_eq!(p.limit(0), 1);
+        for i in 1..40 {
+            p.sample(205_000_000 + i * 5_000_000, Some(70_000));
+            assert_eq!(p.limit(0), 1);
+        }
+        p.sample(405_000_000, Some(70_000));
+        assert_eq!(p.limit(0), 9);
     }
     #[test]
     fn startup_and_sensor_failure_require_recovery() {
@@ -103,7 +128,7 @@ mod tests {
         cool(&mut p, 0);
         assert_eq!(p.limit(3), 6);
         assert_eq!(p.limit(8), 1);
-        assert!(!p.read_due(219_999_999));
-        assert!(p.read_due(220_000_000));
+        assert!(!p.read_due(204_999_999));
+        assert!(p.read_due(205_000_000));
     }
 }

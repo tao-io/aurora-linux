@@ -8,6 +8,7 @@
 #include <linux/cpu_cooling.h>
 #include <linux/cpufreq.h>
 #include <linux/hwmon.h>
+#include <linux/hrtimer.h>
 #include <linux/ktime.h>
 #include <linux/math64.h>
 #include <linux/module.h>
@@ -18,6 +19,9 @@
 #include <linux/pm_qos.h>
 #include <linux/soc/apple/pmp-temps.h>
 #include <linux/thermal.h>
+#include <linux/workqueue.h>
+
+#include "apple-pmp-confirm.h"
 
 #define APPLE_PMP_PASSIVE_MC	88000
 /* step_wise regulates against the lower threshold after crossing the trip.
@@ -27,7 +31,7 @@
  * 95 C, with a 100 C emergency trip independent of experiment userspace.
  */
 #define APPLE_PMP_HYST_MC		2000
-#define APPLE_PMP_POLL_MS		25
+#define APPLE_PMP_POLL_MS		5
 
 struct apple_pmp_cluster {
 	struct cpufreq_policy *policy;
@@ -46,6 +50,11 @@ static struct {
 	u64 previous_ns;
 	bool fast_clamp;
 	bool enabled;
+	struct apple_pmp_confirmation critical;
+	bool shutdown_requested;
+	struct hrtimer poll_timer;
+	struct work_struct poll_work;
+	bool polling;
 	bool debug_critical_dumped; /* DEBUG_REMOVE_IN_PROD */
 } pmp_thermal;
 
@@ -175,10 +184,14 @@ static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
 	s64 elapsed;
 	u64 now;
 	long projected;
+	bool was_confirmed; /* DEBUG_REMOVE_IN_PROD */
 	int ret;
 
 	guard(mutex)(&pmp_thermal.lock);
 	ret = apple_pmp_debug_sample(&snapshot, &value); /* DEBUG_REMOVE_IN_PROD */
+	was_confirmed = pmp_thermal.critical.confirmed; /* DEBUG_REMOVE_IN_PROD */
+	apple_pmp_confirmation_sample(&pmp_thermal.critical, value, ret,
+				      snapshot.finished_ns);
 	if (ret) {
 		pmp_thermal.good_reads = 0;
 		pmp_thermal.previous_ns = 0;
@@ -226,7 +239,45 @@ static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
 		pmp_thermal.debug_critical_dumped = true;
 		apple_pmp_debug_dump(&snapshot, "critical-sample", value, 0);
 	}
+	if (!was_confirmed && pmp_thermal.critical.confirmed)
+		apple_pmp_debug_dump(&snapshot, "critical-confirmed-third-sample", value, 0);
 	return ret;
+}
+
+/* The thermal core calls .critical only on upward crossings. The poll
+ * worker also checks after every update so sustained heat reaches sample 3.
+ * Preserve the raw temperature and the normal thermal-core poweroff path.
+ */
+static void apple_pmp_critical(struct thermal_zone_device *zone)
+{
+	bool shutdown = false;
+
+	mutex_lock(&pmp_thermal.lock);
+	if (pmp_thermal.critical.confirmed && !pmp_thermal.shutdown_requested) {
+		pmp_thermal.shutdown_requested = true;
+		shutdown = true;
+	}
+	mutex_unlock(&pmp_thermal.lock);
+	if (shutdown) {
+		pr_emerg("apple-pmp-thermal: three >=100 C samples at least 5 ms apart; requesting shutdown\n");
+		thermal_zone_device_critical(zone);
+	}
+}
+
+static void apple_pmp_poll_work(struct work_struct *work)
+{
+	thermal_zone_device_update(pmp_thermal.zone, THERMAL_EVENT_UNSPECIFIED);
+	apple_pmp_critical(pmp_thermal.zone);
+}
+
+static enum hrtimer_restart apple_pmp_poll_timer(struct hrtimer *timer)
+{
+	/* Sampling/QoS may sleep, so never perform either in timer context.
+	 * One work item coalesces missed ticks; no burst of stale confirmations.
+	 */
+	queue_work(system_highpri_wq, &pmp_thermal.poll_work);
+	hrtimer_forward_now(timer, ms_to_ktime(APPLE_PMP_POLL_MS));
+	return HRTIMER_RESTART;
 }
 
 static int apple_pmp_change_mode(struct thermal_zone_device *zone,
@@ -268,6 +319,7 @@ static bool apple_pmp_should_bind(struct thermal_zone_device *zone,
 
 static const struct thermal_zone_device_ops apple_pmp_thermal_ops = {
 	.get_temp = apple_pmp_get_temp,
+	.critical = apple_pmp_critical,
 	.change_mode = apple_pmp_change_mode,
 	.should_bind = apple_pmp_should_bind,
 };
@@ -312,6 +364,11 @@ static void apple_pmp_thermal_cleanup(void)
 {
 	unsigned int i;
 
+	if (pmp_thermal.polling) {
+		hrtimer_cancel(&pmp_thermal.poll_timer);
+		cancel_work_sync(&pmp_thermal.poll_work);
+		pmp_thermal.polling = false;
+	}
 	if (pmp_thermal.zone) {
 		thermal_zone_device_unregister(pmp_thermal.zone);
 		pmp_thermal.zone = NULL;
@@ -405,7 +462,7 @@ static int __init apple_pmp_thermal_init(void)
 	zone = thermal_zone_device_register_with_trips("apple-pmp-die", apple_pmp_trips,
 						       ARRAY_SIZE(apple_pmp_trips), NULL,
 						       &apple_pmp_thermal_ops, &apple_pmp_params,
-						       APPLE_PMP_POLL_MS, APPLE_PMP_POLL_MS);
+						       0, 0);
 	pmp_thermal.zone = zone;
 	if (IS_ERR(pmp_thermal.zone)) {
 		ret = PTR_ERR(pmp_thermal.zone);
@@ -420,7 +477,13 @@ static int __init apple_pmp_thermal_init(void)
 	ret = thermal_zone_device_enable(pmp_thermal.zone);
 	if (ret)
 		goto fail;
-	pr_info("apple-pmp-thermal: J713 CPU/GPU cooling at 88 C, rapid-rise/92 C clamp, 100 C emergency, 25 ms polling\n");
+	INIT_WORK(&pmp_thermal.poll_work, apple_pmp_poll_work);
+	hrtimer_setup(&pmp_thermal.poll_timer, apple_pmp_poll_timer,
+		      CLOCK_MONOTONIC, HRTIMER_MODE_REL);
+	pmp_thermal.polling = true;
+	hrtimer_start(&pmp_thermal.poll_timer, ms_to_ktime(APPLE_PMP_POLL_MS),
+		      HRTIMER_MODE_REL);
+	pr_info("apple-pmp-thermal: J713 CPU/GPU cooling at 88 C, rapid-rise/92 C clamp, three >=100 C samples for shutdown, 5 ms high-resolution polling\n");
 	return 0;
 fail:
 	apple_pmp_thermal_cleanup();
