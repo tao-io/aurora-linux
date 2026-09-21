@@ -67,7 +67,13 @@ static int phram_read(struct mtd_info *mtd, loff_t from, size_t len,
 {
 	u_char *start = mtd->priv;
 
-	memcpy(buf, start + from, len);
+	/* ioremap() memory does not permit the unaligned wide loads used by
+	 * optimized memcpy on arm64. Cached RAM mappings may use memcpy.
+	 */
+	if (container_of(mtd, struct phram_mtd_list, mtd)->cached)
+		memcpy(buf, start + from, len);
+	else
+		memcpy_fromio(buf, (void __iomem *)(start + from), len);
 	*retlen = len;
 	return 0;
 }
