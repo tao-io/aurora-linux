@@ -1,0 +1,1145 @@
+{
+  "schema": 1,
+  "cases_sha256": "3dcc383ca940351c9332078d76d624043134d5fb9940e8ad68cfe733e46dccdd",
+  "provenance": {
+    "catalog": "build/cts-vulkan14-ordered/catalog/catalog.txt",
+    "catalog_sha256": "72c1bb9d2f9f0425ab8a4f570d78abdc1d3a34b82173ec76b772dedc477526bf",
+    "selection": "Dynamic UBO render/copy plus complete memory binding, 1MiB mapping and host-write barrier subgroups"
+  },
+  "cases": [
+    {
+      "case": "dEQP-VK.binding_model.descriptor_copy.graphics.uniform_buffer_dynamic_0",
+      "catalog_index": 337976,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.descriptor_copy.graphics.uniform_buffer_dynamic_1",
+      "catalog_index": 337977,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.descriptor_copy.graphics.uniform_buffer_dynamic_2",
+      "catalog_index": 337978,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.descriptor_copy.graphics.uniform_buffer_dynamic_3",
+      "catalog_index": 337979,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.descriptor_copy.graphics.uniform_buffer_dynamic_4",
+      "catalog_index": 337980,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.descriptor_copy.graphics.uniform_buffer_dynamic_5",
+      "catalog_index": 337981,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.descriptor_copy.graphics.uniform_buffer_dynamic_6",
+      "catalog_index": 337982,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.descriptor_copy.graphics.uniform_buffer_dynamic_array0",
+      "catalog_index": 337983,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.descriptor_copy.graphics.uniform_buffer_dynamic_array1",
+      "catalog_index": 337984,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.descriptor_copy.graphics.uniform_buffer_dynamic_array2",
+      "catalog_index": 337985,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.descriptor_array.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395744,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.descriptor_array.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395745,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.descriptor_array.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395746,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.descriptor_array.offset_view_zero_dynamic_zero",
+      "catalog_index": 395747,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_arbitrary_descriptors.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395748,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_arbitrary_descriptors.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395749,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_arbitrary_descriptors.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395750,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_arbitrary_descriptors.offset_view_zero_dynamic_zero",
+      "catalog_index": 395751,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_contiguous_descriptors.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395752,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_contiguous_descriptors.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395753,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_contiguous_descriptors.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395754,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_contiguous_descriptors.offset_view_zero_dynamic_zero",
+      "catalog_index": 395755,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.descriptor_array.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395756,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.descriptor_array.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395757,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.descriptor_array.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395758,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.descriptor_array.offset_view_zero_dynamic_zero",
+      "catalog_index": 395759,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.multiple_arbitrary_descriptors.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395760,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.multiple_arbitrary_descriptors.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395761,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.multiple_arbitrary_descriptors.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395762,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.multiple_arbitrary_descriptors.offset_view_zero_dynamic_zero",
+      "catalog_index": 395763,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.multiple_contiguous_descriptors.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395764,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.multiple_contiguous_descriptors.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395765,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.multiple_contiguous_descriptors.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395766,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.multiple_contiguous_descriptors.offset_view_zero_dynamic_zero",
+      "catalog_index": 395767,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.multiple_discontiguous_descriptors.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395768,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.multiple_discontiguous_descriptors.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395769,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.multiple_discontiguous_descriptors.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395770,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.multiple_discontiguous_descriptors.offset_view_zero_dynamic_zero",
+      "catalog_index": 395771,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.single_descriptor.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395772,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.single_descriptor.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395773,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.single_descriptor.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395774,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_descriptor_sets.single_descriptor.offset_view_zero_dynamic_zero",
+      "catalog_index": 395775,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.descriptor_array.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395776,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.descriptor_array.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395777,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.descriptor_array.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395778,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.descriptor_array.offset_view_zero_dynamic_zero",
+      "catalog_index": 395779,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.multiple_arbitrary_descriptors.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395780,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.multiple_arbitrary_descriptors.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395781,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.multiple_arbitrary_descriptors.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395782,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.multiple_arbitrary_descriptors.offset_view_zero_dynamic_zero",
+      "catalog_index": 395783,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.multiple_contiguous_descriptors.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395784,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.multiple_contiguous_descriptors.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395785,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.multiple_contiguous_descriptors.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395786,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.multiple_contiguous_descriptors.offset_view_zero_dynamic_zero",
+      "catalog_index": 395787,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.multiple_discontiguous_descriptors.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395788,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.multiple_discontiguous_descriptors.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395789,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.multiple_discontiguous_descriptors.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395790,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.multiple_discontiguous_descriptors.offset_view_zero_dynamic_zero",
+      "catalog_index": 395791,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.single_descriptor.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395792,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.single_descriptor.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395793,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.single_descriptor.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395794,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptor_sets.single_descriptor.offset_view_zero_dynamic_zero",
+      "catalog_index": 395795,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptors.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395796,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptors.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395797,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptors.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395798,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.multiple_discontiguous_descriptors.offset_view_zero_dynamic_zero",
+      "catalog_index": 395799,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.single_descriptor.offset_view_nonzero_dynamic_nonzero",
+      "catalog_index": 395800,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.single_descriptor.offset_view_nonzero_dynamic_zero",
+      "catalog_index": 395801,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.single_descriptor.offset_view_zero_dynamic_nonzero",
+      "catalog_index": 395802,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.binding_model.shader_access.primary_cmd_buf.bind.uniform_buffer_dynamic.fragment.single_descriptor.offset_view_zero_dynamic_zero",
+      "catalog_index": 395803,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.buffer_1048577",
+      "catalog_index": 932500,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.buffer_257",
+      "catalog_index": 932501,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.buffer_33",
+      "catalog_index": 932502,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.buffer_4087",
+      "catalog_index": 932503,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.buffer_8095",
+      "catalog_index": 932504,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.image_257_257",
+      "catalog_index": 932505,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.image_257_33",
+      "catalog_index": 932506,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.image_257_8",
+      "catalog_index": 932507,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.image_33_257",
+      "catalog_index": 932508,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.image_33_33",
+      "catalog_index": 932509,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.image_33_8",
+      "catalog_index": 932510,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.image_8_257",
+      "catalog_index": 932511,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.image_8_33",
+      "catalog_index": 932512,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.aliasing.suballocated.image_8_8",
+      "catalog_index": 932513,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.buffer_1048577",
+      "catalog_index": 932794,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.buffer_257",
+      "catalog_index": 932795,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.buffer_33",
+      "catalog_index": 932796,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.buffer_4087",
+      "catalog_index": 932797,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.buffer_8095",
+      "catalog_index": 932798,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.image_257_257",
+      "catalog_index": 932799,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.image_257_33",
+      "catalog_index": 932800,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.image_257_8",
+      "catalog_index": 932801,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.image_33_257",
+      "catalog_index": 932802,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.image_33_33",
+      "catalog_index": 932803,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.image_33_8",
+      "catalog_index": 932804,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.image_8_257",
+      "catalog_index": 932805,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.image_8_33",
+      "catalog_index": 932806,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.dedicated.image_8_8",
+      "catalog_index": 932807,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.buffer_1048577",
+      "catalog_index": 932808,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.buffer_257",
+      "catalog_index": 932809,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.buffer_33",
+      "catalog_index": 932810,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.buffer_4087",
+      "catalog_index": 932811,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.buffer_8095",
+      "catalog_index": 932812,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.image_257_257",
+      "catalog_index": 932813,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.image_257_33",
+      "catalog_index": 932814,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.image_257_8",
+      "catalog_index": 932815,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.image_33_257",
+      "catalog_index": 932816,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.image_33_33",
+      "catalog_index": 932817,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.image_33_8",
+      "catalog_index": 932818,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.image_8_257",
+      "catalog_index": 932819,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.image_8_33",
+      "catalog_index": 932820,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.overallocated.image_8_8",
+      "catalog_index": 932821,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.buffer_1048577",
+      "catalog_index": 932822,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.buffer_257",
+      "catalog_index": 932823,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.buffer_33",
+      "catalog_index": 932824,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.buffer_4087",
+      "catalog_index": 932825,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.buffer_8095",
+      "catalog_index": 932826,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.image_257_257",
+      "catalog_index": 932827,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.image_257_33",
+      "catalog_index": 932828,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.image_257_8",
+      "catalog_index": 932829,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.image_33_257",
+      "catalog_index": 932830,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.image_33_33",
+      "catalog_index": 932831,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.image_33_8",
+      "catalog_index": 932832,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.image_8_257",
+      "catalog_index": 932833,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.image_8_33",
+      "catalog_index": 932834,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.binding.regular.suballocated.image_8_8",
+      "catalog_index": 932835,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.flush",
+      "catalog_index": 936035,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.flush_map2",
+      "catalog_index": 936036,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.invalidate",
+      "catalog_index": 936037,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.invalidate_map2",
+      "catalog_index": 936038,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.remap",
+      "catalog_index": 936039,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.remap_map2",
+      "catalog_index": 936040,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.simple",
+      "catalog_index": 936041,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.simple_map2",
+      "catalog_index": 936042,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.subflush",
+      "catalog_index": 936043,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.subflush_map2",
+      "catalog_index": 936044,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.subflush_overlapping",
+      "catalog_index": 936045,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.subflush_overlapping_map2",
+      "catalog_index": 936046,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.subflush_separate",
+      "catalog_index": 936047,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.subflush_separate_map2",
+      "catalog_index": 936048,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.subinvalidate",
+      "catalog_index": 936049,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.subinvalidate_map2",
+      "catalog_index": 936050,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.subinvalidate_overlapping",
+      "catalog_index": 936051,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.subinvalidate_overlapping_map2",
+      "catalog_index": 936052,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.subinvalidate_separate",
+      "catalog_index": 936053,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.mapping.suballocation.full.1048577.subinvalidate_separate_map2",
+      "catalog_index": 936054,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_image_sampled.1024",
+      "catalog_index": 937883,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_image_sampled.1048576",
+      "catalog_index": 937884,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_image_sampled.65536",
+      "catalog_index": 937885,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_image_sampled.8192",
+      "catalog_index": 937886,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_storage_buffer.1024",
+      "catalog_index": 937891,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_storage_buffer.1048576",
+      "catalog_index": 937892,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_storage_buffer.65536",
+      "catalog_index": 937893,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_storage_buffer.8192",
+      "catalog_index": 937894,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_vertex_buffer.1024_vertex_buffer_stride_2",
+      "catalog_index": 937915,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_vertex_buffer.1024_vertex_buffer_stride_4",
+      "catalog_index": 937916,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_vertex_buffer.1048576_vertex_buffer_stride_2",
+      "catalog_index": 937917,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_vertex_buffer.1048576_vertex_buffer_stride_4",
+      "catalog_index": 937918,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_vertex_buffer.65536_vertex_buffer_stride_2",
+      "catalog_index": 937919,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_vertex_buffer.65536_vertex_buffer_stride_4",
+      "catalog_index": 937920,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_vertex_buffer.8192_vertex_buffer_stride_2",
+      "catalog_index": 937921,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    },
+    {
+      "case": "dEQP-VK.memory.pipeline_barrier.host_write_vertex_buffer.8192_vertex_buffer_stride_4",
+      "catalog_index": 937922,
+      "classification": "unclassified",
+      "requirements": [],
+      "rule": "Targeted scattered kernel mapping regression check"
+    }
+  ]
+}

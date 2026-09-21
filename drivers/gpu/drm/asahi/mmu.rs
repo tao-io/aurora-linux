@@ -966,70 +966,44 @@ impl VmInner {
 
     /// Map an `mm::Node` representing an mapping in VA space.
     fn map_node(&mut self, node: &mm::Node<(), KernelMappingInner>, prot: Prot) -> Result {
-        let mut iova = node.start();
+        let iova = node.start();
         let mapping_end = iova
             .checked_add(node.mapped_size as u64)
             .ok_or(EOVERFLOW)?;
-        // The private fixed-mapping allocator cannot see GPUVM-owned leaves.
-        // Reserve the complete page-table walk before installing any SG run.
-        self.page_table.prepare_map(iova..mapping_end)?;
+        if (node.offset | node.mapped_size | iova as usize) & UAT_PGMSK != 0 {
+            return Err(EINVAL);
+        }
         let guard = node.bo.as_ref().ok_or(EINVAL)?.inner().inner.lock();
         let sgt = guard.sgt.as_ref().ok_or(EINVAL)?;
         let mut offset = node.offset;
         let mut left = node.mapped_size;
-
+        // One small temporary address vector replaces thousands of repeated
+        // table walks and PoC barriers for a fragmented private allocation.
+        // Use vmalloc fallback for large objects; do not require contiguous
+        // address-vector storage. Validate before publishing any leaves.
+        let mut pages = KVVec::with_capacity(left / UAT_PGSZ, GFP_KERNEL)?;
         for range in sgt.iter() {
-            if left == 0 {
-                break;
-            }
-
-            // TODO: proper DMA address/length handling
+            if left == 0 { break; }
             let mut addr = range.dma_address() as usize;
-            let mut len: usize = range.dma_len() as usize;
-
-            if (offset | addr | len | iova as usize) & UAT_PGMSK != 0 {
-                dev_err!(
-                    self.dev.as_ref(),
-                    "MMU: KernelMapping {:#x}:{:#x} -> {:#x} is not page-aligned\n",
-                    addr,
-                    len,
-                    iova
-                );
-                return Err(EINVAL);
-            }
-
-            if offset > 0 {
-                let skip = len.min(offset);
-                addr += skip;
-                len -= skip;
-                offset -= skip;
-            }
-
+            let mut len = range.dma_len() as usize;
+            if (addr | len) & UAT_PGMSK != 0 { return Err(EINVAL); }
+            let skip = len.min(offset);
+            addr = addr.checked_add(skip).ok_or(EOVERFLOW)?;
+            len -= skip;
+            offset -= skip;
             len = len.min(left);
-
-            if len == 0 {
-                continue;
+            let end = addr.checked_add(len).ok_or(EOVERFLOW)?;
+            for phys in (addr..end).step_by(UAT_PGSZ) {
+                pages.push(phys as PhysicalAddr, GFP_KERNEL)?;
             }
-
-            mod_dev_dbg!(
-                self.dev,
-                "MMU: map: {:#x}:{:#x} -> {:#x}\n",
-                addr,
-                len,
-                iova
-            );
-
-            self.page_table.map_pages(
-                iova..(iova + len as u64),
-                addr as PhysicalAddr,
-                prot,
-                false,
-            )?;
-
-            iova += len as u64;
             left -= len;
         }
-        Ok(())
+        // A truncated SG list must not leave an ownerless partial mapping.
+        if left != 0 { return Err(EFAULT); }
+        // Retain authoritative overlap checks against GPUVM-owned leaves and
+        // all fallible intermediate allocation before the first leaf store.
+        self.page_table.prepare_map(iova..mapping_end)?;
+        self.page_table.map_scattered_pages(iova..mapping_end, &pages, prot)
     }
 }
 

@@ -1,0 +1,44 @@
+{
+  "asid": 38,
+  "submissions": 3,
+  "scope": "Instrumented complete GPU submission spans; not live FPS",
+  "median_gpu_ms": 23.948166666666665,
+  "gpu_ms": [
+    23.948166666666665,
+    23.950291666666665,
+    23.907208333333333
+  ],
+  "pass_fragment_ms": [
+    [
+      7.7475,
+      11.214875,
+      1.334625,
+      0.862083,
+      1.112666,
+      0.308041
+    ],
+    [
+      7.644875,
+      11.226,
+      1.297458,
+      0.868833,
+      1.11225,
+      0.307291
+    ],
+    [
+      7.580125,
+      11.2265,
+      1.281625,
+      0.870458,
+      1.108083,
+      0.306
+    ]
+  ],
+  "reference": "_provenance/experiments/20260921T060309557771Z-stk-native-dynamic-ubo-recheck/remote/vulkan-replay/screenshot_frame_3.png",
+  "actual": "_provenance/experiments/20260921T070747727510Z-stk-native-batched-map-replay/remote/vulkan-replay/screenshot_frame_3.png",
+  "pixel_exact": true,
+  "maximum_channel_error": 0,
+  "mean_channel_error": 0.0,
+  "changed_pixels": 0,
+  "pixels_over_8": 0
+}

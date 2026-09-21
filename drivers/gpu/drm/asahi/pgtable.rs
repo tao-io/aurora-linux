@@ -906,6 +906,43 @@ impl UatPageTable {
         })
     }
 
+    /// Map scattered backing with one walk and publication per leaf-table
+    /// span, rather than repeating the root walk and cache barrier for each
+    /// DMA segment. The caller retains all backing and the VM execution lock.
+    /// Validate the entire source and destination before writing any leaf.
+    pub(crate) fn map_scattered_pages(
+        &mut self,
+        iova_range: Range<u64>,
+        pages: &[PhysicalAddr],
+        prot: Prot,
+    ) -> Result {
+        if iova_range.is_empty()
+            || (iova_range.start | iova_range.end) & UAT_PGMSK as u64 != 0
+            || (iova_range.end - iova_range.start) >> UAT_PGBIT != pages.len() as u64
+            || pages.iter().any(|p| p & UAT_PGMSK as PhysicalAddr != 0)
+        {
+            return Err(EINVAL);
+        }
+        let mut visited = 0usize;
+        self.with_pages(iova_range.clone(), false, false, false, |_, ptes| {
+            if ptes.iter().any(|pte| pte.load(Ordering::Acquire) != 0) {
+                return Err(EBUSY);
+            }
+            visited += ptes.len();
+            Ok(())
+        })?;
+        if visited != pages.len() { return Err(EFAULT); }
+        let bits = prot.as_pte() | self.pte_bits();
+        let mut offset = 0usize;
+        self.with_pages(iova_range, false, false, true, |_, ptes| {
+            for (pte, phys) in ptes.iter().zip(&pages[offset..offset + ptes.len()]) {
+                pte.store(*phys | bits, Ordering::Relaxed);
+            }
+            offset += ptes.len();
+            Ok(())
+        })
+    }
+
     pub(crate) fn reprot_pages(&mut self, iova_range: Range<u64>, prot: Prot) -> Result {
         mod_pr_debug!(
             "UATPageTable::reprot_pages: {:#x?} {:?}\n",

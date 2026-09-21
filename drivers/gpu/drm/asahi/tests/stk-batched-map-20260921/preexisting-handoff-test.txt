@@ -1,0 +1,6 @@
+Unmodified HEAD 5154e52a6aa7
+Traceback (most recent call last):
+  File "/tmp/tmp3raz35u7/tests/test_g17_render_vm_handoff.py", line 116, in <module>
+    assert storage_new.count("g17p_cl_client_low_va_range()") >= 4
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

@@ -1,0 +1,6 @@
+{
+  "actual": "_provenance/experiments/20260921T065628589537Z-stk-zink-batched-map-replay/remote/vulkan-replay/screenshot_frame_3.png",
+  "reference": "_provenance/experiments/20260921T063920173509Z-stk-zink-replay-baseline/remote/vulkan-replay/screenshot_frame_3.png",
+  "changed_pixels": 0,
+  "maximum_channel_error": 0
+}
