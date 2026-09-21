@@ -65,6 +65,7 @@
 #include <linux/dma-resv.h>
 #include <linux/errname.h>
 #include <linux/soc/apple/pmp.h>
+#include <linux/soc/apple/pmp-cooling.h>
 #include <linux/ethtool.h>
 #include <linux/fdtable.h>
 #include <linux/file.h>

@@ -95,16 +95,16 @@ impl Cooling {
         }
         let governor = COOLING_STATE.load(Ordering::Acquire);
         let limit = self.policy.limit(governor);
-        let trace = self.policy.trace;
+        let trace = self.policy.trace();
         let key = (limit, trace.reason);
         if self.last_transition != Some(key) {
             self.last_transition = Some(key);
             // Transition-only: never print on every 5 ms sensor poll. The
             // sample timestamp is monotonic, independent of printk's clock.
-            pr_info!("G16G: thermal decision ns={} sample_ns={} mc={} channel={} error={} previous_mc={} dt_ns={} projected_mc={} reason={} governor={} limit={}\n",
+            pr_info!("G16G: thermal decision ns={} sample_ns={} mc={} channel={} error={} previous_mc={} dt_ns={} projected_mc={} reason={} hard={} prediction={} governor={} limit={}\n",
                 now, trace.now, self.sample.0, self.sample.1, self.sample.2,
                 trace.previous_mc.unwrap_or(-1), trace.elapsed, trace.projected,
-                trace.reason, governor, limit);
+                trace.reason, trace.hard, trace.prediction, governor, limit);
         }
         limit
     }

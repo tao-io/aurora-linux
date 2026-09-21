@@ -18,26 +18,25 @@
 #include <linux/platform_device.h>
 #include <linux/pm_qos.h>
 #include <linux/soc/apple/pmp-temps.h>
+#include <linux/soc/apple/pmp-cooling.h>
 #include <linux/thermal.h>
 #include <linux/workqueue.h>
 
 #include "apple-pmp-confirm.h"
 
 #define APPLE_PMP_PASSIVE_MC	88000
-/* step_wise regulates against the lower threshold after crossing the trip.
- * A 10 C band held ordinary graphics workloads near minimum CPU frequency
- * at 64--67 C after a short startup spike. The J713 development policy uses
- * an 88 C trip and releases below 86 C. Rapid rises clamp at a projected
- * 95 C, with a 100 C emergency trip independent of experiment userspace.
+/* Fast raw protection and ordinary governor regulation have separate clocks.
+ * No sysfs read advances either controller. Thresholds remain a development
+ * policy, not an inference of Apple's limits from macOS temperature peaks.
  */
 #define APPLE_PMP_HYST_MC		2000
 #define APPLE_PMP_POLL_MS		5
+#define APPLE_PMP_GOVERNOR_NS	100000000ULL
 
 struct apple_pmp_cluster {
 	struct cpufreq_policy *policy;
 	struct thermal_cooling_device *cdev;
 	struct freq_qos_request guard;
-	unsigned long floor;
 };
 
 static struct {
@@ -45,11 +44,13 @@ static struct {
 	struct thermal_zone_device *zone;
 	struct apple_pmp_cluster clusters[2];
 	struct mutex lock; /* Serializes sensor reads, mode changes and guard updates. */
-	unsigned int good_reads;
-	long previous_mc;
-	u64 previous_ns;
-	bool fast_clamp;
+	struct apple_pmp_cooling cooling;
+	unsigned int guard_level;
 	bool enabled;
+	long cached_mc;
+	int cached_error;
+	u64 governor_ns;
+	unsigned long long sample_count, governor_count;
 	struct apple_pmp_confirmation critical;
 	bool shutdown_requested;
 	struct hrtimer poll_timer;
@@ -57,6 +58,10 @@ static struct {
 	bool polling;
 	bool debug_critical_dumped; /* DEBUG_REMOVE_IN_PROD */
 } pmp_thermal;
+
+/* Read-only cadence diagnostics: reading temperatures must not advance these. */
+module_param_named(sample_count, pmp_thermal.sample_count, ullong, 0444);
+module_param_named(governor_count, pmp_thermal.governor_count, ullong, 0444);
 
 /* DEBUG_REMOVE_IN_PROD: retain the actual samples used for the decision,
  * including invalid/unavailable channels. A later read could miss the spike.
@@ -146,7 +151,7 @@ module_param_cb(debug_dump_thermals, &apple_pmp_debug_ops, NULL, 0200);
 MODULE_PARM_DESC(debug_dump_thermals, "DEBUG_REMOVE_IN_PROD: write Y to log temperatures without changing trips");
 
 /* Fail closed independently of the governor, including while the zone is off. */
-static int apple_pmp_guard(bool clamp)
+static int apple_pmp_guard(unsigned int level)
 {
 	unsigned int i;
 	int ret, err = 0;
@@ -154,103 +159,85 @@ static int apple_pmp_guard(bool clamp)
 	for (i = 0; i < ARRAY_SIZE(pmp_thermal.clusters); i++) {
 		struct apple_pmp_cluster *c = &pmp_thermal.clusters[i];
 
-		ret = freq_qos_update_request(&c->guard, clamp ?
-					     c->policy->cpuinfo.min_freq :
-					     FREQ_QOS_MAX_DEFAULT_VALUE);
+		unsigned int low = c->policy->cpuinfo.min_freq;
+		unsigned int high = c->policy->cpuinfo.max_freq;
+
+		/* QoS composes with user caps and governor cooling. Intermediate
+		 * requests are rounded down to supported OPPs by cpufreq.
+		 */
+		ret = freq_qos_update_request(&c->guard, level ?
+			low + (high - low) * (8 - level) / 8 :
+			FREQ_QOS_MAX_DEFAULT_VALUE);
 		if (ret < 0)
 			err = ret;
 	}
+	if (!err)
+		pmp_thermal.guard_level = level;
 	return err;
 }
 
-static bool apple_pmp_cooling_ready(void)
-{
-	unsigned int i;
-	unsigned long state;
-
-	for (i = 0; i < ARRAY_SIZE(pmp_thermal.clusters); i++) {
-		struct apple_pmp_cluster *c = &pmp_thermal.clusters[i];
-
-		if (c->cdev->ops->get_cur_state(c->cdev, &state) || state < c->floor)
-			return false;
-	}
-	return true;
-}
-
-static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
+static int apple_pmp_sample(void)
 {
 	struct apple_pmp_debug_snapshot snapshot; /* DEBUG_REMOVE_IN_PROD */
+	struct apple_pmp_cooling *cooling = &pmp_thermal.cooling;
 	long value = 0;
-	s64 elapsed;
-	u64 now;
-	long projected;
 	bool was_confirmed; /* DEBUG_REMOVE_IN_PROD */
-	bool was_clamped;
-	long previous_mc;
-	int channel = -1;
-	unsigned int i;
-	int ret;
+	unsigned int old_level, level, i;
+	int old_reason, channel = -1, ret, guard_ret;
+	const char *reason;
 
 	guard(mutex)(&pmp_thermal.lock);
-	was_clamped = pmp_thermal.fast_clamp;
-	previous_mc = pmp_thermal.previous_mc;
+	old_level = pmp_thermal.guard_level;
+	old_reason = cooling->reason;
 	ret = apple_pmp_debug_sample(&snapshot, &value); /* DEBUG_REMOVE_IN_PROD */
 	was_confirmed = pmp_thermal.critical.confirmed; /* DEBUG_REMOVE_IN_PROD */
 	apple_pmp_confirmation_sample(&pmp_thermal.critical, value, ret,
 				      snapshot.finished_ns);
-	if (ret) {
-		pmp_thermal.good_reads = 0;
-		pmp_thermal.previous_ns = 0;
-		pmp_thermal.fast_clamp = true;
-		apple_pmp_guard(true);
-		pr_warn_ratelimited("apple-pmp-thermal: sensor error %d; CPU minimum caps retained\n",
-				    ret);
-		return ret;
-	}
+	apple_pmp_cooling_sample(cooling, snapshot.finished_ns, value, ret);
+	/* Capture governor demand before it releases a trip; the independent
+	 * QoS envelope then restores CPU capacity gradually. Convert the cooling
+	 * device's own state, not policy->max (which includes this guard).
+	 */
+	for (i = 0; i < ARRAY_SIZE(pmp_thermal.clusters); i++) {
+		struct thermal_cooling_device *cdev = pmp_thermal.clusters[i].cdev;
+		unsigned long state;
 
-	*temp = value;
+		if (cdev && cdev->max_state && !cdev->ops->get_cur_state(cdev, &state))
+			apple_pmp_cooling_observe(cooling, snapshot.finished_ns,
+				DIV_ROUND_UP(state * 8, cdev->max_state));
+	}
+	level = apple_pmp_cooling_level(cooling);
+	/* Never release startup/fault protection with disabled or unbound cooling. */
+	if (!pmp_thermal.enabled)
+		level = 8;
+	guard_ret = apple_pmp_guard(level);
+	if (guard_ret)
+		apple_pmp_guard(8);
 	for (i = 0; i < PMP_TEMP_CHANNELS; i++)
 		if (!snapshot.errors[i] && snapshot.values[i] == value) {
 			channel = i;
 			break;
 		}
-	now = ktime_get_ns();
-	elapsed = now - pmp_thermal.previous_ns;
-	/* Extra sysfs reads must not accelerate recovery or amplify the slope. */
-	if (pmp_thermal.previous_ns && elapsed < 20 * NSEC_PER_MSEC && value < 92000)
-		return 0;
-	projected = value;
-	if (pmp_thermal.previous_ns && elapsed > 0 && elapsed < 250 * NSEC_PER_MSEC)
-		projected += div64_s64(max(value - pmp_thermal.previous_mc, 0L) *
-				      100 * NSEC_PER_MSEC, elapsed);
-	pmp_thermal.previous_ns = now;
-	pmp_thermal.previous_mc = value;
-	/* A cold load step is not a sustained heating slope. */
-	if (value >= 92000 || (value >= 85000 && projected >= 95000)) {
-		pmp_thermal.fast_clamp = true;
-		pmp_thermal.good_reads = 0;
-		apple_pmp_guard(true);
-	} else if (value < 88000) {
-		if (pmp_thermal.good_reads < 10)
-			pmp_thermal.good_reads++;
-		if (pmp_thermal.good_reads == 10)
-			pmp_thermal.fast_clamp = false;
-	} else {
-		pmp_thermal.good_reads = 0;
+	switch (cooling->reason) {
+	case 0: reason = "startup"; break;
+	case 1: reason = "sensor"; break;
+	case 2: reason = "measured-heat"; break;
+	case 3: reason = "prediction"; break;
+	case 5: reason = "recovery"; break;
+	default: reason = "governor"; break;
 	}
-	if (was_clamped != pmp_thermal.fast_clamp)
-		pr_info("apple-pmp-thermal: decision ns=%llu mc=%ld channel=%d error=0 previous_mc=%ld dt_ns=%lld projected_mc=%ld reason=%s clamp=%d\n",
-			now, value, channel, previous_mc, elapsed, projected,
-			!pmp_thermal.fast_clamp ? "recovery" :
-			(value >= 92000 ? "hard-temperature" : "prediction"),
-			pmp_thermal.fast_clamp);
-	/* Do not remove startup/fault protection before hot-zone cooling is active. */
-	if (pmp_thermal.enabled && !pmp_thermal.fast_clamp && pmp_thermal.good_reads == 10 &&
-	    (value < APPLE_PMP_PASSIVE_MC || apple_pmp_cooling_ready())) {
-		ret = apple_pmp_guard(false);
-		if (ret)
-			apple_pmp_guard(true);
+	if (old_level != pmp_thermal.guard_level || old_reason != cooling->reason)
+		pr_info("apple-pmp-thermal: decision ns=%llu mc=%ld channel=%d error=%d previous_mc=%ld dt_ns=%llu projected_mc=%ld reason=%s hard=%d prediction=%u level=%u qos_error=%d\n",
+			snapshot.finished_ns, value, channel, ret, cooling->previous_mc,
+			cooling->dt_ns, cooling->projected_mc, reason, cooling->hard,
+			cooling->prediction, pmp_thermal.guard_level, guard_ret);
+	pmp_thermal.cached_mc = value;
+	pmp_thermal.cached_error = ret ?: guard_ret;
+	if (ret) {
+		pr_warn_ratelimited("apple-pmp-thermal: sensor error %d; CPU minimum caps retained\n", ret);
+		return ret;
 	}
+	ret = guard_ret;
 	/* DEBUG_REMOVE_IN_PROD: first real critical sample, before core poweroff. */
 	if (value >= 100000 && !pmp_thermal.debug_critical_dumped) {
 		pmp_thermal.debug_critical_dumped = true;
@@ -261,8 +248,23 @@ static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
 	return ret;
 }
 
+/* Thermal-core/sysfs reads observe the last raw sample without changing the
+ * sample count, QoS guard, or governor cadence. The fast worker owns sampling.
+ */
+static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
+{
+	guard(mutex)(&pmp_thermal.lock);
+	if (!pmp_thermal.cooling.last_ns ||
+	    ktime_get_ns() - pmp_thermal.cooling.last_ns > 500000000ULL)
+		return -EAGAIN;
+	if (pmp_thermal.cached_error)
+		return pmp_thermal.cached_error;
+	*temp = pmp_thermal.cached_mc;
+	return 0;
+}
+
 /* The thermal core calls .critical only on upward crossings. The poll
- * worker also checks after every update so sustained heat reaches sample 3.
+ * worker also checks after every raw sample so sustained heat reaches sample 3.
  * Preserve the raw temperature and the normal thermal-core poweroff path.
  */
 static void apple_pmp_critical(struct thermal_zone_device *zone)
@@ -283,8 +285,17 @@ static void apple_pmp_critical(struct thermal_zone_device *zone)
 
 static void apple_pmp_poll_work(struct work_struct *work)
 {
-	thermal_zone_device_update(pmp_thermal.zone, THERMAL_EVENT_UNSPECIFIED);
+	u64 now;
+
+	apple_pmp_sample();
+	pmp_thermal.sample_count++;
 	apple_pmp_critical(pmp_thermal.zone);
+	now = ktime_get_ns();
+	if (now - pmp_thermal.governor_ns >= APPLE_PMP_GOVERNOR_NS) {
+		pmp_thermal.governor_ns = now;
+		pmp_thermal.governor_count++;
+		thermal_zone_device_update(pmp_thermal.zone, THERMAL_EVENT_UNSPECIFIED);
+	}
 }
 
 static enum hrtimer_restart apple_pmp_poll_timer(struct hrtimer *timer)
@@ -302,8 +313,8 @@ static int apple_pmp_change_mode(struct thermal_zone_device *zone,
 {
 	guard(mutex)(&pmp_thermal.lock);
 	pmp_thermal.enabled = mode == THERMAL_DEVICE_ENABLED;
-	pmp_thermal.good_reads = 0;
-	return apple_pmp_guard(true);
+	apple_pmp_cooling_init(&pmp_thermal.cooling);
+	return apple_pmp_guard(8);
 }
 
 static bool apple_pmp_should_bind(struct thermal_zone_device *zone,
@@ -312,12 +323,11 @@ static bool apple_pmp_should_bind(struct thermal_zone_device *zone,
 				  struct cooling_spec *spec)
 {
 	unsigned int i;
-	bool urgent = trip->temperature >= 92000;
 
 	if (trip->type != THERMAL_TRIP_PASSIVE)
 		return false;
 	if (!strcmp(cdev->type, "asahi-g16g")) {
-		spec->lower = urgent ? cdev->max_state : 0;
+		spec->lower = 0;
 		spec->upper = cdev->max_state;
 		return true;
 	}
@@ -327,7 +337,7 @@ static bool apple_pmp_should_bind(struct thermal_zone_device *zone,
 
 		if (cdev != c->cdev)
 			continue;
-		spec->lower = urgent ? cdev->max_state : c->floor;
+		spec->lower = 0;
 		spec->upper = cdev->max_state;
 		return true;
 	}
@@ -404,12 +414,10 @@ static void apple_pmp_thermal_cleanup(void)
 }
 
 static int apple_pmp_add_cluster(unsigned int index, unsigned int cpu,
-				 unsigned long members, unsigned int cap)
+				 unsigned long members)
 {
 	struct apple_pmp_cluster *c = &pmp_thermal.clusters[index];
-	struct cpufreq_frequency_table *entry;
 	unsigned int n;
-	bool found = false;
 	int ret;
 
 	c->policy = cpufreq_cpu_get(cpu);
@@ -420,14 +428,6 @@ static int apple_pmp_add_cluster(unsigned int index, unsigned int cpu,
 		    (n < BITS_PER_LONG && !!(members & BIT(n))))
 			return -EINVAL;
 	if (!c->policy->freq_table)
-		return -EINVAL;
-	cpufreq_for_each_valid_entry(entry, c->policy->freq_table) {
-		if (entry->frequency == cap)
-			found = true;
-		if (entry->frequency > cap)
-			c->floor++;
-	}
-	if (!found)
 		return -EINVAL;
 
 	ret = freq_qos_add_request(&c->policy->constraints, &c->guard,
@@ -466,14 +466,16 @@ static int __init apple_pmp_thermal_init(void)
 		return ret;
 
 	mutex_init(&pmp_thermal.lock);
+	apple_pmp_cooling_init(&pmp_thermal.cooling);
+	pmp_thermal.guard_level = 8;
 	/* Independent read-only mapping permits insmod without rebinding PMP. */
 	pmp_thermal.sram = ioremap(PMP_TEMP_SRAM_BASE, PMP_TEMP_SRAM_SIZE);
 	if (!pmp_thermal.sram)
 		return -ENOMEM;
-	ret = apple_pmp_add_cluster(0, 0, BIT(0) | GENMASK(9, 7), 2616000);
+	ret = apple_pmp_add_cluster(0, 0, BIT(0) | GENMASK(9, 7));
 	if (ret)
 		goto fail;
-	ret = apple_pmp_add_cluster(1, 1, GENMASK(6, 1), 1860000);
+	ret = apple_pmp_add_cluster(1, 1, GENMASK(6, 1));
 	if (ret)
 		goto fail;
 	zone = thermal_zone_device_register_with_trips("apple-pmp-die", apple_pmp_trips,
@@ -500,7 +502,7 @@ static int __init apple_pmp_thermal_init(void)
 	pmp_thermal.polling = true;
 	hrtimer_start(&pmp_thermal.poll_timer, ms_to_ktime(APPLE_PMP_POLL_MS),
 		      HRTIMER_MODE_REL);
-	pr_info("apple-pmp-thermal: J713 CPU/GPU cooling at 88 C, rapid-rise/92 C clamp, three >=100 C samples for shutdown, 5 ms high-resolution polling\n");
+	pr_info("apple-pmp-thermal: J713 CPU/GPU cooling at 88 C, progressive CPU/GPU backstop, three >=100 C samples for shutdown, 5 ms sampling/100 ms governor\n");
 	return 0;
 fail:
 	apple_pmp_thermal_cleanup();
