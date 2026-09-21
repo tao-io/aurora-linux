@@ -14,6 +14,8 @@ pub mod prelude { pub use crate::{KVec,GFP_KERNEL}; }
 pub const GFP_KERNEL: () = ();
 static FAIL: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 pub struct KVec<T>(Vec<T>);
+impl<T> std::ops::Deref for KVec<T> { type Target=[T]; fn deref(&self)->&[T]{&self.0} }
+impl<'a,T> IntoIterator for &'a KVec<T> {type Item=&'a T;type IntoIter=std::slice::Iter<'a,T>;fn into_iter(self)->Self::IntoIter{self.0.iter()} }
 impl<T> KVec<T> {
     pub fn new()->Self {Self(Vec::new())}
     pub fn iter(&self)->std::slice::Iter<'_,T>{self.0.iter()}
@@ -23,7 +25,7 @@ impl<T> KVec<T> {
     }
 }
 #[path="SOURCE"] mod production;
-use production::{OwnerCache,CACHE_BYTES};
+use production::{OwnerCache,CACHE_BYTES,GLOBAL_CACHE_BYTES};
 use std::sync::{Arc,atomic::{AtomicUsize,Ordering}};
 struct Owner { id:usize, bytes:usize, live:Arc<AtomicUsize> }
 impl Owner {
@@ -32,6 +34,18 @@ impl Owner {
     }
 }
 impl Drop for Owner {fn drop(&mut self){self.live.fetch_sub(self.bytes,Ordering::Relaxed);}}
+#[derive(Clone)]
+struct Handle(std::rc::Rc<std::cell::RefCell<Option<OwnerCache<Owner>>>>);
+impl Handle {
+    fn new()->Self{Self(std::rc::Rc::new(std::cell::RefCell::new(Some(OwnerCache::new()))))}
+    fn put(&self, owner:Owner){let bytes=owner.bytes;self.0.borrow_mut().as_mut().unwrap().put(owner,bytes);}
+}
+impl production::CacheControl for Handle {
+    fn same(&self,other:&Self)->bool{std::rc::Rc::ptr_eq(&self.0,&other.0)}
+    fn closed(&self)->bool{self.0.borrow().is_none()}
+    fn trim_for(&self,bytes:usize){if let Some(c)=self.0.borrow_mut().as_mut(){c.trim_for(bytes);}}
+    fn evict_one(&self)->bool{self.0.borrow_mut().as_mut().is_some_and(|c|c.evict_one())}
+}
 fn main(){
     let live=Arc::new(AtomicUsize::new(0));
     let mut cache=OwnerCache::new();
@@ -60,6 +74,53 @@ fn main(){
     cache.put(Owner::new(6,CACHE_BYTES,&live),CACHE_BYTES);
     drop(cache);
     assert_eq!(live.load(Ordering::Relaxed),0);
+    // Independent queues share one idle budget. Taking or destroying an
+    // owner must return its charge even if another queue uses the space.
+    assert_eq!(GLOBAL_CACHE_BYTES, 2*CACHE_BYTES);
+    let mut a=OwnerCache::new();let mut b=OwnerCache::new();let mut c=OwnerCache::new();
+    a.put(Owner::new(10,CACHE_BYTES,&live),CACHE_BYTES);
+    b.put(Owner::new(11,CACHE_BYTES,&live),CACHE_BYTES);
+    c.put(Owner::new(12,CACHE_BYTES,&live),CACHE_BYTES);
+    assert!(c.take(|_:&Owner|true).is_none());
+    assert_eq!(live.load(Ordering::Relaxed),GLOBAL_CACHE_BYTES);
+    drop(a.take(|_:&Owner|true).unwrap());
+    FAIL.store(true,Ordering::Relaxed);
+    c.put(Owner::new(13,CACHE_BYTES,&live),CACHE_BYTES);
+    assert_eq!(live.load(Ordering::Relaxed),CACHE_BYTES);
+    c.put(Owner::new(14,CACHE_BYTES,&live),CACHE_BYTES);
+    assert_eq!(live.load(Ordering::Relaxed),GLOBAL_CACHE_BYTES);
+    drop(b);drop(c);drop(a);
+    assert_eq!(live.load(Ordering::Relaxed),0);
+    let mut d=OwnerCache::new();d.put(Owner::new(15,CACHE_BYTES,&live),CACHE_BYTES);
+    assert!(d.take(|_:&Owner|true).is_some());drop(d);
+    assert_eq!(live.load(Ordering::Relaxed),0);
+    assert_eq!(production::statistics()[0],0);
+    let mut registry=production::Registry::new();
+    let a=Handle::new();let b=Handle::new();let c=Handle::new();
+    for (i,cache) in [&a,&b,&c].into_iter().enumerate(){
+        assert!(registry.prepare(cache.clone(),CACHE_BYTES));
+        cache.put(Owner::new(20+i,CACHE_BYTES,&live));
+        assert!(live.load(Ordering::Relaxed)<=GLOBAL_CACHE_BYTES);
+    }
+    assert!(a.0.borrow_mut().as_mut().unwrap().take(|_|true).is_none());
+    assert_eq!(live.load(Ordering::Relaxed),GLOBAL_CACHE_BYTES);
+    // The active cache can replace itself without evicting another queue.
+    let evictions=production::statistics()[4];
+    assert!(registry.prepare(c.clone(),CACHE_BYTES));
+    c.put(Owner::new(23,CACHE_BYTES,&live));
+    assert_eq!(production::statistics()[4],evictions+1);
+    assert!(b.0.borrow_mut().as_mut().unwrap().take(|_|true).is_some());
+    // Closing a queue releases backing even while the registry owns a handle.
+    c.0.borrow_mut().take();
+    assert_eq!(live.load(Ordering::Relaxed),0);
+    assert!(!registry.prepare(c.clone(),CACHE_BYTES));
+    assert!(!registry.prepare(a.clone(),usize::MAX));
+    FAIL.store(true,Ordering::Relaxed);
+    assert!(!registry.prepare(a.clone(),CACHE_BYTES));
+    drop(registry);drop(a);drop(b);drop(c);
+    assert_eq!(production::statistics()[0],0);
+    println!("PASS: cache LRU admits new queues, self eviction, close releases registered backing, allocation failure");
+    println!("PASS: device-wide budget, independent queues, take/Drop budget return, allocation-failure budget return;");
     println!("PASS: production cache bounds, FIFO eviction, take accounting, oversized owners, allocation failure and Drop");
 }
 '''.replace('SOURCE',str(source))

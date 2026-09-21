@@ -21,6 +21,7 @@ struct Inner {
     /// Last retired owner of each hardware private-memory slot. Firmware
     /// can cache these descriptors until a replacement of that slot retires.
     retired_computes: KVec<(KBox<crate::g16_job::Compute>, crate::g16_submit::ComputeCache)>,
+    idle_caches: crate::g16_owner_cache::Registry<crate::g16_submit::IdleCache>,
     compute: KBox<crate::g16_job::Compute>,
     config: crate::g16_config::Config,
     uat: mmu::Uat,
@@ -880,10 +881,11 @@ impl Runtime {
                         previous.pool_slot() == render.pool_slot());
                     if let Some(position) = replaced {
                         let (previous, cache) = inner.retired_renders.remove(position).map_err(|_| EIO)?;
-                        let mut guard = cache.lock();
-                        if let Some(cache) = Option::as_mut(&mut *guard) {
-                            let bytes = previous.resident_bytes();
-                            cache.put(previous, bytes);
+                        let bytes = previous.resident_bytes();
+                        if inner.idle_caches.prepare(crate::g16_submit::IdleCache::Render(cache.clone()), bytes) {
+                            if let Some(cache) = Option::as_mut(&mut *cache.lock()) {
+                                cache.put(previous, bytes);
+                            }
                         }
                     }
                     inner.retired_renders.push((render, packet.render_cache.clone()), GFP_KERNEL)
@@ -903,10 +905,11 @@ impl Runtime {
                         // Only replacement of this exact hardware slot releases
                         // its cached descriptor. Retirements in another slot
                         // cannot establish that the old owner is safe to reuse.
-                        let mut guard = cache.lock();
-                        if let Some(cache) = Option::as_mut(&mut *guard) {
-                            let bytes = previous.resident_bytes();
-                            cache.put(previous, bytes);
+                        let bytes = previous.resident_bytes();
+                        if inner.idle_caches.prepare(crate::g16_submit::IdleCache::Compute(cache.clone()), bytes) {
+                            if let Some(cache) = Option::as_mut(&mut *cache.lock()) {
+                                cache.put(previous, bytes);
+                            }
                         }
                     }
                     inner.retired_computes.push((compute, packet.compute_cache.clone()), GFP_KERNEL)?;
@@ -937,6 +940,8 @@ impl Runtime {
                     let now = <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get();
                     if now - inner.summary.since_ns >= 1_000_000_000 {
                         let s = &inner.summary;
+                        dev_info!(inner.drm.as_ref(), "G16G: idle owner cache bytes_hits_search_misses_puts_evictions_oversized_global_rejects={:?}\n",
+                            crate::g16_owner_cache::statistics());
                         // Same recognizable retirement record used by the
                         // watchdog guard, followed by aggregate measurements.
                         dev_info!(inner.drm.as_ref(), "G16G: userspace GPU job {} retired ({} commands) monotonic_ns={} summary_span_ns={} render_commands={} compute_commands={} render_prepare_ns={} compute_prepare_ns={} render_active_ns={} compute_active_ns={} render_gpu_ns={} compute_gpu_ns={} render_private_clear_bytes={} render_private_clear_ns={} render_clear_ns={} render_tiling_ns={} render_stage_gap_ns={} render_fragment_ns={}\n",
@@ -1051,7 +1056,7 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, busy_since_ns: None, command_label: 1, render_stamp: 0, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, last_gpu_end: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), idle_caches:crate::g16_owner_cache::Registry::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, busy_since_ns: None, command_label: 1, render_stamp: 0, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, last_gpu_end: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {

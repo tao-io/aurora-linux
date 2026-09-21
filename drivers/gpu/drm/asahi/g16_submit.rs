@@ -68,6 +68,36 @@ pub(crate) type RenderCache = Arc<Mutex<Option<crate::g16_owner_cache::OwnerCach
 // descriptor, so only the predecessor of a retired replacement returns.
 pub(crate) type ComputeCache = Arc<Mutex<Option<crate::g16_owner_cache::OwnerCache<KBox<crate::g16_job::Compute>>>>>;
 
+#[derive(Clone)]
+pub(crate) enum IdleCache { Render(RenderCache), Compute(ComputeCache) }
+impl crate::g16_owner_cache::CacheControl for IdleCache {
+    fn same(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Render(a), Self::Render(b)) => Arc::ptr_eq(a, b),
+            (Self::Compute(a), Self::Compute(b)) => Arc::ptr_eq(a, b),
+            _ => false,
+        }
+    }
+    fn closed(&self) -> bool {
+        match self {
+            Self::Render(c) => c.lock().is_none(),
+            Self::Compute(c) => c.lock().is_none(),
+        }
+    }
+    fn trim_for(&self, bytes: usize) {
+        match self {
+            Self::Render(c) => { if let Some(c) = Option::as_mut(&mut *c.lock()) { c.trim_for(bytes); } },
+            Self::Compute(c) => { if let Some(c) = Option::as_mut(&mut *c.lock()) { c.trim_for(bytes); } },
+        }
+    }
+    fn evict_one(&self) -> bool {
+        match self {
+            Self::Render(c) => Option::as_mut(&mut *c.lock()).is_some_and(|c| c.evict_one()),
+            Self::Compute(c) => Option::as_mut(&mut *c.lock()).is_some_and(|c| c.evict_one()),
+        }
+    }
+}
+
 pub(crate) struct Packet {
     pub(crate) id: u64,
     pub(crate) vm: mmu::Vm,
