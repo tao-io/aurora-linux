@@ -105,7 +105,8 @@ static int m4_audio_open_service(struct m4_audio_pcm *a)
 }
 
 static const struct snd_pcm_hardware m4_audio_hw = {
-	.info = SNDRV_PCM_INFO_MMAP | SNDRV_PCM_INFO_MMAP_VALID | SNDRV_PCM_INFO_INTERLEAVED,
+	.info = SNDRV_PCM_INFO_MMAP | SNDRV_PCM_INFO_MMAP_VALID |
+		SNDRV_PCM_INFO_INTERLEAVED | SNDRV_PCM_INFO_BATCH,
 	.formats = SNDRV_PCM_FMTBIT_S16_LE,
 	.rates = SNDRV_PCM_RATE_48000,
 	.rate_min = 48000, .rate_max = 48000,
@@ -154,7 +155,15 @@ static int m4_pcm_hw_params(struct snd_pcm_substream *s, struct snd_pcm_hw_param
 static int m4_pcm_prepare(struct snd_pcm_substream *s)
 {
 	struct m4_audio_pcm *a = s->pcm->private_data;
-	int ret = m4_audio_simple(a, 6, true);
+	int ret;
+
+	/* ALSA permits prepare again after drop/XRUN or before a first start.
+	 * DCP retains the prepared link until unprepare and rejects duplicate
+	 * prepare commands. The PCM format is fixed for this open lifetime.
+	 */
+	if (a->prepared)
+		return 0;
+	ret = m4_audio_simple(a, 6, true);
 	if (!ret)
 		a->prepared = true;
 	return ret;
