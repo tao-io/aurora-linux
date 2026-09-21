@@ -64,6 +64,11 @@ static inline void apple_pmp_power_sample(struct apple_pmp_power_policy *s,
 {
 	unsigned long long dt = s->last_ns ? now - s->last_ns : 0;
 	unsigned long long ms = dt / 1000000ULL;
+	/* Prefer graphics throughput when all domains contend. These are policy
+	 * weights, not watt estimates/reservations: idle GPU capacity remains
+	 * available to CPUs. Equal P/E weights, 4x GPU weight, round-robin ties.
+	 */
+	static const unsigned int weight[3] = {1, 1, 4};
 	unsigned int i, chosen = 3;
 	bool gap = dt > 2000000000ULL;
 
@@ -105,7 +110,8 @@ static inline void apple_pmp_power_sample(struct apple_pmp_power_policy *s,
 		if (!s->credit_mj) {
 			if (s->filtered_mc > 88000)
 				s->sustainable_mw -= (s->filtered_mc - 85000) / 20;
-			else if (s->filtered_mc < 82000)
+			else if (s->filtered_mc < 82000 &&
+				 (s->level[0] || s->level[1] || s->level[2]))
 				s->sustainable_mw += 125;
 			if (s->sustainable_mw < 4000) s->sustainable_mw = 4000;
 			if (s->sustainable_mw > 16000) s->sustainable_mw = 16000;
@@ -120,25 +126,31 @@ static inline void apple_pmp_power_sample(struct apple_pmp_power_policy *s,
 	if (now - s->change_ns < 1000000000ULL)
 		return;
 	if (s->total_mw > s->allowed_mw + 500) {
-		/* Restrict the largest measured consumer that can still yield.
+		/* Restrict the largest weight-normalized measured consumer that can yield.
  * An idle CPU does not reserve watts that the GPU could use (or vice versa).
  */
 		for (i = 0; i < 3; i++)
-			if (s->level[i] < 8 && (chosen == 3 || mw[i] > mw[chosen]))
+			if (s->level[i] < 8 && (chosen == 3 ||
+			    mw[i] * weight[chosen] > mw[chosen] * weight[i]))
 				chosen = i;
 		if (chosen < 3) s->level[chosen]++;
 		s->change_ns = now;
 	} else if (s->total_mw < s->allowed_mw - 1000) {
-		/* Round-robin recovery prevents one consumer monopolizing release.
- * Fault recovery also uses this path: never minimum -> maximum in one tick.
- */
+		/* Release the largest weighted restriction, round-robin on ties.
+		 * This restores graphics headroom before spending it on CPU stress.
+		 * Fault recovery still restores only one step per elapsed interval.
+		 */
 		for (i = 0; i < 3; i++) {
-			chosen = (s->next_release + i) % 3;
-			if (s->level[chosen]) {
-				s->level[chosen]--;
-				s->next_release = (chosen + 1) % 3;
-				break;
-			}
+			unsigned int candidate = (s->next_release + i) % 3;
+
+			if (s->level[candidate] && (chosen == 3 ||
+			    s->level[candidate] * weight[candidate] >
+			    s->level[chosen] * weight[chosen]))
+				chosen = candidate;
+		}
+		if (chosen < 3) {
+			s->level[chosen]--;
+			s->next_release = (chosen + 1) % 3;
 		}
 		s->change_ns = now;
 	}
