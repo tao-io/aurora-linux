@@ -46,6 +46,17 @@ pub(crate) struct Render {
     pub(crate) clear_metrics: [u64; 3],
 }
 impl Render {
+    pub(crate) fn resident_bytes(&self) -> usize {
+        // Count backing once despite multiple VM aliases. Conservatively
+        // charge an entire shared parameter pool to each retaining owner.
+        let buffers = [&self.commands[0], &self.commands[1], &self.sequences[0],
+            &self.sequences[1], &self.metadata, &self.scratch, &self.scene_list,
+            &self.tilemap, &self.tpc, &self.unknown, &self.preemption[0],
+            &self.preemption[1], &self.preemption[2], &self.auxiliary, &self.uma,
+            &self.private_memory, &self.pool_state, &self.page_list];
+        buffers.iter().map(|b| crate::util::align(b.size(), crate::mmu::UAT_PGSZ)).sum::<usize>()
+            + self.parameters.lock().resident_bytes()
+    }
     /// Match common Asahi's last-render flush_stamps. M4 25G83 completion
     /// handlers OR TA+894 / FS+bdc into notifier+20 (TEXT 21944 / 22e78),
     /// making the ready-notifier path publish stamps without threshold delay.

@@ -99,6 +99,10 @@ impl Parameters {
         Ok(())
     }
     pub(crate) fn pages(&self) -> usize { self.memory.size() / 32768 }
+    pub(crate) fn resident_bytes(&self) -> usize {
+        [&self.manager, &self.ring, &self.pages, &self.blocks, &self.memory, &self.counter]
+            .iter().map(|b| crate::util::align(b.size(), crate::mmu::UAT_PGSZ)).sum()
+    }
     pub(crate) fn claim_init(&mut self) -> bool {
         let first = !self.claimed;
         self.claimed = true;

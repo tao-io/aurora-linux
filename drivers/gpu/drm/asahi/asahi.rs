@@ -27,6 +27,7 @@ mod g16_rtkit;
 mod g16_runtime;
 mod g16_drm;
 mod g16_submit;
+mod g16_owner_cache;
 mod g16_initdata;
 mod g16_memory;
 mod g16_config;

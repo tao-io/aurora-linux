@@ -36,6 +36,13 @@ const PRIVATE_BYTES: usize = 0x2000000;
 const PRIVATE_PAGES: usize = PRIVATE_BYTES / 0x1000;
 
 impl Compute {
+    pub(crate) fn resident_bytes(&self) -> usize {
+        let buffers = [&self.command, &self.cdm, &self.shader, &self.esl, &self.output,
+            &self.preemption, &self.auxiliary, &self.context_store, &self.pool_state,
+            &self.page_list, &self.counter];
+        buffers.iter().map(|b| crate::util::align(b.size(), crate::mmu::UAT_PGSZ)).sum::<usize>()
+            + crate::util::align(self.private_memory.size(), crate::mmu::UAT_PGSZ)
+    }
     pub(crate) fn retain_notifier(&mut self, notifier: crate::g16_queue::Client) {
         self.notifier_owner = Some(notifier);
     }

@@ -548,17 +548,13 @@ impl Runtime {
         let compute_owner = if matches!(payload, crate::g16_submit::Payload::Compute(_)) {
             let mut cache = packet.compute_cache.lock();
             Option::as_mut(&mut *cache).and_then(|cache| {
-                let index = cache.iter().position(|owner| owner.pool_slot() == pool_slot
-                    && owner.same_vm(&packet.vm));
-                index.and_then(|i| cache.remove(i).ok())
+                cache.take(|owner| owner.pool_slot() == pool_slot && owner.same_vm(&packet.vm))
             })
         } else { None };
         let render_owner = if matches!(payload, crate::g16_submit::Payload::Render { .. }) {
             let mut cache = packet.render_cache.lock();
             Option::as_mut(&mut *cache).and_then(|cache| {
-                let index = cache.iter().position(|owner| owner.pool_slot() == batch_offset as u8
-                    && owner.same_vm(&packet.vm));
-                index.and_then(|i| cache.remove(i).ok())
+                cache.take(|owner| owner.pool_slot() == batch_offset as u8 && owner.same_vm(&packet.vm))
             })
         } else { None };
         let mut work = match payload {
@@ -882,7 +878,8 @@ impl Runtime {
                         let (previous, cache) = inner.retired_renders.remove(position).map_err(|_| EIO)?;
                         let mut guard = cache.lock();
                         if let Some(cache) = Option::as_mut(&mut *guard) {
-                            let _ = cache.push(previous, GFP_KERNEL);
+                            let bytes = previous.resident_bytes();
+                            cache.put(previous, bytes);
                         }
                     }
                     inner.retired_renders.push((render, packet.render_cache.clone()), GFP_KERNEL)
@@ -904,7 +901,8 @@ impl Runtime {
                         // cannot establish that the old owner is safe to reuse.
                         let mut guard = cache.lock();
                         if let Some(cache) = Option::as_mut(&mut *guard) {
-                            let _ = cache.push(previous, GFP_KERNEL);
+                            let bytes = previous.resident_bytes();
+                            cache.put(previous, bytes);
                         }
                     }
                     inner.retired_computes.push((compute, packet.compute_cache.clone()), GFP_KERNEL)?;

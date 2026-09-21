@@ -39,6 +39,7 @@ impl GpuBuffer {
         Ok(Self { mapping, object, size })
     }
     pub(crate) fn va(&self) -> u64 { self.mapping.iova() }
+    pub(crate) fn size(&self) -> usize { self.size }
     /// Zero `len` bytes from `offset` through a retained WC CPU alias, for
     /// an owner whose engine consumers have provably retired.
     pub(crate) fn clear_range(&mut self, offset: usize, len: usize) -> Result {
