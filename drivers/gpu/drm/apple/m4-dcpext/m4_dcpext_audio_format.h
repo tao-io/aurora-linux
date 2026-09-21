@@ -81,7 +81,7 @@ static int audio_stereo_layout(struct audio_object *o)
 {
 	u32 t, count;
 	bool found = false;
-	if (audio_object_tag(o, &t, &count) || t != 2 || count > 64)
+	if (audio_object_tag(o, &t, &count) || t != 2 || count > 256)
 		return -EPROTO;
 	for (u32 i = 0; i < count; i++) {
 		u32 pairs;
@@ -122,11 +122,11 @@ static int audio_stereo_layout(struct audio_object *o)
 }
 static int m4_audio_select_stereo(const u8 *raw, u32 bytes, u8 cookie[32])
 {
-	struct audio_object o = { .raw = raw, .size = bytes, .pos = 4, .budget = 4096 };
+	struct audio_object o = { .raw = raw, .size = bytes, .pos = 4, .budget = 32768 };
 	u32 t, count;
 	unsigned int matches = 0;
-	if (bytes < 8 || bytes > 16384 || get_unaligned_le32(raw) != 0xd3 ||
-	    audio_object_tag(&o, &t, &count) || t != 2 || count > 64)
+	if (bytes < 8 || bytes > 256 * 1024 || get_unaligned_le32(raw) != 0xd3 ||
+	    audio_object_tag(&o, &t, &count) || t != 2 || count > 256)
 		return -EPROTO;
 	for (u32 i = 0; i < count; i++) {
 		const u8 *blob = NULL;

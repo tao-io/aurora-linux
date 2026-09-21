@@ -2,6 +2,7 @@
 #ifndef M4_DCPEXT_AUDIO_H
 #define M4_DCPEXT_AUDIO_H
 #include <linux/types.h>
+#define M4_AUDIO_ELEMENTS_MAX (256 * 1024)
 
 /* Calls serialize with scanout/hotplug. Generation binds a PCM stream to one
  * connected sink; an unplug/replug must never reuse its opaque audio cookie.

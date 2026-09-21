@@ -22,11 +22,11 @@ static int native_audio_call(u16 group, u32 command, void *data, u32 bytes,
 			     u64 *generation)
 {
 	u64 deadline;
-	u8 *p = audio_state.packet;
+	u8 *p = desktop_audio_packet;
 	u32 size = 96 + bytes;
 	int ret;
 
-	if (bytes > AUDIO_CAP + 48 || !data || !generation)
+	if (bytes > M4_AUDIO_ELEMENTS_MAX + 48 || !data || !generation)
 		return -EINVAL;
 	guard(mutex)(&native_route_lock);
 	if (!native_kms_ready || native_kms_finished || !native_kms_connected ||

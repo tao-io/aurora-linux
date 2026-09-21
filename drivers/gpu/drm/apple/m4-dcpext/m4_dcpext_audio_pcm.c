@@ -4,6 +4,7 @@
  * are supplied by the M4 runtime rather than the older DCP implementation.
  */
 #include <linux/module.h>
+#include <linux/debugfs.h>
 #include <linux/of_dma.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
@@ -15,6 +16,11 @@
 #include "m4_dcpext_audio.h"
 #include "m4_dcpext_audio_format.h"
 
+static u8 metadata_capture[M4_AUDIO_ELEMENTS_MAX + 48];
+static struct debugfs_blob_wrapper metadata_blob = {
+	.data = metadata_capture, .size = sizeof(metadata_capture),
+};
+static struct dentry *metadata_debug;
 static bool metadata_only = true;
 module_param(metadata_only, bool, 0400);
 MODULE_PARM_DESC(metadata_only, "Discover fresh formats without registering PCM for initial qualification");
@@ -55,16 +61,19 @@ static int m4_audio_elements(struct m4_audio_pcm *a)
 	u8 *data;
 	u64 used;
 	int ret;
-	data = kzalloc(16384 + 48, GFP_KERNEL);
+	data = kzalloc(M4_AUDIO_ELEMENTS_MAX + 48, GFP_KERNEL);
 	if (!data)
 		return -ENOMEM;
-	put_unaligned_le64(16384, data);
-	ret = a->ops->call(1, 16, data, 16384 + 48, &a->generation);
+	put_unaligned_le64(M4_AUDIO_ELEMENTS_MAX, data);
+	ret = a->ops->call(1, 16, data, M4_AUDIO_ELEMENTS_MAX + 48, &a->generation);
 	if (ret)
 		goto out;
+	memcpy(metadata_capture, data, sizeof(metadata_capture));
 	used = get_unaligned_le64(data + 32);
-	if (get_unaligned_le64(data) != 16384 || get_unaligned_le32(data + 16) ||
-	    used < 8 || used > 16384) {
+	dev_info(a->dev, "audio metadata capacity=%llu status=%#x used=%llu\n",
+		 get_unaligned_le64(data), get_unaligned_le32(data + 16), used);
+	if (get_unaligned_le64(data) != M4_AUDIO_ELEMENTS_MAX || get_unaligned_le32(data + 16) ||
+	    used < 8 || used > M4_AUDIO_ELEMENTS_MAX) {
 		ret = -EPROTO;
 		goto out;
 	}
@@ -304,6 +313,21 @@ static struct platform_driver m4_audio_driver = {
 	.driver = { .name = "m4-dcpext-audio", .of_match_table = m4_audio_match,
 		    .suppress_bind_attrs = true },
 };
-module_platform_driver(m4_audio_driver);
+static int __init m4_audio_init(void)
+{
+	int ret;
+	metadata_debug = debugfs_create_blob("m4-hdmi-elements", 0400, NULL, &metadata_blob);
+	ret = platform_driver_register(&m4_audio_driver);
+	if (ret)
+		debugfs_remove(metadata_debug);
+	return ret;
+}
+static void __exit m4_audio_exit(void)
+{
+	platform_driver_unregister(&m4_audio_driver);
+	debugfs_remove(metadata_debug);
+}
+module_init(m4_audio_init);
+module_exit(m4_audio_exit);
 MODULE_LICENSE("Dual MIT/GPL");
 MODULE_DESCRIPTION("Apple M4 external display PCM audio");

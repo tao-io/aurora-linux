@@ -3,7 +3,10 @@
  * Retrieve bounded format metadata while iBoot/DPTX hold the link.
  * No audio DMA, stream commands or playback-success claims in this stage.
  */
+#include "m4_dcpext_audio.h"
 #include "dcpext_audio_trial.h"
+#define DESKTOP_AUDIO_CAPACITY (M4_AUDIO_ELEMENTS_MAX + 112)
+static u8 desktop_audio_packet[M4_AUDIO_ELEMENTS_MAX + 144];
 #include "dcpext_afk_oob.h"
 static struct audio_trial audio_state;
 static bool audio_desktop, audio_rpc_pending;
@@ -26,7 +29,8 @@ static int audio_trial_write(void *cookie, const u8 *p, u32 bytes)
 		u8 wire[AFK_OOB_PACKET];
 		if (!audio_tx || !audio_rx)
 			return -ENODEV;
-		int ret = afk_oob_packet(wire, p, audio_tx_dva, audio_rx_dva, bytes - 32);
+		int ret = afk_oob_packet_bounded(wire, p, audio_tx_dva, audio_rx_dva, bytes - 32,
+			audio_desktop ? DESKTOP_AUDIO_CAPACITY : AUDIO_PACKET - 32);
 		if (ret)
 			return ret;
 		memcpy(audio_tx, p + 32, bytes - 32);
@@ -85,14 +89,14 @@ static int audio_adapter_record(void *cookie, const u8 *p, u32 bytes)
 		return 0;
 	u32 received;
 	int ret = afk_oob_response(p, bytes, audio_state.interface, audio_state.tag,
-		audio_rx_dva, AUDIO_PACKET - 32, &received);
+		audio_rx_dva, audio_desktop ? DESKTOP_AUDIO_CAPACITY : AUDIO_PACKET - 32, &received);
 	if (audio_desktop) {
 		if (!audio_rpc_pending)
 			return -EPROTO;
 		audio_rpc_error = ret;
 		if (ret)
 			pr_err("audio OOB response error=%d remote_status=%#x bytes=%u\n",
-				ret, get_unaligned_le32(p + 28), bytes);
+				ret, bytes >= 32 ? get_unaligned_le32(p + 28) : 0, bytes);
 		audio_rpc_bytes = ret ? 0 : received;
 		audio_rpc_pending = false;
 		dma_rmb();
@@ -129,12 +133,12 @@ static int audio_adapter_progress(void)
 		if (!(session.endpoints[1] & BIT(9)))
 			return -ENODEV;
 		size_t offset = session_used;
-		int ret = session_buffer(NULL, 0x29, 0, AUDIO_PACKET - 32, &audio_tx_dva);
+		int ret = session_buffer(NULL, 0x29, 0, audio_desktop ? DESKTOP_AUDIO_CAPACITY : AUDIO_PACKET - 32, &audio_tx_dva);
 		if (ret)
 			return ret;
 		audio_tx = pool + offset;
 		offset = session_used;
-		ret = session_buffer(NULL, 0x29, 0, AUDIO_PACKET - 32, &audio_rx_dva);
+		ret = session_buffer(NULL, 0x29, 0, audio_desktop ? DESKTOP_AUDIO_CAPACITY : AUDIO_PACKET - 32, &audio_rx_dva);
 		if (ret)
 			return ret;
 		audio_rx = pool + offset;
