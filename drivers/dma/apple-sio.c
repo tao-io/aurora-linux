@@ -128,6 +128,8 @@ struct sio_data {
 	} tags;
 
 	int nchannels;
+	bool j713;
+	int startup_error;
 	struct sio_chan channels[];
 };
 
@@ -260,7 +262,12 @@ static struct dma_async_tx_descriptor *sio_prep_dma_cyclic(
 {
 	struct sio_chan *siochan = to_sio_chan(chan);
 	struct sio_tx *siotx = NULL;
-	int i, nperiods = buf_len / period_len;
+	int i, nperiods;
+
+	if (!period_len || !buf_len || buf_len % period_len ||
+	    buf_len / period_len > SIO_NO_DESC_SLOTS)
+		return NULL;
+	nperiods = buf_len / period_len;
 
 	if (direction != sio_chan_direction(siochan->no))
 		return NULL;
@@ -715,8 +722,8 @@ static int sio_alloc_shmem(struct sio_data *sio)
 		return -ENOMEM;
 
 	sio->shmem_desc_base = (struct sio_coproc_desc *) (sio->shmem + 56);
-	sio->desc_allocated = devm_kzalloc(sio->dev, SIO_NO_DESC_SLOTS / 32,
-					   GFP_KERNEL);
+	sio->desc_allocated = devm_bitmap_zalloc(sio->dev, SIO_NO_DESC_SLOTS,
+					       GFP_KERNEL);
 	if (!sio->desc_allocated)
 		return -ENOMEM;
 
@@ -748,8 +755,8 @@ static int sio_send_dt_params(struct sio_data *sio)
 	int nparams, err, i;
 
 	nparams = of_property_count_u32_elems(np, propname);
-	if (nparams < 0) {
-		err = nparams;
+	if (nparams <= 0 || (nparams & 1)) {
+		err = nparams < 0 ? nparams : -EINVAL;
 		goto badprop;
 	}
 
@@ -794,7 +801,7 @@ static int sio_probe(struct platform_device *pdev)
 		return dev_err_probe(&pdev->dev, err, "Failed to set DMA mask\n");
 
 	err = of_property_read_u32(np, "dma-channels", &nchannels);
-	if (err || nchannels > NCHANNELS_MAX)
+	if (err || nchannels <= 0 || nchannels > NCHANNELS_MAX)
 		return dev_err_probe(&pdev->dev, -EINVAL,
 				     "missing or invalid dma-channels property\n");
 
@@ -805,6 +812,7 @@ static int sio_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, sio);
 	sio->dev = &pdev->dev;
 	sio->nchannels = nchannels;
+	sio->j713 = of_device_is_compatible(np, "apple,j713-sio-poc");
 
 	sio->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(sio->base))
@@ -856,40 +864,48 @@ static int sio_probe(struct platform_device *pdev)
 		vchan_init(&siochan->vc, dma);
 	}
 
+	/* The experimental M4 session is reboot-lifetime: never let a failed
+	 * probe free RTKit buffers under firmware. No unbind interface is exposed.
+	 * TODO: qualify acknowledged shutdown before allowing module removal.
+	 */
+	if (sio->j713)
+		__module_get(THIS_MODULE);
 	writel(CPU_CONTROL_RUN, sio->base + REG_CPU_CONTROL);
 
 	err = apple_rtkit_boot(sio->rtk);
 	if (err)
-		return dev_err_probe(&pdev->dev, err, "SIO did not boot\n");
-
+		goto started_error;
 	err = apple_rtkit_start_ep(sio->rtk, EP_SIO);
 	if (err)
-		return dev_err_probe(&pdev->dev, err, "starting SIO endpoint\n");
-
+		goto started_error;
 	err = sio_call(sio, FIELD_PREP(SIOMSG_TYPE, MSG_START));
 	if (err < 1) {
-		if (err == 0)
-			err = -ENXIO;
-		return dev_err_probe(&pdev->dev, err, "starting SIO service\n");
+		err = err ? err : -ENXIO;
+		goto started_error;
 	}
-
 	err = sio_send_dt_params(sio);
-	if (err < 0)
-		return dev_err_probe(&pdev->dev, err, "failed to send boot-up parameters\n");
-
+	if (err)
+		goto started_error;
 	err = sio_alloc_shmem(sio);
-	if (err < 0)
-		return err;
-
+	if (err)
+		goto started_error;
 	err = dma_async_device_register(&sio->dma);
 	if (err)
-		return dev_err_probe(&pdev->dev, err, "failed to register DMA device\n");
-
+		goto started_error;
 	err = of_dma_controller_register(pdev->dev.of_node, sio_dma_of_xlate, sio);
 	if (err) {
 		dma_async_device_unregister(&sio->dma);
-		return dev_err_probe(&pdev->dev, err, "failed to register with OF\n");
+		goto started_error;
 	}
+	dev_info(sio->dev, "SIO ready: %d DMA channels, firmware parameters accepted\n", nchannels);
+	goto rpm_put;
+
+started_error:
+	sio->startup_error = err;
+	dev_err(sio->dev, "SIO startup failed: %d%s\n", err,
+		sio->j713 ? "; resources retained until reboot; no DMA registered" : "");
+	if (sio->j713)
+		return 0;
 
 rpm_put:
 	pm_runtime_put(&pdev->dev);
@@ -907,6 +923,7 @@ static void sio_remove(struct platform_device *pdev)
 
 static const struct of_device_id sio_of_match[] = {
 	{ .compatible = "apple,sio", },
+	{ .compatible = "apple,j713-sio-poc", },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, sio_of_match);
@@ -929,6 +946,7 @@ static DEFINE_RUNTIME_DEV_PM_OPS(sio_pm_ops, sio_suspend, sio_resume, NULL);
 static struct platform_driver apple_sio_driver = {
 	.driver = {
 		.name = "apple-sio",
+		.suppress_bind_attrs = true,
 		.of_match_table = sio_of_match,
 		.pm             = pm_ptr(&sio_pm_ops),
 	},

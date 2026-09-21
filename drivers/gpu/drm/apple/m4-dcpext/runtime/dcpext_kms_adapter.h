@@ -125,6 +125,7 @@ static int native_kms_publish(void)
 	native_kms_until = session_now(NULL) + (desktop ? desktop_test_ms : 8000);
 	native_kms_connected = true;
 	native_kms_ready = true;
+	m4_dcpext_audio_register(port, &native_audio_ops);
 	ret = m4_dcpext_kms_register(native_kms);
 	if (ret)
 		native_kms_ready = false;

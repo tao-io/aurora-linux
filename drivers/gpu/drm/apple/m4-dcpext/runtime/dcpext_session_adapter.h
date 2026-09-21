@@ -388,7 +388,7 @@ static int session_dispatch(u64 endpoint, u64 message)
 	}
 	if (native_query && (endpoint & 0xff) == 0x37)
 		ret = native_receive(message);
-	else if (audio_probe && (endpoint & 0xff) == 0x29 && audio_channel.started)
+	else if ((audio_probe || audio_desktop) && (endpoint & 0xff) == 0x29 && audio_channel.started)
 		ret = audio_adapter_receive(message);
 	else if (edid_probe && (endpoint & 0xff) == 0x28 && edid_channel.started)
 		ret = edid_adapter_receive(message);

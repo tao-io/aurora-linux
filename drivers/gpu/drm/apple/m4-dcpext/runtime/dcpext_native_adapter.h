@@ -3,6 +3,8 @@
 #include "m4_dcpext_rpc.h"
 #include "m4_dcpext_native.h"
 #include "m4_dcpext_surface.h"
+#include "m4_dcpext_audio.h"
+static const struct m4_dcpext_audio_ops native_audio_ops;
 static struct dcpext_native_query native_state;
 static unsigned int native_sys_error, native_pio_error;
 module_param(native_sys_error, uint, 0400);
@@ -215,6 +217,7 @@ static void native_cleanup(void)
 		m4_dcpext_rpc_destroy(native_rpc);
 }
 #include "dcpext_kms_adapter.h"
+#include "dcpext_desktop_audio.h"
 
 static bool native_cancel_untrained_route(void)
 {

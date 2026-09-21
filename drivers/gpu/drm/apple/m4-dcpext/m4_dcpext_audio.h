@@ -1,0 +1,15 @@
+/* SPDX-License-Identifier: GPL-2.0-only OR MIT */
+#ifndef M4_DCPEXT_AUDIO_H
+#define M4_DCPEXT_AUDIO_H
+#include <linux/types.h>
+
+/* Calls serialize with scanout/hotplug. Generation binds a PCM stream to one
+ * connected sink; an unplug/replug must never reuse its opaque audio cookie.
+ */
+struct m4_dcpext_audio_ops {
+	int (*call)(u16 group, u32 command, void *data, u32 bytes, u64 *generation);
+	int (*identify)(char *name, size_t size, u64 *generation);
+};
+void m4_dcpext_audio_register(unsigned int port, const struct m4_dcpext_audio_ops *ops);
+const struct m4_dcpext_audio_ops *m4_dcpext_audio_get(unsigned int port);
+#endif

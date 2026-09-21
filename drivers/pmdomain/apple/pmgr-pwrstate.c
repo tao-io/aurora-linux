@@ -334,6 +334,9 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 	    (of_property_read_u32(node, "reg", &offset) ||
 	     (offset != 0x188 && offset != 0x190 &&
 	      !gfx && !retained_display &&
+	      !(of_machine_is_compatible("apple,j713") &&
+	        of_property_read_bool(node, "apple,j713-display-audio") &&
+	        (offset == 0x268 || offset == 0x2e0 || offset == 0x418)) &&
 	      offset != 0x278 && /* fpwm1 */
 	      offset != 0x2d8 && /* uart_p */
 	      offset != 0x3d8 && /* uart0 */

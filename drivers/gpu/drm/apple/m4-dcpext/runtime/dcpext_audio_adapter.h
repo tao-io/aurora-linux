@@ -6,6 +6,11 @@
 #include "dcpext_audio_trial.h"
 #include "dcpext_afk_oob.h"
 static struct audio_trial audio_state;
+static bool audio_desktop, audio_rpc_pending;
+static u32 audio_rpc_bytes;
+static int audio_rpc_error;
+static u16 audio_retired_interface;
+static unsigned int audio_generation;
 static u8 *audio_tx, *audio_rx;
 static u64 audio_tx_dva, audio_rx_dva;
 static u32 audio_rx_bytes;
@@ -17,7 +22,7 @@ module_param(audio_result, int, 0400);
 static int audio_trial_write(void *cookie, const u8 *p, u32 bytes)
 {
 	pr_info("m4_dcpext_session: audio TX type=%#x bytes=%u\n", p[16], bytes);
-	if (bytes == AUDIO_PACKET) {
+	if (bytes >= 96 && p[16] == 0xc0) {
 		u8 wire[AFK_OOB_PACKET];
 		if (!audio_tx || !audio_rx)
 			return -ENODEV;
@@ -57,6 +62,23 @@ static int audio_adapter_record(void *cookie, const u8 *p, u32 bytes)
 		audio_state.interface = interface;
 		return 0;
 	}
+	if (p[16] == 0x14 && !p[17] && interface == audio_state.interface) {
+		audio_retired_interface = interface;
+		audio_state.interface = 0;
+		audio_state.opened = false;
+		audio_state.received = false;
+		audio_state.pending = false;
+		audio_generation++;
+		if (audio_rpc_pending) {
+			audio_rpc_error = -ENODEV;
+			audio_rpc_pending = false;
+		}
+		return 0;
+	}
+	if (interface == audio_retired_interface && interface != audio_state.interface)
+		return 0;
+	if (!p[17] && interface != audio_state.interface)
+		return 0;
 	if (!audio_state.interface || interface != audio_state.interface)
 		return -EPROTO;
 	if (!p[17])
@@ -64,6 +86,15 @@ static int audio_adapter_record(void *cookie, const u8 *p, u32 bytes)
 	u32 received;
 	int ret = afk_oob_response(p, bytes, audio_state.interface, audio_state.tag,
 		audio_rx_dva, AUDIO_PACKET - 32, &received);
+	if (audio_desktop) {
+		if (!audio_rpc_pending)
+			return -EPROTO;
+		audio_rpc_error = ret;
+		audio_rpc_bytes = ret ? 0 : received;
+		audio_rpc_pending = false;
+		dma_rmb();
+		return 0;
+	}
 	if (ret || !audio_state.pending)
 		return ret ? ret : -EPROTO;
 	dma_rmb();
@@ -80,7 +111,7 @@ static int audio_adapter_receive(u64 message)
 	int ret = afkc_receive(&audio_channel, message);
 	if (ret)
 		audio_result = ret;
-	return ret;
+	return audio_desktop ? 0 : ret;
 }
 
 static int audio_adapter_progress(void)
@@ -89,7 +120,7 @@ static int audio_adapter_progress(void)
 		.send = session_send, .allocate = audio_adapter_allocate,
 		.record = audio_adapter_record,
 	};
-	if (!audio_probe)
+	if (!audio_probe && !audio_desktop)
 		return 0;
 	if (!audio_channel.started) {
 		if (!(session.endpoints[1] & BIT(9)))
@@ -107,7 +138,7 @@ static int audio_adapter_progress(void)
 		return afkc_start(&audio_channel, &ops, NULL, 0x29);
 	}
 	if (audio_channel.error)
-		return audio_channel.error;
+		return audio_desktop ? 0 : audio_channel.error;
 	if (audio_channel.stopped) {
 		audio_finished = true;
 		audio_result = audio_state.received ? 0 : -ENODATA;
@@ -119,6 +150,8 @@ static int audio_adapter_progress(void)
 		audio_state.opened = true;
 		return audio_trial_send(&audio_state, NULL, false, 0x12);
 	}
+	if (audio_desktop)
+		return 0; /* Synchronous ALSA calls own request/reply progression. */
 	if (audio_state.opened && iboot_state.phase == M4_DCPEXT_IBOOT_POWER_OFF &&
 	    !audio_state.pending && !audio_state.received)
 		return audio_trial_send(&audio_state, NULL, true, 0);
@@ -149,7 +182,7 @@ static const struct file_operations audio_oob_fops = {
 };
 static int audio_evidence_publish(struct dentry *directory)
 {
-	if (!audio_probe)
+	if (!audio_probe && !desktop)
 		return 0;
 	if (IS_ERR_OR_NULL(debugfs_create_file("audio-service-capture", 0400, directory,
 		NULL, &audio_probe_fops)))
