@@ -310,7 +310,7 @@ static int probe(struct platform_device *pdev)
 				if (IS_ERR(dcp->native))
 					ret = PTR_ERR(dcp->native);
 				else
-					ret = m4_dcp_native_swap(dcp->native, NULL, 0, 0, 0);
+					ret = m4_dcp_native_swap(dcp->native, NULL, 0, 0, 0, -1);
 				if (!ret && kms)
 					ret = m4_dcp_kms_register(dcp->native, takeover);
 			}

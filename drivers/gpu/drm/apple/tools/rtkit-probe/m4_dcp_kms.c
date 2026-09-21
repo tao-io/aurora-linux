@@ -2,6 +2,7 @@
 /* J713 native SID0 scanout. Explicit-load, fixed inherited panel mode only. */
 #include <linux/dma-mapping.h>
 #include <linux/aperture.h>
+#include <linux/backlight.h>
 #include <linux/of_address.h>
 #include <linux/dma-buf.h>
 #include <linux/debugfs.h>
@@ -36,6 +37,7 @@
 #include <drm/drm_vblank.h>
 #include "m4_dcp_native.h"
 #include "m4_dcp_kms.h"
+#include "m4_dcp_brightness.h"
 
 /* Diagnostic history capacity, unrelated to submission or buffering limits. */
 #define M4_PRESENT_HISTORY 256
@@ -56,6 +58,8 @@ struct m4_kms {
 	/* Keep scanout pinned independently of atomic state until real completion. */
 	struct drm_framebuffer *active_fb, *failed_fb;
 	struct mutex present_lock;
+	struct backlight_device *backlight;
+	u32 brightness_nits;
 	bool failed;
 	u64 completed;
 	u64 swap_total_ns, swap_max_ns;
@@ -186,18 +190,16 @@ static void m4_finish_event(struct drm_crtc *crtc, struct drm_atomic_state *stat
 	spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
 }
 
-static bool m4_present(struct m4_kms *m4, struct drm_framebuffer *fb)
+static bool m4_present_locked(struct m4_kms *m4, struct drm_framebuffer *fb)
 {
 	u8 surface[0x22c];
 	dma_addr_t dva = 0;
 	u64 start, elapsed;
 	int ret;
 
-	mutex_lock(&m4->present_lock);
-	if (m4->failed) {
-		mutex_unlock(&m4->present_lock);
+	lockdep_assert_held(&m4->present_lock);
+	if (m4->failed)
 		return false;
-	}
 	if (fb) {
 		drm_framebuffer_get(fb);
 		m4_surface(surface, fb);
@@ -205,7 +207,8 @@ static bool m4_present(struct m4_kms *m4, struct drm_framebuffer *fb)
 	}
 	start = ktime_get_ns();
 	ret = m4_dcp_native_swap(m4->native, fb ? surface : NULL, dva,
-				fb ? fb->width : 0, fb ? fb->height : 0);
+				fb ? fb->width : 0, fb ? fb->height : 0,
+				fb ? m4->brightness_nits : 0);
 	elapsed = ktime_get_ns() - start;
 	/* Never make a timing reader wait on present_lock or copy scanout pixels. */
 	spin_lock(&m4->history_lock);
@@ -224,7 +227,6 @@ static bool m4_present(struct m4_kms *m4, struct drm_framebuffer *fb)
 		m4->failed_fb = fb;
 		WRITE_ONCE(m4->failed, true);
 		drm_err(&m4->drm, "native DCP flip failed %d; buffers pinned until reboot\n", ret);
-		mutex_unlock(&m4->present_lock);
 		return false;
 	}
 	if (m4->active_fb)
@@ -236,9 +238,44 @@ static bool m4_present(struct m4_kms *m4, struct drm_framebuffer *fb)
 	if (m4->completed <= 3 || !(m4->completed % 600))
 		drm_info(&m4->drm, "native KMS completed=%llu surface=%d imported=%d\n",
 			 m4->completed, !!fb, fb && !!fb->obj[0]->import_attach);
-	mutex_unlock(&m4->present_lock);
 	return true;
 }
+
+static bool m4_present(struct m4_kms *m4, struct drm_framebuffer *fb)
+{
+	bool success;
+
+	mutex_lock(&m4->present_lock);
+	success = m4_present_locked(m4, fb);
+	mutex_unlock(&m4->present_lock);
+	return success;
+}
+
+static int m4_backlight_update(struct backlight_device *backlight)
+{
+	struct m4_kms *m4 = bl_get_data(backlight);
+	int ret = 0;
+
+	/* Serialize with KMS and retain the active framebuffer through D590.
+	 * Brightness must also work when an idle compositor submits no frames.
+	 * An inactive CRTC retains the request until its next enabling swap.
+	 */
+	mutex_lock(&m4->present_lock);
+	if (m4->failed) {
+		ret = -EIO;
+		goto out;
+	}
+	m4->brightness_nits = backlight_get_brightness(backlight);
+	if (m4->active_fb && !m4_present_locked(m4, m4->active_fb))
+		ret = -EIO;
+out:
+	mutex_unlock(&m4->present_lock);
+	return ret;
+}
+
+static const struct backlight_ops m4_backlight_ops = {
+	.update_status = m4_backlight_update,
+};
 
 static void m4_crtc_flush(struct drm_crtc *crtc, struct drm_atomic_state *state)
 {
@@ -539,6 +576,11 @@ int m4_dcp_kms_register(struct m4_dcp_native *native, bool takeover)
 	struct platform_device *pdev;
 	struct m4_kms *m4;
 	struct drm_device *drm;
+	struct backlight_properties backlight_props = {
+		.type = BACKLIGHT_RAW,
+		.max_brightness = M4_PANEL_MAX_NITS,
+		.brightness = M4_PANEL_DEFAULT_NITS,
+	};
 	const void *timing;
 	u32 size;
 	int ret;
@@ -568,6 +610,7 @@ int m4_dcp_kms_register(struct m4_dcp_native *native, bool takeover)
 	drm = &m4->drm;
 	m4->native = native;
 	mutex_init(&m4->present_lock);
+	m4->brightness_nits = M4_PANEL_DEFAULT_NITS;
 	spin_lock_init(&m4->history_lock);
 	timing = m4_dcp_native_property(native, "PreferredTimingElements", &size);
 	if (!timing)
@@ -622,6 +665,11 @@ int m4_dcp_kms_register(struct m4_dcp_native *native, bool takeover)
 	drm_debugfs_add_file(drm, "m4_status", m4_status, NULL);
 	drm_debugfs_add_file(drm, "m4_analytics", m4_analytics, NULL);
 	drm_debugfs_add_file(drm, "m4_present_history", m4_present_history, NULL);
+	m4->backlight = devm_backlight_device_register(&pdev->dev, "apple-panel-bl",
+						     &pdev->dev, m4, &m4_backlight_ops,
+						     &backlight_props);
+	if (IS_ERR(m4->backlight))
+		return PTR_ERR(m4->backlight);
 	ret = drm_dev_register(drm, 0);
 	if (!ret)
 		debugfs_create_file("m4_scanout", 0400, drm->debugfs_root, m4, &m4_snapshot_fops);

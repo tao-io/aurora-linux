@@ -11,6 +11,7 @@
 #include <linux/workqueue.h>
 #include "m4_dcp_bridge.h"
 #include "m4_dcp_native.h"
+#include "m4_dcp_brightness.h"
 
 #define A(n) M4_DCP_TAG('A', n)
 #define D(n) M4_DCP_TAG('D', n)
@@ -29,6 +30,8 @@ struct m4_dcp_native {
 	struct mutex lock;
 	struct work_struct idle_work;
 	bool failed;
+	bool brightness_valid;
+	u32 brightness_nits;
 	u32 stride;
 	struct m4_dcp_property properties[MAX_PROPERTIES];
 	u32 property_count;
@@ -405,13 +408,16 @@ struct m4_dcp_native *m4_dcp_native_start(struct device *dev, struct m4_dcp_brid
 }
 
 int m4_dcp_native_swap(struct m4_dcp_native *dcp, const void *surface, u64 dva,
-		       u32 width, u32 height)
+		       u32 width, u32 height, int brightness_nits)
 {
 	__le32 start[4] = {}, started[2], result[3];
 	u8 *swap;
 	u32 id;
 	int ret;
 
+	/* -1 preserves inherited firmware state during the startup background. */
+	if (brightness_nits < -1 || brightness_nits > M4_PANEL_MAX_NITS)
+		return -EINVAL;
 	if (surface && (!dva || !width || width > 2560 || !height || height > 1664))
 		return -EINVAL;
 	swap = kzalloc(0x1bd8, GFP_KERNEL);
@@ -434,6 +440,9 @@ int m4_dcp_native_swap(struct m4_dcp_native *dcp, const void *surface, u64 dva,
 	put_unaligned_le32(surface ? 0xff000000 : 0xff402060, swap + 0x154);
 	memset(swap + 0x1bcb, 1, 10);
 	swap[0x1bd6] = swap[0x1bd7] = 1;
+	if (brightness_nits >= 0 && (!dcp->brightness_valid ||
+				    dcp->brightness_nits != brightness_nits))
+		m4_dcp_encode_brightness(swap, brightness_nits);
 	if (surface) {
 		memcpy(swap + 0x588, surface, 0x22c);
 		put_unaligned_le64(dva, swap + 0xe38);
@@ -447,6 +456,10 @@ int m4_dcp_native_swap(struct m4_dcp_native *dcp, const void *surface, u64 dva,
 	ret = call(dcp, A(407), swap, 0x1bd8, result, sizeof(result), id);
 	if (!ret && get_unaligned_le32((u8 *)result + 5))
 		ret = -EIO;
+	if (!ret && brightness_nits >= 0) {
+		dcp->brightness_nits = brightness_nits;
+		dcp->brightness_valid = true;
+	}
 	if (!ret && !surface)
 		dev_info(dcp->dev, "M4 kernel swap %u completed, surface=%d\n", id, !!surface);
 out:
