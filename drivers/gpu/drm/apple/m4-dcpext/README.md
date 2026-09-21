@@ -1,5 +1,17 @@
 # J713 external-display desktop driver
 
+## Current 4K30 and reconnect fix (2026-09-21)
+
+Kernel 228b26c557d0 is installed and booted. Sony TV 3840x2160@30,
+Philips PHL 237E7 1920x1080@60 and the laptop panel passed simultaneous
+DRM/Wayland validation. HBR2 and paged scanout remove the old 1080p limits.
+Same-port USB-C orientation changes now retain PHY ownership, preventing a
+second controller from claiming the port during reconfiguration. The regression
+test fails against the old switch function and passes against the fix.
+Repeated physical reconnect qualification and the separate intermittent startup
+command22 failure remain open. See the implementation and hardware record:
+[4K30 qualification](../../../../../reference/display/4k30-20260921/README.md).
+
 ## Current deployment: two external monitors (2026-09-21)
 
 The normal kernel now builds in independent DCPEXT0 and DCPEXT1 instances;
