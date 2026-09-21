@@ -6,3 +6,10 @@
 #define DCPEXT_WITH_SESSION
 #define DCPEXT_DESKTOP
 #include "m4_dcpext_dma_probe.c"
+
+#ifndef MODULE
+bool m4_dcpext_primary_enabled(void)
+{
+	return enable;
+}
+#endif

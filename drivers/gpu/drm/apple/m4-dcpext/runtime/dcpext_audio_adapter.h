@@ -49,7 +49,7 @@ static int audio_adapter_record(void *cookie, const u8 *p, u32 bytes)
 	u16 interface = get_unaligned_le16(p + 2);
 	if (p[16] == 0x11 && !p[17]) {
 		int ret = afk_query_publication_named(p, bytes, interface,
-			"dispext0:dcpav-audio-interface-epic:0");
+			port ? "dispext1:dcpav-audio-interface-epic:0" : "dispext0:dcpav-audio-interface-epic:0");
 		if (ret <= 0)
 			return ret;
 		if (!interface || audio_state.interface)

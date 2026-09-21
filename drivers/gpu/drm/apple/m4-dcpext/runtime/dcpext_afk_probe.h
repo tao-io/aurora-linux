@@ -97,7 +97,7 @@ static int session_evidence_publish(void)
 {
 	if (!afk_endpoint && !native_query)
 		return 0;
-	afk_probe_debug = debugfs_create_dir("m4_dcpext_session", NULL);
+	afk_probe_debug = debugfs_create_dir(port ? "m4_dcpext1_session" : "m4_dcpext_session", NULL);
 	if (IS_ERR_OR_NULL(afk_probe_debug))
 		return -ENOMEM;
 	if (IS_ERR_OR_NULL(debugfs_create_file("afk-capture", 0400, afk_probe_debug, NULL, &afk_probe_fops))) {

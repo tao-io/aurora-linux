@@ -44,7 +44,7 @@ static int pio_prepare(struct device_node *dcp, int count)
 
 	if (!pio_map)
 		return 0;
-	if (port || count < 3)
+	if (count < 3)
 		return -EINVAL;
 	ram = of_parse_phandle(dcp, "memory-region", count - 1);
 	if (!ram || !of_device_is_compatible(ram, "apple,dart-mem") ||

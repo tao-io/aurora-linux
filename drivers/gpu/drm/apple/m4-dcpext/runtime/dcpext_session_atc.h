@@ -20,9 +20,10 @@ module_param_named(usb_c_flipped, session_atc_flipped, bool, 0400);
 static bool session_atc_partner_flipped;
 static struct regmap *session_atc_pmgr;
 static u32 session_atc_power;
-/* J713 DT/ADT: hpm0 -> ATC0, hpm1 -> ATC1. The DCPEXT instance is
- * independent of the physical Type-C port and retains selector2 on either. */
-static unsigned int session_atc_port = 1;
+/* The controller is independent of the physical USB-C port. Prefer distinct
+ * ports at boot; exclusive claims also cover concurrent startup and migration.
+ */
+static unsigned int session_atc_port = 1 - DCPEXT_INSTANCE;
 module_param_named(usb_c_phy, session_atc_port, uint, 0400);
 static phys_addr_t session_atc_base(void)
 {
@@ -116,16 +117,26 @@ static int session_atc_read_partner(bool report)
 static int session_atc_find_partner(void)
 {
 	bool hpd, flipped;
-	int ret;
+	int ret, deferred = -ENOLINK;
 
-	/* Keep the existing route if it still has a sink. */
-	ret = session_atc_partner_at(session_atc_port, false, &hpd, &flipped);
-	if (!ret && hpd)
-		return session_atc_port;
-	if (ret && ret != -ENOLINK)
-		return ret;
-	ret = session_atc_partner_at(session_atc_port ^ 1, false, &hpd, &flipped);
-	return ret ? ret : hpd ? (int)(session_atc_port ^ 1) : -ENOLINK;
+	for (unsigned int i = 0; i < 2; i++) {
+		unsigned int phy = session_atc_port ^ i;
+
+		ret = session_atc_partner_at(phy, false, &hpd, &flipped);
+		if (ret) {
+			if (ret != -ENOLINK)
+				deferred = ret;
+			continue;
+		}
+		if (!hpd)
+			continue;
+#ifdef DCPEXT_DESKTOP
+		if (!m4_dcpext_route_claim(port, phy))
+			continue;
+#endif
+		return phy;
+	}
+	return deferred;
 }
 
 static int session_atc_check_partner(void)
@@ -265,6 +276,9 @@ static void session_atc_cleanup(void)
 	if (session_atc_owned)
 		release_mem_region(session_atc_base(), 0x24000);
 	session_atc_owned = false;
+#ifdef DCPEXT_DESKTOP
+	m4_dcpext_route_release(port, session_atc_port);
+#endif
 }
 
 static int session_atc_prepare(bool route_dpxbar)
@@ -319,6 +333,8 @@ static int session_atc_prepare(bool route_dpxbar)
 	if (!atc_core)
 		return -ENOMEM;
 	if (route_dpxbar) {
+		/* ADT UFP endpoints 1/2, port 0 -> native selectors 2/4. */
+		session_xbar.selector = 2 * (port + 1);
 		if (!request_mem_region(session_atc_base() + 0x4c000, 0x4000, "m4-dcpext-dpxbar"))
 			return -EBUSY;
 		session_dpxbar_owned = true;

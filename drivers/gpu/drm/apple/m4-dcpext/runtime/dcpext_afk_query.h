@@ -175,8 +175,9 @@ static int afk_query_publication_named(const u8 *p, u32 bytes, u16 interface,
 static int afk_query_publication_for(const u8 *p, u32 bytes, u16 interface, u32 query)
 {
 	return afk_query_publication_named(p, bytes, interface, query == 1 ? NULL :
-		query == 2 ? "dispext0:dcpav-controller-epic:0" :
-		"dispext0:dcpdptx-port-epic:0");
+		query == 2 ? (port ? "dispext1:dcpav-controller-epic:0" :
+				    "dispext0:dcpav-controller-epic:0") :
+		(port ? "dispext1:dcpdptx-port-epic:0" : "dispext0:dcpdptx-port-epic:0"));
 }
 
 static int afk_query_receive(const u8 *p, u32 bytes)

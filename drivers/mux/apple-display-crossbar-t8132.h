@@ -17,6 +17,8 @@
 struct apple_dpxbar_t8132 {
 	void __iomem *regs;
 	bool selected;
+	/* Zero retains the original DCPEXT0 route; J713 DCPEXT1 uses 4. */
+	u32 selector;
 };
 static const u32 dpxbar_offsets[] = { 0, 4, 8, 0xc, 0x10, 0x14, 0x18,
 	0x1c, 0x20, 0x24, 0x28, 0x2c, 0x30, 0x34,
@@ -47,45 +49,53 @@ static void apple_dpxbar_t8132_update(struct apple_dpxbar_t8132 *xbar, u32 offse
 
 static int apple_dpxbar_t8132_up(struct apple_dpxbar_t8132 *xbar)
 {
-	int ret = apple_dpxbar_t8132_idle(xbar);
+	u32 selector = xbar->selector ? xbar->selector : 2;
+	u32 bit, shift;
+	int ret;
+
+	if (selector != 2 && selector != 4)
+		return -EINVAL;
+	bit = 1U << selector;
+	shift = 2 * selector;
+	ret = apple_dpxbar_t8132_idle(xbar);
 	if (ret)
 		return ret;
 	/* Caller already pins the powered PHY and published DART tables. */
 	xbar->selected = true;
-	apple_dpxbar_t8132_update(xbar, 0x30, 0xf00000, 2 << 20);
-	apple_dpxbar_t8132_update(xbar, 0x30, 0xf00, 2 << 8);
-	if (readl(xbar->regs + 0x30) != 0x200200)
+	apple_dpxbar_t8132_update(xbar, 0x30, 0xf00000, selector << 20);
+	apple_dpxbar_t8132_update(xbar, 0x30, 0xf00, selector << 8);
+	if (readl(xbar->regs + 0x30) != (selector << 20 | selector << 8))
 		return -EIO;
 	/* Native connection-up uses source bit 4 and physical-output bit 0x100.
 	 * Clock class 1 follows native pclkForConnection for attributes 0x100.
 	 */
-	apple_dpxbar_t8132_update(xbar, 4, 4, 0);
-	apple_dpxbar_t8132_update(xbar, 0x14, 4, 0);
+	apple_dpxbar_t8132_update(xbar, 4, bit, 0);
+	apple_dpxbar_t8132_update(xbar, 0x14, bit, 0);
 	apple_dpxbar_t8132_update(xbar, 0x24, 0x100, 0);
 	udelay(1);
-	if (readl(xbar->regs + 0x804) & 4 ||
-	    readl(xbar->regs + 0x810) & 4 ||
+	if (readl(xbar->regs + 0x804) & bit ||
+	    readl(xbar->regs + 0x810) & bit ||
 	    readl(xbar->regs + 0x81c) & 0x100)
 		return -ETIMEDOUT;
-	apple_dpxbar_t8132_update(xbar, 8, 0, 4);
-	apple_dpxbar_t8132_update(xbar, 0x18, 0x30, 0x10);
+	apple_dpxbar_t8132_update(xbar, 8, 0, bit);
+	apple_dpxbar_t8132_update(xbar, 0x18, 3U << shift, 1U << shift);
 	apple_dpxbar_t8132_update(xbar, 0x28, 0x300, 0x100);
-	apple_dpxbar_t8132_update(xbar, 0, 0, 4);
-	apple_dpxbar_t8132_update(xbar, 0xc, 0, 4);
+	apple_dpxbar_t8132_update(xbar, 0, 0, bit);
+	apple_dpxbar_t8132_update(xbar, 0xc, 0, bit);
 	apple_dpxbar_t8132_update(xbar, 0x1c, 0, 0x100);
 	apple_dpxbar_t8132_update(xbar, 0x34, 0, 0x100);
-	apple_dpxbar_t8132_update(xbar, 0x2c, 0, 4);
-	pr_info("apple-t8132-dpxbar: selector2 up mux=%#x source_clock=%#x output_clock=%#x\n",
-		readl(xbar->regs + 0x30), readl(xbar->regs),
+	apple_dpxbar_t8132_update(xbar, 0x2c, 0, bit);
+	pr_info("apple-t8132-dpxbar: selector%u up mux=%#x source_clock=%#x output_clock=%#x\n",
+		selector, readl(xbar->regs + 0x30), readl(xbar->regs),
 		readl(xbar->regs + 0x1c));
-	if (readl(xbar->regs) != 4 || readl(xbar->regs + 4) != 0x1fb ||
-	    readl(xbar->regs + 8) != 4 || readl(xbar->regs + 0xc) != 4 ||
-	    readl(xbar->regs + 0x14) != 0x1fb ||
-	    readl(xbar->regs + 0x18) != 0x10 ||
+	if (readl(xbar->regs) != bit || readl(xbar->regs + 4) != (0x1ff & ~bit) ||
+	    readl(xbar->regs + 8) != bit || readl(xbar->regs + 0xc) != bit ||
+	    readl(xbar->regs + 0x14) != (0x1ff & ~bit) ||
+	    readl(xbar->regs + 0x18) != (1U << shift) ||
 	    readl(xbar->regs + 0x1c) != 0x100 ||
 	    readl(xbar->regs + 0x24) != 0x11 ||
 	    readl(xbar->regs + 0x28) != 0x100 ||
-	    readl(xbar->regs + 0x2c) != 4 ||
+	    readl(xbar->regs + 0x2c) != bit ||
 	    readl(xbar->regs + 0x34) != 0x100)
 		return -EIO;
 	return 0;
@@ -94,11 +104,17 @@ static int apple_dpxbar_t8132_up(struct apple_dpxbar_t8132 *xbar)
 static int apple_dpxbar_t8132_down(struct apple_dpxbar_t8132 *xbar)
 {
 	u32 source, read_clock, output;
+	u32 selector = xbar->selector ? xbar->selector : 2;
+	u32 bit, shift;
 	if (!xbar->selected)
 		return 0;
-	apple_dpxbar_t8132_update(xbar, 0x2c, 4, 0);
-	apple_dpxbar_t8132_update(xbar, 0, 4, 0);
-	apple_dpxbar_t8132_update(xbar, 0xc, 4, 0);
+	if (selector != 2 && selector != 4)
+		return -EINVAL;
+	bit = 1U << selector;
+	shift = 2 * selector;
+	apple_dpxbar_t8132_update(xbar, 0x2c, bit, 0);
+	apple_dpxbar_t8132_update(xbar, 0, bit, 0);
+	apple_dpxbar_t8132_update(xbar, 0xc, bit, 0);
 	apple_dpxbar_t8132_update(xbar, 0x1c, 0x100, 0);
 	udelay(1);
 	source = readl(xbar->regs + 0x800);
@@ -111,11 +127,11 @@ static int apple_dpxbar_t8132_down(struct apple_dpxbar_t8132 *xbar)
 	 */
 	pr_info("apple-t8132-dpxbar: intermediate stop status source=%#x read=%#x output=%#x\n",
 		source, read_clock, output);
-	apple_dpxbar_t8132_update(xbar, 8, 4, 0);
-	apple_dpxbar_t8132_update(xbar, 0x18, 0x30, 0);
+	apple_dpxbar_t8132_update(xbar, 8, bit, 0);
+	apple_dpxbar_t8132_update(xbar, 0x18, 3U << shift, 0);
 	apple_dpxbar_t8132_update(xbar, 0x28, 0x300, 0);
-	apple_dpxbar_t8132_update(xbar, 4, 0, 4);
-	apple_dpxbar_t8132_update(xbar, 0x14, 0, 4);
+	apple_dpxbar_t8132_update(xbar, 4, 0, bit);
+	apple_dpxbar_t8132_update(xbar, 0x14, 0, bit);
 	apple_dpxbar_t8132_update(xbar, 0x24, 0, 0x100);
 	/* Native takeConnectionDown leaves bit8 at0x34 set. Hardware in the
 	 * retained trial ignores a zero write; do not require an unnecessary

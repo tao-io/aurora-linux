@@ -18,6 +18,13 @@
 #include <linux/slab.h>
 #include <linux/kthread.h>
 
+#ifndef DCPEXT_INSTANCE
+#define DCPEXT_INSTANCE 0
+#endif
+#ifdef DCPEXT_DESKTOP
+#include "m4_dcpext_routes.h"
+#endif
+
 #define LEASE_PAGE 0x4000
 #ifdef DCPEXT_WITH_SESSION
 #ifdef DCPEXT_DESKTOP
@@ -65,7 +72,7 @@ MODULE_PARM_DESC(native_query, "Bounded DCPLink READY/A412 external profile quer
 #define PTE_ADDRESS GENMASK_ULL(39, 10)
 #define PTE_RW (GENMASK_ULL(51, 40) | 1)
 
-static unsigned int port;
+static unsigned int port = DCPEXT_INSTANCE;
 module_param(port, uint, 0400);
 static int result = -EINPROGRESS;
 module_param(result, int, 0400);
@@ -152,6 +159,11 @@ static void cleanup(void)
 	if (region_owned)
 		release_mem_region(dart_base, 0x20000);
 	kfree(saved);
+#ifdef DCPEXT_DESKTOP
+	/* cleanup is never called for uncertain/pinned firmware ownership. */
+	m4_dcpext_route_release(port, 0);
+	m4_dcpext_route_release(port, 1);
+#endif
 }
 
 /* Called only after protocol completion, or by the no-firmware mapper. On
@@ -210,7 +222,7 @@ static int probe_init(void)
 	/* First usable desktop: exactly the already-qualified connected route.
 	 * Keep ownership pinned until explicit stop or shutdown; no sleep tests.
 	 */
-	if (port || (desktop_test_ms && desktop_test_ms != 20000 && desktop_test_ms != 30000) ||
+	if (port != DCPEXT_INSTANCE || (desktop_test_ms && desktop_test_ms != 20000 && desktop_test_ms != 30000) ||
 	    sleep_iop || restart_cpu || native_sleep_cycle || audio_probe || iboot_probe ||
 	    crash_on_quiesce_stall || capture_power_state || native_stop_signal ||
 	    native_close_before_route || native_background_trial || quiesce_with_route ||
@@ -249,13 +261,13 @@ static int probe_init(void)
 	if (native_sleep_cycle && (!native_route || !native_startup ||
 	    !native_system_shutdown || !sleep_iop || !restart_cpu || native_kms_trial))
 		return -EINVAL;
-	if (native_query && (port || iboot_probe || (frame_map && !native_frame_trial) ||
+	if (native_query && (iboot_probe || (frame_map && !native_frame_trial) ||
 	    ((sleep_iop || restart_cpu) && !native_sleep_cycle) || (!native_route &&
 	    (afk_endpoint || afk_query || link_training || link_capabilities))))
 		return -EINVAL;
 	if (restart_cpu && (!sleep_iop || port || afk_query != 7))
 		return -EINVAL;
-	if (link_training && (afk_query != 7 || port || !link_capabilities ||
+	if (link_training && (afk_query != 7 || !link_capabilities ||
 	    ((sleep_iop || restart_cpu) && !native_sleep_cycle)))
 		return -EINVAL;
 	if (image_hold_ms < 1500 || image_hold_ms > 50000 ||
@@ -290,8 +302,8 @@ static int probe_init(void)
 	if (iboot_probe && !link_training)
 		return -EINVAL;
 	if (afk_query > 7 || (afk_query == 1 && afk_endpoint != 0x23) ||
-	    (afk_query == 2 && (afk_endpoint != 0x24 || port != 0)) ||
-	    (afk_query >= 3 && (afk_endpoint != 0x2a || port != 0)))
+	    (afk_query == 2 && afk_endpoint != 0x24) ||
+	    (afk_query >= 3 && afk_endpoint != 0x2a))
 		return -EINVAL;
 #endif
 	if (port > 1 || PAGE_SIZE != LEASE_PAGE ||
@@ -372,7 +384,7 @@ static int probe_init(void)
 	ret = -EBUSY;
 	if (READ_ONCE(root[LEASE_SLOT]))
 		goto done;
-	dma_dev = root_device_register("m4-dcpext-dma-probe");
+	dma_dev = root_device_register(port ? "m4-dcpext1" : "m4-dcpext-dma-probe");
 	if (IS_ERR(dma_dev)) {
 		ret = PTR_ERR(dma_dev);
 		dma_dev = NULL;
@@ -429,7 +441,7 @@ static int probe_init(void)
 		goto done;
 #ifdef DCPEXT_WITH_SESSION
 	if (native_kms_trial) {
-		struct task_struct *worker = kthread_run(session_kms_worker, NULL, "dcpext-kms");
+		struct task_struct *worker = kthread_run(session_kms_worker, NULL, "dcpext%u-kms", port);
 		ret = IS_ERR(worker) ? PTR_ERR(worker) : 0;
 		native_kms_worker_started = !ret;
 		goto done;

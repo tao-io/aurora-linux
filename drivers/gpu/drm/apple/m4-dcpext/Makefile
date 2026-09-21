@@ -16,5 +16,8 @@ obj-m += m4_dcpext_desktop.o
 else
 obj-$(CONFIG_DRM_APPLE_M4_DCPEXT) += m4_dcpext_desktop.o
 endif
-m4_dcpext_desktop-y := runtime/m4_dcpext_desktop_main.o runtime/dcpext_session.o runtime/dcpext_native_query.o $(m4_dcpext-y)
+m4_dcpext_desktop-y := runtime/m4_dcpext_desktop_main.o runtime/dcpext_session.o runtime/dcpext_native_query.o m4_dcpext_routes.o $(m4_dcpext-y)
+ifeq ($(KBUILD_EXTMOD),)
+m4_dcpext_desktop-y += runtime/m4_dcpext_secondary_main.o
+endif
 ccflags-y += -I$(src) -I$(src)/../../../../phy/apple -I$(src)/../../../../mux -I$(src)/../../../../usb/typec/tipd

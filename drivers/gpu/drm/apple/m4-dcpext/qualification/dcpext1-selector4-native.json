@@ -1,0 +1,362 @@
+{
+  "image_sha256": "f42ad6f51d130141095a94b4749d128d648f2be2ac0c291bf492ac1c64e5875d",
+  "functions": {
+    "atc-dpxbar-connect": {
+      "image": "/home/council/dev/dirtyroom_m4/build/displayport-kernelcache/kernelcache.macho",
+      "image_sha256": "f42ad6f51d130141095a94b4749d128d648f2be2ac0c291bf492ac1c64e5875d",
+      "symbol": "____ZN19AppleT602XATCDPXBAR7connectE17IODPTXPortAddressS0__block_invoke",
+      "virtual_address": "0xfffffe0009134b3c",
+      "file_offset": "0x2130b3c",
+      "size": 652,
+      "function_sha256": "41e734d364e8161a91d145affa21dcfd99f037be7efdf2b5e632f93f13ffb77c",
+      "command": [
+        "aarch64-linux-gnu-objdump",
+        "-D",
+        "-b",
+        "binary",
+        "-m",
+        "aarch64",
+        "--adjust-vma=18446741874838555452",
+        "build/displayport-kernelcache/atc-dpxbar-connect/function.bin"
+      ]
+    },
+    "atc-dpxbar-up": {
+      "image": "/home/council/dev/dirtyroom_m4/build/displayport-kernelcache/kernelcache.macho",
+      "image_sha256": "f42ad6f51d130141095a94b4749d128d648f2be2ac0c291bf492ac1c64e5875d",
+      "symbol": "____ZN19AppleT602XATCDPXBAR17bringConnectionUpE20IODPTXPortAttributesS0__block_invoke",
+      "virtual_address": "0xfffffe0009134e88",
+      "file_offset": "0x2130e88",
+      "size": 1584,
+      "function_sha256": "0f09f2c5514fb15ffe46d8c3f559d9dac83ada5fef4a37ebab61ec0a9baa405d",
+      "command": [
+        "aarch64-linux-gnu-objdump",
+        "-D",
+        "-b",
+        "binary",
+        "-m",
+        "aarch64",
+        "--adjust-vma=18446741874838556296",
+        "build/displayport-kernelcache/atc-dpxbar-up/function.bin"
+      ]
+    },
+    "atc-dpxbar-down": {
+      "image": "/home/council/dev/dirtyroom_m4/build/displayport-kernelcache/kernelcache.macho",
+      "image_sha256": "f42ad6f51d130141095a94b4749d128d648f2be2ac0c291bf492ac1c64e5875d",
+      "symbol": "____ZN19AppleT602XATCDPXBAR18takeConnectionDownE20IODPTXPortAttributesS0__block_invoke",
+      "virtual_address": "0xfffffe0009135578",
+      "file_offset": "0x2131578",
+      "size": 2404,
+      "function_sha256": "e26e947edb20765da7710738f1d89dab6ca462607ffe8dd9d1239e4fefc97d5e",
+      "command": [
+        "aarch64-linux-gnu-objdump",
+        "-D",
+        "-b",
+        "binary",
+        "-m",
+        "aarch64",
+        "--adjust-vma=18446741874838558072",
+        "build/displayport-kernelcache/atc-dpxbar-down/function.bin"
+      ]
+    },
+    "atc-dpxbar-selector": {
+      "image": "/home/council/dev/dirtyroom_m4/build/displayport-kernelcache/kernelcache.macho",
+      "image_sha256": "f42ad6f51d130141095a94b4749d128d648f2be2ac0c291bf492ac1c64e5875d",
+      "symbol": "__ZN14AppleATCDPXBAR14getMuxSelectorE17IODPTXPortAddress",
+      "virtual_address": "0xfffffe0009135f14",
+      "file_offset": "0x2131f14",
+      "size": 20,
+      "function_sha256": "9094d999eaf5d619da4deed574967b49439a526e233a34d86b12be4d8bd36f85",
+      "command": [
+        "aarch64-linux-gnu-objdump",
+        "-D",
+        "-b",
+        "binary",
+        "-m",
+        "aarch64",
+        "--adjust-vma=18446741874838560532",
+        "build/displayport-kernelcache/atc-dpxbar-selector/function.bin"
+      ]
+    },
+    "atc-dpxbar-tunables": {
+      "image": "/home/council/dev/dirtyroom_m4/build/displayport-kernelcache/kernelcache.macho",
+      "image_sha256": "f42ad6f51d130141095a94b4749d128d648f2be2ac0c291bf492ac1c64e5875d",
+      "symbol": "__ZN19AppleT602XATCDPXBAR13applyTunablesEv",
+      "virtual_address": "0xfffffe0009135f80",
+      "file_offset": "0x2131f80",
+      "size": 8,
+      "function_sha256": "d33fdb74881bcff46b1cf4fc3e20479b1882e0e683789e80e6d650554066a1aa",
+      "command": [
+        "aarch64-linux-gnu-objdump",
+        "-D",
+        "-b",
+        "binary",
+        "-m",
+        "aarch64",
+        "--adjust-vma=18446741874838560640",
+        "build/displayport-kernelcache/atc-dpxbar-tunables/function.bin"
+      ]
+    },
+    "atc-dpxbar-pclk": {
+      "image": "/home/council/dev/dirtyroom_m4/build/displayport-kernelcache/kernelcache.macho",
+      "image_sha256": "f42ad6f51d130141095a94b4749d128d648f2be2ac0c291bf492ac1c64e5875d",
+      "symbol": "__ZNK14AppleATCDPXBAR17pclkForConnectionE20IODPTXPortAttributesS0_",
+      "virtual_address": "0xfffffe0009135f30",
+      "file_offset": "0x2131f30",
+      "size": 44,
+      "function_sha256": "c6363af693081376ff162b2ba3ebed2fb8f24038fbb5f0bee5538ed7f23bd280",
+      "command": [
+        "aarch64-linux-gnu-objdump",
+        "-D",
+        "-b",
+        "binary",
+        "-m",
+        "aarch64",
+        "--adjust-vma=18446741874838560560",
+        "build/displayport-kernelcache/atc-dpxbar-pclk/function.bin"
+      ]
+    },
+    "atc-dpxbar-down-warning": {
+      "image": "/home/council/dev/dirtyroom_m4/build/displayport-kernelcache/kernelcache.macho",
+      "image_sha256": "f42ad6f51d130141095a94b4749d128d648f2be2ac0c291bf492ac1c64e5875d",
+      "symbol": "____ZN19AppleT602XATCDPXBAR18takeConnectionDownE20IODPTXPortAttributesS0__block_invoke.cold.1",
+      "virtual_address": "0xfffffe0009159eb4",
+      "file_offset": "0x2155eb4",
+      "size": 204,
+      "function_sha256": "74bc348ad0e494cd06a7bb2eb12d05e204f4d80b164870d0beb21e884c6bae97",
+      "command": [
+        "aarch64-linux-gnu-objdump",
+        "-D",
+        "-b",
+        "binary",
+        "-m",
+        "aarch64",
+        "--adjust-vma=18446741874838707892",
+        "build/displayport-kernelcache/atc-dpxbar-down-warning/function.bin"
+      ]
+    }
+  },
+  "stale_stop_status": false,
+  "source": "0x8020",
+  "destination": "0x8000",
+  "attributes": "0x100",
+  "events": [
+    {
+      "stage": "connect"
+    },
+    {
+      "operation": "mask",
+      "offset": "0x30",
+      "before": "0x0",
+      "value": "0x400000",
+      "mask": "0xf00000",
+      "shift": 20,
+      "field": "0x4"
+    },
+    {
+      "operation": "mask",
+      "offset": "0x30",
+      "before": "0x400000",
+      "value": "0x400400",
+      "mask": "0xf00",
+      "shift": 8,
+      "field": "0x4"
+    },
+    {
+      "stage": "up"
+    },
+    {
+      "operation": "and",
+      "offset": "0x4",
+      "before": "0x1ff",
+      "value": "0x1ef"
+    },
+    {
+      "operation": "and",
+      "offset": "0x14",
+      "before": "0x1ff",
+      "value": "0x1ef"
+    },
+    {
+      "operation": "and",
+      "offset": "0x24",
+      "before": "0x111",
+      "value": "0x11"
+    },
+    {
+      "operation": "delay",
+      "microseconds": 1
+    },
+    {
+      "operation": "read",
+      "offset": "0x804",
+      "before": "0x1ef"
+    },
+    {
+      "operation": "read",
+      "offset": "0x810",
+      "before": "0x1ef"
+    },
+    {
+      "operation": "read",
+      "offset": "0x81c",
+      "before": "0x11"
+    },
+    {
+      "operation": "or",
+      "offset": "0x8",
+      "before": "0x0",
+      "value": "0x10"
+    },
+    {
+      "operation": "mask",
+      "offset": "0x18",
+      "before": "0x0",
+      "value": "0x100",
+      "mask": "0x300",
+      "shift": 8,
+      "field": "0x1"
+    },
+    {
+      "operation": "mask",
+      "offset": "0x28",
+      "before": "0x0",
+      "value": "0x100",
+      "mask": "0x300",
+      "shift": 8,
+      "field": "0x1"
+    },
+    {
+      "operation": "or",
+      "offset": "0x0",
+      "before": "0x0",
+      "value": "0x10"
+    },
+    {
+      "operation": "or",
+      "offset": "0xc",
+      "before": "0x0",
+      "value": "0x10"
+    },
+    {
+      "operation": "or",
+      "offset": "0x1c",
+      "before": "0x0",
+      "value": "0x100"
+    },
+    {
+      "operation": "or",
+      "offset": "0x34",
+      "before": "0x0",
+      "value": "0x100"
+    },
+    {
+      "operation": "or",
+      "offset": "0x2c",
+      "before": "0x0",
+      "value": "0x10"
+    },
+    {
+      "stage": "down"
+    },
+    {
+      "operation": "and",
+      "offset": "0x2c",
+      "before": "0x10",
+      "value": "0x0"
+    },
+    {
+      "operation": "and",
+      "offset": "0x0",
+      "before": "0x10",
+      "value": "0x0"
+    },
+    {
+      "operation": "and",
+      "offset": "0xc",
+      "before": "0x10",
+      "value": "0x0"
+    },
+    {
+      "operation": "and",
+      "offset": "0x1c",
+      "before": "0x100",
+      "value": "0x0"
+    },
+    {
+      "operation": "delay",
+      "microseconds": 1
+    },
+    {
+      "operation": "read",
+      "offset": "0x800",
+      "before": "0x0"
+    },
+    {
+      "operation": "read",
+      "offset": "0x808",
+      "before": "0x0"
+    },
+    {
+      "operation": "read",
+      "offset": "0x814",
+      "before": "0x0"
+    },
+    {
+      "operation": "and",
+      "offset": "0x8",
+      "before": "0x10",
+      "value": "0x0"
+    },
+    {
+      "operation": "mask",
+      "offset": "0x18",
+      "before": "0x100",
+      "value": "0x0",
+      "mask": "0x300",
+      "shift": 8,
+      "field": "0x0"
+    },
+    {
+      "operation": "mask",
+      "offset": "0x28",
+      "before": "0x100",
+      "value": "0x0",
+      "mask": "0x300",
+      "shift": 8,
+      "field": "0x0"
+    },
+    {
+      "operation": "or",
+      "offset": "0x4",
+      "before": "0x1ef",
+      "value": "0x1ff"
+    },
+    {
+      "operation": "or",
+      "offset": "0x14",
+      "before": "0x1ef",
+      "value": "0x1ff"
+    },
+    {
+      "operation": "or",
+      "offset": "0x24",
+      "before": "0x11",
+      "value": "0x111"
+    }
+  ],
+  "final_registers": {
+    "0x0": "0x0",
+    "0x4": "0x1ff",
+    "0x8": "0x0",
+    "0xc": "0x0",
+    "0x14": "0x1ff",
+    "0x18": "0x0",
+    "0x1c": "0x0",
+    "0x24": "0x111",
+    "0x28": "0x0",
+    "0x2c": "0x0",
+    "0x30": "0x400400",
+    "0x34": "0x100"
+  },
+  "qualification": "Execute saved native T602x DPXBAR routines against synthetic registers.\n\nOffline only, using build/display-venv (Unicorn). Source addresses are explicit\nmodel inputs, not discovered hardware routes. The command-gate block executes directly and logging is mocked;\nregister operations and selector/clock calculations execute the native code.\nStatus mirrors control immediately, so this does not qualify real clock timing.\n"
+}

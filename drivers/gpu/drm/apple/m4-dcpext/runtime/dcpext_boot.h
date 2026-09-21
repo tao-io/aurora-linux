@@ -66,6 +66,11 @@ static int __init dcpext_boot_init(void)
 {
 	int ret;
 
+#if DCPEXT_INSTANCE == 1
+	/* Preserve the existing recovery option that disables external display. */
+	if (!m4_dcpext_primary_enabled())
+		return 0;
+#endif
 	if (!enable || !of_machine_is_compatible("apple,j713") ||
 	    !of_machine_is_compatible("apple,t8132"))
 		return 0;
@@ -73,7 +78,7 @@ static int __init dcpext_boot_init(void)
 	if (ret)
 		return ret;
 	WRITE_ONCE(boot_waiting, true);
-	pr_info("m4_dcpext: built-in driver waiting for a USB-C display\n");
+	pr_info("m4_dcpext%u: built-in driver waiting for a USB-C display\n", port);
 	schedule_delayed_work(&dcpext_boot_work, HZ);
 	return 0;
 }

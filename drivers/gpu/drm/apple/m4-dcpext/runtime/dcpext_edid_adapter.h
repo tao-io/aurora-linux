@@ -38,7 +38,7 @@ static int edid_adapter_record(void *cookie, const u8 *p, u32 bytes)
 		interface, p[16], p[17], bytes);
 	if (p[16] == 0x11 && !p[17]) {
 		ret = afk_query_publication_named(p, bytes, interface,
-			"dispext0:dcpav-service-epic:0");
+			port ? "dispext1:dcpav-service-epic:0" : "dispext0:dcpav-service-epic:0");
 		if (ret <= 0)
 			return ret;
 		if (!interface || edid_state.interface)
