@@ -2,7 +2,7 @@
 //! GEM/GPUVM ownership for an M4 render pass in a bounded GPU batch. There are no borrowed
 //! lab mappings. A hardware slot retains its last owner until replacement.
 use kernel::prelude::*;
-use crate::{driver, mmu, g16_memory::{self, Buffer}, g16_render::{self, Register, Stage},
+use crate::{driver, mmu, g16_memory::{self, Buffer, GpuBuffer}, g16_render::{self, Register, Stage},
     g16_render_state::{self as state, State, Program, DepthStencil}, g16_render_command as wire,
     g17_uapi::UapiRenderCommand};
 
@@ -29,7 +29,7 @@ pub(crate) struct Render {
     preemption: [Buffer; 3],
     auxiliary: Buffer,
     uma: Buffer,
-    private_memory: Buffer,
+    private_memory: GpuBuffer,
     pool_state: Buffer,
     page_list: Buffer,
     binding: mmu::VmBind,
@@ -53,8 +53,9 @@ impl Render {
             &self.sequences[1], &self.metadata, &self.scratch, &self.scene_list,
             &self.tilemap, &self.tpc, &self.unknown, &self.preemption[0],
             &self.preemption[1], &self.preemption[2], &self.auxiliary, &self.uma,
-            &self.private_memory, &self.pool_state, &self.page_list];
+            &self.pool_state, &self.page_list];
         buffers.iter().map(|b| crate::util::align(b.size(), crate::mmu::UAT_PGSZ)).sum::<usize>()
+            + crate::util::align(self.private_memory.size(), crate::mmu::UAT_PGSZ)
             + self.parameters.lock().resident_bytes()
     }
     /// Match common Asahi's last-render flush_stamps. M4 25G83 completion
@@ -146,9 +147,13 @@ impl Render {
                 Buffer::new_command(dev,uat.kernel_vm(),uat.kernel_lower_vm(),Stage::Fragment.command_size())?];
             let mut views = KVec::new();
             for command in &mut commands { views.push(command.map_gpu_view(vm)?,GFP_KERNEL)?; }
-            let private_memory = gpu(PRIVATE_BYTES)?;
+            // Only engine page lists address this backing. Firmware receives
+            // the separate UMA descriptor and freelist, never a private-memory
+            // alias. Match compute: avoid a second 32 MiB UAT mapping and its
+            // teardown on every cache miss. Capacity and lifetime are unchanged.
+            let private_memory = GpuBuffer::new(dev, vm, PRIVATE_BYTES)?;
             let (freelist, page_list_image) = g16_memory::freelist_images(
-                private_memory.gpu_va()?, PRIVATE_PAGES)?;
+                private_memory.va(), PRIVATE_PAGES)?;
             KBox::new(Self {
                 _command_views:views, commands, sequences:[fw(0x400)?,fw(0x800)?],
                 metadata:fw(0x4000)?,

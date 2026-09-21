@@ -1,0 +1,7 @@
+{
+  "reference": "_provenance/experiments/20260921T063920173509Z-stk-zink-replay-baseline/remote/vulkan-replay/screenshot_frame_3.png",
+  "actual": "_provenance/experiments/20260921T064326533068Z-stk-zink-gpu-private-replay/remote/vulkan-replay/screenshot_frame_3.png",
+  "changed_pixels": 0,
+  "maximum_channel_error": 0,
+  "mean_channel_error": 0.0
+}
