@@ -65,21 +65,25 @@ static inline int apple_pmp_temp_sample(void __iomem *sram, unsigned int index,
 	return -EAGAIN;
 }
 
-static inline int apple_pmp_temp_hotspot(void __iomem *sram, long *value)
+static inline int apple_pmp_temp_hotspot_channel(void __iomem *sram, long *value,
+					       int *channel)
 {
 	bool found = false;
 	long hottest = 0, sample;
 	unsigned int i;
 	int ret;
 
+	*channel = -1;
 	for (i = 0; i < ARRAY_SIZE(apple_pmp_temp_records); i++) {
 		ret = apple_pmp_temp_sample(sram, i, &sample);
 		if (ret == -ENODATA)
 			continue;
 		if (ret)
 			return ret;
-		if (!found || sample > hottest)
+		if (!found || sample > hottest) {
 			hottest = sample;
+			*channel = i;
+		}
 		found = true;
 	}
 
@@ -87,6 +91,13 @@ static inline int apple_pmp_temp_hotspot(void __iomem *sram, long *value)
 		return -ENODATA;
 	*value = hottest;
 	return 0;
+}
+
+static inline int apple_pmp_temp_hotspot(void __iomem *sram, long *value)
+{
+	int channel;
+
+	return apple_pmp_temp_hotspot_channel(sram, value, &channel);
 }
 
 #endif

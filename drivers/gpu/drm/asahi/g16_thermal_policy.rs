@@ -9,11 +9,23 @@ pub(crate) struct Policy {
     limited: bool,
     good_reads: u32,
     good_ns: i64,
+    pub(crate) trace: Trace,
+}
+
+#[derive(Clone, Copy)]
+pub(crate) struct Trace {
+    pub(crate) now: i64,
+    pub(crate) previous_mc: Option<i32>,
+    pub(crate) elapsed: i64,
+    pub(crate) projected: i64,
+    pub(crate) reason: &'static str,
 }
 
 impl Policy {
     pub(crate) fn new() -> Self {
-        Self { last_ns: 0, previous_mc: None, limited: true, good_reads: 0, good_ns: 0 }
+        Self { last_ns: 0, previous_mc: None, limited: true, good_reads: 0, good_ns: 0,
+            trace: Trace { now: 0, previous_mc: None, elapsed: 0,
+                projected: 0, reason: "startup" } }
     }
 
     pub(crate) fn read_due(&self, now: i64) -> bool {
@@ -28,6 +40,10 @@ impl Policy {
             (Some(t), _) => t as i64,
             _ => i64::MAX,
         };
+        self.trace.now = now;
+        self.trace.previous_mc = self.previous_mc;
+        self.trace.elapsed = elapsed;
+        self.trace.projected = projected;
         self.last_ns = now;
         self.previous_mc = temp;
         // Cold load steps are not a sustained heating slope. Predict only
@@ -35,6 +51,11 @@ impl Policy {
         if temp.is_none_or(|t| t >= 92_000) ||
             (temp.is_some_and(|t| t >= 85_000) && projected >= 95_000) {
             self.limited = true;
+            self.trace.reason = match temp {
+                None => "sensor",
+                Some(t) if t >= 92_000 => "hard-temperature",
+                _ => "prediction",
+            };
             self.good_reads = 0;
             self.good_ns = now;
         } else if temp.is_some_and(|t| t < 88_000) {
@@ -43,7 +64,10 @@ impl Policy {
                 self.good_ns = now;
                 self.good_reads = (self.good_reads + 1).min(10);
             }
-            if self.good_reads == 10 { self.limited = false; }
+            if self.good_reads == 10 {
+                self.limited = false;
+                self.trace.reason = "governor";
+            }
         } else {
             self.good_reads = 0;
             self.good_ns = now;

@@ -6,3 +6,9 @@ __rust_helper int rust_helper_apple_pmp_temp_hotspot(void __iomem *sram, long *t
 {
 	return apple_pmp_temp_hotspot(sram, temp);
 }
+
+__rust_helper int rust_helper_apple_pmp_temp_hotspot_channel(void __iomem *sram,
+							   long *temp, int *channel)
+{
+	return apple_pmp_temp_hotspot_channel(sram, temp, channel);
+}

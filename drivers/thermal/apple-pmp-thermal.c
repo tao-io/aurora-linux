@@ -185,9 +185,15 @@ static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
 	u64 now;
 	long projected;
 	bool was_confirmed; /* DEBUG_REMOVE_IN_PROD */
+	bool was_clamped;
+	long previous_mc;
+	int channel = -1;
+	unsigned int i;
 	int ret;
 
 	guard(mutex)(&pmp_thermal.lock);
+	was_clamped = pmp_thermal.fast_clamp;
+	previous_mc = pmp_thermal.previous_mc;
 	ret = apple_pmp_debug_sample(&snapshot, &value); /* DEBUG_REMOVE_IN_PROD */
 	was_confirmed = pmp_thermal.critical.confirmed; /* DEBUG_REMOVE_IN_PROD */
 	apple_pmp_confirmation_sample(&pmp_thermal.critical, value, ret,
@@ -203,6 +209,11 @@ static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
 	}
 
 	*temp = value;
+	for (i = 0; i < PMP_TEMP_CHANNELS; i++)
+		if (!snapshot.errors[i] && snapshot.values[i] == value) {
+			channel = i;
+			break;
+		}
 	now = ktime_get_ns();
 	elapsed = now - pmp_thermal.previous_ns;
 	/* Extra sysfs reads must not accelerate recovery or amplify the slope. */
@@ -227,6 +238,12 @@ static int apple_pmp_get_temp(struct thermal_zone_device *zone, int *temp)
 	} else {
 		pmp_thermal.good_reads = 0;
 	}
+	if (was_clamped != pmp_thermal.fast_clamp)
+		pr_info("apple-pmp-thermal: decision ns=%llu mc=%ld channel=%d error=0 previous_mc=%ld dt_ns=%lld projected_mc=%ld reason=%s clamp=%d\n",
+			now, value, channel, previous_mc, elapsed, projected,
+			!pmp_thermal.fast_clamp ? "recovery" :
+			(value >= 92000 ? "hard-temperature" : "prediction"),
+			pmp_thermal.fast_clamp);
 	/* Do not remove startup/fault protection before hot-zone cooling is active. */
 	if (pmp_thermal.enabled && !pmp_thermal.fast_clamp && pmp_thermal.good_reads == 10 &&
 	    (value < APPLE_PMP_PASSIVE_MC || apple_pmp_cooling_ready())) {

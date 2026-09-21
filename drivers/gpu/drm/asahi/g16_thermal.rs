@@ -42,6 +42,8 @@ pub(crate) struct Cooling {
     cdev: NonNull<bindings::thermal_cooling_device>,
     sram: NonNull<c_void>,
     policy: crate::g16_thermal_policy::Policy,
+    last_transition: Option<(u32, &'static str)>,
+    sample: (c_long, c_int, c_int),
 }
 
 impl Cooling {
@@ -74,7 +76,8 @@ impl Cooling {
                 return Err(error);
             }
         };
-        Ok(Self { cdev, sram, policy: crate::g16_thermal_policy::Policy::new() })
+        Ok(Self { cdev, sram, policy: crate::g16_thermal_policy::Policy::new(),
+            last_transition: None, sample: (0, -1, 0) })
     }
 
     /// Called under the runtime mutex before submission and while jobs run.
@@ -83,11 +86,27 @@ impl Cooling {
         let now = <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get();
         if self.policy.read_due(now) {
             let mut temp: c_long = 0;
+            let mut channel: c_int = -1;
             // SAFETY: The mapping and output remain valid throughout this read.
-            let ret = unsafe { bindings::apple_pmp_temp_hotspot(self.sram.as_ptr(), &mut temp) };
+            let ret = unsafe { bindings::apple_pmp_temp_hotspot_channel(
+                self.sram.as_ptr(), &mut temp, &mut channel) };
+            self.sample = (temp, channel, ret);
             self.policy.sample(now, if ret == 0 { Some(temp as i32) } else { None });
         }
-        self.policy.limit(COOLING_STATE.load(Ordering::Acquire))
+        let governor = COOLING_STATE.load(Ordering::Acquire);
+        let limit = self.policy.limit(governor);
+        let trace = self.policy.trace;
+        let key = (limit, trace.reason);
+        if self.last_transition != Some(key) {
+            self.last_transition = Some(key);
+            // Transition-only: never print on every 5 ms sensor poll. The
+            // sample timestamp is monotonic, independent of printk's clock.
+            pr_info!("G16G: thermal decision ns={} sample_ns={} mc={} channel={} error={} previous_mc={} dt_ns={} projected_mc={} reason={} governor={} limit={}\n",
+                now, trace.now, self.sample.0, self.sample.1, self.sample.2,
+                trace.previous_mc.unwrap_or(-1), trace.elapsed, trace.projected,
+                trace.reason, governor, limit);
+        }
+        limit
     }
 }
 
