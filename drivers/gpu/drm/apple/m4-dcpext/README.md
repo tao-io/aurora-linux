@@ -1,4 +1,21 @@
-# J713 connected-monitor desktop module
+# J713 external-display desktop driver
+
+## Current deployment: two external monitors (2026-09-21)
+
+The normal kernel now builds in independent DCPEXT0 and DCPEXT1 instances;
+manual module loading is no longer the production desktop path. Both external
+Philips monitors and the internal panel passed simultaneous DRM/Wayland
+validation after reboot. Both external outputs run at 1920x1080@60, with separate
+EDIDs, firmware state, scanout and PHY ownership. Desktop device discovery must
+include both root devices and all DP connector numbers. See
+[`reference/display/two-external-20260921`](../../../../../reference/display/two-external-20260921/README.md)
+for the deployed helper, Image identity, qualification and remaining TODOs.
+
+An intermittent pre-existing DEVICE_NOT_RESPONDING failure occurred on the
+first boot and remains unresolved; the successful fresh boot is not a claim of
+repeated-startup reliability. The dated explicit-module instructions below are
+historical/diagnostic, not instructions to load another driver over the built-in
+instances.
 
 The canonical source is now `aurora-silicon/dirtyroom-linux`, branch
 `eryk_m4_gpu`, shared with the GPU and internal-display work. The former
