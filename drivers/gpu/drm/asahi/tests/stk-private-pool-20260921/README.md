@@ -42,3 +42,16 @@ at 65 seconds, including kernel preparation. It retains command, profile and
 log evidence and terminates the profiler on every cleanup path. Use only inside
 `gpu-experiment.py`. Profiled runs are diagnostic; clean live races are needed
 for final FPS claims.
+
+## Live validation of the first change
+
+- Zink diagnostic race, `20260921T064412214323Z-stk-zink-gpu-private-race`:
+  773 frames / 60.528 s = 12.771 FPS, including the 15-second CPU profile.
+  Peak 86.75 C. Before: clean race 10.804 FPS (different run, no CPU profiler).
+- Native Vulkan clean race, `20260921T064717456002Z-stk-vulkan-gpu-private-race`:
+  977 frames / 43.221 s = 22.605 FPS, peak 87.25 C. Before: 21.721 FPS.
+
+These are 3840x2160 internal rendering downsampled to the connected fullscreen
+1920x1080 output, same quality settings, race-only profiler, menus excluded.
+The CPU profile found repeated checked page-table walks and cache maintenance
+in kernel allocation/teardown; it motivated the separate batched mapping change.

@@ -1,0 +1,17 @@
+{
+  "frames": 773,
+  "seconds": 60.528,
+  "average_fps": 12.77094898228919,
+  "renderer": "opengl",
+  "internal_resolution": [
+    3840,
+    2160
+  ],
+  "fullscreen_output": [
+    1920,
+    1080
+  ],
+  "race": "Black Forest built-in benchmark",
+  "game_metrics": "7, 9, 11,",
+  "menus_excluded": true
+}
