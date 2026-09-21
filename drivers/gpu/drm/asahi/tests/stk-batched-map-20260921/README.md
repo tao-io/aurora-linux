@@ -1,5 +1,8 @@
 # Batched kernel SG mapping, J713, 2026-09-21
 
+**Removed from the default build.** This records the measured candidate and
+its patch; see Disposition below.
+
 The 4K SuperTuxKart Zink race spent substantial CPU time constructing command
 owners, particularly checked page-table walks and cache maintenance. A fragmented
 32 MiB GEM allocation can have 2048 DMA segments. Mapping each segment restarted
@@ -68,3 +71,11 @@ measurements rather than attributing all FPS variation to table mapping.
 
 All races use unchanged quality at 3840x2160 internally, downsampled to the
 1920x1080 fullscreen monitor. Menus are excluded. No full CTS claim is made.
+
+## Disposition
+
+Removed from the default build after live results failed to establish an FPS
+benefit. The measured CPU-cost reduction and exact replay parity remain valid,
+but do not override the live-race results. The complete candidate patch and
+focused test are retained here; run the test against the candidate checkout
+at 8ae9ec7e71e2, not the default source after rollback.

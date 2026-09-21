@@ -6,12 +6,15 @@ No hardware execution. Run from the workspace or copy alongside pgtable.rs/tools
 """
 from pathlib import Path
 import subprocess
+import argparse
 import tempfile
 
-root=Path(__file__).resolve().parent.parent
-source=root/'linux/linux-asahi/drivers/gpu/drm/asahi/pgtable.rs'
-if not source.exists(): source=root/'pgtable.rs'
+parser=argparse.ArgumentParser(description=__doc__)
+parser.add_argument('--source',type=Path,required=True,help='pgtable.rs from the candidate checkout (mmu.rs must be alongside)')
+source=parser.parse_args().source
 s=source.read_text()
+if '    pub(crate) fn map_scattered_pages(' not in s:
+    raise SystemExit('The selected source does not contain the batched-mapping candidate')
 start=s.index('    pub(crate) fn map_scattered_pages(')
 brace=s.index('{',start);depth=1;end=brace+1
 while depth:

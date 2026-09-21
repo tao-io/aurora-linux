@@ -1,0 +1,148 @@
+diff --git a/drivers/gpu/drm/asahi/mmu.rs b/drivers/gpu/drm/asahi/mmu.rs
+index 278fa9257e02..1080acd41bcf 100644
+--- a/drivers/gpu/drm/asahi/mmu.rs
++++ b/drivers/gpu/drm/asahi/mmu.rs
+@@ -966,70 +966,44 @@ fn ttb(&self) -> u64 {
+ 
+     /// Map an `mm::Node` representing an mapping in VA space.
+     fn map_node(&mut self, node: &mm::Node<(), KernelMappingInner>, prot: Prot) -> Result {
+-        let mut iova = node.start();
++        let iova = node.start();
+         let mapping_end = iova
+             .checked_add(node.mapped_size as u64)
+             .ok_or(EOVERFLOW)?;
+-        // The private fixed-mapping allocator cannot see GPUVM-owned leaves.
+-        // Reserve the complete page-table walk before installing any SG run.
+-        self.page_table.prepare_map(iova..mapping_end)?;
++        if (node.offset | node.mapped_size | iova as usize) & UAT_PGMSK != 0 {
++            return Err(EINVAL);
++        }
+         let guard = node.bo.as_ref().ok_or(EINVAL)?.inner().inner.lock();
+         let sgt = guard.sgt.as_ref().ok_or(EINVAL)?;
+         let mut offset = node.offset;
+         let mut left = node.mapped_size;
+-
++        // One small temporary address vector replaces thousands of repeated
++        // table walks and PoC barriers for a fragmented private allocation.
++        // Use vmalloc fallback for large objects; do not require contiguous
++        // address-vector storage. Validate before publishing any leaves.
++        let mut pages = KVVec::with_capacity(left / UAT_PGSZ, GFP_KERNEL)?;
+         for range in sgt.iter() {
+-            if left == 0 {
+-                break;
+-            }
+-
+-            // TODO: proper DMA address/length handling
++            if left == 0 { break; }
+             let mut addr = range.dma_address() as usize;
+-            let mut len: usize = range.dma_len() as usize;
+-
+-            if (offset | addr | len | iova as usize) & UAT_PGMSK != 0 {
+-                dev_err!(
+-                    self.dev.as_ref(),
+-                    "MMU: KernelMapping {:#x}:{:#x} -> {:#x} is not page-aligned\n",
+-                    addr,
+-                    len,
+-                    iova
+-                );
+-                return Err(EINVAL);
+-            }
+-
+-            if offset > 0 {
+-                let skip = len.min(offset);
+-                addr += skip;
+-                len -= skip;
+-                offset -= skip;
+-            }
+-
++            let mut len = range.dma_len() as usize;
++            if (addr | len) & UAT_PGMSK != 0 { return Err(EINVAL); }
++            let skip = len.min(offset);
++            addr = addr.checked_add(skip).ok_or(EOVERFLOW)?;
++            len -= skip;
++            offset -= skip;
+             len = len.min(left);
+-
+-            if len == 0 {
+-                continue;
++            let end = addr.checked_add(len).ok_or(EOVERFLOW)?;
++            for phys in (addr..end).step_by(UAT_PGSZ) {
++                pages.push(phys as PhysicalAddr, GFP_KERNEL)?;
+             }
+-
+-            mod_dev_dbg!(
+-                self.dev,
+-                "MMU: map: {:#x}:{:#x} -> {:#x}\n",
+-                addr,
+-                len,
+-                iova
+-            );
+-
+-            self.page_table.map_pages(
+-                iova..(iova + len as u64),
+-                addr as PhysicalAddr,
+-                prot,
+-                false,
+-            )?;
+-
+-            iova += len as u64;
+             left -= len;
+         }
+-        Ok(())
++        // A truncated SG list must not leave an ownerless partial mapping.
++        if left != 0 { return Err(EFAULT); }
++        // Retain authoritative overlap checks against GPUVM-owned leaves and
++        // all fallible intermediate allocation before the first leaf store.
++        self.page_table.prepare_map(iova..mapping_end)?;
++        self.page_table.map_scattered_pages(iova..mapping_end, &pages, prot)
+     }
+ }
+ 
+diff --git a/drivers/gpu/drm/asahi/pgtable.rs b/drivers/gpu/drm/asahi/pgtable.rs
+index df74b9e7f233..d86eaf53a753 100644
+--- a/drivers/gpu/drm/asahi/pgtable.rs
++++ b/drivers/gpu/drm/asahi/pgtable.rs
+@@ -906,6 +906,43 @@ pub(crate) fn map_pages(
+         })
+     }
+ 
++    /// Map scattered backing with one walk and publication per leaf-table
++    /// span, rather than repeating the root walk and cache barrier for each
++    /// DMA segment. The caller retains all backing and the VM execution lock.
++    /// Validate the entire source and destination before writing any leaf.
++    pub(crate) fn map_scattered_pages(
++        &mut self,
++        iova_range: Range<u64>,
++        pages: &[PhysicalAddr],
++        prot: Prot,
++    ) -> Result {
++        if iova_range.is_empty()
++            || (iova_range.start | iova_range.end) & UAT_PGMSK as u64 != 0
++            || (iova_range.end - iova_range.start) >> UAT_PGBIT != pages.len() as u64
++            || pages.iter().any(|p| p & UAT_PGMSK as PhysicalAddr != 0)
++        {
++            return Err(EINVAL);
++        }
++        let mut visited = 0usize;
++        self.with_pages(iova_range.clone(), false, false, false, |_, ptes| {
++            if ptes.iter().any(|pte| pte.load(Ordering::Acquire) != 0) {
++                return Err(EBUSY);
++            }
++            visited += ptes.len();
++            Ok(())
++        })?;
++        if visited != pages.len() { return Err(EFAULT); }
++        let bits = prot.as_pte() | self.pte_bits();
++        let mut offset = 0usize;
++        self.with_pages(iova_range, false, false, true, |_, ptes| {
++            for (pte, phys) in ptes.iter().zip(&pages[offset..offset + ptes.len()]) {
++                pte.store(*phys | bits, Ordering::Relaxed);
++            }
++            offset += ptes.len();
++            Ok(())
++        })
++    }
++
+     pub(crate) fn reprot_pages(&mut self, iova_range: Range<u64>, prot: Prot) -> Result {
+         mod_pr_debug!(
+             "UATPageTable::reprot_pages: {:#x?} {:?}\n",

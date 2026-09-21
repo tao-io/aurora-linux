@@ -1,0 +1,91 @@
+diff --git a/drivers/gpu/drm/asahi/g16_owner_cache.rs b/drivers/gpu/drm/asahi/g16_owner_cache.rs
+index 3f18d81c9da6..473308eee0ae 100644
+--- a/drivers/gpu/drm/asahi/g16_owner_cache.rs
++++ b/drivers/gpu/drm/asahi/g16_owner_cache.rs
+@@ -2,8 +2,21 @@
+ //! Byte-bounded storage for fully retired, displaced command owners.
+ //! Firmware's last owner and in-flight commands must never enter this cache.
+ use kernel::prelude::*;
++use core::sync::atomic::{AtomicUsize, Ordering};
+ 
+-pub(crate) const CACHE_BYTES: usize = 128 * 1024 * 1024;
++// One bound for every queue and both engines. A frame with many render passes
++// needs more than three 32 MiB owners; a small per-queue FIFO thrashes on every
++// frame. Sharing the budget permits that working set without multiplying the
++// maximum idle retention by the number of clients. Active/firmware-retained
++// owners remain outside this cache and retain their exact lifetime rules.
++pub(crate) const CACHE_BYTES: usize = 1536 * 1024 * 1024;
++static CACHED_BYTES: AtomicUsize = AtomicUsize::new(0);
++
++fn try_charge(bytes: usize) -> bool {
++    CACHED_BYTES.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |used| {
++        (used <= CACHE_BYTES - bytes).then(|| used + bytes)
++    }).is_ok()
++}
+ 
+ pub(crate) struct OwnerCache<T> {
+     entries: KVec<(usize, T)>,
+@@ -19,6 +32,7 @@ pub(crate) fn take(&mut self, matches: impl Fn(&T) -> bool) -> Option<T> {
+         let index = self.entries.iter().position(|(_, owner)| matches(owner))?;
+         let (bytes, owner) = self.entries.remove(index).ok()?;
+         self.bytes -= bytes;
++        CACHED_BYTES.fetch_sub(bytes, Ordering::Relaxed);
+         Some(owner)
+     }
+ 
+@@ -26,13 +40,22 @@ pub(crate) fn put(&mut self, owner: T, bytes: usize) {
+         // Large scenes remain legal; they simply bypass the idle cache.
+         // Subtraction also avoids overflowing when given a very large owner.
+         if bytes > CACHE_BYTES { return; }
+-        while self.bytes > CACHE_BYTES - bytes {
++        while !try_charge(bytes) {
+             let Ok((old_bytes, old)) = self.entries.remove(0) else { return; };
+             self.bytes -= old_bytes;
++            CACHED_BYTES.fetch_sub(old_bytes, Ordering::Relaxed);
+             drop(old);
+         }
+         if self.entries.push((bytes, owner), GFP_KERNEL).is_ok() {
+             self.bytes += bytes;
++        } else {
++            CACHED_BYTES.fetch_sub(bytes, Ordering::Relaxed);
+         }
+     }
+ }
++
++impl<T> Drop for OwnerCache<T> {
++    fn drop(&mut self) {
++        CACHED_BYTES.fetch_sub(self.bytes, Ordering::Relaxed);
++    }
++}
+diff --git a/drivers/gpu/drm/asahi/tools/test_g16_owner_cache.py b/drivers/gpu/drm/asahi/tools/test_g16_owner_cache.py
+index 9fcc801e9f52..fec86f6b5be4 100644
+--- a/drivers/gpu/drm/asahi/tools/test_g16_owner_cache.py
++++ b/drivers/gpu/drm/asahi/tools/test_g16_owner_cache.py
+@@ -60,7 +60,26 @@ fn main(){
+     cache.put(Owner::new(6,CACHE_BYTES,&live),CACHE_BYTES);
+     drop(cache);
+     assert_eq!(live.load(Ordering::Relaxed),0);
+-    println!("PASS: production cache bounds, FIFO eviction, take accounting, oversized owners, allocation failure and Drop");
++    // Every queue and both owner types share one bound, even concurrently.
++    let threads:Vec<_>=(0..16).map(|thread| {
++        let live=live.clone();
++        std::thread::spawn(move|| {
++            let mut c=OwnerCache::new();
++            for id in 0..64 {let bytes=CACHE_BYTES/32;c.put(Owner::new(thread*64+id,bytes,&live),bytes);}
++            c
++        })
++    }).collect();
++    let caches:Vec<_>=threads.into_iter().map(|t|t.join().unwrap()).collect();
++    assert!(live.load(Ordering::Relaxed)<=CACHE_BYTES);
++    drop(caches);assert_eq!(live.load(Ordering::Relaxed),0);
++    // Closing all queues restores the entire global budget, not just backing.
++    let mut c=OwnerCache::new();c.put(Owner::new(0,CACHE_BYTES,&live),CACHE_BYTES);
++    assert_eq!(live.load(Ordering::Relaxed),CACHE_BYTES);
++    drop(c.take(|_|true).unwrap());
++    c.put(Owner::new(1,CACHE_BYTES,&live),CACHE_BYTES);
++    assert_eq!(live.load(Ordering::Relaxed),CACHE_BYTES);
++    drop(c);assert_eq!(live.load(Ordering::Relaxed),0);
++    println!("PASS: production global cache bounds, concurrent queues, FIFO eviction, take accounting, oversized owners, allocation failure and Drop");
+ }
+ '''.replace('SOURCE',str(source))
+ with tempfile.TemporaryDirectory() as d:

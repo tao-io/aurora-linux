@@ -1,0 +1,30 @@
+[
+  {
+    "run": "20260921T072908985992Z-stk-zink-shared-cache-1536-race-r2",
+    "guard_verdict": "pass",
+    "frames": 765,
+    "seconds": 61.336,
+    "average_fps": 12.472283813747229,
+    "renderer": "opengl",
+    "internal_resolution": [
+      3840,
+      2160
+    ],
+    "fullscreen_output": [
+      1920,
+      1080
+    ],
+    "race": "Black Forest built-in benchmark",
+    "game_metrics": "5, 9, 11,",
+    "menus_excluded": true,
+    "minimum_available_mib": 4627.578125,
+    "peak_temperature_c": 87.75,
+    "application_asid": 13,
+    "full_size_render_commands": 10701,
+    "mean_full_size_prepare_ms": 2.4149108011400804,
+    "render_owner_reuse_including_startup": {
+      "false": 15345,
+      "true": 1063
+    }
+  }
+]
