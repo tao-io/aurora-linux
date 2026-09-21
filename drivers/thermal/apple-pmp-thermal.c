@@ -24,7 +24,6 @@
 
 #include "apple-pmp-confirm.h"
 
-#define APPLE_PMP_PASSIVE_MC	88000
 /* Fast raw protection and ordinary governor regulation have separate clocks.
  * No sysfs read advances either controller. Thresholds remain a development
  * policy, not an inference of Apple's limits from macOS temperature peaks.
@@ -239,7 +238,7 @@ static int apple_pmp_sample(void)
 	}
 	ret = guard_ret;
 	/* DEBUG_REMOVE_IN_PROD: first real critical sample, before core poweroff. */
-	if (value >= 100000 && !pmp_thermal.debug_critical_dumped) {
+	if (value >= APPLE_PMP_CRITICAL_MC && !pmp_thermal.debug_critical_dumped) {
 		pmp_thermal.debug_critical_dumped = true;
 		apple_pmp_debug_dump(&snapshot, "critical-sample", value, 0);
 	}
@@ -278,7 +277,7 @@ static void apple_pmp_critical(struct thermal_zone_device *zone)
 	}
 	mutex_unlock(&pmp_thermal.lock);
 	if (shutdown) {
-		pr_emerg("apple-pmp-thermal: three >=100 C samples at least 5 ms apart; requesting shutdown\n");
+		pr_emerg("apple-pmp-thermal: three >=120 C samples at least 5 ms apart; requesting shutdown\n");
 		thermal_zone_device_critical(zone);
 	}
 }
@@ -358,12 +357,12 @@ static const struct thermal_trip apple_pmp_trips[] = {
 		.type = THERMAL_TRIP_PASSIVE,
 	},
 	{
-		.temperature = 92000,
+		.temperature = APPLE_PMP_TARGET_MC,
 		.hysteresis = 4000,
 		.type = THERMAL_TRIP_PASSIVE,
 	},
 	{
-		.temperature = 100000,
+		.temperature = APPLE_PMP_CRITICAL_MC,
 		.type = THERMAL_TRIP_CRITICAL,
 	},
 };
@@ -502,7 +501,7 @@ static int __init apple_pmp_thermal_init(void)
 	pmp_thermal.polling = true;
 	hrtimer_start(&pmp_thermal.poll_timer, ms_to_ktime(APPLE_PMP_POLL_MS),
 		      HRTIMER_MODE_REL);
-	pr_info("apple-pmp-thermal: J713 CPU/GPU cooling at 88 C, progressive CPU/GPU backstop, three >=100 C samples for shutdown, 5 ms sampling/100 ms governor\n");
+	pr_info("apple-pmp-thermal: J713 provisional policy: CPU/GPU cooling from 106 C, target 110 C, full protection 115 C, three >=120 C samples for shutdown, 5 ms sampling/100 ms governor\n");
 	return 0;
 fail:
 	apple_pmp_thermal_cleanup();

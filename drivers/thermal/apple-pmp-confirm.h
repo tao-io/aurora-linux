@@ -2,6 +2,8 @@
 #ifndef APPLE_PMP_CONFIRM_H
 #define APPLE_PMP_CONFIRM_H
 
+#include "../../include/linux/soc/apple/pmp-cooling.h"
+
 /* Raw critical samples, never an average. Call under the policy mutex. */
 struct apple_pmp_confirmation {
 	unsigned int count;
@@ -16,7 +18,7 @@ static inline void apple_pmp_confirmation_sample(struct apple_pmp_confirmation *
 	/* Once confirmed, retain the shutdown request until it is serviced. */
 	if (s->confirmed)
 		return;
-	if (error || mc < 100000) {
+	if (error || mc < APPLE_PMP_CRITICAL_MC) {
 		s->count = 0;
 		s->last_ns = 0;
 		return;

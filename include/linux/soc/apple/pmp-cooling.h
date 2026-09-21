@@ -9,6 +9,18 @@
  * monotonic ns. Sampling more often must never accelerate prediction/release.
  * None of these thresholds are claimed as Apple's hardware safety limits.
  */
+/* User-selected provisional J713 policy, 2026-09-21. macOS reached
+ * 115.25 C normally; that observation does not identify its emergency trip.
+ * Begin ordinary regulation below the target, strengthen the independent
+ * backstop near it, and leave 5 C between full protection and shutdown.
+ */
+#define APPLE_PMP_PASSIVE_MC 106000
+#define APPLE_PMP_TARGET_MC 110000
+#define APPLE_PMP_BACKSTOP_MC 108000
+#define APPLE_PMP_FULL_COOLING_MC 115000
+#define APPLE_PMP_CRITICAL_MC 120000
+#define APPLE_PMP_RELEASE_MC 106000
+
 struct apple_pmp_cooling {
 	unsigned long long last_ns, good_ns, anchor_ns, release_ns;
 	unsigned long long dt_ns;
@@ -44,12 +56,14 @@ static inline void apple_pmp_cooling_observe(struct apple_pmp_cooling *s,
 	}
 }
 
-/* A measured rise uses intermediate states: 88 C -> 1, 92 C -> 5, 95 C -> 8.
+/* A measured rise uses intermediate states: 108 C -> 1, 112 C -> 5, 115 C -> 8.
  * This remains effective even before the thermal governor has run.
  */
 static inline unsigned int apple_pmp_heat_level(long mc)
 {
-	return mc < 88000 ? 0 : mc >= 95000 ? 8 : (mc - 87000) / 1000;
+	return mc < APPLE_PMP_BACKSTOP_MC ? 0 :
+		mc >= APPLE_PMP_FULL_COOLING_MC ? 8 :
+		(mc - APPLE_PMP_BACKSTOP_MC) / 1000 + 1;
 }
 
 static inline void apple_pmp_cooling_sample(struct apple_pmp_cooling *s,
@@ -60,7 +74,7 @@ static inline void apple_pmp_cooling_sample(struct apple_pmp_cooling *s,
 	bool trend_due = false;
 
 	s->last_ns = now;
-	if (error || mc >= 95000) {
+	if (error || mc >= APPLE_PMP_FULL_COOLING_MC) {
 		s->level = 8;
 		s->hard = true;
 		s->reason = error ? 1 : 2;
@@ -78,7 +92,7 @@ static inline void apple_pmp_cooling_sample(struct apple_pmp_cooling *s,
 		/* Startup/fault recovery needs 200 ms of cool, valid observations.
 		 * Repeated sysfs or submission reads cannot count faster than time.
 		 */
-		if (mc < 88000) {
+		if (mc < APPLE_PMP_BACKSTOP_MC) {
 			if (now - s->good_ns >= 20000000ULL) {
 				s->good_ns = now;
 				if (s->good_reads < 10)
@@ -118,7 +132,7 @@ static inline void apple_pmp_cooling_sample(struct apple_pmp_cooling *s,
 		if (rise > 2000)
 			rise = 2000;
 		s->projected_mc = mc + rise;
-		s->prediction = mc >= 85000 ? apple_pmp_heat_level(s->projected_mc) : 0;
+		s->prediction = mc >= APPLE_PMP_BACKSTOP_MC - 3000 ? apple_pmp_heat_level(s->projected_mc) : 0;
 		s->anchor_ns = now;
 		s->anchor_mc = mc;
 		trend_due = true;
@@ -133,13 +147,13 @@ static inline void apple_pmp_cooling_sample(struct apple_pmp_cooling *s,
 		s->level++;
 		s->reason = 3;
 		s->release_ns = now;
-	} else if (mc < 86000 && s->prediction == 0 &&
+	} else if (mc < APPLE_PMP_RELEASE_MC && s->prediction == 0 &&
 		   now - s->release_ns >= 200000000ULL) {
 		if (s->level)
 			s->level--;
 		s->release_ns = now;
 		s->reason = s->level ? 5 : 4;
-	} else if (mc >= 86000) {
+	} else if (mc >= APPLE_PMP_RELEASE_MC) {
 		/* Require a continuous cool interval before releasing a step. */
 		s->release_ns = now;
 	}

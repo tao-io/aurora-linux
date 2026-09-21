@@ -77,7 +77,7 @@ class ThermalsTest(unittest.TestCase):
         def fail_if_called(readings):
             self.fail('known emergency must not wait for optional sensors')
         self.guard.collect_all_thermals = fail_if_called
-        (self.pmp / 'temp1_input').write_text('100000')
+        (self.pmp / 'temp1_input').write_text('120000')
         with self.assertRaisesRegex(RuntimeError, 'cutoff'):
             self.guard.sample()
         record = json.loads((self.root / 'temperatures.jsonl').read_text().splitlines()[-1])
@@ -98,7 +98,7 @@ class ThermalsTest(unittest.TestCase):
         self.guard.discover()
         for i in range(1, 7):
             path = self.pmp / f'temp{i}_input'
-            path.write_text('100000')
+            path.write_text('120000')
             with self.assertRaisesRegex(RuntimeError, 'cutoff'):
                 self.guard.sample()
             path.write_text('57000')
@@ -116,14 +116,14 @@ class ThermalsTest(unittest.TestCase):
     def test_monitor_latches_hot_reading_and_stops(self):
         self.guard.interval_seconds = 0.01
         self.guard.start()
-        (self.pmp / 'temp5_input').write_text('100000')
+        (self.pmp / 'temp5_input').write_text('120000')
         self.guard.thread.join(timeout=1)
         self.assertEqual(self.stops, [True])
         self.assertIsNotNone(self.guard.failure)
 
     def test_kernel_control_headroom_is_not_an_emergency_stop(self):
         self.guard.start()
-        (self.pmp / 'temp5_input').write_text('99000')
+        (self.pmp / 'temp5_input').write_text('119999')
         self.guard.sample()
         self.guard.check()
         self.assertFalse(self.stops)

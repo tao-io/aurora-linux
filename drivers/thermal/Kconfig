@@ -25,8 +25,8 @@ config APPLE_PMP_THERMAL
 	help
 	  Register a package thermal zone with CPU and Asahi GPU cooling on
 	  the validated J713/T8132 board, using read-only PMP telemetry.
-	  Passive trips at 88/92 C and a rapid-rise response aim to keep the
-	  package below 95 C; the critical fallback is 100 C. These are Linux
+	  Passive trips at 106/110 C and a progressive rapid-rise backstop
+	  limit short excursions; the provisional critical fallback is 120 C. These are Linux
 	  development policy choices, not Apple safety limits. Sensor errors
 	  clamp both CPU clusters and the active GPU to minimum clocks.
 	  The module can be loaded without restarting PMP. Unloading it removes

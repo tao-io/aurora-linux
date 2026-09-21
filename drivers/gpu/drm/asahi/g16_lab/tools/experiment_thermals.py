@@ -31,9 +31,9 @@ def stop_workload():
 class ExperimentThermals:
     labels = ('PMP aggregate die hotspot', 'Ta000m', 'Te000m', 'Te001m', 'Tp000m', 'Tp001m')
     startup_limit_mc = 95000
-    # Kernel cooling regulates below 95 C. This independent emergency bound
-    # was explicitly raised to 100 C by the user on 2026-09-20.
-    stop_limit_mc = 100000
+    # Provisional development policy authorized 2026-09-21: regulate toward
+    # 110 C, emergency stop at 120 C. Not an Apple hardware specification.
+    stop_limit_mc = 120000
     interval_seconds = 0.5
     sync_interval_seconds = 5
     stale_seconds = 2
