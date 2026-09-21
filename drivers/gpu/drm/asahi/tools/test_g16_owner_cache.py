@@ -76,17 +76,17 @@ fn main(){
     assert_eq!(live.load(Ordering::Relaxed),0);
     // Independent queues share one idle budget. Taking or destroying an
     // owner must return its charge even if another queue uses the space.
-    assert_eq!(GLOBAL_CACHE_BYTES, 2*CACHE_BYTES);
+    let remainder=GLOBAL_CACHE_BYTES-CACHE_BYTES;
     let mut a=OwnerCache::new();let mut b=OwnerCache::new();let mut c=OwnerCache::new();
     a.put(Owner::new(10,CACHE_BYTES,&live),CACHE_BYTES);
-    b.put(Owner::new(11,CACHE_BYTES,&live),CACHE_BYTES);
+    b.put(Owner::new(11,remainder,&live),remainder);
     c.put(Owner::new(12,CACHE_BYTES,&live),CACHE_BYTES);
     assert!(c.take(|_:&Owner|true).is_none());
     assert_eq!(live.load(Ordering::Relaxed),GLOBAL_CACHE_BYTES);
     drop(a.take(|_:&Owner|true).unwrap());
     FAIL.store(true,Ordering::Relaxed);
     c.put(Owner::new(13,CACHE_BYTES,&live),CACHE_BYTES);
-    assert_eq!(live.load(Ordering::Relaxed),CACHE_BYTES);
+    assert_eq!(live.load(Ordering::Relaxed),remainder);
     c.put(Owner::new(14,CACHE_BYTES,&live),CACHE_BYTES);
     assert_eq!(live.load(Ordering::Relaxed),GLOBAL_CACHE_BYTES);
     drop(b);drop(c);drop(a);
@@ -95,28 +95,29 @@ fn main(){
     assert!(d.take(|_:&Owner|true).is_some());drop(d);
     assert_eq!(live.load(Ordering::Relaxed),0);
     assert_eq!(production::statistics()[0],0);
+    let charge=GLOBAL_CACHE_BYTES/2;
     let mut registry=production::Registry::new();
     let a=Handle::new();let b=Handle::new();let c=Handle::new();
     for (i,cache) in [&a,&b,&c].into_iter().enumerate(){
-        assert!(registry.prepare(cache.clone(),CACHE_BYTES));
-        cache.put(Owner::new(20+i,CACHE_BYTES,&live));
+        assert!(registry.prepare(cache.clone(),charge));
+        cache.put(Owner::new(20+i,charge,&live));
         assert!(live.load(Ordering::Relaxed)<=GLOBAL_CACHE_BYTES);
     }
     assert!(a.0.borrow_mut().as_mut().unwrap().take(|_|true).is_none());
     assert_eq!(live.load(Ordering::Relaxed),GLOBAL_CACHE_BYTES);
     // The active cache can replace itself without evicting another queue.
     let evictions=production::statistics()[4];
-    assert!(registry.prepare(c.clone(),CACHE_BYTES));
-    c.put(Owner::new(23,CACHE_BYTES,&live));
+    assert!(registry.prepare(c.clone(),charge));
+    c.put(Owner::new(23,charge,&live));
     assert_eq!(production::statistics()[4],evictions+1);
     assert!(b.0.borrow_mut().as_mut().unwrap().take(|_|true).is_some());
     // Closing a queue releases backing even while the registry owns a handle.
     c.0.borrow_mut().take();
     assert_eq!(live.load(Ordering::Relaxed),0);
-    assert!(!registry.prepare(c.clone(),CACHE_BYTES));
+    assert!(!registry.prepare(c.clone(),charge));
     assert!(!registry.prepare(a.clone(),usize::MAX));
     FAIL.store(true,Ordering::Relaxed);
-    assert!(!registry.prepare(a.clone(),CACHE_BYTES));
+    assert!(!registry.prepare(a.clone(),charge));
     drop(registry);drop(a);drop(b);drop(c);
     assert_eq!(production::statistics()[0],0);
     println!("PASS: cache LRU admits new queues, self eviction, close releases registered backing, allocation failure");

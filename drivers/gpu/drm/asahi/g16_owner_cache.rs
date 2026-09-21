@@ -7,7 +7,7 @@ use core::sync::atomic::{AtomicUsize, Ordering};
 // A render packet can need sixteen distinct 32 MiB private pools. A three-
 // owner cache constantly reallocates them. Bound the aggregate as well as
 // each queue so many browser/CTS contexts cannot multiply the larger budget.
-pub(crate) const CACHE_BYTES: usize = 512 * 1024 * 1024;
+pub(crate) const CACHE_BYTES: usize = 768 * 1024 * 1024;
 pub(crate) const GLOBAL_CACHE_BYTES: usize = 1024 * 1024 * 1024;
 static CACHED_BYTES: AtomicUsize = AtomicUsize::new(0);
 static HITS: AtomicUsize = AtomicUsize::new(0);

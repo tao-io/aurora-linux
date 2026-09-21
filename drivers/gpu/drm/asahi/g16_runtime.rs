@@ -556,9 +556,9 @@ impl Runtime {
             let mut cache = packet.render_cache.lock();
             Option::as_mut(&mut *cache).and_then(|cache| {
                 cache.take(|owner| owner.pool_slot() == batch_offset as u8 && owner.same_vm(&packet.vm))
-                    // A displaced owner from another slot cannot retain its
-                    // firmware descriptor identity, but its GPU-only backing
-                    // can seed a fresh owner in the same address space.
+                    // Only fully displaced owners are cached. A same-VM
+                    // fallback retargets its slot after completion, retaining
+                    // the complete private allocator and existing mappings.
                     .or_else(|| cache.take(|owner| owner.same_vm(&packet.vm)))
             })
         } else { None };
