@@ -19,7 +19,7 @@ if THERMAL
 
 config APPLE_PMP_THERMAL
 	tristate "Apple PMP package CPU/GPU thermal policy"
-	depends on ARCH_APPLE && APPLE_PMP_REPORT && CPU_FREQ
+	depends on ARCH_APPLE && APPLE_PMP_REPORT && CPU_FREQ && MFD_MACSMC
 	select CPU_THERMAL
 	select THERMAL_GOV_STEP_WISE
 	help

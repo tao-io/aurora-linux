@@ -11,6 +11,7 @@
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
 #include <linux/math64.h>
+#include <linux/mfd/macsmc.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
@@ -19,6 +20,8 @@
 #include <linux/pm_qos.h>
 #include <linux/soc/apple/pmp-temps.h>
 #include <linux/soc/apple/pmp-cooling.h>
+#include <linux/soc/apple/pmp-power.h>
+#include <linux/soc/apple/pmp-power-policy.h>
 #include <linux/thermal.h>
 #include <linux/workqueue.h>
 
@@ -44,6 +47,13 @@ static struct {
 	struct apple_pmp_cluster clusters[2];
 	struct mutex lock; /* Serializes sensor reads, mode changes and guard updates. */
 	struct apple_pmp_cooling cooling;
+	struct apple_pmp_power_policy power;
+	struct delayed_work power_work;
+	struct device *smc_dev, *power_hwmon;
+	struct apple_smc *smc;
+	unsigned int rail_mw[3];
+	int power_error;
+	bool power_polling;
 	unsigned int guard_level;
 	bool enabled;
 	long cached_mc;
@@ -61,6 +71,163 @@ static struct {
 /* Read-only cadence diagnostics: reading temperatures must not advance these. */
 module_param_named(sample_count, pmp_thermal.sample_count, ullong, 0444);
 module_param_named(governor_count, pmp_thermal.governor_count, ullong, 0444);
+
+/* DEBUG_REMOVE_IN_PROD: exercises unavailable power telemetry, never fabricates
+ * a temperature or weakens protection. Keep false outside a guarded test.
+ */
+static bool debug_power_fault;
+module_param(debug_power_fault, bool, 0600);
+MODULE_PARM_DESC(debug_power_fault, "DEBUG_REMOVE_IN_PROD: simulate failed power reads");
+
+static int apple_pmp_power_status(char *buffer, const struct kernel_param *kp)
+{
+	struct apple_pmp_power_policy *p = &pmp_thermal.power;
+	guard(mutex)(&pmp_thermal.lock);
+	return scnprintf(buffer, PAGE_SIZE,
+		"ns=%llu p_mw=%u e_mw=%u gpu_mw=%u total_mw=%d sustainable_mw=%d allowed_mw=%d credit_mj=%lld filtered_mc=%d p_level=%u e_level=%u gpu_level=%u fault=%d error=%d\n",
+		p->last_ns, pmp_thermal.rail_mw[0], pmp_thermal.rail_mw[1],
+		pmp_thermal.rail_mw[2], p->total_mw, p->sustainable_mw,
+		p->allowed_mw, p->credit_mj, p->filtered_mc,
+		p->level[0], p->level[1], p->level[2], p->fault, pmp_thermal.power_error);
+}
+static const struct kernel_param_ops apple_pmp_power_status_ops = {
+	.get = apple_pmp_power_status,
+};
+module_param_cb(power_status, &apple_pmp_power_status_ops, NULL, 0400);
+
+static const smc_key apple_pmp_power_keys[] = {
+	SMC_KEY(PP0b), SMC_KEY(PPbb), SMC_KEY(PP1b),
+};
+
+static int apple_pmp_power_connect(void)
+{
+	struct device *dev;
+	struct apple_smc *smc;
+	unsigned int i;
+	int ret;
+
+	dev = bus_find_device_by_name(&platform_bus_type, NULL, "macsmc-hwmon");
+	if (!dev)
+		return -EPROBE_DEFER;
+	smc = dev_get_drvdata(dev->parent);
+	if (!smc) {
+		put_device(dev);
+		return -EPROBE_DEFER;
+	}
+	for (i = 0; i < ARRAY_SIZE(apple_pmp_power_keys); i++) {
+		struct apple_smc_key_info info;
+
+		ret = apple_smc_get_key_info(smc, apple_pmp_power_keys[i], &info);
+		if (ret)
+			goto fail;
+		if (info.size != 4 || info.type_code != _SMC_KEY("flt ") ||
+		    !(info.flags & APPLE_SMC_READABLE)) {
+			ret = -EINVAL;
+			goto fail;
+		}
+	}
+	pmp_thermal.smc_dev = dev;
+	pmp_thermal.smc = smc;
+	return 0;
+fail:
+	put_device(dev);
+	return ret;
+}
+
+/* SMC transactions never run in the 5 ms raw-protection worker or while its
+ * mutex is held. A stalled SMC read expires both CPU/GPU budgets independently.
+ */
+static void apple_pmp_power_work(struct work_struct *work)
+{
+	struct apple_pmp_power_policy *p = &pmp_thermal.power;
+	unsigned int mw[3] = {}, i, gpu;
+	u64 now;
+	int ret = 0;
+
+	if (READ_ONCE(debug_power_fault))
+		ret = -EIO;
+	else if (!pmp_thermal.smc)
+		ret = apple_pmp_power_connect();
+	for (i = 0; !ret && i < 3; i++) {
+		__le32 bits;
+		int bytes = apple_smc_read(pmp_thermal.smc, apple_pmp_power_keys[i],
+					   &bits, sizeof(bits));
+
+		if (bytes != sizeof(bits))
+			ret = bytes < 0 ? bytes : -EIO;
+		else if (!apple_pmp_power_decode(le32_to_cpu(bits), &mw[i]))
+			ret = -ERANGE;
+	}
+	/* The running CPUs/reader cannot plausibly consume <0.1 W in total.
+	 * A firmware reset/all-zero image must not refill the energy bucket.
+	 */
+	if (!ret && mw[0] + mw[1] + mw[2] < 100)
+		ret = -ENODATA;
+	now = ktime_get_ns();
+	mutex_lock(&pmp_thermal.lock);
+	if (!ret && (!pmp_thermal.enabled || pmp_thermal.cached_error ||
+		     now - pmp_thermal.cooling.last_ns > 500000000ULL))
+		ret = -EAGAIN;
+	pmp_thermal.power_error = ret;
+	if (!ret)
+		memcpy(pmp_thermal.rail_mw, mw, sizeof(mw));
+	apple_pmp_power_sample(p, now, mw, pmp_thermal.cached_mc, ret);
+	gpu = p->level[2];
+	pr_info("apple-pmp-thermal: power ns=%llu mc=%ld p_mw=%u e_mw=%u gpu_mw=%u total_mw=%d sustainable_mw=%d allowed_mw=%d credit_mj=%lld p_level=%u e_level=%u gpu_level=%u error=%d\n",
+		now, pmp_thermal.cached_mc, mw[0], mw[1], mw[2], p->total_mw,
+		p->sustainable_mw, p->allowed_mw, p->credit_mj,
+		p->level[0], p->level[1], p->level[2], ret);
+	mutex_unlock(&pmp_thermal.lock);
+	apple_pmp_power_publish_gpu(gpu);
+	if (ret)
+		pr_warn_ratelimited("apple-pmp-thermal: power telemetry error %d, retaining minimum CPU/GPU ceilings\n", ret);
+	schedule_delayed_work(&pmp_thermal.power_work, msecs_to_jiffies(500));
+}
+
+static umode_t apple_pmp_power_visible(const void *data,
+		enum hwmon_sensor_types type, u32 attr, int channel)
+{
+	return type == hwmon_power && channel >= 0 && channel < 4 ? 0444 : 0;
+}
+
+static int apple_pmp_power_read(struct device *dev, enum hwmon_sensor_types type,
+			       u32 attr, int channel, long *value)
+{
+	guard(mutex)(&pmp_thermal.lock);
+	if (type != hwmon_power || attr != hwmon_power_input || channel < 0 || channel > 3)
+		return -EINVAL;
+	if (pmp_thermal.power.fault || pmp_thermal.power_error ||
+	    ktime_get_ns() - pmp_thermal.power.last_ns > APPLE_PMP_POWER_STALE_NS)
+		return -EAGAIN;
+	*value = 1000L * (channel == 3 ? pmp_thermal.power.total_mw : pmp_thermal.rail_mw[channel]);
+	return 0;
+}
+
+static int apple_pmp_power_label(struct device *dev, enum hwmon_sensor_types type,
+				u32 attr, int channel, const char **label)
+{
+	static const char * const labels[] = {
+		"P CPU rail (PP0b)", "E CPU rail (PPbb)", "GPU rail (PP1b)",
+		"CPU+GPU selected rail sum",
+	};
+	if (type != hwmon_power || channel < 0 || channel > 3)
+		return -EINVAL;
+	*label = labels[channel];
+	return 0;
+}
+static const struct hwmon_ops apple_pmp_power_ops = {
+	.is_visible = apple_pmp_power_visible, .read = apple_pmp_power_read,
+	.read_string = apple_pmp_power_label,
+};
+static const struct hwmon_channel_info * const apple_pmp_power_info[] = {
+	HWMON_CHANNEL_INFO(power, HWMON_P_INPUT | HWMON_P_LABEL,
+		HWMON_P_INPUT | HWMON_P_LABEL, HWMON_P_INPUT | HWMON_P_LABEL,
+		HWMON_P_INPUT | HWMON_P_LABEL), NULL,
+};
+static const struct hwmon_chip_info apple_pmp_power_chip = {
+	.ops = &apple_pmp_power_ops, .info = apple_pmp_power_info,
+};
+
 
 /* DEBUG_REMOVE_IN_PROD: retain the actual samples used for the decision,
  * including invalid/unavailable channels. A later read could miss the spike.
@@ -160,12 +327,19 @@ static int apple_pmp_guard(unsigned int level)
 
 		unsigned int low = c->policy->cpuinfo.min_freq;
 		unsigned int high = c->policy->cpuinfo.max_freq;
+		unsigned int power_level = pmp_thermal.power.level[i];
+		unsigned int effective;
+
+		if (!pmp_thermal.power.last_ns || ktime_get_ns() -
+		    pmp_thermal.power.last_ns > APPLE_PMP_POWER_STALE_NS)
+			power_level = 8;
+		effective = max(level, power_level);
 
 		/* QoS composes with user caps and governor cooling. Intermediate
 		 * requests are rounded down to supported OPPs by cpufreq.
 		 */
-		ret = freq_qos_update_request(&c->guard, level ?
-			low + (high - low) * (8 - level) / 8 :
+		ret = freq_qos_update_request(&c->guard, effective ?
+			low + (high - low) * (8 - effective) / 8 :
 			FREQ_QOS_MAX_DEFAULT_VALUE);
 		if (ret < 0)
 			err = ret;
@@ -390,6 +564,15 @@ static void apple_pmp_thermal_cleanup(void)
 {
 	unsigned int i;
 
+	if (pmp_thermal.power_polling) {
+		cancel_delayed_work_sync(&pmp_thermal.power_work);
+		pmp_thermal.power_polling = false;
+	}
+	apple_pmp_power_publish_gpu(8);
+	if (pmp_thermal.power_hwmon)
+		hwmon_device_unregister(pmp_thermal.power_hwmon);
+	if (pmp_thermal.smc_dev)
+		put_device(pmp_thermal.smc_dev);
 	if (pmp_thermal.polling) {
 		hrtimer_cancel(&pmp_thermal.poll_timer);
 		cancel_work_sync(&pmp_thermal.poll_work);
@@ -465,6 +648,7 @@ static int __init apple_pmp_thermal_init(void)
 		return ret;
 
 	mutex_init(&pmp_thermal.lock);
+	apple_pmp_power_init(&pmp_thermal.power);
 	apple_pmp_cooling_init(&pmp_thermal.cooling);
 	pmp_thermal.guard_level = 8;
 	/* Independent read-only mapping permits insmod without rebinding PMP. */
@@ -495,6 +679,16 @@ static int __init apple_pmp_thermal_init(void)
 	ret = thermal_zone_device_enable(pmp_thermal.zone);
 	if (ret)
 		goto fail;
+	pmp_thermal.power_hwmon = hwmon_device_register_with_info(NULL,
+			"apple_pmp_power", NULL, &apple_pmp_power_chip, NULL);
+	if (IS_ERR(pmp_thermal.power_hwmon)) {
+		ret = PTR_ERR(pmp_thermal.power_hwmon);
+		pmp_thermal.power_hwmon = NULL;
+		goto fail;
+	}
+	INIT_DELAYED_WORK(&pmp_thermal.power_work, apple_pmp_power_work);
+	pmp_thermal.power_polling = true;
+	schedule_delayed_work(&pmp_thermal.power_work, msecs_to_jiffies(500));
 	INIT_WORK(&pmp_thermal.poll_work, apple_pmp_poll_work);
 	hrtimer_setup(&pmp_thermal.poll_timer, apple_pmp_poll_timer,
 		      CLOCK_MONOTONIC, HRTIMER_MODE_REL);

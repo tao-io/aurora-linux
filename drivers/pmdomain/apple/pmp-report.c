@@ -6,6 +6,9 @@
  */
 
 #include <linux/hwmon.h>
+#include <linux/atomic.h>
+#include <linux/ktime.h>
+#include <linux/soc/apple/pmp-power.h>
 #include <linux/iopoll.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -16,6 +19,31 @@
 #include <linux/soc/apple/pmp-temps.h>
 
 #define PMP_REPORT_READY 0x1
+
+/* One atomic word publishes both level and sample time, so readers never
+ * mistake an old limit for newly renewed telemetry. J713 G16 is the consumer.
+ */
+static atomic64_t apple_pmp_gpu_budget = ATOMIC64_INIT(0);
+
+void apple_pmp_power_publish_gpu(unsigned int level)
+{
+	u64 ms = div_u64(ktime_get_ns(), NSEC_PER_MSEC);
+
+	atomic64_set(&apple_pmp_gpu_budget, (ms << 4) | min(level, 8U));
+}
+EXPORT_SYMBOL_GPL(apple_pmp_power_publish_gpu);
+
+unsigned int apple_pmp_power_gpu_state(void)
+{
+	u64 value = atomic64_read(&apple_pmp_gpu_budget);
+	u64 ms = div_u64(ktime_get_ns(), NSEC_PER_MSEC);
+
+	if (!value || ms - (value >> 4) > 3000)
+		return 8;
+	return value & 15;
+}
+EXPORT_SYMBOL_GPL(apple_pmp_power_gpu_state);
+
 
 struct apple_pmp_report_offsets {
 	u32 tgt_read;

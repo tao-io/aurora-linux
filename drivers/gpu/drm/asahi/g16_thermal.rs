@@ -94,17 +94,25 @@ impl Cooling {
             self.policy.sample(now, if ret == 0 { Some(temp as i32) } else { None });
         }
         let governor = COOLING_STATE.load(Ordering::Acquire);
-        let limit = self.policy.limit(governor);
+        let thermal_limit = self.policy.limit(governor);
+        #[cfg(CONFIG_APPLE_PMP_REPORT)]
+        // SAFETY: Read-only atomic mailbox; its provider handles stale samples
+        // and outlives this module. No pointer into thermal-module storage.
+        let power = unsafe { bindings::apple_pmp_power_gpu_state() }.min(8);
+        #[cfg(not(CONFIG_APPLE_PMP_REPORT))]
+        let power = 0;
+        let limit = thermal_limit.min(9 - power);
         let trace = self.policy.trace();
-        let key = (limit, trace.reason);
+        let reason = if power > 0 && 9 - power < thermal_limit { "power-budget" } else { trace.reason };
+        let key = (limit, reason);
         if self.last_transition != Some(key) {
             self.last_transition = Some(key);
             // Transition-only: never print on every 5 ms sensor poll. The
             // sample timestamp is monotonic, independent of printk's clock.
-            pr_info!("G16G: thermal decision ns={} sample_ns={} mc={} channel={} error={} previous_mc={} dt_ns={} projected_mc={} reason={} hard={} prediction={} governor={} limit={}\n",
+            pr_info!("G16G: thermal decision ns={} sample_ns={} mc={} channel={} error={} previous_mc={} dt_ns={} projected_mc={} reason={} hard={} prediction={} governor={} power={} limit={}\n",
                 now, trace.now, self.sample.0, self.sample.1, self.sample.2,
                 trace.previous_mc.unwrap_or(-1), trace.elapsed, trace.projected,
-                trace.reason, trace.hard, trace.prediction, governor, limit);
+                reason, trace.hard, trace.prediction, governor, power, limit);
         }
         limit
     }
