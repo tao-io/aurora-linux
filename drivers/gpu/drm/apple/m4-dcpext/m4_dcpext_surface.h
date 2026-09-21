@@ -4,6 +4,7 @@
 #include <linux/errno.h>
 #include <linux/string.h>
 #include <linux/unaligned.h>
+#include "m4_dcpext_modes.h"
 
 #define M4_DCPEXT_SURFACE_SIZE 0x22c
 
@@ -16,8 +17,9 @@ static inline int m4_dcpext_surface_build(void *output, u32 width, u32 height,
 	u8 *s = output;
 	u32 bytes;
 
-	if (!s || !width || width > 1920 || !height || height > 1080 ||
-	    stride < width * 4 || stride > 7680 || (stride & 63))
+	if (!s || !width || width > M4_DCPEXT_MAX_WIDTH ||
+	    !height || height > M4_DCPEXT_MAX_HEIGHT ||
+	    stride < width * 4 || stride > M4_DCPEXT_MAX_PITCH || (stride & 63))
 		return -EINVAL;
 	bytes = stride * height;
 	memset(s, 0, M4_DCPEXT_SURFACE_SIZE);

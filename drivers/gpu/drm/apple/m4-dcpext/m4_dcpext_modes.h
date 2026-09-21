@@ -3,6 +3,12 @@
 #define M4_DCPEXT_MODES_H
 #include "m4_dcpext_afk.h"
 
+/* Linear SDR scanout allocation and two-lane HBR2 transport ceiling. */
+#define M4_DCPEXT_MAX_WIDTH 3840
+#define M4_DCPEXT_MAX_HEIGHT 2160
+#define M4_DCPEXT_MAX_PITCH (M4_DCPEXT_MAX_WIDTH * 4)
+#define M4_DCPEXT_MAX_PAYLOAD_KBPS 8640000
+
 /* Mode data is supplied by DRM's EDID parser, never invented here. */
 struct m4_dcpext_mode {
 	u32 width, height, clock_khz, htotal, vtotal;
@@ -28,7 +34,7 @@ int m4_dcpext_native_mode_select(const struct m4_dcpext_native_mode *requested,
 				const struct m4_dcpext_native_mode *modes,
 				u32 count, u32 *selected);
 
-/* The current hardware policy is two HBR lanes, 8bpc RGB. Mode records are
+/* The current hardware policy is up to two HBR2 lanes, 8bpc RGB. Mode records are
  * the complete firmware-provided 24-byte records, including reserved fields.
  * The selected record is returned unchanged. Unknown flags are not stripped.
  */

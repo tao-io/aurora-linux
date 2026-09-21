@@ -164,11 +164,11 @@ static int dptx_trial_callback(const u8 *p, u32 bytes)
 				put_unaligned_le32(2, reply + 112); /* two DP lanes in negotiated pin D */
 			if (command == 7) {
 				/* Asahi dptxep.c's HBR3 ceiling. This advertises the
-				 * trial policy, not a configured/trained rate. Physical
-				 * set-rate/lane callbacks still return Unsupported.
+				 * training ceiling, not a configured/trained rate.
+				 * Without training enabled, physical callbacks remain Unsupported.
 				 * Native handleGetMaxLinkRate writes u64 at service80.
 				 */
-				put_unaligned_le32(link_training ? 0xa : 0x1e, reply + 112);
+				put_unaligned_le32(link_training ? 0x14 : 0x1e, reply + 112);
 			}
 			if (command == 13) {
 				/* Native M4: input rate at service64, status80, bool96.

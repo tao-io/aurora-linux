@@ -47,7 +47,7 @@ static u32 session_atc_target(void)
 #include "dcpext_dptx_link.h"
 static bool link_training;
 module_param(link_training, bool, 0400);
-MODULE_PARM_DESC(link_training, "Guarded HBR/two-lane/native-fallback-drive training trial; no scanout");
+MODULE_PARM_DESC(link_training, "Guarded HBR2/two-lane/native-fallback-drive training trial; no scanout");
 static struct dptx_link_state session_link;
 static int (*session_atc_protocol)(void);
 
@@ -165,7 +165,7 @@ static int dptx_link_set_rate(struct dptx_link_state *s, u32 rate)
 	int ret;
 	if (s->fault || session_atc_fault)
 		return -EIO;
-	if (rate != 0 && rate != 0xa)
+	if (rate != 0 && rate != 6 && rate != 0xa && rate != 0x14)
 		return -EOPNOTSUPP;
 	if (rate == s->rate)
 		return 0;
@@ -189,7 +189,11 @@ static int dptx_link_set_rate(struct dptx_link_state *s, u32 rate)
 		if ((readl(atc_core + 0x60) & 0xfff) != (session_atc_flipped ? 0x252 : 0x489) ||
 		    (readl(atc_core + 0x64) & 0x1ffff) != (session_atc_flipped ? 0x111 : 0x110))
 			return -EIO;
-		ret = atc_dp_main_prepare(BIT(session_atc_pair()), rate, false);
+		/* A nonzero-to-nonzero rate change must retire the old PLL/lanes
+		 * before running the native initialization sequence again. */
+		ret = s->rate ? atc_dp_main_stop(BIT(session_atc_pair())) : 0;
+		if (!ret)
+			ret = atc_dp_main_prepare(BIT(session_atc_pair()), rate, false);
 	} else {
 		ret = atc_dp_main_stop(BIT(session_atc_pair()));
 	}
@@ -222,7 +226,7 @@ static int dptx_link_set_drive(struct dptx_link_state *s, const u32 drive[6])
 		if (drive[i] || drive[i + 1] > 3 || drive[i + 2] > 3 ||
 		    drive[i + 1] + drive[i + 2] > 3)
 			return -EINVAL;
-	if (!atc_pinned || !session_atc_active || s->rate != 0xa ||
+	if (!atc_pinned || !session_atc_active || (s->rate != 6 && s->rate != 0xa && s->rate != 0x14) ||
 	    s->lanes != 2 || !(readl(atc_core + 0x7034) & 8))
 		return -EIO;
 	ret = session_atc_check_partner();

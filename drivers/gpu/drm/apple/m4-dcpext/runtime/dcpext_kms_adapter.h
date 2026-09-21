@@ -42,6 +42,9 @@ static int native_kms_present(void *cookie,
 	width = mode->geometry.width;
 	height = mode->geometry.height;
 	pitch = ALIGN(width * 4, 64);
+	ret = m4_dcpext_surface_validate(width, height, pitch, FRAME_DVA, FRAME_BYTES);
+	if (ret || (pixels && source_pitch < width * 4))
+		return ret ?: -EINVAL;
 	ret = m4_dcpext_surface_build(surface, width, height, pitch, opaque);
 	if (ret)
 		return ret;
@@ -68,11 +71,13 @@ static int native_kms_present(void *cookie,
 	 * matching native completion is required before switching slots again. */
 	destination = native_kms_slot ? frame_pixels : frame_pixels_b;
 	dva = (FRAME_DVA + (native_kms_slot ? 0 : FRAME_BYTES)) | BIT_ULL(40);
+	frame_sync(native_kms_slot ? 0 : 1, (size_t)pitch * height, true);
 	for (u32 y = 0; y < height; y++) {
 		iosys_map_memcpy_from(destination + y * pitch, pixels,
 				     (size_t)y * source_pitch, width * 4);
 		memset(destination + y * pitch + width * 4, 0, pitch - width * 4);
 	}
+	frame_sync(native_kms_slot ? 0 : 1, (size_t)pitch * height, false);
 	dma_wmb();
 	ret = m4_dcpext_native_swap(native_client, generation, surface, dva, width, height);
 	if (!ret) {

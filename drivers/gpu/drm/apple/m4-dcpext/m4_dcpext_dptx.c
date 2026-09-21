@@ -63,14 +63,15 @@ int m4_dcpext_dptx_link_callback(struct m4_dcpext_dptx_link *l,
 		memcpy(reply, data, size);
 		memset(reply, 0, 4);
 		memset(reply + 16, 0, 8);
-		put_unaligned_le32(command == 7 ? M4_DCPEXT_DPTX_RATE_HBR : command == 8 ? l->rate :
+		put_unaligned_le32(command == 7 ? M4_DCPEXT_DPTX_RATE_HBR2 : command == 8 ? l->rate :
 				   command == 11 ? l->lanes : 0, reply + 16);
 		return 0;
 	case 9: /* setLinkRate; native consumes the byte at service 80. */
 		if (size != 32)
 			return -EOPNOTSUPP;
 		value = get_unaligned_le32(data + 16);
-		if ((value != 0 && value != M4_DCPEXT_DPTX_RATE_HBR) || get_unaligned_le32(data + 20))
+		if ((value != 0 && value != 6 && value != M4_DCPEXT_DPTX_RATE_HBR &&
+		     value != M4_DCPEXT_DPTX_RATE_HBR2) || get_unaligned_le32(data + 20))
 			return -EOPNOTSUPP;
 		ret = ops->set_rate(cookie, l, value);
 		break;
@@ -284,9 +285,9 @@ int m4_dcpext_dptx_callback(struct m4_dcpext_dptx *d, const struct m4_dcpext_dpt
 			if (command == 7) {
 				/* Asahi dptxep.c's HBR3 ceiling advertises the trial
 				 * policy, not a configured/trained rate; with training
-				 * the HBR ceiling. Native writes u64 at service 80.
+				 * the HBR2 ceiling. Native writes u64 at service 80.
 				 */
-				put_unaligned_le32(d->training ? M4_DCPEXT_DPTX_RATE_HBR : 0x1e, reply + 112);
+				put_unaligned_le32(d->training ? M4_DCPEXT_DPTX_RATE_HBR2 : 0x1e, reply + 112);
 			}
 			if (command == 13) {
 				/* Native M4: input rate at service 64, status 80, bool 96.

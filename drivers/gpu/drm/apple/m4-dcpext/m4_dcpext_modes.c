@@ -17,7 +17,7 @@ int m4_dcpext_surface_validate(u32 width, u32 height, u32 pitch,
 	u64 bytes;
 
 	/* Scope is the qualified external controller's linear SDR path. */
-	if (!width || width > 1920 || !height || height > 1080 ||
+	if (!width || width > M4_DCPEXT_MAX_WIDTH || !height || height > M4_DCPEXT_MAX_HEIGHT ||
 	    pitch < width * 4 || (pitch & 63) || !dva || (dva & 0x3fff))
 		return -EINVAL;
 	bytes = (u64)pitch * height;
@@ -32,14 +32,14 @@ int m4_dcpext_mode_validate(const struct m4_dcpext_mode *m, u32 *fps_16_16)
 	u64 fps, total;
 
 	if (!m || !fps_16_16 || !m->width ||
-	    m->width > 1920 || !m->height || m->height > 1080 || !m->clock_khz ||
+	    m->width > M4_DCPEXT_MAX_WIDTH || !m->height || m->height > M4_DCPEXT_MAX_HEIGHT || !m->clock_khz ||
 	    m->htotal <= m->width || m->vtotal <= m->height ||
 	    m->htotal > 65535 || m->vtotal > 65535)
 		return -EINVAL;
 	if (m->interlaced || m->doublescan)
 		return -EOPNOTSUPP;
-	/* 2 * 2.7 Gbit/s * 8/10, divided by 24 wire bits per RGB pixel. */
-	if ((u64)m->clock_khz * 24 > 4320000)
+	/* 2 * 5.4 Gbit/s * 8/10, divided by 24 wire bits per RGB pixel. */
+	if ((u64)m->clock_khz * 24 > M4_DCPEXT_MAX_PAYLOAD_KBPS)
 		return -ERANGE;
 	total = (u64)m->htotal * m->vtotal;
 	fps = ((u64)m->clock_khz * 1000 * 65536 + total / 2) / total;
@@ -354,7 +354,7 @@ static int native_mode(const struct native_blob *b, const struct native_value *v
 	if (ret)
 		return ret;
 	if (rate < 24 * 65536 || rate > 120 * 65536 ||
-	    m->width > 1920 || m->height > 1080)
+	    m->width > M4_DCPEXT_MAX_WIDTH || m->height > M4_DCPEXT_MAX_HEIGHT)
 		return -EOPNOTSUPP;
 	clock = (u64)m->htotal * m->vtotal * rate;
 	m->clock_khz = (clock + 32768000) / 65536000;

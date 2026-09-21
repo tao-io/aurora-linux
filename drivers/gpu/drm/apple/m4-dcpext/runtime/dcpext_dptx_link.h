@@ -5,7 +5,7 @@
  * retained under build/displayport-kernelcache/dptx-cb-*. Asahi dptxep.h
  * (Sven Peter and contributors) supplies callback names/indices.
  *
- * PoC policy: HBR only, two lanes, SSC off, native fallback drive table.
+ * PoC policy: RBR/HBR/HBR2, two lanes, SSC off, native fallback drive table.
  * Unsupported requests are explicit. The hardware adapter must implement
  * dptx_link_set_rate() and dptx_link_set_drive() with real PHY writes,
  * retain ownership on a failed operation, and stop the PHY before teardown.
@@ -53,14 +53,14 @@ static int dptx_link_callback(struct dptx_link_state *s, u32 command,
 		memcpy(reply, data, size);
 		memset(reply, 0, 4);
 		memset(reply + 16, 0, 8);
-		put_unaligned_le32(command == 7 ? 0xa : command == 8 ? s->rate :
+		put_unaligned_le32(command == 7 ? 0x14 : command == 8 ? s->rate :
 				   command == 11 ? s->lanes : 0, reply + 16);
 		return 0;
 	case 9: /* setLinkRate; native consumes the byte at service80. */
 		if (size != 32)
 			return -EOPNOTSUPP;
 		value = get_unaligned_le32(data + 16);
-		if ((value != 0 && value != 0xa) || get_unaligned_le32(data + 20))
+		if ((value != 0 && value != 6 && value != 0xa && value != 0x14) || get_unaligned_le32(data + 20))
 			return -EOPNOTSUPP;
 		ret = dptx_link_set_rate(s, value);
 		break;

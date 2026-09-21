@@ -612,7 +612,7 @@ struct m4_dcpext_native *m4_dcpext_native_start(struct device *dev,
 	struct m4_dcpext_native *dcp;
 	int ret;
 
-	if (!stride || stride > 7680 || (stride & 63))
+	if (!stride || stride > M4_DCPEXT_MAX_PITCH || (stride & 63))
 		return ERR_PTR(-EINVAL);
 	dcp = kzalloc(sizeof(*dcp), GFP_KERNEL);
 	if (!dcp)
@@ -642,7 +642,7 @@ int m4_dcpext_native_swap(struct m4_dcpext_native *dcp, u64 generation, const vo
 	bool started_swap = false;
 
 	if (surface &&
-	    (!dva || !width || width > 1920 || !height || height > 1080))
+	    (!dva || !width || width > M4_DCPEXT_MAX_WIDTH || !height || height > M4_DCPEXT_MAX_HEIGHT))
 		return -EINVAL;
 	swap = kzalloc(0x1bd8, GFP_KERNEL);
 	if (!swap)
@@ -777,7 +777,7 @@ int m4_dcpext_native_set_mode(struct m4_dcpext_native *dcp, u64 generation,
 		if (dcp->modes[i].color_id == color_id && dcp->modes[i].timing_id == timing_id)
 			break;
 	if (i == dcp->mode_count || pitch < dcp->modes[i].geometry.width * 4 ||
-	    pitch > 7680 || (pitch & 63))
+	    pitch > M4_DCPEXT_MAX_PITCH || (pitch & 63))
 		goto out;
 	dcp->stride = pitch;
 	dcp->requested_generation = generation;

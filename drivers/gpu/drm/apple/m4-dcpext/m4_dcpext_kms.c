@@ -286,8 +286,8 @@ struct m4_dcpext_kms *m4_dcpext_kms_create(struct device *dev,
 	if (ret)
 		return ERR_PTR(ret);
 	drm->mode_config.min_width = drm->mode_config.min_height = 1;
-	drm->mode_config.max_width = 1920;
-	drm->mode_config.max_height = 1080;
+	drm->mode_config.max_width = M4_DCPEXT_MAX_WIDTH;
+	drm->mode_config.max_height = M4_DCPEXT_MAX_HEIGHT;
 	drm->mode_config.funcs = &mode_funcs;
 	drm->mode_config.helper_private = &mode_helpers;
 	ret = drm_universal_plane_init(drm, &kms->plane, 1, &plane_funcs, formats,

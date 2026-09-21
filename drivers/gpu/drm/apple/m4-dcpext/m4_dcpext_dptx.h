@@ -22,7 +22,7 @@
  * (data 32) and 96 otherwise; a route connect obliges a matching
  * acknowledged disconnect before DART release (transport quiescence does
  * not clear it); a display request obliges a release; HPD-on obliges
- * HPD-off; the PHY policy is HBR only, two lanes, SSC off, level-zero
+ * HPD-off; the PHY policy is up to HBR2, two lanes, SSC off, level-zero
  * drive qualified; unimplemented callbacks are answered with
  * kIOReturnUnsupported (0xe00002c7), never fabricated success; a failed PHY
  * operation is latched (phy_fault) and never acknowledged as success.
@@ -44,6 +44,7 @@
 #define M4_DCPEXT_DPTX_SERVICE "dispext0:dcpdptx-port-epic:0"
 #define M4_DCPEXT_DPTX_TARGET_ATC1 0x8010	/* connected | ATC1 | core0 | die0 */
 #define M4_DCPEXT_DPTX_RATE_HBR 0xa
+#define M4_DCPEXT_DPTX_RATE_HBR2 0x14
 #define M4_DCPEXT_DPTX_HPD_OBSERVE_MS 600
 
 /* Link-training state, PHY-written values only. */
