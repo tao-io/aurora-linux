@@ -21,3 +21,5 @@ ifeq ($(KBUILD_EXTMOD),)
 m4_dcpext_desktop-y += runtime/m4_dcpext_secondary_main.o
 endif
 ccflags-y += -I$(src) -I$(src)/../../../../phy/apple -I$(src)/../../../../mux -I$(src)/../../../../usb/typec/tipd
+
+obj-$(CONFIG_DRM_APPLE_M4_DCPEXT_AUDIO) += m4_dcpext_audio_pcm.o

@@ -90,6 +90,9 @@ static int audio_adapter_record(void *cookie, const u8 *p, u32 bytes)
 		if (!audio_rpc_pending)
 			return -EPROTO;
 		audio_rpc_error = ret;
+		if (ret)
+			pr_err("audio OOB response error=%d remote_status=%#x bytes=%u\n",
+				ret, get_unaligned_le32(p + 28), bytes);
 		audio_rpc_bytes = ret ? 0 : received;
 		audio_rpc_pending = false;
 		dma_rmb();
@@ -135,6 +138,7 @@ static int audio_adapter_progress(void)
 		if (ret)
 			return ret;
 		audio_rx = pool + offset;
+		audio_channel.streaming = audio_desktop;
 		return afkc_start(&audio_channel, &ops, NULL, 0x29);
 	}
 	if (audio_channel.error)
@@ -182,8 +186,6 @@ static const struct file_operations audio_oob_fops = {
 };
 static int audio_evidence_publish(struct dentry *directory)
 {
-	if (!audio_probe && !desktop)
-		return 0;
 	if (IS_ERR_OR_NULL(debugfs_create_file("audio-service-capture", 0400, directory,
 		NULL, &audio_probe_fops)))
 		return -ENOMEM;

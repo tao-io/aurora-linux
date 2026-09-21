@@ -14,6 +14,15 @@ config DRM_APPLE_M4_DCPEXT
 	  Shutdown is handled by the kernel; no explicit module load is needed.
 	  Sleep, firmware restart and broader display features remain unsupported.
 
+config DRM_APPLE_M4_DCPEXT_AUDIO
+	tristate "Apple M4 J713 external display audio"
+	depends on DRM_APPLE_M4_DCPEXT && SND && APPLE_SIO
+	select SND_DMAENGINE_PCM
+	help
+	  PCM playback through the M4 DCP audio service and SIO DMA.
+	  Initial qualification supports stereo 48 kHz S16_LE on DCPEXT0.
+	  Does not enable the laptop's internal speakers or headphone codec.
+
 config DRM_APPLE
 	tristate "DRM Support for Apple display controllers"
 	depends on DRM && OF && ARM64

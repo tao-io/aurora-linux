@@ -130,6 +130,7 @@ struct sio_data {
 	int nchannels;
 	bool j713;
 	int startup_error;
+	int transfer_error;
 	struct sio_chan channels[];
 };
 
@@ -264,7 +265,7 @@ static struct dma_async_tx_descriptor *sio_prep_dma_cyclic(
 	struct sio_tx *siotx = NULL;
 	int i, nperiods;
 
-	if (!period_len || !buf_len || buf_len % period_len ||
+	if (READ_ONCE(siochan->host->transfer_error) || !period_len || !buf_len || buf_len % period_len ||
 	    buf_len / period_len > SIO_NO_DESC_SLOTS)
 		return NULL;
 	nperiods = buf_len / period_len;
@@ -310,6 +311,8 @@ static enum dma_status sio_tx_status(struct dma_chan *chan, dma_cookie_t cookie,
 	int periods_residue;
 	size_t residue;
 
+	if (READ_ONCE(siochan->host->transfer_error))
+		return DMA_ERROR;
 	ret = dma_cookie_status(chan, cookie, txstate);
 	if (ret == DMA_COMPLETE || !txstate)
 		return ret;
@@ -347,6 +350,7 @@ static void sio_handle_issue_ack(struct sio_chan *siochan, void *cookie, bool ok
 	struct sio_tx *tx;
 
 	if (!ok) {
+		WRITE_ONCE(siochan->host->transfer_error, -EIO);
 		dev_err(siochan->host->dev, "nacked issue on chan %d\n", siochan->no);
 		return;
 	}
@@ -372,7 +376,8 @@ static bool sio_fill_in_locked(struct sio_chan *siochan)
 	struct sio_coproc_desc *d = tx->siodesc[tx->next];
 	int ret;
 
-	if (tx->ninflight >= SIO_MAX_NINFLIGHT || tx->terminated)
+	if (tx->ninflight >= SIO_MAX_NINFLIGHT || tx->terminated ||
+	    READ_ONCE(sio->transfer_error))
 		return false;
 
 	static_assert(sizeof(dma_cookie_t) <= sizeof(void *));
@@ -444,13 +449,21 @@ static void sio_terminate_work(struct work_struct *wq)
 
 	ret = sio_call(siochan->host, FIELD_PREP(SIOMSG_EP, siochan->no) |
 				      FIELD_PREP(SIOMSG_TYPE, MSG_TERMINATE));
-	if (ret < 0)
+	if (ret < 1) {
+		WRITE_ONCE(siochan->host->transfer_error, ret ? ret : -EIO);
 		dev_err(siochan->host->dev, "terminate call on chan %d failed: %d\n",
 			siochan->no, ret);
+		tasklet_kill(&siochan->vc.task);
+		return; /* Unacknowledged DMA: retain descriptors and payload. */
+	}
 
 	ret = wait_for_completion_timeout(&tx->done, msecs_to_jiffies(500));
-	if (!ret)
-		dev_err(siochan->host->dev, "terminate descriptor wait timed out\n");
+	if (!ret) {
+		WRITE_ONCE(siochan->host->transfer_error, -ETIMEDOUT);
+		dev_err(siochan->host->dev, "terminate descriptor wait timed out; DMA retained\n");
+		tasklet_kill(&siochan->vc.task);
+		return;
+	}
 
 	tasklet_kill(&siochan->vc.task);
 
@@ -506,7 +519,8 @@ static void sio_process_report(struct sio_chan *siochan)
 
 		if (tx->ninflight)
 			tx->ninflight--;
-		vchan_cyclic_callback(&tx->vd);
+		if (!tx->terminated)
+			vchan_cyclic_callback(&tx->vd);
 		if (!sio_fill_in_locked(siochan) && !tx->ninflight)
 			complete(&tx->done);
 	}
@@ -576,6 +590,8 @@ static int _sio_send_siomsg(struct sio_data *sio, u64 msg, bool atomic,
 {
 	int tag, ret;
 
+	if (READ_ONCE(sio->transfer_error) && FIELD_GET(SIOMSG_TYPE, msg) != MSG_TERMINATE)
+		return -EIO;
 	tag = sio_alloc_tag(sio);
 	if (tag < 0)
 		return tag;
@@ -621,7 +637,8 @@ static int sio_call(struct sio_data *sio, u64 msg)
 					  msecs_to_jiffies(SIO_CALL_TIMEOUT_MS));
 	if (!ret) {
 		dev_warn(sio->dev, "call %8llx timed out\n", msg);
-		sio_free_tag(sio, tag);
+		/* A late ACK must not complete a later call reusing this tag. */
+		WRITE_ONCE(sio->transfer_error, -ETIME);
 		return -ETIME;
 	}
 
