@@ -11,10 +11,14 @@
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/init.h>
+#include <linux/sizes.h>
+#include <linux/unaligned.h>
 #include <linux/interrupt.h>
+#include <linux/iommu.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/of_dma.h>
+#include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/soc/apple/rtkit.h>
@@ -131,6 +135,9 @@ struct sio_data {
 	bool j713;
 	int startup_error;
 	int transfer_error;
+	u32 protocol;
+	void *v10_params;
+	dma_addr_t v10_params_dma;
 	struct sio_chan channels[];
 };
 
@@ -506,6 +513,7 @@ static void sio_rtk_crashed(void *cookie, const void *crashlog, size_t crashlog_
 {
 	struct sio_data *sio = cookie;
 
+	WRITE_ONCE(sio->transfer_error, -EIO);
 	dev_err(sio->dev, "SIO down (crashed)");
 }
 
@@ -545,6 +553,7 @@ static void sio_recv_msg(void *cookie, u8 ep, u64 msg)
 
 	switch (type) {
 	case MSG_STARTED:
+		sio->protocol = data;
 		dev_info(sio->dev, "SIO protocol v%u\n", data);
 		type = MSG_ACK; /* Pretend this is an ACK */
 		fallthrough;
@@ -765,6 +774,96 @@ static int sio_alloc_shmem(struct sio_data *sio)
 	return 0;
 }
 
+/* The J713 boot producer predates SIO v10: five 32-byte shim records
+ * and eight device types. v10 consumes six 36-byte records and nine types.
+ * Its extra shim word is an optional interrupt (-1 means absent).
+ * Keep the original boot reservations immutable, translating into owned DMA
+ * memory only for this qualified machine/protocol pair.
+ */
+static int sio_copy_boot_param(struct sio_data *sio, u32 page, void *dst, size_t len)
+{
+	struct iommu_domain *domain = iommu_get_domain_for_dev(sio->dev);
+	struct device_node *np;
+	struct resource res;
+	phys_addr_t phys;
+	void __iomem *src;
+	u64 iova = (u64)page << 12;
+	int i;
+	bool reserved = false;
+
+	if (!domain || !len || len > 216)
+		return -EINVAL;
+	phys = iommu_iova_to_phys(domain, iova);
+	if (!phys || iommu_iova_to_phys(domain, iova + len - 1) != phys + len - 1)
+		return -EINVAL;
+	for (i = 0; (np = of_parse_phandle(sio->dev->of_node, "memory-region", i)); i++) {
+		if (of_node_name_prefix(np, "sio-firmware-data") &&
+		    of_property_present(np, "no-map") && !of_address_to_resource(np, 0, &res) &&
+		    phys >= res.start && phys + len - 1 <= res.end)
+			reserved = true;
+		of_node_put(np);
+	}
+	if (!reserved)
+		return -EINVAL;
+	src = ioremap(phys, len);
+	if (!src)
+		return -ENOMEM;
+	memcpy_fromio(dst, src, len);
+	iounmap(src);
+	return 0;
+}
+
+static int sio_v10_param(struct sio_data *sio, u32 key, u32 *val)
+{
+	u8 old[160];
+	u8 *out;
+	int i, ret;
+
+	if (!sio->j713 || sio->protocol != 10)
+		return 0;
+	if (key != 0x22 && key != 0x23 && key != 0x1c && key != 0x1d)
+		return 0;
+	if (!sio->v10_params) {
+		sio->v10_params = dma_alloc_coherent(sio->dev, SZ_16K,
+						&sio->v10_params_dma, GFP_KERNEL | __GFP_ZERO);
+		if (!sio->v10_params)
+			return -ENOMEM;
+	}
+	out = sio->v10_params;
+	switch (key) {
+	case 0x22:
+		ret = sio_copy_boot_param(sio, *val, old, 160);
+		if (ret)
+			return ret;
+		for (i = 0; i < 6; i++) {
+			if (i < 5)
+				memcpy(out + i * 36, old + i * 32, 32);
+			put_unaligned_le32(U32_MAX, out + i * 36 + 32);
+		}
+		*val = sio->v10_params_dma >> 12;
+		break;
+	case 0x23:
+		if (*val != 160)
+			return -EINVAL;
+		*val = 216;
+		break;
+	case 0x1c:
+		ret = sio_copy_boot_param(sio, *val, out + SZ_4K, 64);
+		if (ret)
+			return ret;
+		*val = (sio->v10_params_dma + SZ_4K) >> 12;
+		break;
+	case 0x1d:
+		if (*val != 64)
+			return -EINVAL;
+		*val = 72;
+		dev_info(sio->dev, "translated legacy J713 handoff to SIO v10 shim/device layouts\n");
+		break;
+	}
+	dma_wmb();
+	return 0;
+}
+
 static int sio_send_dt_params(struct sio_data *sio)
 {
 	struct device_node *np = sio->dev->of_node;
@@ -786,6 +885,10 @@ static int sio_send_dt_params(struct sio_data *sio)
 		err = of_property_read_u32_index(np, propname, 2 * i + 1, &val);
 		if (err)
 			goto badprop;
+
+		err = sio_v10_param(sio, key, &val);
+		if (err)
+			return dev_err_probe(sio->dev, err, "invalid SIO v10 boot parameter %#x\n", key);
 
 		err = sio_call(sio, FIELD_PREP(SIOMSG_TYPE, MSG_SETUP) |
 				    FIELD_PREP(SIOMSG_PARAM, key & 0xff) |

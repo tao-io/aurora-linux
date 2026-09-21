@@ -129,9 +129,10 @@ static int m4_pcm_open(struct snd_pcm_substream *s)
 	if (ret)
 		return ret;
 	s->runtime->hw = m4_audio_hw;
-	ret = snd_pcm_hw_constraint_integer(s->runtime, SNDRV_PCM_HW_PARAM_PERIODS);
-	if (!ret)
-		ret = snd_dmaengine_pcm_open(s, a->chan);
+	/* The DMA helper applies the integer-period constraint itself. The
+	 * constraint API may return positive success, not just zero.
+	 */
+	ret = snd_dmaengine_pcm_open(s, a->chan);
 	if (ret) {
 		m4_audio_simple(a, 5, false);
 		a->opened = false;
