@@ -679,7 +679,7 @@ static int __init apple_pmp_thermal_init(void)
 	ret = thermal_zone_device_enable(pmp_thermal.zone);
 	if (ret)
 		goto fail;
-	pmp_thermal.power_hwmon = hwmon_device_register_with_info(NULL,
+	pmp_thermal.power_hwmon = hwmon_device_register_with_info(thermal_zone_device(pmp_thermal.zone),
 			"apple_pmp_power", NULL, &apple_pmp_power_chip, NULL);
 	if (IS_ERR(pmp_thermal.power_hwmon)) {
 		ret = PTR_ERR(pmp_thermal.power_hwmon);
