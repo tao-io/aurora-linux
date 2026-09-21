@@ -1,0 +1,30 @@
+[
+  {
+    "run": "20260921T073951314559Z-stk-zink-qualified-final-race",
+    "guard_verdict": "pass",
+    "frames": 767,
+    "seconds": 65.375,
+    "average_fps": 11.732313575525813,
+    "renderer": "opengl",
+    "internal_resolution": [
+      3840,
+      2160
+    ],
+    "fullscreen_output": [
+      1920,
+      1080
+    ],
+    "race": "Black Forest built-in benchmark",
+    "game_metrics": "1, 8, 11,",
+    "menus_excluded": true,
+    "minimum_available_mib": 4802.9375,
+    "peak_temperature_c": 86.75,
+    "application_asid": 20,
+    "full_size_render_commands": 10731,
+    "mean_full_size_prepare_ms": 2.9045450423073342,
+    "render_owner_reuse_including_startup": {
+      "false": 13745,
+      "true": 2695
+    }
+  }
+]

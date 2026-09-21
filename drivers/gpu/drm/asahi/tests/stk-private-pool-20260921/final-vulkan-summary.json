@@ -1,0 +1,30 @@
+[
+  {
+    "run": "20260921T074304079990Z-stk-vulkan-qualified-final-race",
+    "guard_verdict": "pass",
+    "frames": 979,
+    "seconds": 47.88,
+    "average_fps": 20.446950710108606,
+    "renderer": "vulkan",
+    "internal_resolution": [
+      3840,
+      2160
+    ],
+    "fullscreen_output": [
+      1920,
+      1080
+    ],
+    "race": "Black Forest built-in benchmark",
+    "game_metrics": "3, 8, 14,",
+    "menus_excluded": true,
+    "minimum_available_mib": 5585.90625,
+    "peak_temperature_c": 84.75,
+    "application_asid": 31,
+    "full_size_render_commands": 5151,
+    "mean_full_size_prepare_ms": 3.442584140361095,
+    "render_owner_reuse_including_startup": {
+      "false": 5348,
+      "true": 3053
+    }
+  }
+]

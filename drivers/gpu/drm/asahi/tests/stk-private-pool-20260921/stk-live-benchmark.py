@@ -39,7 +39,8 @@ def ctl(*args):
     return subprocess.check_output(['runuser', '-u', 'e', '--', 'hyprctl', *args], env=env, text=True, timeout=5)
 monitors = json.loads(ctl('-j', 'monitors'))
 (out/'monitors-before.json').write_text(json.dumps(monitors, indent=2))
-monitor = next(m for m in monitors if m['name'] == 'DP-1')
+monitor = next((m for m in monitors if m['name'] == 'DP-1'), None)
+assert monitor is not None, 'DP-1 is absent; restore the external output before benchmarking'
 assert (monitor['width'], monitor['height'], monitor['scale']) == (1920, 1080, 1)
 focus = next(m['name'] for m in monitors if m['focused'])
 assert subprocess.run(['pgrep', '-x', 'supertuxkart'], capture_output=True).returncode != 0

@@ -55,3 +55,39 @@ These are 3840x2160 internal rendering downsampled to the connected fullscreen
 1920x1080 output, same quality settings, race-only profiler, menus excluded.
 The CPU profile found repeated checked page-table walks and cache maintenance
 in kernel allocation/teardown; it motivated the separate batched mapping change.
+
+## Final selected configuration
+
+The final source again matches this mapping-only implementation. A fresh rebuild
+reproduced module SHA256 9a48da4f11b570410d40fb824e0940017038a80ff4f1480001d08da9d31c9343
+exactly. The batched PTE and global cache candidates are archived separately and
+are disabled. The original 128 MiB per-queue/per-engine idle-cache bound remains.
+Stage: `20260921T073607362160Z-stk-restore-qualified-stage`.
+Final boot: `ef0d602f-9104-4376-bd1b-34d8d79cfc78`, DP-1 and eDP-1 connected.
+The final module passed all 162 memory/binding/dynamic-UBO cases:
+`20260921T073908478918Z-stk-qualified-final-cts`, two workers, 7.103 seconds runner,
+9.756 seconds guarded elapsed, peak 81 C. Case list and frozen catalog indices
+are in `../stk-batched-map-20260921/cts-cases{,.meta.json}`.
+
+Final clean Zink race: `20260921T073951314559Z-stk-zink-qualified-final-race`,
+767 frames / 65.375 s = 11.732 FPS. Peak 86.75 C; minimum available 4802.94 MiB.
+Mean 4K render preparation 2.905 ms across 10731 passes, versus 3.366 ms before
+this change. The 65-second race screenshot was inspected and shows the course,
+kart and HUD correctly. The earlier profiled 12.771 FPS sample is retained
+separately; do not substitute that higher figure for this final clean result.
+
+Final clean native Vulkan race:
+`20260921T074304079990Z-stk-vulkan-qualified-final-race`,
+979 frames / 47.880 s = 20.447 FPS. Peak 84.75 C; minimum available 5585.91 MiB.
+The race screenshot was inspected: course, kart and HUD present; no gray scene.
+Native FPS on this same module ranged from 20.447 to 22.605; no consistent native
+speedup is established against the earlier 21.721 FPS baseline. CPU frequency
+ceilings were identical (4104000/2892000 kHz), though these live races are not an
+identical captured workload. The Zink preparation reduction is reproducible;
+do not describe the final change as a proven across-backend FPS improvement.
+
+Final desktop check is retained in `final-desktop.json`: normal autologin,
+2560x1664 eDP-1 and 1920x1080 DP-1 both DPMS-on, no STK process, watchdog armed
+at 60 seconds and idle, exact selected module hash. No Mesa changes were made
+in this kernel optimization session. Rejected trials remain in the adjacent
+`stk-batched-map-20260921` and `stk-shared-cache-20260921` directories.

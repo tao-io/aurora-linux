@@ -1,0 +1,26 @@
+{
+  "boot_id": "ef0d602f-9104-4376-bd1b-34d8d79cfc78",
+  "monitors": [
+    {
+      "name": "eDP-1",
+      "width": 2560,
+      "height": 1664,
+      "dpmsStatus": true
+    },
+    {
+      "name": "DP-1",
+      "width": 1920,
+      "height": 1080,
+      "dpmsStatus": true
+    }
+  ],
+  "watchdog": {
+    "armed": true,
+    "timeout_seconds": 60,
+    "timeleft_seconds": 58,
+    "fed": false,
+    "mode": "idle"
+  },
+  "game_running": false,
+  "module_sha256": "9a48da4f11b570410d40fb824e0940017038a80ff4f1480001d08da9d31c9343"
+}
