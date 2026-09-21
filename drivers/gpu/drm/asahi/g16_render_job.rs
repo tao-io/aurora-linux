@@ -111,7 +111,21 @@ impl Render {
         // Only an owner displaced by a completely retired replacement may
         // be recycled. Never borrow the firmware's most recently used owner,
         // and never reuse private mappings across distinct client GPUVMs.
-        let reusable = reusable.filter(|job| job.binding.matches(vm) && job.pool_slot == pool_slot);
+        let reusable = reusable.filter(|job| job.binding.matches(vm));
+        let (reusable, private_backing) = match reusable {
+            Some(job) if job.pool_slot != pool_slot => {
+                // Only fully retired, displaced owners reach this path.
+                // Keep GPU-only storage and its immutable VA-derived page
+                // lists, not the old slot's firmware descriptors, counters or
+                // allocator cursors. The new owner initializes all of those.
+                // The private payload is already retained by same-slot reuse;
+                // it needs no CPU clear within this same client GPUVM.
+                let Self { private_memory, freelist, page_list_image, .. } = KBox::into_inner(job);
+                (None, Some((private_memory, freelist, page_list_image)))
+            }
+            job => (job, None),
+        };
+        let private_reused = private_backing.is_some();
         let reused = reusable.is_some();
         let mut job = if let Some(mut job) = reusable {
             // A render size change does not invalidate the command/context
@@ -151,9 +165,14 @@ impl Render {
             // the separate UMA descriptor and freelist, never a private-memory
             // alias. Match compute: avoid a second 32 MiB UAT mapping and its
             // teardown on every cache miss. Capacity and lifetime are unchanged.
-            let private_memory = GpuBuffer::new(dev, vm, PRIVATE_BYTES)?;
-            let (freelist, page_list_image) = g16_memory::freelist_images(
-                private_memory.va(), PRIVATE_PAGES)?;
+            let (private_memory, freelist, page_list_image) = match private_backing {
+                Some(backing) => backing,
+                None => {
+                    let memory = GpuBuffer::new(dev, vm, PRIVATE_BYTES)?;
+                    let (freelist, pages) = g16_memory::freelist_images(memory.va(), PRIVATE_PAGES)?;
+                    (memory, freelist, pages)
+                }
+            };
             KBox::new(Self {
                 _command_views:views, commands, sequences:[fw(0x400)?,fw(0x800)?],
                 metadata:fw(0x4000)?,
@@ -281,8 +300,8 @@ impl Render {
         g16_memory::publish();
         crate::cls_dev_dbg!(Render, dev, "G16G: render USC freelist={:#x} capacity={} populated={}\n",
             job.pool_state.gpu_va()?,PRIVATE_QWORDS,PRIVATE_PAGES);
-        crate::cls_dev_dbg!(SubmitTiming, dev,"G16G: owned render {}x{} ASID={} PB={} pages parameter_id={} shared_pool={} init_pool={} tilemap={:#x} TPC={:#x} VDM={:#x} reused={}\n",
-            r.width,r.height,job.binding.slot(),parameter_pages,parameter_id,shared_pool,init_parameters,job.tilemap.gpu_va()?,job.tpc.gpu_va()?,r.vdm_base,reused);
+        crate::cls_dev_dbg!(SubmitTiming, dev,"G16G: owned render {}x{} ASID={} PB={} pages parameter_id={} shared_pool={} init_pool={} tilemap={:#x} TPC={:#x} VDM={:#x} reused={} private_reused={}\n",
+            r.width,r.height,job.binding.slot(),parameter_pages,parameter_id,shared_pool,init_parameters,job.tilemap.gpu_va()?,job.tpc.gpu_va()?,r.vdm_base,reused,private_reused);
         Ok(job)
     }
     pub(crate) fn set_attachments(&mut self, attachments: &[crate::g16_attachments::Attachments; 2]) -> Result {
