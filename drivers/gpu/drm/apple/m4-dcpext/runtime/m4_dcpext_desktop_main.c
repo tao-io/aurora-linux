@@ -3,6 +3,7 @@
  * mapping, native display and DRM implementation with bounded qualification.
  * TODO: normal platform/PHY ownership, hotplug/retraining and power saving.
  */
+#define pr_fmt(fmt) "dcpext0: " fmt
 #define DCPEXT_WITH_SESSION
 #define DCPEXT_DESKTOP
 #include "m4_dcpext_dma_probe.c"

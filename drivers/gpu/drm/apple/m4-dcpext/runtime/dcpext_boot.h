@@ -35,6 +35,8 @@ static void dcpext_boot_work_fn(struct work_struct *work)
 		return;
 	}
 	WRITE_ONCE(boot_waiting, false);
+	/* Preserve the arbiter's reserved port through the setup admission. */
+	session_atc_port = ret;
 	pr_info("m4_dcpext: automatic startup on USB-C%u\n", ret);
 	ret = probe_init();
 	if (ret)

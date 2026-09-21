@@ -3,6 +3,7 @@
  * The builtin parameter prefix keeps both instances independently observable.
  * Shared helpers carry explicit state; only physical port arbitration is global.
  */
+#define pr_fmt(fmt) "dcpext1: " fmt
 #include <linux/module.h>
 #undef MODULE_PARAM_PREFIX
 #define MODULE_PARAM_PREFIX "m4_dcpext_secondary."

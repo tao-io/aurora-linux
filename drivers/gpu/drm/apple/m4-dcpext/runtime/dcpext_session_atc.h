@@ -266,7 +266,9 @@ static int dptx_link_validate_config(struct dptx_link_state *s)
 	return s->rate && !session_dpxbar_selected ? dpxbar_up() : 0;
 }
 
-static void session_atc_cleanup(void)
+/* Release mappings separately from the route reservation: reconfiguring the
+ * same PHY for a reversed plug must keep its controller as exclusive owner. */
+static void session_atc_unmap(void)
 {
 	if (session_dpxbar)
 		iounmap(session_dpxbar);
@@ -280,6 +282,11 @@ static void session_atc_cleanup(void)
 	if (session_atc_owned)
 		release_mem_region(session_atc_base(), 0x24000);
 	session_atc_owned = false;
+}
+
+static void session_atc_cleanup(void)
+{
+	session_atc_unmap();
 #ifdef DCPEXT_DESKTOP
 	m4_dcpext_route_release(port, session_atc_port);
 #endif
@@ -295,6 +302,10 @@ static int session_atc_prepare(bool route_dpxbar)
 		ret = session_atc_find_partner();
 		if (ret < 0)
 			return ret;
+		/* The boot admission may have reserved another PHY before its
+		 * cable disappeared. No MMIO is owned yet; retire that reservation. */
+		if (ret != session_atc_port)
+			m4_dcpext_route_release(port, session_atc_port);
 		session_atc_port = ret;
 	}
 #endif
@@ -474,7 +485,14 @@ static int session_atc_switch_port(unsigned int phy)
 	ret = session_atc_stop_selected();
 	if (ret)
 		return ret;
-	session_atc_cleanup();
+	session_atc_unmap();
+#ifdef DCPEXT_DESKTOP
+	/* find_partner already claimed the destination. On orientation-only
+	 * changes it is also the old PHY: never drop that claim between unmap
+	 * and prepare, or the peer controller can steal the live route. */
+	if (phy != session_atc_port)
+		m4_dcpext_route_release(port, session_atc_port);
+#endif
 	session_atc_port = phy;
 	session_atc_active = false;
 	memset(&session_link, 0, sizeof(session_link));
