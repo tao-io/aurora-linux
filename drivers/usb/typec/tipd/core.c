@@ -543,22 +543,24 @@ static void tps6598x_handle_plug_event(struct tps6598x *tps, u32 status)
 	}
 }
 
-static void cd321x_typec_update_mode(struct tps6598x *tps, struct cd321x_status *st)
+static int cd321x_typec_update_mode(struct tps6598x *tps, struct cd321x_status *st)
 {
 	struct cd321x *cd321x = container_of(tps, struct cd321x, tps);
+	struct typec_mux_state state = {};
+	int ret;
 
 	if (!(st->data_status & TPS_DATA_STATUS_DATA_CONNECTION)) {
 		if (cd321x->state.mode == TYPEC_STATE_SAFE)
-			return;
-		cd321x->state.alt = NULL;
-		cd321x->state.mode = TYPEC_STATE_SAFE;
-		cd321x->state.data = NULL;
-		typec_mux_set(cd321x->mux, &cd321x->state);
+			return 0;
+		state.alt = NULL;
+		state.mode = TYPEC_STATE_SAFE;
+		state.data = NULL;
+		ret = typec_mux_set(cd321x->mux, &state);
+		if (ret)
+			return ret;
 	} else if (st->data_status & TPS_DATA_STATUS_DP_CONNECTION) {
 		struct typec_displayport_data dp_data;
-		struct typec_mux_state state;
 		unsigned long mode;
-		int ret;
 
 		switch (TPS_DATA_STATUS_DP_SPEC_PIN_ASSIGNMENT(st->data_status)) {
 		case TPS_DATA_STATUS_DP_SPEC_PIN_ASSIGNMENT_A:
@@ -581,7 +583,7 @@ static void cd321x_typec_update_mode(struct tps6598x *tps, struct cd321x_status 
 			break;
 		default:
 			dev_err(tps->dev, "Invalid DP pin assignment\n");
-			return;
+			return -EINVAL;
 		}
 
 		dp_data.status = le32_to_cpu(st->dp_sid_status.status_rx);
@@ -595,7 +597,7 @@ static void cd321x_typec_update_mode(struct tps6598x *tps, struct cd321x_status 
 		    cd321x->mux_dp_status == dp_data.status &&
 		    cd321x->mux_dp_conf == dp_data.conf &&
 		    !(dp_data.status & DP_STATUS_IRQ_HPD)) {
-			return;
+			return 0;
 		}
 
 		state.alt = cd321x->port_altmode_dp;
@@ -603,53 +605,60 @@ static void cd321x_typec_update_mode(struct tps6598x *tps, struct cd321x_status 
 		state.mode = mode;
 		ret = typec_mux_set(cd321x->mux, &state);
 		if (ret) {
-			dev_err(tps->dev, "Failed to update DP mux: %d\n", ret);
-			return;
+			if (ret != -EBUSY && ret != -EAGAIN)
+				dev_err(tps->dev, "Failed to update DP mux: %d\n", ret);
+			return ret;
 		}
 		/* Failed deliveries must not suppress the next status update. */
 		cd321x->mux_dp_status = dp_data.status;
 		cd321x->mux_dp_conf = dp_data.conf;
-		state.data = NULL;
-		cd321x->state = state;
 	} else if (st->data_status & TPS_DATA_STATUS_TBT_CONNECTION) {
 		struct typec_thunderbolt_data tbt_data;
 
 		if (cd321x->state.alt == cd321x->port_altmode_tbt &&
 		   cd321x->state.mode == TYPEC_TBT_MODE)
-			return;
+			return 0;
 
 		tbt_data.cable_mode = le16_to_cpu(st->intel_vid_status.cable_mode);
 		tbt_data.device_mode = le16_to_cpu(st->intel_vid_status.device_mode);
 		tbt_data.enter_vdo = le16_to_cpu(st->intel_vid_status.enter_vdo);
-		cd321x->state.alt = cd321x->port_altmode_tbt;
-		cd321x->state.mode = TYPEC_TBT_MODE;
-		cd321x->state.data = &tbt_data;
-		typec_mux_set(cd321x->mux, &cd321x->state);
+		state.alt = cd321x->port_altmode_tbt;
+		state.mode = TYPEC_TBT_MODE;
+		state.data = &tbt_data;
+		ret = typec_mux_set(cd321x->mux, &state);
+		if (ret)
+			return ret;
 	} else if (st->data_status & CD321X_DATA_STATUS_USB4_CONNECTION) {
 		struct enter_usb_data eusb_data;
 
 		if (cd321x->state.alt == NULL && cd321x->state.mode == TYPEC_MODE_USB4)
-			return;
+			return 0;
 
 		eusb_data.eudo = le32_to_cpu(st->usb4_status.eudo);
 		eusb_data.active_link_training =
 			!!(st->data_status & TPS_DATA_STATUS_ACTIVE_LINK_TRAIN);
 
-		cd321x->state.alt = NULL;
-		cd321x->state.data = &eusb_data;
-		cd321x->state.mode = TYPEC_MODE_USB4;
-		typec_mux_set(cd321x->mux, &cd321x->state);
+		state.alt = NULL;
+		state.data = &eusb_data;
+		state.mode = TYPEC_MODE_USB4;
+		ret = typec_mux_set(cd321x->mux, &state);
+		if (ret)
+			return ret;
 	} else {
 		if (cd321x->state.alt == NULL && cd321x->state.mode == TYPEC_STATE_USB)
-			return;
-		cd321x->state.alt = NULL;
-		cd321x->state.mode = TYPEC_STATE_USB;
-		cd321x->state.data = NULL;
-		typec_mux_set(cd321x->mux, &cd321x->state);
+			return 0;
+		state.alt = NULL;
+		state.mode = TYPEC_STATE_USB;
+		state.data = NULL;
+		ret = typec_mux_set(cd321x->mux, &state);
+		if (ret)
+			return ret;
 	}
 
 	/* Clear data since it's no longer used after typec_mux_set and points to the stack */
-	cd321x->state.data = NULL;
+	state.data = NULL;
+	cd321x->state = state;
+	return 0;
 }
 
 static void cd321x_update_work(struct work_struct *work)
@@ -658,6 +667,7 @@ static void cd321x_update_work(struct work_struct *work)
 					    struct cd321x, update_work);
 	struct tps6598x *tps = &cd321x->tps;
 	struct cd321x_status st;
+	int ret;
 
 	guard(mutex)(&tps->lock);
 
@@ -708,10 +718,16 @@ static void cd321x_update_work(struct work_struct *work)
 
 	/* If there was a disconnection, set PHY to off */
 	if (!new_connected || was_disconnected) {
+		ret = typec_set_mode(tps->port, TYPEC_STATE_SAFE);
+		if (ret == -EBUSY || ret == -EAGAIN)
+			goto retry_route;
+		if (ret) {
+			dev_err(tps->dev, "Failed to retire Type-C route: %d\n", ret);
+			return;
+		}
 		cd321x->state.alt = NULL;
 		cd321x->state.mode = TYPEC_STATE_SAFE;
 		cd321x->state.data = NULL;
-		typec_set_mode(tps->port, TYPEC_STATE_SAFE);
 	}
 
 	/* Update Type-C properties */
@@ -750,16 +766,31 @@ static void cd321x_update_work(struct work_struct *work)
 	}
 
 	/* Update the TypeC MUX/PHY state */
-	cd321x_typec_update_mode(tps, &st);
+	ret = cd321x_typec_update_mode(tps, &st);
+	if (ret == -EBUSY || ret == -EAGAIN)
+		goto retry_route;
 
-	/* Launch the USB role switch */
-	usb_role_switch_set_role(tps->role_sw, new_role);
-
+	/* Preserve legacy USB2 fallback for an unsupported alternate mode,
+	 * but never start USB against a route that is still being retired. */
+	ret = usb_role_switch_set_role(tps->role_sw, new_role);
+	if (ret == -EBUSY || ret == -EAGAIN)
+		goto retry_route;
+	cd321x->route_retries = 0;
 	power_supply_changed(tps->psy);
+	return;
+
+retry_route:
+	/* DP release runs independently of the Type-C debounce worker. Retry
+	 * the latest snapshot after releasing tps.lock, with a finite budget. */
+	if (cd321x->route_retries++ < 50)
+		mod_delayed_work(system_wq, &cd321x->update_work, msecs_to_jiffies(100));
+	else
+		dev_err(tps->dev, "Type-C route remained busy after consumer release\n");
 }
 
 static void cd321x_queue_status(struct cd321x *cd321x)
 {
+	cd321x->route_retries = 0;
 	cd321x->update_status.status_changed |= cd321x->update_status.status ^ cd321x->tps.status;
 
 	cd321x->update_status.status = cd321x->tps.status;

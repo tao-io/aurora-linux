@@ -379,6 +379,7 @@ struct cd321x {
 
 	struct cd321x_status update_status;
 	struct delayed_work update_work;
+	unsigned int route_retries;
 	struct usb_pd_identity cur_partner_identity;
 	/* Protected by tps.lock; updated only by the hardware IRQ handler. */
 	u64 hpd_irqs;

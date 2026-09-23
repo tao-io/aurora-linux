@@ -118,6 +118,27 @@ static int session_atc_read_partner(bool report)
 	return ret;
 }
 
+/* Admission must wait for Type-C mux completion before any firmware setup.
+ * This is a software-state check; taking a PHY reference does not power it. */
+static int session_atc_provider_ready(unsigned int port, bool flipped)
+{
+	struct device_node *node = of_find_node_by_path("/soc/dcp@286e00000");
+	struct phy *phy;
+	int ret;
+
+	if (!node || of_property_match_string(node, "phy-names", "dp-phy0") < 0) {
+		of_node_put(node);
+		return 0;
+	}
+	phy = of_phy_get(node, port ? "dp-phy1" : "dp-phy0");
+	of_node_put(node);
+	if (IS_ERR(phy))
+		return PTR_ERR(phy);
+	ret = apple_t8132_dp_check_route(phy, flipped);
+	of_phy_put(phy);
+	return ret;
+}
+
 static int session_atc_find_partner(void)
 {
 	bool hpd, flipped;
@@ -134,6 +155,11 @@ static int session_atc_find_partner(void)
 		}
 		if (!hpd)
 			continue;
+		ret = session_atc_provider_ready(phy, flipped);
+		if (ret) {
+			deferred = ret;
+			continue;
+		}
 #ifdef DCPEXT_DESKTOP
 		if (!m4_dcpext_route_claim(port, phy))
 			continue;
@@ -368,6 +394,12 @@ static int session_atc_prepare(bool route_dpxbar)
 			session_shared_phy = NULL;
 			return ret;
 		}
+		ret = apple_t8132_dp_check_route(session_shared_phy, session_atc_flipped);
+		if (ret) {
+			of_phy_put(session_shared_phy);
+			session_shared_phy = NULL;
+			return ret;
+		}
 		ret = phy_init(session_shared_phy);
 		if (ret)
 			return ret;
@@ -376,6 +408,21 @@ static int session_atc_prepare(bool route_dpxbar)
 		if (ret)
 			return ret;
 		session_shared_power = true;
+		/* Recheck after acquiring power: the reference now prevents a
+		 * mux change between orientation validation and DP lane access. */
+		ret = apple_t8132_dp_check_route(session_shared_phy, session_atc_flipped);
+		if (ret) {
+			int off = phy_power_off(session_shared_phy);
+
+			if (off)
+				return off;
+			session_shared_power = false;
+			phy_exit(session_shared_phy);
+			session_shared_initialized = false;
+			of_phy_put(session_shared_phy);
+			session_shared_phy = NULL;
+			return ret;
+		}
 		atc_core = apple_t8132_dp_get_regs(session_shared_phy);
 		if (IS_ERR(atc_core)) {
 			ret = PTR_ERR(atc_core);
@@ -548,8 +595,9 @@ static int session_atc_switch_port(unsigned int phy)
 
 	if (phy > 1)
 		return -EINVAL;
-	if (phy == session_atc_port && session_atc_partner_flipped == session_atc_flipped)
-		return 0;
+	if (session_atc_owned && phy == session_atc_port &&
+	    session_atc_partner_flipped == session_atc_flipped)
+		return session_shared_phy ? session_atc_start_selected(true) : 0;
 	ret = session_atc_stop_selected();
 	if (ret)
 		return ret;

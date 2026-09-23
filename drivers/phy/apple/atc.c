@@ -975,7 +975,7 @@ static void atcphy_apply_tunables(struct apple_atcphy *atcphy, enum atcphy_mode 
 	}
 }
 
-static int atcphy_pipehandler_lock(struct apple_atcphy *atcphy)
+static int atcphy_pipehandler_lock(struct apple_atcphy *atcphy, unsigned int timeout_us)
 {
 	int ret;
 	u32 reg;
@@ -988,7 +988,7 @@ static int atcphy_pipehandler_lock(struct apple_atcphy *atcphy)
 	set32(atcphy->regs.pipehandler + PIPEHANDLER_LOCK_REQ, PIPEHANDLER_LOCK_EN);
 
 	ret = readl_poll_timeout(atcphy->regs.pipehandler + PIPEHANDLER_LOCK_ACK, reg,
-				 reg & PIPEHANDLER_LOCK_EN, 10, PIPEHANDLER_LOCK_ACK_TIMEOUT_US);
+				 reg & PIPEHANDLER_LOCK_EN, 10, timeout_us);
 	if (ret) {
 		clear32(atcphy->regs.pipehandler + PIPEHANDLER_LOCK_REQ, 1);
 		dev_warn(atcphy->dev, "Pipehandler lock not acked.\n");
@@ -1235,7 +1235,8 @@ static int atcphy_configure_pipehandler_usb3(struct apple_atcphy *atcphy, bool h
 		set32(atcphy->regs.pipehandler + PIPEHANDLER_OVERRIDE,
 		      PIPEHANDLER_OVERRIDE_RXDETECT);
 
-		ret = atcphy_pipehandler_lock(atcphy);
+		ret = atcphy_pipehandler_lock(atcphy, atcphy->t8132_atc ?
+					  6000 : PIPEHANDLER_LOCK_ACK_TIMEOUT_US);
 		if (ret) {
 			dev_err(atcphy->dev, "Failed to lock pipehandler");
 			return ret;
@@ -1272,8 +1273,11 @@ static int atcphy_configure_pipehandler_usb3(struct apple_atcphy *atcphy, bool h
 	/* Pipehandler was only locked when the BIST sequence was applied for host mode */
 	if (host) {
 		ret = atcphy_pipehandler_unlock(atcphy);
-		if (ret)
+		if (ret) {
 			dev_warn(atcphy->dev, "Failed to unlock pipehandler");
+			if (atcphy->t8132_atc)
+				return ret;
+		}
 	}
 
 	return 0;
@@ -1293,9 +1297,16 @@ static int atcphy_configure_pipehandler_dummy(struct apple_atcphy *atcphy)
 	set32(atcphy->regs.pipehandler + PIPEHANDLER_OVERRIDE, PIPEHANDLER_OVERRIDE_RXVALID);
 	set32(atcphy->regs.pipehandler + PIPEHANDLER_OVERRIDE, PIPEHANDLER_OVERRIDE_RXDETECT);
 
-	ret = atcphy_pipehandler_lock(atcphy);
-	if (ret)
+	/* Native T8132 setUSB3Mode(0) allows 150 ms to drain the PIPE
+	 * interface; its USB3-entry handshake uses a separate 6 ms bound.
+	 * The old 1 ms bound can expire on a physical cable disconnect. */
+	ret = atcphy_pipehandler_lock(atcphy, atcphy->t8132_atc ?
+					  150000 : PIPEHANDLER_LOCK_ACK_TIMEOUT_US);
+	if (ret) {
 		dev_warn(atcphy->dev, "Failed to lock pipehandler");
+		if (atcphy->t8132_atc)
+			return ret;
+	}
 
 	/* Switch to dummy PHY */
 	mask32(atcphy->regs.pipehandler + PIPEHANDLER_MUX_CTRL, PIPEHANDLER_MUX_CTRL_CLK,
@@ -1309,8 +1320,11 @@ static int atcphy_configure_pipehandler_dummy(struct apple_atcphy *atcphy)
 	udelay(10);
 
 	ret = atcphy_pipehandler_unlock(atcphy);
-	if (ret)
+	if (ret) {
 		dev_warn(atcphy->dev, "Failed to unlock pipehandler");
+		if (atcphy->t8132_atc)
+			return ret;
+	}
 
 	mask32(atcphy->regs.pipehandler + PIPEHANDLER_NONSELECTED_OVERRIDE,
 	       PIPEHANDLER_NATIVE_POWER_DOWN, FIELD_PREP(PIPEHANDLER_NATIVE_POWER_DOWN, 2));
@@ -2120,8 +2134,11 @@ static int atcphy_usb3_power_off(struct phy *phy)
 	guard(mutex)(&atcphy->lock);
 
 	ret = atcphy_configure_pipehandler_dummy(atcphy);
-	if (ret)
+	if (ret) {
 		dev_warn(atcphy->dev, "Failed to switch pipe to dummy: %d", ret);
+		if (atcphy->t8132_atc)
+			return ret;
+	}
 
 	atcphy->pipehandler_up = false;
 
@@ -2710,6 +2727,8 @@ static int atcphy_suspend(struct device *dev)
 {
 	struct apple_atcphy *atcphy = dev_get_drvdata(dev);
 
+	if (atcphy->t8132_atc)
+		return apple_t8132_atc_suspend(atcphy->t8132_atc);
 	return atcphy->t8132_dp ? apple_t8132_dp_suspend(atcphy->t8132_dp) : 0;
 }
 

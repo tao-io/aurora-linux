@@ -138,9 +138,17 @@ static int native_kms_hotplug_tick(void)
 			goto unlock;
 		}
 		desktop_hpd_deadline = 0;
+		/* Retire the shared PHY reference on release, before a new cable
+		 * appears. Otherwise mux work cannot change its orientation. */
+		if (session_shared_phy && session_shared_power) {
+			ret = session_atc_stop_selected();
+			if (ret)
+				goto unlock;
+		}
 		partner = session_atc_find_partner();
 		if (partner < 0) {
-			ret = partner == -ENOLINK ? 0 : partner;
+			ret = partner == -ENOLINK || partner == -EAGAIN ||
+			      partner == -EPROBE_DEFER ? 0 : partner;
 			goto unlock;
 		}
 		if (desktop_hpd_failed_port == partner) {
@@ -152,6 +160,12 @@ static int native_kms_hotplug_tick(void)
 		}
 		desktop_irq_initialized = false;
 		ret = session_atc_switch_port(partner);
+		if (ret == -EAGAIN || ret == -EBUSY) {
+			/* The PD debounce worker owns route selection; retry on the
+			 * next tick without issuing any firmware/link commands. */
+			ret = 0;
+			goto unlock;
+		}
 		if (!ret)
 			ret = dpxbar_up();
 		if (!ret)
@@ -199,7 +213,8 @@ static int native_kms_hotplug_tick(void)
 	if (desktop_hpd_phase == DESKTOP_HPD_OFFLINE && !hpd) {
 		partner = session_atc_find_partner();
 		if (partner < 0) {
-			ret = partner == -ENOLINK ? 0 : partner;
+			ret = partner == -ENOLINK || partner == -EAGAIN ||
+			      partner == -EPROBE_DEFER ? 0 : partner;
 			goto unlock;
 		}
 		if ((unsigned int)partner != session_atc_port ||
