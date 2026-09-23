@@ -20,7 +20,7 @@ struct apple_t8132_tuning { u32 offset, mask, value; };
 static const struct apple_t8132_tuning apple_t8132_tuning_specs[] = { APPLE_T8132_COMMON_TUNINGS };
 
 
-static int apple_t8132_atc_component_select(struct apple_t8132_tuning *selected, const u32 *cells, unsigned int count)
+static int __maybe_unused apple_t8132_atc_component_select(struct apple_t8132_tuning *selected, const u32 *cells, unsigned int count)
 {
 	bool found[ARRAY_SIZE(apple_t8132_tuning_specs)] = { false };
 	u32 values[ARRAY_SIZE(apple_t8132_tuning_specs)];

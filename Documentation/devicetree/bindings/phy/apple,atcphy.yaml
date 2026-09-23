@@ -36,9 +36,9 @@ allOf:
     then:
       properties:
         reg:
-          maxItems: 3
+          maxItems: 7
         reg-names:
-          maxItems: 3
+          maxItems: 7
       allOf:
         - if:
             properties:
@@ -98,6 +98,10 @@ properties:
           - description: USB2 PHY specific controls
           - description: USB3 PIPE interface controls
           - description: T8132 high-speed PHY core, excluding the display crossbar
+          - description: T8132 AXI to Apple Fabric controls
+          - description: T8132 local IO aperture controls
+          - description: T8132 PHY fabric calibration registers
+          - description: T8132 PHY common configuration registers
 
   reg-names:
     oneOf:
@@ -112,6 +116,10 @@ properties:
           - const: usb2phy
           - const: pipehandler
           - const: core
+          - const: axi2af
+          - const: lioa
+          - const: fabric
+          - const: common-config
 
   "#phy-cells":
     const: 1
@@ -159,6 +167,34 @@ properties:
     $ref: "#/$defs/apple,tunable"
     description: >
       Common tunables required for all modes, applied after tunable-axi2af.
+
+  apple,tunable-usb3-axi2af:
+    $ref: "#/$defs/apple,tunable"
+    description: T8132 AXI bridge calibration, applied to axi2af.
+
+  apple,tunable-usb3-lioa:
+    $ref: "#/$defs/apple,tunable"
+    description: T8132 local IO calibration, applied to lioa.
+
+  apple,tunable-usb3-fabric:
+    $ref: "#/$defs/apple,tunable"
+    description: T8132 PHY fabric calibration, applied to fabric.
+
+  apple,tunable-usb3-config:
+    $ref: "#/$defs/apple,tunable"
+    description: T8132 common configuration calibration, applied to common-config.
+
+  apple,tunable-usb3-common:
+    $ref: "#/$defs/apple,tunable"
+    description: T8132 high-speed common calibration, applied to core before lane routing.
+
+  apple,tunable-usb3-dp:
+    $ref: "#/$defs/apple,tunable"
+    description: T8132 AUX calibration for modes carrying DisplayPort, applied to core.
+
+  apple,tunable-usb3-efuse:
+    $ref: "#/$defs/apple,tunable"
+    description: T8132 per-device calibration, applied to core after lane routing.
 
   apple,tunable-lane0-usb:
     $ref: "#/$defs/apple,tunable"

@@ -185,7 +185,7 @@
 		power-domains = <&ps_pmp>, <&ps_pms_sram>;
 	};
 
-	/* USB2-only path for the port away from MagSafe. */
+	/* USB-C port away from MagSafe. */
 	atcphy0: phy@402a90000 {
 		compatible = "apple,t8132-atcphy";
 		reg = <0x4 0x02a90000 0x0 0x4000>,
@@ -235,14 +235,14 @@
 		interrupts = <AIC_IRQ 1279 IRQ_TYPE_LEVEL_HIGH>;
 
 		dr_mode = "otg";
-		maximum-speed = "high-speed";
+		maximum-speed = "super-speed-plus";
 		usb-role-switch;
 		role-switch-default-mode = "host";
 
 		iommus = <&dwc3_0_dart_0 0>, <&dwc3_0_dart_1 1>;
 		resets = <&atcphy0>;
-		phys = <&atcphy0 PHY_TYPE_USB2>;
-		phy-names = "usb2-phy";
+		phys = <&atcphy0 PHY_TYPE_USB2>, <&atcphy0 PHY_TYPE_USB3>;
+		phy-names = "usb2-phy", "usb3-phy";
 
 		ports {
 			#address-cells = <1>;
@@ -306,14 +306,14 @@
 		interrupts = <AIC_IRQ 1341 IRQ_TYPE_LEVEL_HIGH>;
 
 		dr_mode = "otg";
-		maximum-speed = "high-speed";
+		maximum-speed = "super-speed-plus";
 		usb-role-switch;
 		role-switch-default-mode = "host";
 
 		iommus = <&dwc3_1_dart_0 0>, <&dwc3_1_dart_1 1>;
 		resets = <&atcphy1>;
-		phys = <&atcphy1 PHY_TYPE_USB2>;
-		phy-names = "usb2-phy";
+		phys = <&atcphy1 PHY_TYPE_USB2>, <&atcphy1 PHY_TYPE_USB3>;
+		phy-names = "usb2-phy", "usb3-phy";
 
 		ports {
 			#address-cells = <1>;
@@ -539,3 +539,33 @@
 
 /* External DisplayPort resources; needs atcphy1 and PHY_TYPE_DP above. */
 #include "t8132-j713-dcpext.dtsi"
+
+/* Split the shared PHY from its independently owned display crossbar. */
+&atcphy0 {
+	reg = <0x4 0x02a90000 0 0x4000>,
+	      <0x4 0x02a84000 0 0x4000>,
+	      <0x4 0x03000000 0 0x24000>,
+	      <0x4 0x00000000 0 0x8000>,
+	      <0x4 0x00020000 0 0x4000>,
+	      <0x4 0x03044000 0 0x4000>,
+	      <0x4 0x03050000 0 0x4000>;
+	reg-names = "usb2phy", "pipehandler", "core", "axi2af",
+		    "lioa", "fabric", "common-config";
+};
+
+&atcphy1 {
+	reg = <0x4 0x0aa90000 0 0x4000>,
+	      <0x4 0x0aa84000 0 0x4000>,
+	      <0x4 0x0b000000 0 0x24000>,
+	      <0x4 0x08000000 0 0x8000>,
+	      <0x4 0x08020000 0 0x4000>,
+	      <0x4 0x0b044000 0 0x4000>,
+	      <0x4 0x0b050000 0 0x4000>;
+	reg-names = "usb2phy", "pipehandler", "core", "axi2af",
+		    "lioa", "fabric", "common-config";
+};
+
+&dcpext0 {
+	phys = <&atcphy0 PHY_TYPE_DP>, <&atcphy1 PHY_TYPE_DP>;
+	phy-names = "dp-phy0", "dp-phy1";
+};

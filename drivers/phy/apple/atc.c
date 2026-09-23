@@ -44,6 +44,7 @@
 #include <linux/usb/typec_mux.h>
 #include <linux/usb/typec_tbt.h>
 #include "atc-t8132-dp.h"
+#include "atc-t8132.h"
 
 #define AUSPLL_FSM_CTRL 0x1014
 
@@ -644,6 +645,7 @@ struct atcphy_hw {
  * @lock: Mutex for synchronizing register access across PHY, Type-C switch/mux and reset controller
  */
 struct apple_atcphy {
+	struct apple_t8132_atc *t8132_atc;
 	struct apple_t8132_dp *t8132_dp;
 	struct device_node *np;
 	struct device *dev;
@@ -1037,6 +1039,65 @@ static void atcphy_clear_nonselected_phy_reset(struct apple_atcphy *atcphy)
 		PIPEHANDLER_NATIVE_RESET);
 }
 
+/* T8132 requires the second BIST transition to acknowledge status bit 6.
+ * Failure is fatal to this host start; do not switch the PIPE clock to a PHY
+ * whose power-state handshake did not finish. */
+static int atcphy_t8132_bist_pulse(struct apple_atcphy *atcphy)
+{
+	u32 value;
+	int ret;
+
+	core_set32(atcphy, ACIOPHY_BIST_CFG1, ACIOPHY_BIST_CFG1_USB_EN);
+	ret = readl_poll_timeout(atcphy->regs.core + ACIOPHY_BIST_CFG1, value,
+				value & ACIOPHY_BIST_CFG1_USB_EN, 1, 10000);
+	core_clear32(atcphy, ACIOPHY_BIST_CFG1, ACIOPHY_BIST_CFG1_USB_EN);
+	return ret;
+}
+
+static int atcphy_configure_pipehandler_usb3_host_t8132(struct apple_atcphy *atcphy)
+{
+	u32 value;
+	int ret;
+
+	core_set32(atcphy, ACIOPHY_BIST_CFG1, ACIOPHY_BIST_CFG1_CLOCK_EN);
+	writel(0x04100000, atcphy->regs.core + ACIOPHY_BIST_MAC_USBPHY_CFG_OV1);
+	writel(0x220, atcphy->regs.core + ACIOPHY_BIST_MAC_USBPHY_CFG_OV2);
+	ret = atcphy_t8132_bist_pulse(atcphy);
+	if (ret)
+		return ret;
+	ret = readl_poll_timeout(atcphy->regs.core + ACIOPHY_BIST_MAC_USBPHY_STATUS2,
+				value, !(value & BIT(7)), 10, 130000);
+	if (ret)
+		return ret;
+	core_set32(atcphy, ACIOPHY_BIST_CFG2, ACIOPHY_BIST_CFG2_LN0_PHY_STATUS_RE);
+	udelay(10);
+	core_clear32(atcphy, ACIOPHY_BIST_CFG2, ACIOPHY_BIST_CFG2_LN0_PHY_STATUS_RE);
+	core_mask32(atcphy, ACIOPHY_BIST_MAC_USBPHY_CFG_OV1,
+		    ACIOPHY_BIST_MAC_USBPHY_CFG_OV1_LN0_PWR_DOWN_OV,
+		    FIELD_PREP(ACIOPHY_BIST_MAC_USBPHY_CFG_OV1_LN0_PWR_DOWN_OV, 3));
+	writel(0x220, atcphy->regs.core + ACIOPHY_BIST_MAC_USBPHY_CFG_OV2);
+	udelay(10);
+	ret = atcphy_t8132_bist_pulse(atcphy);
+	if (ret)
+		return ret;
+	ret = readl_poll_timeout(atcphy->regs.core + ACIOPHY_BIST_MAC_USBPHY_STATUS2,
+				value, value & BIT(6), 10, 130000);
+	if (ret) {
+		dev_err(atcphy->dev, "USB3 BIST power transition timed out: %#x\n", value);
+		return ret;
+	}
+	core_set32(atcphy, ACIOPHY_BIST_CFG2, ACIOPHY_BIST_CFG2_LN0_PHY_STATUS_RE);
+	udelay(10);
+	core_clear32(atcphy, ACIOPHY_BIST_CFG2, ACIOPHY_BIST_CFG2_LN0_PHY_STATUS_RE);
+	atcphy_clear_nonselected_phy_reset(atcphy);
+	core_clear32(atcphy, ACIOPHY_BIST_MAC_USBPHY_CFG_OV2, 0x220);
+	ret = atcphy_t8132_bist_pulse(atcphy);
+	if (ret)
+		return ret;
+	core_clear32(atcphy, ACIOPHY_BIST_CFG1, ACIOPHY_BIST_CFG1_CLOCK_EN);
+	return 0;
+}
+
 static void atcphy_configure_pipehandler_usb3_host_t8122(struct apple_atcphy *atcphy)
 {
 	int ret;
@@ -1183,7 +1244,13 @@ static int atcphy_configure_pipehandler_usb3(struct apple_atcphy *atcphy, bool h
 		/* BIST dance */
 		if (atcphy->hw->gen == ATCPHY_GENERATION_T8103)
 			atcphy_configure_pipehandler_usb3_host_t8103(atcphy);
-		else
+		else if (atcphy->t8132_atc) {
+			ret = atcphy_configure_pipehandler_usb3_host_t8132(atcphy);
+			if (ret) {
+				atcphy_pipehandler_unlock(atcphy);
+				return ret;
+			}
+		} else
 			atcphy_configure_pipehandler_usb3_host_t8122(atcphy);
 	}
 
@@ -1262,7 +1329,7 @@ static int atcphy_configure_pipehandler(struct apple_atcphy *atcphy, bool host)
 	switch (atcphy_modes[atcphy->mode].pipehandler_state) {
 	case ATCPHY_PIPEHANDLER_STATE_USB3:
 		ret = atcphy_configure_pipehandler_usb3(atcphy, host);
-		atcphy->pipehandler_up = true;
+		atcphy->pipehandler_up = !ret;
 		break;
 	case ATCPHY_PIPEHANDLER_STATE_USB4:
 		dev_warn(atcphy->dev,
@@ -1884,6 +1951,21 @@ static int atcphy_configure(struct apple_atcphy *atcphy, enum atcphy_mode mode)
 
 	lockdep_assert_held(&atcphy->lock);
 
+	if (atcphy->t8132_atc) {
+		unsigned int native_mode;
+
+		switch (mode) {
+		case APPLE_ATCPHY_MODE_OFF: native_mode = 0; break;
+		case APPLE_ATCPHY_MODE_USB3: native_mode = 1; break;
+		case APPLE_ATCPHY_MODE_USB3_DP: native_mode = 4; break;
+		default: return -EOPNOTSUPP;
+		}
+		ret = apple_t8132_atc_configure(atcphy->t8132_atc, native_mode, atcphy->swap_lanes);
+		if (!ret)
+			atcphy->mode = mode;
+		return ret;
+	}
+
 	if (!atcphy->hw->has_full_atc) {
 		if (mode == APPLE_ATCPHY_MODE_OFF)
 			atcphy_usb2_power_off(atcphy);
@@ -2043,6 +2125,8 @@ static int atcphy_usb3_power_off(struct phy *phy)
 
 	atcphy->pipehandler_up = false;
 
+	if (atcphy->t8132_atc)
+		return ret ?: apple_t8132_atc_usb_put(atcphy->t8132_atc);
 	if (atcphy->mode != APPLE_ATCPHY_MODE_OFF)
 		atcphy_configure(atcphy, APPLE_ATCPHY_MODE_OFF);
 
@@ -2062,6 +2146,16 @@ static int atcphy_usb3_set_mode(struct phy *phy, enum phy_mode mode, int submode
 	 */
 	if (atcphy->pipehandler_up)
 		return 0;
+
+	if (atcphy->t8132_atc) {
+		int ret;
+
+		if (mode != PHY_MODE_USB_HOST)
+			return -EOPNOTSUPP;
+		ret = apple_t8132_atc_usb_get(atcphy->t8132_atc);
+		if (ret)
+			return ret;
+	}
 
 	switch (mode) {
 	case PHY_MODE_USB_HOST:
@@ -2191,7 +2285,8 @@ static int atcphy_probe_phy(struct apple_atcphy *atcphy)
 	};
 
 	for (int i = 0; i < ARRAY_SIZE(phys); i++) {
-		if (!atcphy->hw->has_full_atc && i != 0)
+		if (!atcphy->hw->has_full_atc && i != 0 &&
+		    !(atcphy->t8132_atc && i == 1))
 			continue;
 
 		*phys[i].phy = devm_phy_create(atcphy->dev, NULL, phys[i].ops);
@@ -2347,7 +2442,7 @@ static int atcphy_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *sta
 	if (state->mode == TYPEC_STATE_SAFE) {
 		target_mode = APPLE_ATCPHY_MODE_OFF;
 	} else if (state->mode == TYPEC_STATE_USB) {
-		target_mode = atcphy->hw->has_full_atc ?
+		target_mode = atcphy->hw->has_full_atc || atcphy->t8132_atc ?
 			APPLE_ATCPHY_MODE_USB3 : APPLE_ATCPHY_MODE_USB2;
 	} else if (!state->alt && state->mode == TYPEC_MODE_USB4) {
 		struct enter_usb_data *data = state->data;
@@ -2395,6 +2490,8 @@ static int atcphy_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *sta
 		target_mode = APPLE_ATCPHY_MODE_OFF;
 	}
 
+	if (atcphy->t8132_atc)
+		return atcphy_configure(atcphy, target_mode);
 	if (atcphy->mode == target_mode)
 		return 0;
 
@@ -2561,9 +2658,16 @@ static int atcphy_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 	if (atcphy->hw->gen == ATCPHY_GENERATION_T8132) {
-		atcphy->t8132_dp = apple_t8132_dp_create(pdev, &atcphy->lock, &atcphy->phys.dp);
-		if (IS_ERR(atcphy->t8132_dp))
-			return dev_err_probe(dev, PTR_ERR(atcphy->t8132_dp), "DP provider setup failed\n");
+		atcphy->t8132_atc = apple_t8132_atc_create(pdev, &atcphy->lock, &atcphy->phys.dp);
+		if (IS_ERR(atcphy->t8132_atc))
+			return dev_err_probe(dev, PTR_ERR(atcphy->t8132_atc), "Shared PHY setup failed\n");
+		if (atcphy->t8132_atc) {
+			atcphy->regs.core = apple_t8132_atc_regs(atcphy->t8132_atc);
+		} else {
+			atcphy->t8132_dp = apple_t8132_dp_create(pdev, &atcphy->lock, &atcphy->phys.dp);
+			if (IS_ERR(atcphy->t8132_dp))
+				return dev_err_probe(dev, PTR_ERR(atcphy->t8132_dp), "DP provider setup failed\n");
+		}
 	}
 
 	atcphy->mode = APPLE_ATCPHY_MODE_OFF;

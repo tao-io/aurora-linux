@@ -39,4 +39,6 @@ int apple_t8132_dp_subscribe(struct phy *phy, apple_t8132_dp_notify_t notify,
 int apple_t8132_dp_unsubscribe(struct phy *phy, apple_t8132_dp_notify_t notify,
 			      void *cookie);
 
+void __iomem *apple_t8132_dp_get_regs(struct phy *phy);
+
 #endif

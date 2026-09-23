@@ -5,6 +5,8 @@
  * No USB2, AXI lock or clock-provider changes are performed.
  */
 #include <linux/iopoll.h>
+#include <linux/phy/phy.h>
+#include <linux/phy/phy-apple-t8132.h>
 #include <linux/mutex.h>
 #include <linux/spmi.h>
 #include <linux/workqueue.h>
@@ -12,6 +14,8 @@
 #include <linux/usb/typec_cd321x.h>
 #include <linux/usb/typec_dp.h>
 static void __iomem *atc_core;
+static struct phy *session_shared_phy;
+static bool session_shared_power, session_shared_initialized;
 static bool atc_pinned, session_atc_owned, session_atc_active, session_atc_fault;
 static bool session_atc_hpd;
 static u64 session_atc_hpd_irqs;
@@ -276,11 +280,23 @@ static void session_atc_unmap(void)
 	if (session_dpxbar_owned)
 		release_mem_region(session_atc_base() + 0x4c000, 0x4000);
 	session_dpxbar_owned = false;
-	if (atc_core)
-		iounmap(atc_core);
+	if (session_shared_phy) {
+		/* A failed consumer cannot drop an active shared PHY reference. */
+		if (WARN_ON(session_shared_power))
+			return;
+		if (session_shared_initialized) {
+			phy_exit(session_shared_phy);
+			session_shared_initialized = false;
+		}
+		of_phy_put(session_shared_phy);
+		session_shared_phy = NULL;
+	} else {
+		if (atc_core)
+			iounmap(atc_core);
+		if (session_atc_owned)
+			release_mem_region(session_atc_base(), 0x24000);
+	}
 	atc_core = NULL;
-	if (session_atc_owned)
-		release_mem_region(session_atc_base(), 0x24000);
 	session_atc_owned = false;
 }
 
@@ -341,12 +357,42 @@ static int session_atc_prepare(bool route_dpxbar)
 	if ((session_atc_power & 0xff) != 0xff ||
 	    session_atc_power & (BIT(31) | BIT(28) | BIT(12) | BIT(11) | BIT(10)))
 		return -EHOSTDOWN;
+	/* New handoffs give both display controllers access to both provider
+	 * PHYs. The provider retains common reset/power while USB is using it. */
+	node = of_find_node_by_path("/soc/dcp@286e00000");
+	if (node && of_property_match_string(node, "phy-names", "dp-phy0") >= 0) {
+		session_shared_phy = of_phy_get(node, session_atc_port ? "dp-phy1" : "dp-phy0");
+		of_node_put(node);
+		if (IS_ERR(session_shared_phy)) {
+			ret = PTR_ERR(session_shared_phy);
+			session_shared_phy = NULL;
+			return ret;
+		}
+		ret = phy_init(session_shared_phy);
+		if (ret)
+			return ret;
+		session_shared_initialized = true;
+		ret = phy_power_on(session_shared_phy);
+		if (ret)
+			return ret;
+		session_shared_power = true;
+		atc_core = apple_t8132_dp_get_regs(session_shared_phy);
+		if (IS_ERR(atc_core)) {
+			ret = PTR_ERR(atc_core);
+			atc_core = NULL;
+			return ret;
+		}
+		session_atc_owned = true;
+		goto map_crossbar;
+	}
+	of_node_put(node);
 	if (!request_mem_region(session_atc_base(), 0x24000, "m4-dcpext-atc"))
 		return -EBUSY;
 	session_atc_owned = true;
 	atc_core = ioremap(session_atc_base(), 0x24000);
 	if (!atc_core)
 		return -ENOMEM;
+map_crossbar:
 	if (route_dpxbar) {
 		/* ADT UFP endpoints 1/2, port 0 -> native selectors 2/4. */
 		session_xbar.selector = 2 * (port + 1);
@@ -428,6 +474,20 @@ static int session_atc_start_selected(bool route_pin_d)
 	ret = regmap_read(session_atc_pmgr, session_atc_power_offset(), &power);
 	if (ret || power != session_atc_power)
 		return ret ? ret : -EAGAIN;
+	if (session_shared_phy) {
+		if (!session_shared_power) {
+			ret = phy_power_on(session_shared_phy);
+			if (ret)
+				return ret;
+			session_shared_power = true;
+		}
+		if (!atc_pinned) {
+			__module_get(THIS_MODULE);
+			atc_pinned = true;
+		}
+		application_result = 0;
+		return 0;
+	}
 	if (session_atc_state.touched)
 		return -EBUSY;
 	memset(&session_atc_state, 0, sizeof(session_atc_state));
@@ -457,6 +517,14 @@ static int session_atc_stop_selected(void)
 
 	if (session_dpxbar_selected || session_link.rate || session_atc_fault)
 		return -EBUSY;
+	if (session_shared_phy) {
+		if (!session_shared_power)
+			return 0;
+		ret = phy_power_off(session_shared_phy);
+		if (!ret)
+			session_shared_power = false;
+		return ret;
+	}
 	ret = apple_t8132_atc_session_stop(&session_atc_state);
 	if (ret)
 		return ret;
