@@ -236,6 +236,12 @@ pub(crate) struct ClientNotifications {
     submitted: [u64; 3],
     render_counter: u64,
 }
+#[derive(Clone, Copy)]
+pub(crate) struct ReservationCheckpoint {
+    reserved: [u64; 3],
+    submitted: [u64; 3],
+    render_counter: u64,
+}
 impl ClientNotifications {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat,
         vm: &mmu::Vm) -> Result<Client> {
@@ -265,14 +271,27 @@ impl ClientNotifications {
             event_seq: self.reserved[engine],
         }
     }
-    /// A fresh one-scene notifier starts immediately before its event, even
-    /// after the global event value crosses the signed half-range or wraps.
-    pub(crate) fn prime_render_stamps(&mut self, previous: u32) -> Result {
-        if self.reserved != [0; 3] || self.submitted != [0; 3] { return Err(EBUSY); }
-        for engine in 0..2 {
+    /// An engine's first global stamp must have a nearby predecessor. Zero
+    /// compares as *after* stamps >= 0x80000000 under signed wrap arithmetic;
+    /// a queue can be created long before its first render or compute.
+    pub(crate) fn prime_unused_stamps(&mut self, render: bool, previous: u32) -> Result {
+        for engine in if render { 0..2 } else { 2..3 } {
+            if self.reserved[engine] != 0 || self.submitted[engine] != 0 { continue; }
             self.data.u32(0x620 + engine * 16, previous)?;
             self.data.u32(0x628 + engine * 16, previous)?;
         }
+        Ok(())
+    }
+    pub(crate) fn checkpoint(&self) -> ReservationCheckpoint {
+        ReservationCheckpoint { reserved: self.reserved, submitted: self.submitted,
+            render_counter: self.render_counter }
+    }
+    /// Preparation has not published a command, so its queue-local sequence
+    /// reservations can be canceled. A submitted command may never roll back.
+    pub(crate) fn restore(&mut self, checkpoint: ReservationCheckpoint) -> Result {
+        if self.submitted != checkpoint.submitted { return Err(EBUSY); }
+        self.reserved = checkpoint.reserved;
+        self.render_counter = checkpoint.render_counter;
         Ok(())
     }
     /// Reserve sequence numbers during preparation, without advancing the
@@ -283,8 +302,10 @@ impl ClientNotifications {
         let counter = self.render_counter;
         if render {
             let next = self.render_counter.checked_add(2).ok_or(EOVERFLOW)?;
-            self.reserved[0] = self.reserved[0].checked_add(1).ok_or(EOVERFLOW)?;
-            self.reserved[1] = self.reserved[1].checked_add(1).ok_or(EOVERFLOW)?;
+            let tiling = self.reserved[0].checked_add(1).ok_or(EOVERFLOW)?;
+            let fragment = self.reserved[1].checked_add(1).ok_or(EOVERFLOW)?;
+            self.reserved[0] = tiling;
+            self.reserved[1] = fragment;
             self.render_counter = next;
         } else {
             self.reserved[2] = self.reserved[2].checked_add(1).ok_or(EOVERFLOW)?;

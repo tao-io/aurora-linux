@@ -144,6 +144,15 @@ pub(crate) fn packet_limit() -> usize {
 /// Two disjoint banks for the scheduler's two admitted packets.
 pub(crate) const POOL_SLOTS: usize = COMPUTE_DEPTH * 2;
 
+/// At most two bounded packets can be resident. A completed queue-local
+/// notification may run ahead of an older command by only those commands,
+/// even though the global stamp spans every client. Reject zero and values
+/// too far ahead; signed half-range comparison alone mistakes a fresh zero
+/// notifier for completion once the stamp crosses 0x80000000.
+fn stamp_reached(observed: u32, target: u32) -> bool {
+    observed != 0 && observed.wrapping_sub(target) < 2 * MAX_PACKET_COMMANDS as u32 * 0x100
+}
+
 
 /// Outcome of one completion snapshot.
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -291,6 +300,8 @@ impl Runtime {
             .ok_or(EBUSY)?;
         let mut batch = KVec::with_capacity(count, GFP_KERNEL)?;
         self.inner.pending.reserve(1, GFP_KERNEL)?;
+        let notifier_checkpoint = packet.notifications.lock().checkpoint();
+        let stamp_checkpoint = (self.inner.render_stamp, self.inner.compute_stamp);
         // Experimental stage overlap shares a physical pool across scenes,
         // as common Asahi does. Preserve the aggregate capacity of the old
         // per-pass allocations; this experiment changes initialization, not
@@ -319,14 +330,27 @@ impl Runtime {
             // every command of the other type. Hardware capacities stay fixed.
             let slot = bank * COMPUTE_DEPTH + engine_offsets[engine];
             engine_offsets[engine] += 1;
-            let active = self.prepare_command(packet.clone(), offset,
-                slot as u64, shared_parameters.clone()).map_err(|error| {
-                dev_err!(self.inner.drm.as_ref(),
-                    "G16G: packet preparation failed job={} bank={} index={} count={} error={:?}\n",
-                    packet.id, bank, offset, count, error);
-                error
-            })?;
-            batch.push(active, GFP_KERNEL)?;
+            let active = match self.prepare_command(packet.clone(), offset,
+                slot as u64, shared_parameters.clone()) {
+                Ok(active) => active,
+                Err(error) => {
+                    // No command in this packet has reached firmware. Never
+                    // leave a hole in this client's event sequence or the
+                    // global stamps after a fallible owner rebuild.
+                    self.inner.render_stamp = stamp_checkpoint.0;
+                    self.inner.compute_stamp = stamp_checkpoint.1;
+                    if let Err(restore_error) = packet.notifications.lock().restore(notifier_checkpoint) {
+                        self.inner.state.health.mark_failed();
+                        dev_err!(self.inner.drm.as_ref(), "G16G: reservation rollback failed {:?}\n", restore_error);
+                        return Err(restore_error);
+                    }
+                    dev_err!(self.inner.drm.as_ref(),
+                        "G16G: packet preparation failed job={} bank={} index={} count={} error={:?}\n",
+                        packet.id, bank, offset, count, error);
+                    return Err(error);
+                }
+            };
+            batch.push(active, GFP_KERNEL).expect("reserved prepared packet capacity");
         }
         self.inner.pending.push(batch, GFP_KERNEL).expect("reserved prepared packet");
         self.pump()
@@ -537,14 +561,19 @@ impl Runtime {
         // Independent TAs need independent completion records, not merely
         // independent stamp cells: one coalescing notifier can otherwise
         // overwrite an earlier scene's pending stamp with a later one.
+        let render = matches!(payload, crate::g16_submit::Payload::Render { .. });
         let notifier = if shared_parameters.is_some() &&
             matches!(payload, crate::g16_submit::Payload::Render { .. }) {
             let client = crate::g16_queue::ClientNotifications::new(&inner.drm, &inner.uat, &packet.vm)?;
-            client.lock().prime_render_stamps(inner.render_stamp.wrapping_sub(0x100))?;
             client
         } else { packet.notifications.clone() };
-        let (notifications, render_counter) = notifier.lock().reserve(
-            matches!(payload, crate::g16_submit::Payload::Render { .. }))?;
+        let (notifications, render_counter) = {
+            let mut client = notifier.lock();
+            let previous = (if render { inner.render_stamp } else { inner.compute_stamp })
+                .wrapping_sub(0x100);
+            client.prime_unused_stamps(render, previous)?;
+            client.reserve(render)?
+        };
         let pool_slot: u8 = (batch_offset + 1).try_into()?;
         let compute_owner = if matches!(payload, crate::g16_submit::Payload::Compute(_)) {
             let mut cache = packet.compute_cache.lock();
@@ -707,10 +736,10 @@ impl Runtime {
             Work::Render(r) => r.notifier()?.lock().stamps(pipe_index)?,
             Work::Compute(_) => active.packet.notifications.lock().stamps(pipe_index)?,
         };
-        if shared.wrapping_sub(active.work.stamp()) as i32 >= 0 {
+        if stamp_reached(shared, active.work.stamp()) {
             status[1] = active.work.stamp() as u64;
         }
-        if firmware.wrapping_sub(active.work.stamp()) as i32 >= 0 {
+        if stamp_reached(firmware, active.work.stamp()) {
             status[0] = active.work.stamp() as u64;
         }
         if pipe_index == 0 {
@@ -741,10 +770,16 @@ impl Runtime {
             else { engine.consumed_through(&queue, next) };
         let pipe_done = if alone { pipe == [pipe_next; 3] }
             else { pipe[..2].iter().all(|index| (index.wrapping_sub(pipe_next) % 256) < 128) };
+        let private_done = match &mut active.work {
+            Work::Render(render) if pipe_index == 1 =>
+                render.uma_completed()? == render.uma_submitted(),
+            Work::Compute(compute) => compute.uma_completed()? == compute.uma_submitted(),
+            _ => true,
+        };
         if status[0] == active.work.stamp() as u64
             && status[1] == active.work.stamp() as u64
             && (pipe_index != 2 || (status[2] != 0 && status[3] > status[2]))
-            && queue_done && pipe_done {
+            && queue_done && pipe_done && private_done {
             if let Work::Render(render) = &mut active.work {
                 if crate::debug::debug_enabled(crate::debug::DebugFlags::KTraceCh) {
                     dev_info!(inner.drm.as_ref(),"G16G: userspace render stage {:?} retired stamps={:x?} queue={:?}\n",render.stage,status,queue);
