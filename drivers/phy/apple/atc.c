@@ -1990,13 +1990,19 @@ static int atcphy_configure(struct apple_atcphy *atcphy, enum atcphy_mode mode)
 static int atcphy_usb2_set_mode(struct phy *phy, enum phy_mode mode, int submode)
 {
 	struct apple_atcphy *atcphy = phy_get_drvdata(phy);
+	bool running;
 
 	guard(mutex)(&atcphy->lock);
 
 	if (mode != PHY_MODE_USB_HOST && mode != PHY_MODE_USB_DEVICE)
 		return -EINVAL;
 
-	/* T8132 must latch the role before its USB2 PHY starts running. */
+	/*
+	 * T8132 latches the role while stopped. The USB roothub repeats this
+	 * callback after the glue has released DWC3 reset, so preserve the
+	 * running state independently of the superspeed/DisplayPort mux mode.
+	 */
+	running = readl(atcphy->regs.usb2phy + USB2PHY_USBCTL) & USB2PHY_USBCTL_RUN;
 	if (!atcphy->hw->has_full_atc)
 		atcphy_usb2_power_off(atcphy);
 
@@ -2013,7 +2019,7 @@ static int atcphy_usb2_set_mode(struct phy *phy, enum phy_mode mode, int submode
 		return -EINVAL;
 	}
 
-	if (!atcphy->hw->has_full_atc && atcphy->mode == APPLE_ATCPHY_MODE_USB2)
+	if (!atcphy->hw->has_full_atc && running)
 		atcphy_usb2_power_on(atcphy);
 
 	return 0;
@@ -2237,8 +2243,13 @@ static int atcphy_dwc3_reset_deassert(struct reset_controller_dev *rcdev, unsign
 
 	guard(mutex)(&atcphy->lock);
 
-	/* Reset assertion powers USB2 off without changing the mux mode. */
-	if (!atcphy->hw->has_full_atc && atcphy->mode == APPLE_ATCPHY_MODE_USB2)
+	/*
+	 * The DWC3 consumer owns USB2 activity. A DisplayPort mux request can
+	 * leave mode at OFF while the same connector also carries USB data;
+	 * the superspeed lane assignment must not gate the separate USB2 PHY.
+	 * Reset assertion powers it down, so restore it for every DWC3 start.
+	 */
+	if (!atcphy->hw->has_full_atc)
 		atcphy_usb2_power_on(atcphy);
 
 	clear32(atcphy->regs.pipehandler + PIPEHANDLER_AON_GEN,
