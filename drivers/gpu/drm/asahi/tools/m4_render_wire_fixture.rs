@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #![allow(dead_code)]
 #[path = "../g16_render.rs"] mod g16_render;
+#[path = "../g16_compute.rs"] mod g16_compute;
 #[path = "../g16_render_command.rs"] mod g16_render_command;
 use std::io::Write;
 use g16_render_command::*;
@@ -12,15 +13,16 @@ fn main() {
             pb_slot:b+0x10000, manager:b+0x14000, pb_aux:b+0x18000, notifier:b+0x1c000,
             shared_stamp:b+0x20000, stamp_address:b+0x24000, uma:b+0x28000,
             uma_aux:0x7003000000, context:3, generation:2, counter:0x100000001,
-            uuid:0x1234, stamp:0x300, event_slot:0x71, pb_id:2, pass_id:4 };
-        let mut command = [0xa5; 0xca0]; let mut sku = [0xa5; 0x300];
+            timestamp_storage:b+0x30000, uuid:0x1234, stamp:0x300, event_slot:0x71,
+            fragment_slot:0x71, fragment_stamp:0x300, pb_id:2, pass_id:4 };
+        let mut command = [0xa5; 0xca0]; let mut sku = [0xa5; 0x380];
         encode(&mut command,&mut sku,stage,a).unwrap();
         // Firmware engine statistics and queue pointers must survive both
         // start and finalize; the two engines use different packed offsets.
         let ptr = |off| u64::from_le_bytes(sku[off..off+8].try_into().unwrap());
         let (stats_offsets, queue_offsets) = match stage {
-            g16_render::Stage::Tiling => ([0x2c, 0x1e4], [0x34, 0x1ec]),
-            g16_render::Stage::Fragment => ([0x24, 0x220], [0x4c, 0x240]),
+            g16_render::Stage::Tiling => ([0x2c, 0x27c], [0x34, 0x284]),
+            g16_render::Stage::Fragment => ([0x24, 0x2b8], [0x4c, 0x2d8]),
         };
         let control = if stage == g16_render::Stage::Tiling { 0x48 } else { 0x60 };
         assert_eq!(&sku[control..control+4], &1u32.to_le_bytes());

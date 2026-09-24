@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0-only
 #![allow(dead_code)]
 #[path = "../g16_render.rs"] mod g16_render;
-mod g16_compute { pub const EVENT_GENERATION: u32 = 1; }
+#[path = "../g16_compute.rs"] mod g16_compute;
 #[path = "../g16_render_command.rs"] mod wire;
 #[test]
 fn moves_finalize_preserving_restart_and_all_destinations() {
