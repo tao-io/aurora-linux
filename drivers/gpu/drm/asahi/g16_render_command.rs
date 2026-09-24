@@ -21,20 +21,8 @@ pub(crate) struct Args {
 // the ISP raster mode register. Keep command, start and finalize in agreement.
 const RENDER_MODE: u8 = 1;
 
-/// Packed 25G83 timestamp operation. Pointer fields refer to retained cells
-/// in the owning command/metadata allocation, not to GPU register addresses.
-pub(crate) mod timestamp {
-    pub const SIZE: usize = 0x4c;
-    pub const END_DELTA: usize = SIZE + 4; // intervening WaitForIdle opcode
-    pub const CONTROL: usize = 0x04;
-    pub const INTERNAL_PAIR: usize = 0x0c;
-    pub const SELECTED_CELL: usize = 0x14;
-    pub const QUEUE: usize = 0x1c;
-    pub const USER_PAIR: usize = 0x24;
-    pub const AUXILIARY: usize = 0x2c;
-    pub const CONTEXT_TIME: usize = 0x34;
-    pub const UUID: usize = 0x44;
-}
+// Compute and render use the same qualified 25G83 timestamp operation.
+pub(crate) use crate::g16_compute::timestamp;
 
 /// Engine-specific offsets for the qualified J713/25G83 render envelope.
 /// Command offsets and microsequence offsets are deliberately separate names.

@@ -1,0 +1,157 @@
+{
+  "scope": "J713/25G83 compute field layout shared by serialization and owned command patch/readback; UMA fields and common compute/render timestamp definition. No change to pools, scheduling, mutation order or firmware ABI.",
+  "baseline_source": "1ea0d4ad3faa",
+  "build": {
+    "tree": "0ae78f4c173d6955e87fadc3ac0d727e90d07722",
+    "config_sha256": "ca858c6d76b9848fd7989068c169fb13a19879a4655607262f038931645520de",
+    "source_export_checksum_verified": true,
+    "output": "Clean Git archive; incremental module build using prepared M4 output, not from-empty full kernel build",
+    "clean_module_sha256": "144d3858fd77deab5d683a49ac3f8f4cdded166448d7aa53ce968144368a5701",
+    "deployed_module_sha256": "436467df8daac0f45eaf0a0bb601370d9db330190c36e95b7a1f54264043d42f"
+  },
+  "host": {
+    "wire": {
+      "result": "pass",
+      "baseline_tree": "8aa4a97eb32ce497032a56b89a9c90552d51707e",
+      "sources": {
+        "baseline": {
+          "g16_render.rs": "1f353a8a2130b44c59de9c44d456c9a3e817cd3a433540fa3503f4517e6040a5",
+          "g16_compute.rs": "d03be49d7e75b4dc4678bd3aa67baf8bff4ccfce701239d4f4f4f7e7e6ade3de",
+          "g16_render_command.rs": "0f8be9964d4b2121961cadb266728cf82f2fe0eecdd442ce248936d5629f413e",
+          "fixture": "63c43f500ac57b810c45c950d6ed4ccfae814ca5e30d3128d8546e46f174b23a"
+        },
+        "candidate": {
+          "g16_render.rs": "1f353a8a2130b44c59de9c44d456c9a3e817cd3a433540fa3503f4517e6040a5",
+          "g16_compute.rs": "345d854ba90e410523598ee81a1a54735a2f83b0d918002e96eab813917f5cf7",
+          "g16_render_command.rs": "561baaea1203b4b0357b246bd81a5db43c3b52b1b04ff5e4ac64914b878fd2e3",
+          "fixture": "63c43f500ac57b810c45c950d6ed4ccfae814ca5e30d3128d8546e46f174b23a"
+        }
+      },
+      "comparisons": [
+        {
+          "variant": 0,
+          "bytes": 70656,
+          "sha256": "d10bf58083142c53d4367e383ec97dae039f3c0a7c5a0df4288616bc95b7874d"
+        },
+        {
+          "variant": 1,
+          "bytes": 70656,
+          "sha256": "d76f83897e00a5e3d17b8bba23f0447dd1fa4afe18a5387305e8d4a8f8c3befa"
+        },
+        {
+          "variant": 2,
+          "bytes": 70656,
+          "sha256": "28acbe11b8deb45b129a8d13c331c897727cc5e335df5c9bc057a605b0ee2ebf"
+        },
+        {
+          "variant": 15,
+          "bytes": 70656,
+          "sha256": "a62170b289cd5bcb684171c30c2e5996150ca163ab405dd36420fb36154c0454"
+        },
+        {
+          "variant": 31,
+          "bytes": 70656,
+          "sha256": "f92e314bfc4f255cb9a5dd055a1a82f01471353a078aa23a2a46ed0327f6ed2c"
+        },
+        {
+          "variant": 63,
+          "bytes": 70656,
+          "sha256": "f4b81e8d0b823d414189458c348578b7106053df2ab6b6d83d75d675e60d5875"
+        }
+      ],
+      "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)"
+    },
+    "timestamp_tests": 13,
+    "review_finding": "A broad text replacement initially produced invalid allocation constant names in the job consumer; source diff review corrected these before either kernel build or hardware deployment. Actual-source wire outputs remain byte-identical."
+  },
+  "hardware": {
+    "boot_id": "9b3ce288-baea-414a-a073-08c469682d07",
+    "module_sha256": "436467df8daac0f45eaf0a0bb601370d9db330190c36e95b7a1f54264043d42f",
+    "steps": [
+      {
+        "step": "replay",
+        "evidence": "_provenance/experiments/20260924T094559109576Z-cleanup-compute-layout-replay",
+        "peak_c": 63.0,
+        "sha256": "88594c10407e243eb0617860b8f2abc1f06c0844ec67ddba3900875d7e36796e"
+      },
+      {
+        "step": "cts",
+        "evidence": "_provenance/experiments/20260924T094605381678Z-cleanup-compute-layout-cts",
+        "peak_c": 63.0,
+        "cts": [
+          [
+            1563743,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_in_render_pass",
+            "Pass"
+          ],
+          [
+            1563747,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_out_of_render_pass",
+            "Pass"
+          ],
+          [
+            1563749,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_out_of_render_pass_host_query_reset_with_availability_bit",
+            "Pass"
+          ],
+          [
+            1563703,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_in_render_pass",
+            "Pass"
+          ],
+          [
+            1563707,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_out_of_render_pass",
+            "Pass"
+          ],
+          [
+            1563709,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_out_of_render_pass_host_query_reset_with_availability_bit",
+            "Pass"
+          ],
+          [
+            474877,
+            "dEQP-VK.compute.pipeline.basic.copy_ssbo_single_invocation",
+            "Pass"
+          ],
+          [
+            474875,
+            "dEQP-VK.compute.pipeline.basic.copy_ssbo_multiple_groups",
+            "Pass"
+          ],
+          [
+            474869,
+            "dEQP-VK.compute.pipeline.basic.atomic_barrier_sum_small",
+            "Pass"
+          ],
+          [
+            474873,
+            "dEQP-VK.compute.pipeline.basic.copy_image_to_ssbo_small",
+            "Pass"
+          ],
+          [
+            2155251,
+            "dEQP-VK.query_pool.statistics_query.compute_shader_invocations.32bits_primary",
+            "Pass"
+          ],
+          [
+            2155283,
+            "dEQP-VK.query_pool.statistics_query.compute_shader_invocations.64bits_secondary",
+            "Pass"
+          ]
+        ]
+      },
+      {
+        "step": "desktop",
+        "evidence": "_provenance/experiments/20260924T094609461442Z-cleanup-compute-layout-desktop",
+        "peak_c": 67.0,
+        "image": "_provenance/driver-cleanups-20260924/m4-compute-layout-suite/desktop.png",
+        "visual_review": "Normal Hyprland/Foot imported scanout inspected; no missing content"
+      }
+    ]
+  },
+  "watchdog_seconds": 60,
+  "thermal_interval_seconds": 0.5,
+  "replay_adaptations": "Offscreen presentation, memory rebinding and omitted pipeline cache. Not unmodified WSI proof.",
+  "remaining": "Render-owned metadata and remaining initialization fields, followed by shared-mechanism audit."
+}

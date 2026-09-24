@@ -27,6 +27,120 @@ pub(crate) struct Addresses {
     pub event_slot: u8,
 }
 
+
+/// Owned command allocation, J713/25G83 only. All constants are byte offsets.
+/// The first 4 KiB holds the command, embedded sequence, notifier and UMA;
+/// the second holds relocated timestamp fanout and its destination pairs.
+/// Field widths remain explicit at each LE writer/reader. Unknown names retain
+/// the qualified 1ea0d4ad3faa producer's values, not inferred semantics.
+pub(crate) mod layout {
+    pub(crate) const KIND: usize = 0;
+    pub(crate) const CONTEXT: usize = 0xc;
+    pub(crate) const NOTIFIER_POINTER: usize = 0x10;
+    pub(crate) const REGISTER_STRIDE: usize = 12;
+    pub(crate) const REGISTERS: usize = 0x20;
+    pub(crate) const REGISTER_VALUE: usize = 0x24;
+    pub(crate) const REGISTER_POINTER: usize = 0x720;
+    pub(crate) const REGISTER_COUNT: usize = 0x728;
+    pub(crate) const SEQUENCE_POINTER: usize = 0x760;
+    pub(crate) const SEQUENCE_LENGTH: usize = 0x768;
+    pub(crate) const ENGINE_STATE: usize = 0x76c;
+    pub(crate) const PREEMPTION: usize = 0x798;
+    pub(crate) const CDM_LAST: usize = 0x7a0;
+    pub(crate) const CONTROL: usize = 0x7c8;
+    pub(crate) const CONTEXT_TIME: usize = 0x7dc;
+    pub(crate) const UNKNOWN_7E8: usize = 0x7e8;
+    pub(crate) const USER_STAMP_POINTER: usize = 0x800;
+    pub(crate) const FIRMWARE_STAMP_POINTER: usize = 0x808;
+    pub(crate) const STAMP_VALUE: usize = 0x810;
+    pub(crate) const EVENT: usize = 0x814;
+    pub(crate) const EVENT_SLOT: usize = 0x818;
+    pub(crate) const FLUSH_STAMPS: usize = 0x81c;
+    pub(crate) const UUID: usize = 0x820;
+    pub(crate) const EVENT_SEQUENCE: usize = 0x824;
+    pub(crate) const TIME_CONTROL: usize = 0x82c;
+    pub(crate) const TIME_PAIR: usize = 0x834;
+    pub(crate) const TIME_PAIR_END: usize = 0x83c;
+    pub(crate) const USER_TIME_PAIR: usize = 0x844;
+    pub(crate) const USER_TIME_PAIR_END: usize = 0x84c;
+    pub(crate) const UMA_POINTER: usize = 0x86a;
+    pub(crate) const UMA_FLAG: usize = 0x872;
+    pub(crate) const UNKNOWN_873: usize = 0x873;
+    pub(crate) const UNKNOWN_87B: usize = 0x87b;
+    pub(crate) const METRICS: usize = 0x883;
+    pub(crate) const ASID_GENERATION: usize = 0x88b;
+    pub(crate) const UNKNOWN_88C: usize = 0x88c;
+    pub(crate) const TIME_AUXILIARY: usize = 0x89c;
+    pub(crate) const STATUS: usize = 0x8ac;
+    pub(crate) const TIME_START_CELL: usize = 0x8c0;
+    pub(crate) const TIME_END_CELL: usize = 0x8c8;
+    pub(crate) const SEQUENCE: usize = 0x900;
+    pub(crate) const START_CONTEXT: usize = 0x92c;
+    pub(crate) const START_CONTEXT_CONTROL: usize = 0x930;
+    pub(crate) const START_EVENT_GENERATION: usize = 0x934;
+    pub(crate) const START_EVENT_SEQUENCE: usize = 0x938;
+    pub(crate) const START_UNKNOWN_950: usize = 0x950;
+    pub(crate) const ATTACHMENTS: usize = 0x958;
+    pub(crate) const START_AUXILIARY: usize = 0xa78;
+    pub(crate) const START_CONTEXT_STORE: usize = 0xa88;
+    pub(crate) const START_EVENT: usize = 0xab8;
+    pub(crate) const TIMESTAMP_START: usize = 0xabc;
+    pub(crate) const WAIT_IDLE: usize = 0xb08;
+    pub(crate) const TIMESTAMP_END: usize = 0xb0c;
+    pub(crate) const FINALIZE: usize = 0xb58;
+    pub(crate) const FINALIZE_CONTEXT: usize = 0xb6c;
+    pub(crate) const FINALIZE_STAMP: usize = 0xb8c;
+    pub(crate) const FINALIZE_RESTART: usize = 0xbbc;
+    pub(crate) const FINALIZE_HAS_ATTACHMENTS: usize = 0xbc0;
+    pub(crate) const FINISH: usize = 0xbd4;
+    pub(crate) const NOTIFIER: usize = 0xc00;
+    pub(crate) const UMA: usize = 0xe00;
+    pub(crate) const UMA_END: usize = 0xea0;
+    pub(crate) const FIRMWARE_STAMP: usize = 0xee0;
+    pub(crate) const USER_STAMP: usize = 0xee4;
+    pub(crate) const THRESHOLD: usize = 0xf00;
+    pub(crate) const DEPENDENCY: usize = 0xf40;
+    pub(crate) const FANOUT_SEQUENCE: usize = 0x1000;
+    pub(crate) const FANOUT_PAIRS: usize = 0x1800;
+    pub(crate) const ALLOCATION_SIZE: usize = 0x2000;
+    pub(crate) const SEQUENCE_SIZE: usize = 0x300;
+    pub(crate) const FINALIZE_DELTA: usize = FINALIZE - SEQUENCE;
+    pub(crate) const FINALIZE_RESTART_DELTA: usize = FINALIZE_RESTART - FINALIZE;
+}
+mod start {
+    pub const REGISTERS: usize = 0x14;
+    pub const STATS: usize = 0x1c;
+    pub const QUEUE: usize = 0x24;
+    pub const ENGINE_STATE: usize = 0x44;
+    pub const UMA: usize = 0x160;
+    pub const STATUS: usize = 0x1a8;
+}
+mod finalize {
+    pub const STATS: usize = 4;
+    pub const QUEUE: usize = 12;
+    pub const ENGINE_STATE: usize = 24;
+    pub const UNKNOWN_24: usize = 36;
+    pub const STAMP: usize = 44;
+    pub const UMA_POINTER: usize = 0x5c;
+    pub const STATUS: usize = 0x69;
+    pub const UNKNOWN_71: usize = 0x71;
+}
+
+/// Packed 25G83 timestamp operation. Pointer fields refer to retained cells
+/// in the owning command/metadata allocation, not to GPU register addresses.
+pub(crate) mod timestamp {
+    pub const SIZE: usize = 0x4c;
+    pub const END_DELTA: usize = SIZE + 4; // intervening WaitForIdle opcode
+    pub const CONTROL: usize = 0x04;
+    pub const INTERNAL_PAIR: usize = 0x0c;
+    pub const SELECTED_CELL: usize = 0x14;
+    pub const QUEUE: usize = 0x1c;
+    pub const USER_PAIR: usize = 0x24;
+    pub const AUXILIARY: usize = 0x2c;
+    pub const CONTEXT_TIME: usize = 0x34;
+    pub const UUID: usize = 0x44;
+}
+
 pub(crate) const SIZE: usize = 0x1000;
 pub(crate) const SLOT: u8 = 15;
 pub(crate) const STAMP: u32 = 0x100;
@@ -87,6 +201,9 @@ pub(crate) fn encode(out: &mut [u8], a: Addresses, pool_qwords: u32, pages: u32)
         Control { base: a.cdm_gpu, end: a.cdm_gpu + 0x30, usc_base: 0, wide_visibility: false }, None)
 }
 
+/// Invalid header/address inputs reject before mutation. The existing late
+/// event-slot check can reject after writing the prefix; UMA validation occurs
+/// after the envelope. This representation change preserves that ordering.
 pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     pages: u32, control: Control, notification: Option<Notification>) -> Result<(), ()> {
     if control.base == 0 || control.base & 3 != 0 || control.end & 3 != 0
@@ -108,15 +225,15 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     out[..SIZE].fill(0);
     let c = a.command;
     let g = a.command_gpu;
-    let sku = c + 0x900;
-    let threshold = notification.map_or(c + 0xf00, |n| n.threshold);
-    let uma = c + 0xe00;
+    let sku = c + layout::SEQUENCE as u64;
+    let threshold = notification.map_or(c + layout::THRESHOLD as u64, |n| n.threshold);
+    let uma = c + layout::UMA as u64;
     let u32_at = |b: &mut [u8], off, value: u32| b[off..off + 4].copy_from_slice(&value.to_le_bytes());
     let u64_at = |b: &mut [u8], off, value: u64| b[off..off + 8].copy_from_slice(&value.to_le_bytes());
-    u32_at(out, 0, 3);
-    u64_at(out, 0x10, notification.map_or(c + 0xc00, |n| n.address));
-    u32_at(out, 0xc, a.context);
-    out[0x88b] = a.generation;
+    u32_at(out, layout::KIND, 3);
+    u64_at(out, layout::NOTIFIER_POINTER, notification.map_or(c + layout::NOTIFIER as u64, |n| n.address));
+    u32_at(out, layout::CONTEXT, a.context);
+    out[layout::ASID_GENERATION] = a.generation;
     let registers: &[(u32, u64)] = &[
         (0x1a510, a.preemption_gpu), (0x1a420, control.base),
         (0x1a4d0, a.preemption_gpu + 0x1480), (0x1a4d8, a.preemption_gpu + 0x1488),
@@ -129,89 +246,89 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
         (0xd411, 0x200000001), (0x1a540, 1), (0x014a9, 1), (0x0a351, 1),
     ];
     for (i, (register, value)) in registers.iter().enumerate() {
-        u32_at(out, 0x20 + i * 12, *register);
-        u64_at(out, 0x24 + i * 12, *value);
+        u32_at(out, layout::REGISTERS + i * layout::REGISTER_STRIDE, *register);
+        u64_at(out, layout::REGISTER_VALUE + i * layout::REGISTER_STRIDE, *value);
     }
     let mut count = registers.len() as u32;
     if control.usc_base != 0 {
-        u32_at(out, 0x20 + count as usize * 12, 0x10071);
-        u64_at(out, 0x24 + count as usize * 12, control.usc_base);
+        u32_at(out, layout::REGISTERS + count as usize * layout::REGISTER_STRIDE, 0x10071);
+        u64_at(out, layout::REGISTER_VALUE + count as usize * layout::REGISTER_STRIDE, control.usc_base);
         count += 1;
     }
-    u64_at(out, 0x720, g + 0x20);
-    u32_at(out, 0x728, count | ((count * 12) << 16));
-    u64_at(out, 0x760, sku);
-    u32_at(out, 0x768, 0x300);
-    u64_at(out, 0x798, a.preemption_gpu);
-    u64_at(out, 0x7a0, control.end - 4);
-    u64_at(out, 0x7c8, 0x154024201);
-    u32_at(out, 0x7e8, u32::MAX);
-    u64_at(out, 0x800, notification.map_or(c + 0xee4, |n| n.stamp));
-    u64_at(out, 0x808, notification.map_or(c + 0xee0, |n| n.fw_stamp));
+    u64_at(out, layout::REGISTER_POINTER, g + layout::REGISTERS as u64);
+    u32_at(out, layout::REGISTER_COUNT, count | ((count * layout::REGISTER_STRIDE as u32) << 16));
+    u64_at(out, layout::SEQUENCE_POINTER, sku);
+    u32_at(out, layout::SEQUENCE_LENGTH, layout::SEQUENCE_SIZE as u32);
+    u64_at(out, layout::PREEMPTION, a.preemption_gpu);
+    u64_at(out, layout::CDM_LAST, control.end - 4);
+    u64_at(out, layout::CONTROL, 0x154024201);
+    u32_at(out, layout::UNKNOWN_7E8, u32::MAX);
+    u64_at(out, layout::USER_STAMP_POINTER, notification.map_or(c + layout::USER_STAMP as u64, |n| n.stamp));
+    u64_at(out, layout::FIRMWARE_STAMP_POINTER, notification.map_or(c + layout::FIRMWARE_STAMP as u64, |n| n.fw_stamp));
     if a.event_slot >= 4 { return Err(()); }
-    u32_at(out, 0x810, a.stamp);
-    u32_at(out, 0x814, SLOT as u32);
-    u32_at(out, 0x818, a.event_slot as u32);
+    u32_at(out, layout::STAMP_VALUE, a.stamp);
+    u32_at(out, layout::EVENT, SLOT as u32);
+    u32_at(out, layout::EVENT_SLOT, a.event_slot as u32);
     // Each dispatch used to form its own completion/visibility boundary.
     // Preserve that flush when several dispatches share a host submission:
     // a follower may consume a different GPU VA of the same backing page.
     // The notifier otherwise defers its cache flush until the batch threshold.
-    u32_at(out, 0x81c, 1);
-    u32_at(out, 0x820, 1);
-    u32_at(out, 0x824, notification.map_or(0, |n| n.event_seq as u32));
-    u64_at(out, 0x834, c + 0x8c0);
-    u64_at(out, 0x83c, c + 0x8c8);
-    u64_at(out, 0x86a, uma);
-    out[0x872] = 1;
-    u64_at(out, 0x873, 0x1588000);
-    u64_at(out, 0x87b, 0xef8000);
-    u64_at(out, 0x883, a.metrics);
+    u32_at(out, layout::FLUSH_STAMPS, 1);
+    u32_at(out, layout::UUID, 1);
+    u32_at(out, layout::EVENT_SEQUENCE, notification.map_or(0, |n| n.event_seq as u32));
+    u64_at(out, layout::TIME_PAIR, c + layout::TIME_START_CELL as u64);
+    u64_at(out, layout::TIME_PAIR_END, c + layout::TIME_END_CELL as u64);
+    u64_at(out, layout::UMA_POINTER, uma);
+    out[layout::UMA_FLAG] = 1;
+    u64_at(out, layout::UNKNOWN_873, 0x1588000);
+    u64_at(out, layout::UNKNOWN_87B, 0xef8000);
+    u64_at(out, layout::METRICS, a.metrics);
     // SKU start, UMA binding and context-store tuple.
-    u32_at(out, 0x900, 0xb);
-    for (offset, value) in [(0x14, c + 0x20), (0x1c, a.stats), (0x24, a.work_queue),
-        (0x44, c + 0x76c), (0x160, uma), (0x1a8, c + 0x8ac)] {
-        u64_at(out, 0x900 + offset, value);
+    u32_at(out, layout::SEQUENCE, 0xb);
+    for (offset, value) in [(start::REGISTERS, c + layout::REGISTERS as u64), (start::STATS, a.stats), (start::QUEUE, a.work_queue),
+        (start::ENGINE_STATE, c + layout::ENGINE_STATE as u64), (start::UMA, uma), (start::STATUS, c + layout::STATUS as u64)] {
+        u64_at(out, layout::SEQUENCE + offset, value);
     }
-    u32_at(out, 0x92c, a.context);
+    u32_at(out, layout::START_CONTEXT, a.context);
     // Context-control flag, separate from RunCompute ASID generation.
-    u32_at(out, 0x930, 1);
-    u32_at(out, 0x934, EVENT_GENERATION);
-    u64_at(out, 0x938, notification.map_or(0, |n| n.event_seq));
-    u32_at(out, 0x950, 1);
-    u64_at(out, 0xa78, a.auxiliary_gpu);
+    u32_at(out, layout::START_CONTEXT_CONTROL, 1);
+    u32_at(out, layout::START_EVENT_GENERATION, EVENT_GENERATION);
+    u64_at(out, layout::START_EVENT_SEQUENCE, notification.map_or(0, |n| n.event_seq));
+    u32_at(out, layout::START_UNKNOWN_950, 1);
+    u64_at(out, layout::START_AUXILIARY, a.auxiliary_gpu);
     for (i, delta) in [0, 0xf400, 0x1e800, 0x1f000].iter().enumerate() {
-        u64_at(out, 0xa88 + i * 8, a.context_store_gpu + delta);
+        u64_at(out, layout::START_CONTEXT_STORE + i * 8, a.context_store_gpu + delta);
     }
-    u32_at(out, 0xab8, SLOT as u32);
-    for (base, opcode, selected) in [(0xabc, 0x80000003, 0x834), (0xb0c, 3, 0x83c)] {
+    u32_at(out, layout::START_EVENT, SLOT as u32);
+    for (base, opcode, selected) in [(layout::TIMESTAMP_START, 0x80000003, layout::TIME_PAIR), (layout::TIMESTAMP_END, 3, layout::TIME_PAIR_END)] {
         u32_at(out, base, opcode);
-        for (off, value) in [(4, c + 0x82c), (12, c + 0x834), (20, c + selected),
-            (28, a.work_queue), (44, c + 0x89c), (52, c + 0x7dc), (68, 1)] {
+        for (off, value) in [(timestamp::CONTROL, c + layout::TIME_CONTROL as u64), (timestamp::INTERNAL_PAIR, c + layout::TIME_PAIR as u64), (timestamp::SELECTED_CELL, c + selected as u64),
+            (timestamp::QUEUE, a.work_queue), (timestamp::AUXILIARY, c + layout::TIME_AUXILIARY as u64), (timestamp::CONTEXT_TIME, c + layout::CONTEXT_TIME as u64), (timestamp::UUID, 1)] {
             u64_at(out, base + off, value);
         }
     }
-    u32_at(out, 0xb08, 1); // compute WFI
-    u32_at(out, 0xb58, 0xc);
-    for (off, value) in [(4, a.stats), (12, a.work_queue), (24, c + 0x76c),
-        (36, 1), (44, notification.map_or(c + 0xee0, |n| n.fw_stamp)), (0x5c, sku + 0x160),
-        (0x69, c + 0x8ac), (0x71, c + 0x88c)] {
-        u64_at(out, 0xb58 + off, value);
+    u32_at(out, layout::WAIT_IDLE, 1); // compute WFI
+    u32_at(out, layout::FINALIZE, 0xc);
+    for (off, value) in [(finalize::STATS, a.stats), (finalize::QUEUE, a.work_queue), (finalize::ENGINE_STATE, c + layout::ENGINE_STATE as u64),
+        (finalize::UNKNOWN_24, 1), (finalize::STAMP, notification.map_or(c + layout::FIRMWARE_STAMP as u64, |n| n.fw_stamp)), (finalize::UMA_POINTER, sku + start::UMA as u64),
+        (finalize::STATUS, c + layout::STATUS as u64), (finalize::UNKNOWN_71, c + layout::UNKNOWN_88C as u64)] {
+        u64_at(out, layout::FINALIZE + off, value);
     }
-    u32_at(out, 0xb6c, a.context);
-    u32_at(out, 0xb8c, a.stamp);
-    u32_at(out, 0xbbc, (-0x258i32) as u32);
-    u32_at(out, 0xbd4, 0x40000002);
+    u32_at(out, layout::FINALIZE_CONTEXT, a.context);
+    u32_at(out, layout::FINALIZE_STAMP, a.stamp);
+    u32_at(out, layout::FINALIZE_RESTART, (-(layout::FINALIZE_DELTA as i32)) as u32);
+    u32_at(out, layout::FINISH, 0x40000002);
     // Independently consumed notifier and retirement stamps.
-    let notifier = 0xc00;
+    let notifier = layout::NOTIFIER;
     u64_at(out, notifier + notification_layout::THRESHOLD, threshold);
     u32_at(out, notifier + notification_layout::GENERATION, EVENT_GENERATION);
     u32_at(out, notifier + notification_layout::UNKNOWN_10, notification_layout::QUALIFIED_UNKNOWN_10);
     out[notifier + notification_layout::SLOT_SENTINELS..notifier + notification_layout::SLOT_SENTINELS + notification_layout::SLOT_SENTINELS_SIZE].fill(255);
     u32_at(out, notifier + notification_layout::UNKNOWN_114, notification_layout::QUALIFIED_UNKNOWN_114);
-    u32_at(out, 0xee0, u32::MAX);
-    u32_at(out, 0xee4, u32::MAX);
-    u64_at(out, 0xf00, 1);
-    encode_uma(&mut out[0xe00..0xea0], a.pool_state_gpu, pool_qwords, pages, a.page_list_gpu, a.counter, UmaEngine::Compute)?;
+    u32_at(out, layout::FIRMWARE_STAMP, u32::MAX);
+    u32_at(out, layout::USER_STAMP, u32::MAX);
+    u64_at(out, layout::THRESHOLD, 1);
+    encode_uma(&mut out[layout::UMA..layout::UMA_END], a.pool_state_gpu, pool_qwords, pages, a.page_list_gpu, a.counter, UmaEngine::Compute)?;
     Ok(())
 }
 
@@ -219,17 +336,17 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
 /// relative restart. Call before timestamp fanout, and only without API queries.
 pub(crate) fn omit_timestamps(sequence: &mut [u8], start: usize,
     total: usize, restart_offset: usize) -> Result<usize, ()> {
-    let finalize = start + 0x9c;
+    let finalize = start + timestamp::END_DELTA + timestamp::SIZE;
     let new_finalize = start + 4;
     if sequence.len() < total || finalize + restart_offset + 4 > total ||
         sequence[start..start+4] != 0x80000003u32.to_le_bytes() ||
-        sequence[start+0x4c..start+0x50] != 1u32.to_le_bytes() ||
-        sequence[start+0x50..start+0x54] != 3u32.to_le_bytes() {
+        sequence[start+timestamp::SIZE..start+timestamp::END_DELTA] != 1u32.to_le_bytes() ||
+        sequence[start+timestamp::END_DELTA..start+timestamp::END_DELTA+4] != 3u32.to_le_bytes() {
         return Err(());
     }
-    sequence.copy_within(start+0x4c..start+0x50, start);
+    sequence.copy_within(start+timestamp::SIZE..start+timestamp::END_DELTA, start);
     sequence.copy_within(finalize..total, new_finalize);
-    let length = total - 0x98;
+    let length = total - 2 * timestamp::SIZE;
     let restart = new_finalize + restart_offset;
     sequence[restart..restart+4].copy_from_slice(&(-(new_finalize as i32)).to_le_bytes());
     sequence[length..total].fill(0);
@@ -239,10 +356,10 @@ pub(crate) fn omit_timestamps(sequence: &mut [u8], start: usize,
 /// Existing 25G83 Timestamp records read the completed engine counter. Fan
 /// out that value before FinalizeCompute, retaining its relative restart.
 pub(crate) fn timestamp_copies(sequence: &mut [u8], pointers: &[u64]) -> Result<usize, ()> {
-    const END: usize = 0x20c;
-    const FINALIZE: usize = 0x258;
-    const RECORD: usize = 0x4c;
-    const BASE: usize = 0x300;
+    const END: usize = layout::TIMESTAMP_END - layout::SEQUENCE;
+    const FINALIZE: usize = layout::FINALIZE_DELTA;
+    const RECORD: usize = timestamp::SIZE;
+    const BASE: usize = layout::SEQUENCE_SIZE;
     if pointers.len() > 8 || pointers.iter().any(|p| *p < 0xffff_fc00_0000_0000 || p & 7 != 0) {
         return Err(());
     }
@@ -255,9 +372,9 @@ pub(crate) fn timestamp_copies(sequence: &mut [u8], pointers: &[u64]) -> Result<
     for (i, pointer) in pointers.iter().enumerate() {
         let record = &mut sequence[FINALIZE + i * RECORD..FINALIZE + (i + 1) * RECORD];
         record.copy_from_slice(&timestamp);
-        record[0x24..0x2c].copy_from_slice(&pointer.to_le_bytes());
+        record[timestamp::USER_PAIR..timestamp::USER_PAIR + 8].copy_from_slice(&pointer.to_le_bytes());
     }
-    let restart = FINALIZE + extra + 0x64;
+    let restart = FINALIZE + extra + layout::FINALIZE_RESTART_DELTA;
     sequence[restart..restart + 4].copy_from_slice(&(-(FINALIZE as i32 + extra as i32)).to_le_bytes());
     Ok(BASE + extra)
 }
@@ -397,33 +514,59 @@ mod tests {
     }
 }
 
+/// J713/25G83 private-memory descriptor shared by compute and render. Pool
+/// and page-list pointers are client GPU VAs; the submission counter is a
+/// canonical firmware VA. Values at unknown fields retain the native producer.
+/// OWNER is initially a sentinel and replaced by the retained command identity.
+pub(crate) mod uma_layout {
+    pub(crate) const SIZE: usize = 0xa0;
+    pub(crate) const OWNER: usize = 0;
+    pub(crate) const SLOT: usize = 8;
+    pub(crate) const EMPTY: usize = 12;
+    pub(crate) const UNKNOWN_10: usize = 16;
+    pub(crate) const POOL: usize = 0x14;
+    pub(crate) const CAPACITY: usize = 0x1c;
+    pub(crate) const PAGES: usize = 0x24;
+    pub(crate) const EMPTY_28: usize = 0x28;
+    pub(crate) const PAGES_2C: usize = 0x2c;
+    pub(crate) const PAGE_LIST: usize = 0x30;
+    pub(crate) const UNKNOWN_40: usize = 0x40;
+    pub(crate) const CONSUMED: usize = 0x44;
+    pub(crate) const PAGE_GROUP_BYTES: usize = 0x48;
+    pub(crate) const SUBMITTED_POINTER: usize = 0x4c;
+    pub(crate) const COMPLETED: usize = 0x54;
+    pub(crate) const COMPUTE_EXCLUSIVE: usize = 0x5c;
+    pub(crate) const POPULATED: usize = 0x84;
+    pub(crate) const UNKNOWN_94: usize = 0x94;
+}
+
 #[derive(Clone, Copy)]
 pub(crate) enum UmaEngine { Compute, Render }
 
 /// Shared M4 USC private-memory descriptor used by compute and render engines.
 pub(crate) fn encode_uma(out: &mut [u8], pool: u64, pool_qwords: u32,
     pages: u32, list: u64, counter: u64, engine: UmaEngine) -> Result<(), ()> {
-    if out.len() < 0xa0 || pool_qwords == 0 || pages >= pool_qwords || pages % 512 != 0
+    if out.len() < uma_layout::SIZE || pool_qwords == 0 || pages >= pool_qwords || pages % 512 != 0
         || [pool,list].iter().any(|p| *p == 0 || *p & 0x3fff != 0 || *p >= 1<<42)
         || counter < 0xfffffc0000000000 || counter & 7 != 0 { return Err(()); }
-    out[..0xa0].fill(0);
+    out[..uma_layout::SIZE].fill(0);
     let u32_at = |b: &mut [u8], off, value: u32| b[off..off + 4].copy_from_slice(&value.to_le_bytes());
     let u64_at = |b: &mut [u8], off, value: u64| b[off..off + 8].copy_from_slice(&value.to_le_bytes());
     // Firmware-owned descriptor; its counter stays canonical for CPU access.
-    u64_at(out, 0, 1);
+    u64_at(out, uma_layout::OWNER, 1);
     // Native 25G83 populateInitialFirmwareState (TEXT 8a07314..324)
     // enables the +5c active-job exclusion only for a compute pool (parent
     // +1e9, set by data-master == 2 at TEXT 8a0a20c). Shared TA/fragment
     // pools must allow partial fragments while their tiler is still active.
     let exclusive = matches!(engine, UmaEngine::Compute) && pages != 0;
-    for (off, value) in [(8, 1), (12, u32::from(pages == 0)), (16, 2), (0x1c, pool_qwords),
-        (0x24, pages), (0x28, u32::from(pages == 0)), (0x2c, pages),
-        (0x40, 4), (0x48, pages / 512 * 8), (0x5c, u32::from(exclusive)),
-        (0x84, u32::from(pages != 0)), (0x94, 2)] {
+    for (off, value) in [(uma_layout::SLOT, 1), (uma_layout::EMPTY, u32::from(pages == 0)), (uma_layout::UNKNOWN_10, 2), (uma_layout::CAPACITY, pool_qwords),
+        (uma_layout::PAGES, pages), (uma_layout::EMPTY_28, u32::from(pages == 0)), (uma_layout::PAGES_2C, pages),
+        (uma_layout::UNKNOWN_40, 4), (uma_layout::PAGE_GROUP_BYTES, pages / 512 * 8), (uma_layout::COMPUTE_EXCLUSIVE, u32::from(exclusive)),
+        (uma_layout::POPULATED, u32::from(pages != 0)), (uma_layout::UNKNOWN_94, 2)] {
         u32_at(out, off, value);
     }
-    u64_at(out, 0x14, pool);
-    u64_at(out, 0x30, list);
-    u64_at(out, 0x4c, counter);
+    u64_at(out, uma_layout::POOL, pool);
+    u64_at(out, uma_layout::PAGE_LIST, list);
+    u64_at(out, uma_layout::SUBMITTED_POINTER, counter);
     Ok(())
 }

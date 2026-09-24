@@ -43,6 +43,7 @@ fn main() {
         assert!(encode(&mut command,&mut sku,stage,invalid).is_err());
         assert_eq!(command,before);assert_eq!(sku,before_sku);
     }
+    compute_wire(&mut out, variant);
     let a = ParameterManager { pages_fw:b+0x10000,pages_gpu:0x7002000000,
         blocks:b+0x14000,ring:b+0x18000,counter:b+0x1c000,discard:0,
         list_bytes:0x4000,pages:128,block_capacity:64,write:32,read:0,
@@ -51,4 +52,51 @@ fn main() {
     out.write_all(&manager).unwrap();
     let mut init=[0xa5;0x20];init_parameter_buffer(&mut init,3,2,0,32,b+0x14000,0x300).unwrap();
     out.write_all(&init).unwrap();
+}
+
+// Execute the actual compute producer with the same fixture for both source
+// versions. Raw offsets here intentionally remain an independent baseline.
+fn compute_wire(out: &mut impl Write, variant: u64) {
+    use g16_compute::{Addresses, Control, Notification, UmaEngine};
+    let b = 0xffff_fc20_4000_0000 + variant * 0x100000;
+    let g = 0x7100000000 + variant * 0x100000;
+    let a = Addresses { command:b, command_gpu:g, cdm_gpu:g+0x4000,
+        preemption_gpu:g+0x8000, metrics:b+0x10000, auxiliary_gpu:g+0x10000,
+        work_queue:b+0x14000, stats:b+0x18000, context_store_gpu:g+0x20000,
+        pool_state_gpu:g+0x40000, page_list_gpu:g+0x60000, counter:b+0x1c000,
+        context:variant as u32, generation:variant as u8,
+        stamp:0xffffff00-(variant as u32*0x100), event_slot:(variant%4) as u8 };
+    let c = Control {base:a.cdm_gpu, end:a.cdm_gpu+0x130,
+        usc_base:if variant%2==0 {0}else{0x7200000000}, wide_visibility:false};
+    let n = Notification {address:b+0x24000,threshold:b+0x28000,
+        stamp:b+0x2c000,fw_stamp:b+0x30000,event_seq:(variant<<32)|0xfffffff0};
+    for pages in [0,512,8192] {
+        for notification in [None,Some(n)] {
+            let mut bytes=[0xa5;0x1008];
+            g16_compute::encode_dispatch(&mut bytes,a,16384,pages,c,notification).unwrap();
+            out.write_all(&bytes).unwrap();
+            for count in [0,1,8] {
+                let mut seq=[0x5a;0x600];seq[..0x300].copy_from_slice(&bytes[0x900..0xc00]);
+                let pointers: [u64;8]=core::array::from_fn(|i|b+0x34000+i as u64*16);
+                let size=g16_compute::timestamp_copies(&mut seq,&pointers[..count]).unwrap();
+                out.write_all(&(size as u64).to_le_bytes()).unwrap();out.write_all(&seq).unwrap();
+            }
+            let mut seq=bytes[0x900..0xc00].to_vec();
+            let size=g16_compute::omit_timestamps(&mut seq,0x1bc,0x300,0x64).unwrap();
+            out.write_all(&(size as u64).to_le_bytes()).unwrap();out.write_all(&seq).unwrap();
+        }
+        for engine in [UmaEngine::Compute,UmaEngine::Render] {
+            let mut bytes=[0xa5;0xa8];
+            g16_compute::encode_uma(&mut bytes,a.pool_state_gpu,16384,pages,a.page_list_gpu,a.counter,engine).unwrap();
+            out.write_all(&bytes).unwrap();
+        }
+    }
+    let mut bytes=[0xa5;0x1000];let mut bad=a;bad.command_gpu|=1;
+    assert!(g16_compute::encode_dispatch(&mut bytes,bad,16384,512,c,None).is_err());
+    assert_eq!(bytes,[0xa5;0x1000]);
+    // Invalid slots are historically rejected after prefix mutation. Compare
+    // the entire result instead of silently changing that contract in cleanup.
+    bad=a;bad.event_slot=4;
+    assert!(g16_compute::encode_dispatch(&mut bytes,bad,16384,512,c,None).is_err());
+    assert_ne!(bytes,[0xa5;0x1000]);out.write_all(&bytes).unwrap();
 }

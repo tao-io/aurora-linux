@@ -4,7 +4,7 @@
 //! this graph on any unproven retirement; a queue pointer is never ownership.
 
 use kernel::prelude::*;
-use crate::{driver, g16_dispatch, g16_compute::{self, Addresses}, g16_memory::{self, Buffer}, mmu};
+use crate::{driver, g16_dispatch, g16_compute::{self, Addresses, layout, uma_layout}, g16_memory::{self, Buffer}, mmu};
 
 pub(crate) struct Compute {
     _command_client: mmu::KernelMapping,
@@ -60,7 +60,7 @@ impl Compute {
         // both command aliases, the 32 MiB private pool and the ASID lease
         // are retained; command records are rebuilt while USC state persists.
         let reusable = reusable.filter(|job| control.is_some() && job.binding.matches(vm) && job.pool_slot == pool_slot);
-        let mut saved_uma = [0; 0xa0];
+        let mut saved_uma = [0; uma_layout::SIZE];
         let mut boxed = if let Some(mut job) = reusable {
             let owner: &mut Self = &mut *job;
             // The displaced owner is no longer cached by firmware. Preserve
@@ -69,7 +69,7 @@ impl Compute {
             // uses cumulative engine counts; resetting just the allocator or
             // just its payload breaks that contract.
             if owner.uma_completed()? != owner.uma_submitted { return Err(EBUSY); }
-            owner.command.read(0xe00, &mut saved_uma)?;
+            owner.command.read(layout::UMA, &mut saved_uma)?;
             for buffer in [&mut owner.command, &mut owner.output, &mut owner.preemption,
                 &mut owner.auxiliary] { buffer.clear()?; }
             owner.stamp = stamp;
@@ -80,7 +80,7 @@ impl Compute {
         // The engine fetches the register list in bootstrap context zero, then
         // switches to the client ASID. Retain exactly this command GEM in both
         // contexts; no user mappings or unrelated bootstrap pages are mirrored.
-        let mut command = Buffer::new_command(dev, uat.kernel_vm(), uat.kernel_lower_vm(), 0x2000)?;
+        let mut command = Buffer::new_command(dev, uat.kernel_vm(), uat.kernel_lower_vm(), layout::ALLOCATION_SIZE)?;
         let command_client = command.map_gpu_view(&vm)?;
         let private_memory = g16_memory::GpuBuffer::new(dev, vm, PRIVATE_BYTES)?;
         let (freelist, page_list_image) = g16_memory::freelist_images(private_memory.va(), PRIVATE_PAGES)?;
@@ -144,13 +144,13 @@ impl Compute {
         // The hardware indexes the global gUPM table with this field. A
         // distinct live pool must never claim another command's slot, even
         // when firmware has consumed both commands from the same work queue.
-        bytes[0xe08..0xe0c].copy_from_slice(&u32::from(job.pool_slot).to_le_bytes());
-        bytes[0xe00..0xe08].copy_from_slice(&job.command.va().to_le_bytes());
+        bytes[layout::UMA + uma_layout::SLOT..layout::UMA + uma_layout::SLOT + 4].copy_from_slice(&u32::from(job.pool_slot).to_le_bytes());
+        bytes[layout::UMA + uma_layout::OWNER..layout::UMA + uma_layout::OWNER + 8].copy_from_slice(&job.command.va().to_le_bytes());
         if job.uma_submitted == 0 {
             job.pool_state.write(0, &job.freelist)?;
             job.page_list.write(0, &job.page_list_image)?;
         } else {
-            bytes[0xe00..0xea0].copy_from_slice(&saved_uma);
+            bytes[layout::UMA..layout::UMA_END].copy_from_slice(&saved_uma);
         }
         job.command.write(0, &bytes[..])?;
         // Match firmware's UMA+54 completion count so TEXT 2b518 drains the
@@ -177,17 +177,17 @@ impl Compute {
         // WorkQueue Barrier::internal_barrier_type. The zero-valued render
         // dependency permits partial-render scheduling before full retirement.
         bytes[0x3c..0x40].copy_from_slice(&1u32.to_le_bytes());
-        self.command.write(0xf40, &bytes)?;
-        Ok(self.command.va() + 0xf40)
+        self.command.write(layout::DEPENDENCY, &bytes)?;
+        Ok(self.command.va() + layout::DEPENDENCY as u64)
     }
 
     pub(crate) fn set_user_timestamps(&mut self, addresses: [u64; 2]) -> Result {
         if addresses == [0, 0] { return Ok(()); }
         // Timestamp reads the retained pointer pair and publishes nanoseconds.
-        self.command.u64(0x844, addresses[0])?;
-        self.command.u64(0x84c, addresses[1])?;
-        self.command.u64(0xabc + 36, self.command.va() + 0x844)?;
-        self.command.u64(0xb0c + 36, self.command.va() + 0x844)?;
+        self.command.u64(layout::USER_TIME_PAIR, addresses[0])?;
+        self.command.u64(layout::USER_TIME_PAIR_END, addresses[1])?;
+        self.command.u64(layout::TIMESTAMP_START + g16_compute::timestamp::USER_PAIR, self.command.va() + layout::USER_TIME_PAIR as u64)?;
+        self.command.u64(layout::TIMESTAMP_END + g16_compute::timestamp::USER_PAIR, self.command.va() + layout::USER_TIME_PAIR as u64)?;
         g16_memory::publish();
         Ok(())
     }
@@ -198,7 +198,7 @@ impl Compute {
         let mut pairs = [0u64; 8];
         let mut count = 0;
         for address in addresses.into_iter().filter(|a| *a != 0) {
-            let offset = 0x1800 + count * 16;
+            let offset = layout::FANOUT_PAIRS + count * 16;
             self.command.u64(offset, 0)?;
             self.command.u64(offset + 8, address)?;
             pairs[count] = self.command.va() + offset as u64;
@@ -206,27 +206,27 @@ impl Compute {
         }
         if count == 0 { return Ok(()); }
         let mut sequence = [0u8; 0x600];
-        self.command.read(0x900, &mut sequence[..0x300])?;
+        self.command.read(layout::SEQUENCE, &mut sequence[..layout::SEQUENCE_SIZE])?;
         let size = g16_compute::timestamp_copies(&mut sequence, &pairs[..count])
             .map_err(|_| EINVAL)?;
-        self.command.write(0x1000, &sequence[..size])?;
-        self.command.u64(0x760, self.command.va() + 0x1000)?;
-        self.command.u32(0x768, size.try_into()?)?;
+        self.command.write(layout::FANOUT_SEQUENCE, &sequence[..size])?;
+        self.command.u64(layout::SEQUENCE_POINTER, self.command.va() + layout::FANOUT_SEQUENCE as u64)?;
+        self.command.u32(layout::SEQUENCE_LENGTH, size.try_into()?)?;
         g16_memory::publish();
         Ok(())
     }
     pub(crate) fn coalesce_stamp_flush(&mut self) -> Result {
         // JobMeta::flush_stamps. UUID at +820 and all execution stamps remain.
-        self.command.u32(0x81c, 0)
+        self.command.u32(layout::FLUSH_STAMPS, 0)
     }
     pub(crate) fn uma_submitted(&self) -> u64 { self.uma_submitted }
     pub(crate) fn uma_completed(&mut self) -> Result<u64> {
-        self.command.read_u64(0xe54)
+        self.command.read_u64(layout::UMA + uma_layout::COMPLETED)
     }
     pub(crate) fn set_attachments(&mut self, attachments: &crate::g16_attachments::Attachments) -> Result {
         // 25G83 StartCompute+58..15c and FinalizeCompute+68.
-        self.command.write(0x958, &attachments.0)?;
-        self.command.write(0xbc0, &[u8::from(attachments.count() != 0)])?;
+        self.command.write(layout::ATTACHMENTS, &attachments.0)?;
+        self.command.write(layout::FINALIZE_HAS_ATTACHMENTS, &[u8::from(attachments.count() != 0)])?;
         g16_memory::publish();
         Ok(())
     }
@@ -259,7 +259,7 @@ impl Compute {
         mappings[16..24].copy_from_slice(&(self.binding.vm().translate_iova(gpu)? as u64).to_le_bytes());
         dump.record("compute-command-mappings", gpu, mappings.len(),
             |out| { out.copy_from_slice(&mappings); Ok(()) })?;
-        dump.buffer("compute-command", &mut self.command, 0x2000)?;
+        dump.buffer("compute-command", &mut self.command, layout::ALLOCATION_SIZE)?;
         dump.buffer("compute-preemption", &mut self.preemption, 0x4000)?;
         dump.buffer("compute-auxiliary", &mut self.auxiliary, 0x4000)?;
         dump.buffer("compute-context-store", &mut self.context_store, 0x40000)?;
@@ -269,11 +269,11 @@ impl Compute {
     }
     #[cfg(CONFIG_DEV_COREDUMP)]
     pub(crate) fn capture_retired_command(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
-        dump.buffer("compute-retired-command", &mut self.command, 0x2000)
+        dump.buffer("compute-retired-command", &mut self.command, layout::ALLOCATION_SIZE)
     }
     /// Record the retired dispatch's private-page consumption for recycling.
     pub(crate) fn record_consumption(&mut self) -> Result {
-        self.consumed_pages = g16_memory::consumed_pages(&mut self.command, 0xe00, PRIVATE_PAGES)?;
+        self.consumed_pages = g16_memory::consumed_pages(&mut self.command, layout::UMA, PRIVATE_PAGES)?;
         Ok(())
     }
     pub(crate) fn pool_slot(&self) -> u8 { self.pool_slot }
@@ -281,10 +281,10 @@ impl Compute {
     pub(crate) fn stamp(&self) -> u32 { self.stamp }
     pub(crate) fn address(&self) -> u64 { self.command.va() }
     pub(crate) fn status(&mut self) -> Result<[u64; 10]> {
-        Ok([self.command.read_u32(0xee0)? as u64, self.command.read_u32(0xee4)? as u64,
-            self.command.read_u64(0x8c0)?, self.command.read_u64(0x8c8)?,
-            self.command.read_u32(0x8ac)? as u64, self.command.read_u64(0xf00)?,
-            self.command.read_u32(0xe44)? as u64, self.command.read_u64(0x89c)?,
-            self.command.read_u32(0x76c)? as u64, self.output.read_u32(0)? as u64])
+        Ok([self.command.read_u32(layout::FIRMWARE_STAMP)? as u64, self.command.read_u32(layout::USER_STAMP)? as u64,
+            self.command.read_u64(layout::TIME_START_CELL)?, self.command.read_u64(layout::TIME_END_CELL)?,
+            self.command.read_u32(layout::STATUS)? as u64, self.command.read_u64(layout::THRESHOLD)?,
+            self.command.read_u32(layout::UMA + uma_layout::CONSUMED)? as u64, self.command.read_u64(layout::TIME_AUXILIARY)?,
+            self.command.read_u32(layout::ENGINE_STATE)? as u64, self.output.read_u32(0)? as u64])
     }
 }
