@@ -1,0 +1,66 @@
+{
+  "scope": "M4/25G83 render command and timestamp layout representation; no scheduling, feature or firmware-version changes. Other P2 families remain.",
+  "build": {
+    "tree": "57e6d6a1a15b0d991e5a65d1e3da2faf7a26e792",
+    "source": "/home/council/dev/dirtyroom_m4/build/driver-cleanups-m4-source",
+    "output": "/home/council/dev/dirtyroom_m4/build/driver-cleanups-m4",
+    "method": "Clean Git archive; copied qualified configured build output, then rebuild Asahi against exported source. Not a from-empty full M4 kernel build.",
+    "config_sha256": "ca858c6d76b9848fd7989068c169fb13a19879a4655607262f038931645520de",
+    "hardware_candidate_sha256": "d1c15678cb604e55e513c747ba82eab4c32c6ecf7e0141f37d917f0a505f23e1",
+    "rustc": "rustc 1.98.0 (88d9e12ae 2026-08-18)\nbinary: rustc\ncommit-hash: 88d9e12ae178fab0fb5cc050a94da85685d449ea\ncommit-date: 2026-08-18\nhost: x86_64-unknown-linux-gnu\nrelease: 1.98.0\nLLVM version: 22.1.8\n",
+    "clang": "clang version 22.1.8\nTarget: x86_64-pc-linux-gnu\nThread model: posix\nInstalledDir: /usr/bin\n",
+    "result": "pass",
+    "targets": [
+      "drivers/gpu/drm/asahi/asahi.ko"
+    ],
+    "module_sha256": "750b55a903d104a2dd80b0b40f3e79141ee436cc715d0cb7376d15edbbad0b2e"
+  },
+  "host": {
+    "wire": "Six variants of both engines byte-identical to f16bcf4045e2; addresses, context, counters, stamps, event slots and identifiers varied; rejection checks pass",
+    "geometry_compute_timestamp_tests": 13,
+    "layer_comparisons": 264
+  },
+  "hardware": {
+    "boot_id": "8b4df7ab-8fe6-4bf2-b265-66a4e9efe7c6",
+    "watchdog_seconds": 60,
+    "thermal_sample_seconds": 0.5,
+    "factorio": {
+      "evidence": [
+        "20260924T055303386524Z-cleanup-layout-factorio-baseline-02",
+        "20260924T055842586988Z-cleanup-layout-factorio-candidate"
+      ],
+      "dimensions": [
+        2560,
+        1664
+      ],
+      "different_pixels": 0,
+      "max_channel_difference": 0,
+      "hashes": {
+        "_provenance/experiments/20260924T055303386524Z-cleanup-layout-factorio-baseline-02/remote/vulkan-replay/screenshot_frame_2.png": "88594c10407e243eb0617860b8f2abc1f06c0844ec67ddba3900875d7e36796e",
+        "_provenance/experiments/20260924T055842586988Z-cleanup-layout-factorio-candidate/remote/vulkan-replay/screenshot_frame_2.png": "88594c10407e243eb0617860b8f2abc1f06c0844ec67ddba3900875d7e36796e"
+      }
+    },
+    "replay_adaptations": "Offscreen, memory rebind, omitted pipeline cache; no claim of unmodified WSI support",
+    "focused_cts": {
+      "evidence": "20260924T060109118874Z-cleanup-layout-timestamps",
+      "pass": 6,
+      "fail": 0,
+      "scope": "Vertex/fragment timestamps inside/outside render pass and host-reset availability"
+    },
+    "desktop": {
+      "evidence": "20260924T060315358174Z-cleanup-layout-desktop-02",
+      "result": "Normal accelerated Hyprland autologin with live Foot window for six seconds; scanout image inspected, own test client stopped afterwards"
+    },
+    "peak_c": {
+      "baseline_replay": 78,
+      "candidate_replay": 66,
+      "cts": 65.75,
+      "desktop": 60.75
+    }
+  },
+  "retained_harness_failures": [
+    "20260924T055217463949Z-cleanup-layout-factorio-baseline: stale installed helper rejected --mesa-prefix before replay",
+    "20260924T060200860573Z-cleanup-layout-desktop: Foot inherited inaccessible /root directory; rerun with explicit /home/e working directory"
+  ],
+  "evidence_root": "_provenance/driver-cleanups-20260924; _provenance/experiments"
+}

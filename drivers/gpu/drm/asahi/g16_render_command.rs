@@ -21,6 +21,63 @@ pub(crate) struct Args {
 // the ISP raster mode register. Keep command, start and finalize in agreement.
 const RENDER_MODE: u8 = 1;
 
+/// Packed 25G83 timestamp operation. Pointer fields refer to retained cells
+/// in the owning command/metadata allocation, not to GPU register addresses.
+pub(crate) mod timestamp {
+    pub const SIZE: usize = 0x4c;
+    pub const END_DELTA: usize = SIZE + 4; // intervening WaitForIdle opcode
+    pub const CONTROL: usize = 0x04;
+    pub const INTERNAL_PAIR: usize = 0x0c;
+    pub const SELECTED_CELL: usize = 0x14;
+    pub const QUEUE: usize = 0x1c;
+    pub const USER_PAIR: usize = 0x24;
+    pub const AUXILIARY: usize = 0x2c;
+    pub const CONTEXT_TIME: usize = 0x34;
+    pub const UUID: usize = 0x44;
+}
+
+/// Engine-specific offsets for the qualified J713/25G83 render envelope.
+/// Command offsets and microsequence offsets are deliberately separate names.
+/// Encoding, timestamp patching and relocation all consume this definition.
+pub(crate) struct Layout {
+    pub command_sequence: usize,
+    pub command_sequence_size: usize,
+    pub timestamp_start: usize,
+    pub finalize: usize,
+    pub finalize_restart: usize,
+    pub finalize_uma_pointer: usize,
+    pub finalize_opcode: u32,
+    pub uma_header: usize,
+    pub sequence_size: usize,
+    finish: usize,
+    job_meta: usize,
+    command_time_control: usize,
+    command_time_pair: usize,
+    command_time_auxiliary: usize,
+    command_context_time: usize,
+}
+
+pub(crate) const fn layout(stage: Stage) -> Layout {
+    match stage {
+        Stage::Tiling => Layout {
+            command_sequence: 0x770, command_sequence_size: 0x778,
+            timestamp_start: 0x1cc, finalize: 0x268, finalize_restart: 0x80,
+            finalize_uma_pointer: 0x78, finalize_opcode: 6, uma_header: 0x190,
+            sequence_size: 0x300, finish: 0x94, job_meta: 0x878,
+            command_time_control: 0x8c0, command_time_pair: 0x8c8,
+            command_time_auxiliary: 0x928, command_context_time: 0x83c,
+        },
+        Stage::Fragment => Layout {
+            command_sequence: 0x14, command_sequence_size: 0x1c,
+            timestamp_start: 0x1ec, finalize: 0x288, finalize_restart: 0xa0,
+            finalize_uma_pointer: 0x98, finalize_opcode: 8, uma_header: 0x1b0,
+            sequence_size: 0x380, finish: 0xbc, job_meta: 0xbc0,
+            command_time_control: 0xc08, command_time_pair: 0xc10,
+            command_time_auxiliary: 0xc70, command_context_time: 0xb84,
+        },
+    }
+}
+
 fn put(out: &mut [u8], offset: usize, value: u64, size: usize) {
     out[offset..offset + size].copy_from_slice(&value.to_le_bytes()[..size]);
 }
@@ -29,13 +86,13 @@ fn valid_fw(address: u64) -> bool {
 }
 
 pub(crate) fn sequence_size(stage: Stage) -> usize {
-    match stage { Stage::Tiling => 0x300, Stage::Fragment => 0x380 }
+    layout(stage).sequence_size
 }
 
 pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) -> Result<(), BuildError> {
     let ta = stage == Stage::Tiling;
-    let (start, finish, uma, meta) = if ta { (0x1cc, 0x94, 0x190, 0x878) }
-                                   else { (0x1ec, 0xbc, 0x1b0, 0xbc0) };
+    let wire = layout(stage);
+    let (start, finish, uma, meta) = (wire.timestamp_start, wire.finish, wire.uma_header, wire.job_meta);
     let total = sequence_size(stage);
     if command.len() < stage.command_size() || sku.len() < total { return Err(BuildError::BufferTooSmall); }
     if a.context >= 64 || a.generation == 0 || a.event_slot >= 128 || a.stamp == 0
@@ -60,7 +117,7 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
         for (off, value, size) in [
             (0x10, a.notifier, 8), (0x18, a.pb_id as u64, 4),
             (0x20, a.manager, 8), (0x28, a.pb_slot, 8), (0x30, a.pb_aux, 8),
-            (0x770, a.sku, 8), (0x778, total as u64, 4), (0x8a0, a.pass_id as u64, 4)] {
+            (wire.command_sequence, a.sku, 8), (wire.command_sequence_size, total as u64, 4), (0x8a0, a.pass_id as u64, 4)] {
             put(command, off, value, size);
         }
         command[0x917] = a.generation;
@@ -72,7 +129,7 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
         put(command, 0x780, a.fragment_stamp as u64, 4);
     } else {
         for (off, value, size) in [
-            (0x14, a.sku, 8), (0x1c, total as u64, 4), (0x20, a.notifier, 8),
+            (wire.command_sequence, a.sku, 8), (wire.command_sequence_size, total as u64, 4), (0x20, a.notifier, 8),
             (0x28, a.manager, 8), (0x30, a.pb_slot, 8), (0x38, a.pb_aux, 8),
             (0xbe8, a.pass_id as u64, 4)] { put(command, off, value, size); }
         command[0xc5f] = a.generation;
@@ -90,26 +147,23 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
     // J713/25G83 encodeTimeStamp emits these 0x4c-byte records around WFI.
     // Pointer fields name cells in RunCommand, not their eventual destinations.
     // Keep both output cells in the pass owner's retained metadata allocation.
-    let (control, pointers, auxiliary, context_time) = if ta {
-        (0x8c0, 0x8c8, 0x928, 0x83c)
-    } else {
-        (0xc08, 0xc10, 0xc70, 0xb84)
-    };
+    let (control, pointers, auxiliary, context_time) = (wire.command_time_control,
+        wire.command_time_pair, wire.command_time_auxiliary, wire.command_context_time);
     put(command, pointers, a.timestamp_storage, 8);
     put(command, pointers + 8, a.timestamp_storage + 8, 8);
     for (offset, opcode, selected) in [(start, 0x80000003, pointers),
-                                      (start + 0x50, 3, pointers + 8)] {
-        let timestamp = &mut sku[offset..offset + 0x4c];
+                                      (start + timestamp::END_DELTA, 3, pointers + 8)] {
+        let timestamp = &mut sku[offset..offset + timestamp::SIZE];
         put(timestamp, 0, opcode, 4);
-        for (off, value) in [(4, a.command + control as u64),
-            (0xc, a.command + pointers as u64),
-            (0x14, a.command + selected as u64), (0x1c, a.queue),
-            (0x2c, a.command + auxiliary as u64),
-            (0x34, a.command + context_time as u64), (0x44, a.uuid as u64)] {
+        for (off, value) in [(timestamp::CONTROL, a.command + control as u64),
+            (timestamp::INTERNAL_PAIR, a.command + pointers as u64),
+            (timestamp::SELECTED_CELL, a.command + selected as u64), (timestamp::QUEUE, a.queue),
+            (timestamp::AUXILIARY, a.command + auxiliary as u64),
+            (timestamp::CONTEXT_TIME, a.command + context_time as u64), (timestamp::UUID, a.uuid as u64)] {
             put(timestamp, off, value, 8);
         }
     }
-    put(sku, start + 0x4c, 1, 4);
+    put(sku, start + timestamp::SIZE, 1, 4);
     if ta {
         for (off, value, size) in [
             (0x1c,a.manager,8), (0x24,a.pb_slot,8), (0x2c,a.stats,8),
@@ -127,24 +181,24 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
             (0xa0,a.uuid as u64,4), (0x1e0,a.event_slot as u64,4)] { put(sku,off,value,size); }
     }
     if !ta { sku[0x1e4] = RENDER_MODE; }
-    let finalize = start + 0x9c;
+    let finalize = wire.finalize;
     let f = &mut sku[finalize..];
-    put(f, 0, if ta { 6 } else { 8 }, 4);
+    put(f, 0, wire.finalize_opcode as u64, 4);
     if ta {
         for (off,value,size) in [
             (4,a.pb_slot,8), (0xc,a.manager,8), (0x14,a.stats,8), (0x1c,a.queue,8),
             (0x24,a.command+0x85c,8), (0x2c,a.context as u64,4),
             (0x34,a.command+0x784,8), (0x40,a.uuid as u64,4), (0x48,a.stamp_address,8),
-            (0x50,a.stamp as u64,4), (0x78,a.sku+uma as u64,8),
-            (0x80,(-(finalize as i32)) as u32 as u64,4), (0x85,a.command+0x918,8)] { put(f,off,value,size); }
+            (0x50,a.stamp as u64,4), (wire.finalize_uma_pointer,a.sku+uma as u64,8),
+            (wire.finalize_restart,(-(finalize as i32)) as u32 as u64,4), (0x85,a.command+0x918,8)] { put(f,off,value,size); }
     } else {
         for (off,value,size) in [
             (4,a.uuid as u64,4), (0xc,a.stamp_address,8), (0x14,a.stamp as u64,4),
             (0x1c,a.pb_slot,8), (0x24,a.manager,8), (0x2c,1,4), (0x30,a.stats,8),
             (0x38,a.command+0xbb0,8), (0x40,a.command+0xbb4,8), (0x48,a.command+0xb70,8),
             (0x50,a.queue,8), (0x58,a.command,8), (0x60,a.context as u64,4),
-            (0x64,a.command+0xa58,8), (0x98,a.sku+uma as u64,8),
-            (0xa0,(-(finalize as i32)) as u32 as u64,4), (0xa5,a.command+0xc60,8),
+            (0x64,a.command+0xa58,8), (wire.finalize_uma_pointer,a.sku+uma as u64,8),
+            (wire.finalize_restart,(-(finalize as i32)) as u32 as u64,4), (0xa5,a.command+0xc60,8),
             (0xad,1,4), (0xb2,a.event_slot as u64,4)] { put(f,off,value,size); }
     }
     f[if ta { 0x8d } else { 0xb1 }] = RENDER_MODE;
@@ -158,12 +212,12 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
 pub(crate) fn relocate_program(sequence: &mut [u8], stage: Stage, address: u64) -> Result<(), BuildError> {
     let base = sequence_size(stage);
     if !valid_fw(address) || sequence.len() < base || sequence.len() > 0x800 ||
-        (sequence.len() - base) % 0x4c != 0 ||
+        (sequence.len() - base) % timestamp::SIZE != 0 ||
         (stage == Stage::Tiling && sequence.len() != base) { return Err(BuildError::Address); }
     let extra = sequence.len() - base;
-    let (finalize, restart, pointer, uma, opcode) = if stage == Stage::Tiling {
-        (0x268, 0x80, 0x78, 0x190, 6u32)
-    } else { (0x288 + extra, 0xa0, 0x98, 0x1b0, 8u32) };
+    let wire = layout(stage);
+    let (finalize, restart, pointer, uma, opcode) = (wire.finalize + extra,
+        wire.finalize_restart, wire.finalize_uma_pointer, wire.uma_header as u64, wire.finalize_opcode);
     if sequence[finalize..finalize+4] != opcode.to_le_bytes() ||
         sequence[finalize+restart..finalize+restart+4] != (-(finalize as i32)).to_le_bytes() {
         return Err(BuildError::Address);
@@ -238,9 +292,9 @@ pub(crate) fn render_dependency(out: &mut [u8], stamp_address: u64,
 /// restart branch relative to the moved record for partial-render retries.
 pub(crate) fn fragment_timestamp_copies(sequence: &mut [u8], pointers: &[u64])
     -> Result<usize, BuildError> {
-    const END: usize = 0x23c;
-    const FINALIZE: usize = 0x288;
-    const RECORD: usize = 0x4c;
+    const END: usize = layout(Stage::Fragment).timestamp_start + timestamp::END_DELTA;
+    const FINALIZE: usize = layout(Stage::Fragment).finalize;
+    const RECORD: usize = timestamp::SIZE;
     let base = sequence_size(Stage::Fragment);
     let extra = pointers.len() * RECORD;
     if pointers.len() > 8 || !pointers.iter().all(|p| valid_fw(*p)) {
@@ -254,9 +308,9 @@ pub(crate) fn fragment_timestamp_copies(sequence: &mut [u8], pointers: &[u64])
     for (i, pointer) in pointers.iter().enumerate() {
         let record = &mut sequence[FINALIZE + i * RECORD..FINALIZE + (i + 1) * RECORD];
         record.copy_from_slice(&timestamp);
-        put(record, 0x24, *pointer, 8);
+        put(record, timestamp::USER_PAIR, *pointer, 8);
     }
-    put(sequence, FINALIZE + extra + 0xa0,
+    put(sequence, FINALIZE + extra + layout(Stage::Fragment).finalize_restart,
         (-(FINALIZE as i32 + extra as i32)) as u32 as u64, 4);
     Ok(base + extra)
 }

@@ -430,9 +430,9 @@ impl Render {
             self.metadata.u64(offset, pair[0])?;
             self.metadata.u64(offset + 8, pair[1])?;
             let pointer = if pair == [0, 0] { 0 } else { self.metadata.va() + offset as u64 };
-            let start = if i == 0 { 0x1cc } else { 0x1ec };
-            self.sequences[i].u64(start + 0x24, pointer)?;
-            self.sequences[i].u64(start + 0x50 + 0x24, pointer)?;
+            let start = wire::layout(if i == 0 { Stage::Tiling } else { Stage::Fragment }).timestamp_start;
+            self.sequences[i].u64(start + wire::timestamp::USER_PAIR, pointer)?;
+            self.sequences[i].u64(start + wire::timestamp::END_DELTA + wire::timestamp::USER_PAIR, pointer)?;
         }
         g16_memory::publish();
         Ok(())
@@ -452,7 +452,7 @@ impl Render {
         self.sequences[1].read(0, &mut sequence[..wire::sequence_size(Stage::Fragment)])?;
         let size = wire::fragment_timestamp_copies(&mut sequence, &pairs[..count]).map_err(|_| EINVAL)?;
         self.sequences[1].write(0, &sequence[..size])?;
-        self.commands[1].u32(0x1c, size.try_into()?)?;
+        self.commands[1].u32(wire::layout(Stage::Fragment).command_sequence_size, size.try_into()?)?;
         g16_memory::publish();
         Ok(())
     }
@@ -463,10 +463,10 @@ impl Render {
             let total = wire::sequence_size(stage);
             self.sequences[i].read(0, &mut sequence[..total])?;
             let size = crate::g16_compute::omit_timestamps(&mut sequence,
-                if i == 0 { 0x1cc } else { 0x1ec }, total,
-                if i == 0 { 0x80 } else { 0xa0 }).map_err(|_| EINVAL)?;
+                wire::layout(stage).timestamp_start, total,
+                wire::layout(stage).finalize_restart).map_err(|_| EINVAL)?;
             self.sequences[i].write(0, &sequence[..total])?;
-            self.commands[i].u32(if i == 0 { 0x778 } else { 0x1c }, size.try_into()?)?;
+            self.commands[i].u32(wire::layout(stage).command_sequence_size, size.try_into()?)?;
         }
         Ok(())
     }
@@ -477,12 +477,12 @@ impl Render {
             return Err(EINVAL);
         }
         for (i, stage) in [Stage::Tiling, Stage::Fragment].into_iter().enumerate() {
-            let length = self.commands[i].read_u32(if i == 0 { 0x778 } else { 0x1c })? as usize;
+            let length = self.commands[i].read_u32(wire::layout(stage).command_sequence_size)? as usize;
             if length > 0x800 { return Err(EINVAL); }
             let mut bytes = [0u8; 0x800];
             self.sequences[i].read(0, &mut bytes[..length])?;
             let address = config.cache_program(dev, vm, &mut bytes[..length], stage)?;
-            self.commands[i].u64(if i == 0 { 0x770 } else { 0x14 }, address)?;
+            self.commands[i].u64(wire::layout(stage).command_sequence, address)?;
         }
         g16_memory::publish();
         Ok(())
