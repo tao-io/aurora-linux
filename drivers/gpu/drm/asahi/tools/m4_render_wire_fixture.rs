@@ -6,15 +6,24 @@
 use std::io::Write;
 use g16_render_command::*;
 fn main() {
-    let b = 0xfffffc2001000000;
+    let variant: u64 = std::env::args().nth(1).map(|v| v.parse().unwrap()).unwrap_or(0);
+    assert!(variant < 64);
+    let b = 0xfffffc2001000000 + variant * 0x100000;
     let mut out = std::io::stdout();
     for stage in [g16_render::Stage::Tiling, g16_render::Stage::Fragment] {
-        let a = Args { command:b, sku:b+0x4000, queue:b+0x8000, stats:b+0xc004,
+        let mut a = Args { command:b, sku:b+0x4000, queue:b+0x8000, stats:b+0xc004,
             pb_slot:b+0x10000, manager:b+0x14000, pb_aux:b+0x18000, notifier:b+0x1c000,
             shared_stamp:b+0x20000, stamp_address:b+0x24000, uma:b+0x28000,
             uma_aux:0x7003000000, context:3, generation:2, counter:0x100000001,
             timestamp_storage:b+0x30000, uuid:0x1234, stamp:0x300, event_slot:0x71,
             fragment_slot:0x71, fragment_stamp:0x300, pb_id:2, pass_id:4 };
+        if variant != 0 {
+            a.context = variant as u32; a.generation = variant as u8;
+            a.counter = (variant << 32) | (u32::MAX as u64 - variant);
+            a.uuid = u32::MAX - variant as u32; a.stamp = (variant as u32 + 1) << 8;
+            a.event_slot = variant as u32; a.fragment_slot = 127 - variant as u32;
+            a.fragment_stamp = a.stamp + 0x100; a.pass_id = variant as u32;
+        }
         let mut command = [0xa5; 0xca0]; let mut sku = [0xa5; 0x380];
         encode(&mut command,&mut sku,stage,a).unwrap();
         // Firmware engine statistics and queue pointers must survive both
