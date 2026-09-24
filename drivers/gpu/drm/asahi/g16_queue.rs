@@ -4,6 +4,9 @@
 //! firmware retirement; no captured addresses or globally shared user VM.
 
 use kernel::prelude::*;
+#[path = "g16_queue_layout.rs"]
+mod layout;
+use layout::{context,info,ring,notifier_list,barrier,client};
 use crate::g16_compute::notification_layout as notification;
 use crate::{driver, g16_memory::{self, Buffer}, mmu};
 
@@ -16,24 +19,24 @@ pub(crate) struct Context {
 
 impl Context {
     pub(crate) fn new(dev: &driver::AsahiDevice, vm: &mmu::Vm) -> Result<Self> {
-        let mut data = Buffer::new(dev, vm, 0x38)?;
-        data.write(0, &[255, 255])?;
-        data.write(5, &[1])?;
-        data.write(0x33, &[255])?;
+        let mut data = Buffer::new(dev, vm, context::SIZE)?;
+        data.write(context::REGISTRATION, &[255, 255])?;
+        data.write(context::ENABLE, &[1])?;
+        data.write(context::SENTINEL_33, &[255])?;
         // Normal process scheduling weight. Native allocateSchedulerState
         // (25G83 TEXT8973c44) supplies this for every logical queue. Firmware
         // TEXT14f28 defaults it only when creating a new process group.
-        data.write(0x26, &[2])?;
+        data.write(context::SCHEDULING_WEIGHT, &[2])?;
         Ok(Self { data })
     }
     pub(crate) fn registered(&mut self) -> Result<bool> {
         let mut state = [0; 3];
-        self.data.read(0, &mut state)?;
+        self.data.read(context::REGISTRATION, &mut state)?;
         Ok(state[0] != 255 && state[1] != 255 && state[2] == 4)
     }
     #[cfg(CONFIG_DEV_COREDUMP)]
     pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
-        dump.buffer("queue-context", &mut self.data, 0x38)
+        dump.buffer("queue-context", &mut self.data, context::SIZE)
     }
 }
 
@@ -66,11 +69,11 @@ impl Queue {
             notification: Buffer::new(dev, vm, notification::SIZE)?,
             threshold: Buffer::new(dev, vm, 8)?,
             submitted: 0,
-            info: Buffer::new(dev, vm, 0x24c0)?,
-            ring_state: Buffer::new(dev, vm, 0x60)?,
-            ring: Buffer::new(dev, vm, capacity as usize * 8)?,
-            notifier: Buffer::new(dev, vm, 0x18)?,
-            command: Buffer::new(dev, vm, 0x40)?,
+            info: Buffer::new(dev, vm, info::SIZE)?,
+            ring_state: Buffer::new(dev, vm, ring::SIZE)?,
+            ring: Buffer::new(dev, vm, capacity as usize * ring::ENTRY_SIZE)?,
+            notifier: Buffer::new(dev, vm, notifier_list::SIZE)?,
+            command: Buffer::new(dev, vm, barrier::SIZE)?,
             stamp: Buffer::new(dev, vm, 8)?,
             completion: Buffer::new(dev, vm, 8)?,
         };
@@ -82,24 +85,24 @@ impl Queue {
         queue.notification.u32(notification::UNKNOWN_10, notification::QUALIFIED_UNKNOWN_10)?;
         queue.notification.write(notification::SLOT_SENTINELS, &[255; notification::SLOT_SENTINELS_SIZE])?;
         queue.notification.u32(notification::UNKNOWN_114, notification::QUALIFIED_UNKNOWN_114)?;
-        queue.info.u64(0, queue.ring_state.va())?;
-        queue.info.u64(8, queue.ring.va())?;
-        queue.info.u64(0x10, queue.notifier.va())?;
-        queue.info.u64(0x18, queue.info.va() + 0xb0)?;
-        queue.info.u32(0x2c, u32::MAX)?;
-        queue.info.u32(0x30, 2)?;
-        queue.info.u32(0x34, 2)?;
-        queue.info.u64(0x38, 0xffff000000000000)?;
-        queue.info.u32(0x48, 2)?;
-        queue.info.u32(0x4c, u32::MAX)?;
-        queue.info.u64(0xa4, context.data.va())?;
-        queue.notifier.u64(8, queue.notifier.va())?;
-        queue.ring_state.u32(0x50, capacity)?;
+        queue.info.u64(info::RING_STATE, queue.ring_state.va())?;
+        queue.info.u64(info::RING, queue.ring.va())?;
+        queue.info.u64(info::NOTIFIER_LIST, queue.notifier.va())?;
+        queue.info.u64(info::SCHEDULER_POINTER, queue.info.va() + info::SCHEDULER_STORAGE as u64)?;
+        queue.info.u32(info::EVENT_ID, u32::MAX)?;
+        queue.info.u32(info::PRIORITY_0, 2)?;
+        queue.info.u32(info::PRIORITY_1, 2)?;
+        queue.info.u64(info::PRIORITY_MASK, 0xffff000000000000)?;
+        queue.info.u32(info::PRIORITY_5, 2)?;
+        queue.info.u32(info::UNKNOWN_4C, u32::MAX)?;
+        queue.info.u64(info::CONTEXT, context.data.va())?;
+        queue.notifier.u64(notifier_list::SELF, queue.notifier.va())?;
+        queue.ring_state.u32(ring::CAPACITY, capacity)?;
         // Barrier opcode 4, already-satisfied wait at the owned zero stamp.
-        queue.command.u32(0, 4)?;
-        queue.command.u64(4, queue.stamp.va())?;
-        queue.command.u64(0xc, queue.stamp.va())?;
-        queue.command.u32(0x20, 0x80)?;
+        queue.command.u32(barrier::OPCODE, barrier::QUALIFIED_OPCODE)?;
+        queue.command.u64(barrier::STAMP_0, queue.stamp.va())?;
+        queue.command.u64(barrier::STAMP_1, queue.stamp.va())?;
+        queue.command.u32(barrier::CONTROL_20, barrier::QUALIFIED_CONTROL)?;
         Ok(queue)
     }
 
@@ -125,10 +128,10 @@ impl Queue {
     }
 
     pub(crate) fn prepare_barrier(&mut self) -> Result<u64> {
-        if self.ring_state.read_u32(0x40)? != 0 { return Err(EBUSY); }
+        if self.ring_state.read_u32(ring::CPU_WRITE)? != 0 { return Err(EBUSY); }
         self.ring.u64(0, self.command.va())?;
         g16_memory::publish();
-        self.ring_state.u32(0x40, 1)?;
+        self.ring_state.u32(ring::CPU_WRITE, 1)?;
         g16_memory::publish();
         Ok(self.info.va())
     }
@@ -136,10 +139,10 @@ impl Queue {
     /// Publish into a fresh queue. The caller must retain command backing
     /// across every failure after this point, until engine retirement/reset.
     pub(crate) fn prepare_command(&mut self, command: u64) -> Result<u64> {
-        if command & 7 != 0 || self.ring_state.read_u32(0x40)? != 0 { return Err(EINVAL); }
+        if command & 7 != 0 || self.ring_state.read_u32(ring::CPU_WRITE)? != 0 { return Err(EINVAL); }
         self.ring.u64(0, command)?;
         g16_memory::publish();
-        self.ring_state.u32(0x40, 1)?;
+        self.ring_state.u32(ring::CPU_WRITE, 1)?;
         g16_memory::publish();
         Ok(self.info.va())
     }
@@ -153,8 +156,8 @@ impl Queue {
     #[cfg(CONFIG_DEV_COREDUMP)]
     pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump, names: [&str; 2]) -> Result {
         // Includes the complete 128-node firmware scheduler ring at +0xb0.
-        dump.buffer(names[0], &mut self.info, 0x24c0)?;
-        dump.buffer(names[1], &mut self.ring_state, 0x60)?;
+        dump.buffer(names[0], &mut self.info, info::SIZE)?;
+        dump.buffer(names[1], &mut self.ring_state, ring::SIZE)?;
         if names[0] == "queue-compute" {
             dump.buffer("compute-notification", &mut self.notification, notification::SIZE)?;
             dump.buffer("compute-threshold", &mut self.threshold, 8)?;
@@ -173,11 +176,11 @@ impl Queue {
         if status != [write, write, write, write, write, 0] { return Err(EBUSY); }
         let mut next = write;
         for command in commands {
-            self.ring.u64(next as usize * 8, *command)?;
+            self.ring.u64(next as usize * ring::ENTRY_SIZE, *command)?;
             next = (next + 1) & (self.capacity - 1);
         }
         g16_memory::publish();
-        self.ring_state.u32(0x40, next)?;
+        self.ring_state.u32(ring::CPU_WRITE, next)?;
         g16_memory::publish();
         Ok((self.info.va(), next))
     }
@@ -199,11 +202,11 @@ impl Queue {
         }
         let mut next = write;
         for command in commands {
-            self.ring.u64(next as usize * 8, *command)?;
+            self.ring.u64(next as usize * ring::ENTRY_SIZE, *command)?;
             next = (next + 1) & mask;
         }
         g16_memory::publish();
-        self.ring_state.u32(0x40, next)?;
+        self.ring_state.u32(ring::CPU_WRITE, next)?;
         g16_memory::publish();
         Ok((self.info.va(), next))
     }
@@ -218,9 +221,9 @@ impl Queue {
         Ok(())
     }
     pub(crate) fn status(&mut self) -> Result<[u32; 6]> {
-        Ok([self.info.read_u32(0x20)?, self.info.read_u32(0x24)?, self.info.read_u32(0x28)?,
-            self.ring_state.read_u32(0x30)?, self.ring_state.read_u32(0x40)?,
-            self.info.read_u32(0x80)?])
+        Ok([self.info.read_u32(info::CONSUMERS[0])?, self.info.read_u32(info::CONSUMERS[1])?, self.info.read_u32(info::CONSUMERS[2])?,
+            self.ring_state.read_u32(ring::GPU_READ)?, self.ring_state.read_u32(ring::CPU_WRITE)?,
+            self.info.read_u32(info::STATE_80)?])
     }
 }
 
@@ -247,10 +250,10 @@ impl ClientNotifications {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat,
         vm: &mmu::Vm) -> Result<Client> {
         let binding = uat.bind(vm)?;
-        let mut data = Buffer::new(dev, uat.kernel_vm(), 0x1000)?;
+        let mut data = Buffer::new(dev, uat.kernel_vm(), client::SIZE)?;
         for engine in 0..3 {
             let offset = engine * notification::SIZE;
-            data.u64(offset + notification::THRESHOLD, data.va() + 0x600 + engine as u64 * 8)?;
+            data.u64(offset + notification::THRESHOLD, data.va() + client::THRESHOLDS[engine] as u64)?;
             data.u32(offset + notification::GENERATION, crate::g16_compute::EVENT_GENERATION)?;
             data.u32(offset + notification::UNKNOWN_10, notification::QUALIFIED_UNKNOWN_10)?;
             data.u32(offset + notification::CONTEXT, binding.slot())?;
@@ -266,9 +269,9 @@ impl ClientNotifications {
         let base = self.data.va();
         crate::g16_compute::Notification {
             address: base + engine as u64 * notification::SIZE as u64,
-            threshold: base + 0x600 + engine as u64 * 8,
-            fw_stamp: base + 0x620 + engine as u64 * 16,
-            stamp: base + 0x628 + engine as u64 * 16,
+            threshold: base + client::THRESHOLDS[engine] as u64,
+            fw_stamp: base + client::FW_STAMPS[engine] as u64,
+            stamp: base + client::USER_STAMPS[engine] as u64,
             event_seq: self.reserved[engine],
         }
     }
@@ -278,8 +281,8 @@ impl ClientNotifications {
     pub(crate) fn prime_unused_stamps(&mut self, render: bool, previous: u32) -> Result {
         for engine in if render { 0..2 } else { 2..3 } {
             if self.reserved[engine] != 0 || self.submitted[engine] != 0 { continue; }
-            self.data.u32(0x620 + engine * 16, previous)?;
-            self.data.u32(0x628 + engine * 16, previous)?;
+            self.data.u32(client::FW_STAMPS[engine], previous)?;
+            self.data.u32(client::USER_STAMPS[engine], previous)?;
         }
         Ok(())
     }
@@ -316,20 +319,20 @@ impl ClientNotifications {
     pub(crate) fn publish(&mut self, render: bool) -> Result {
         for engine in if render { 0..2 } else { 2..3 } {
             self.submitted[engine] = self.submitted[engine].checked_add(1).ok_or(EOVERFLOW)?;
-            self.data.u64(0x600 + engine * 8, self.submitted[engine])?;
+            self.data.u64(client::THRESHOLDS[engine], self.submitted[engine])?;
         }
         Ok(())
     }
     pub(crate) fn stamps(&mut self, engine: usize) -> Result<[u32; 2]> {
-        Ok([self.data.read_u32(0x620 + engine * 16)?,
-            self.data.read_u32(0x628 + engine * 16)?])
+        Ok([self.data.read_u32(client::FW_STAMPS[engine])?,
+            self.data.read_u32(client::USER_STAMPS[engine])?])
     }
     #[cfg(CONFIG_DEV_COREDUMP)]
     pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
-        dump.buffer("client-notifications", &mut self.data, 0x1000)
+        dump.buffer("client-notifications", &mut self.data, client::SIZE)
     }
     #[cfg(CONFIG_DEV_COREDUMP)]
     pub(crate) fn capture_render_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
-        dump.buffer("render-client-notifications", &mut self.data, 0x1000)
+        dump.buffer("render-client-notifications", &mut self.data, client::SIZE)
     }
 }

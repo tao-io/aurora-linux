@@ -34,3 +34,33 @@ rejected inputs.
 The current cleanup evidence is under
 `_provenance/driver-cleanups-20260924/` in the workspace. Runtime changes still
 require a clean-source build, guarded device tests and normal desktop checks.
+
+## Queue and client completion storage
+
+`g16_queue_layout.rs` names the J713/25G83 context, queue, scheduler storage,
+ring cursors, bootstrap barrier and per-client completion cells. Queue-owned
+buffers and their existing retention policy are unchanged. Unknown offsets
+retain explicit unknown names; no G15 layout is reused by inference. Client
+notification creation, address publication, threshold writes, stamp priming and
+readback share the same three-engine cell definitions.
+
+Run the queue comparison from the workspace:
+
+```
+python3 tools/check-queue-wire.py --kernel linux/linux-asahi --baseline e2ff38a41660 --output build/queue-wire-comparison
+```
+
+The same fixture executes baseline and candidate queue source in host byte
+buffers. It replaces only Arc/Mutex construction with direct ownership; all
+queue/client logic and Buffer field accesses remain from the source. Six varied
+addresses/ASIDs exercise two ring sizes through wraparound, bootstrap barriers,
+consumer retirement, batching, invalid inputs, threshold overflow, reservation
+rollback and all three engines' completion cells. Ordered allocation, write,
+read and publication logs must match exactly. This checks byte/operation
+preservation, not real DMA, locking, ASID lifetime or firmware behavior; guarded
+hardware and normal desktop gates remain mandatory.
+
+`queue-layout-validation.json` records both module builds, the six source-code
+wire comparisons, guarded normal reboot, 12/12 pinned CTS, byte-identical
+2560x1664 replay and normal Hyprland/Foot capture. Every hardware segment held
+the 60-second watchdog and 0.5-second thermal monitor; peak was 63 C.

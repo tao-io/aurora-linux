@@ -1,0 +1,161 @@
+{
+  "scope": "J713/25G83 named context/queue/ring/bootstrap-barrier and per-client completion layouts. Field values, mapping owners, ring policy, scheduling and retention unchanged.",
+  "baseline_source": "e2ff38a41660",
+  "source_tree": "ad932c09a4b71c3275df97e96314b2732dc51b7c",
+  "module_sha256": "542f22d5934cd94aa07e1a514c621dc34bc32f8fff6ee2c9648231c3857a10ee",
+  "boot_id": "b80f2d94-b3c8-4aca-babe-24f6484ce4d3",
+  "host": {
+    "build": {
+      "tree": "ad932c09a4b71c3275df97e96314b2732dc51b7c",
+      "config_sha256": "ca858c6d76b9848fd7989068c169fb13a19879a4655607262f038931645520de",
+      "source_export_checksum_verified": true,
+      "output": "clean Git archive, incremental module build using previously prepared M4 output; not a new from-empty full kernel build",
+      "clean_module_sha256": "4c443dce960e33a8877dc75c8ee046e1f6722ddf0cd048f1b96ae903c2a1370e",
+      "deployed_module_sha256": "542f22d5934cd94aa07e1a514c621dc34bc32f8fff6ee2c9648231c3857a10ee"
+    },
+    "queue_wire": {
+      "baseline_tree": "7af17ba5b2137dd59a26e50135d7fe1227b0627f",
+      "sources": {
+        "baseline": {
+          "g16_queue.rs": "e679a8531930890222131a3987c3d4795119ef49f477a3e3c4894741abaf8128",
+          "g16_compute.rs": "d03be49d7e75b4dc4678bd3aa67baf8bff4ccfce701239d4f4f4f7e7e6ade3de",
+          "m4_queue_wire_fixture.rs": "a108397f79bee7ff5ffb3a058ffc9a5b2f2a6a6682076d435c4e367b624b8cf5",
+          "m4_queue_wire_exercise.rs": "b8d9c5c8c53ae785bb1b63f849f48214309bc4df940205227321663f0bb74cda"
+        },
+        "candidate": {
+          "g16_queue.rs": "504c5169e1f44f0d34d05d6d58e80517600d0e945f83bdfb03882510b27ed018",
+          "g16_compute.rs": "d03be49d7e75b4dc4678bd3aa67baf8bff4ccfce701239d4f4f4f7e7e6ade3de",
+          "g16_queue_layout.rs": "e5b24e4f44cc56e491f2e01e2b9c26596ec9d4ce209930c29dc2eceb6cdc16ff",
+          "m4_queue_wire_fixture.rs": "a108397f79bee7ff5ffb3a058ffc9a5b2f2a6a6682076d435c4e367b624b8cf5",
+          "m4_queue_wire_exercise.rs": "b8d9c5c8c53ae785bb1b63f849f48214309bc4df940205227321663f0bb74cda"
+        }
+      },
+      "comparisons": [
+        {
+          "variant": 0,
+          "bytes": 31204,
+          "sha256": "645ed477474350b28b5bd204bb681fbf7081ce9eb083fca4538359b9aeff3702"
+        },
+        {
+          "variant": 1,
+          "bytes": 405188,
+          "sha256": "81d1505c0763a2eda7902109cd6a8d026cff50fda188d9a0d34e07c8fc960a18"
+        },
+        {
+          "variant": 2,
+          "bytes": 31204,
+          "sha256": "4dc2b98d125dbf9adbd6f0efbfd224f089bb50baa96f7b8beca950b235a89c65"
+        },
+        {
+          "variant": 15,
+          "bytes": 405188,
+          "sha256": "d536274cfbdefdc21096fce72762d9b912f3a16034a94f80dfae89e9fc08d334"
+        },
+        {
+          "variant": 31,
+          "bytes": 405188,
+          "sha256": "2c38bf6260fc249756b6418dcc1c683781294460d88fd49bfbb7ae535f8c4e89"
+        },
+        {
+          "variant": 63,
+          "bytes": 405188,
+          "sha256": "052aa7a73bc8406eb486b7749d2d6f017f2862fec69bf1f9ef7d4d7c46a58935"
+        }
+      ],
+      "result": "pass"
+    },
+    "limitations": "Host buffers record actual queue/client code operations; Arc/Mutex construction replaced with direct ownership. No DMA, locking, ASID-lifetime or firmware emulation.",
+    "harness_finding": "Initial host exercise had conflicting mutable/immutable borrows in a nested status call; split before runtime tests. Both sources then compiled and matched; initial log retained."
+  },
+  "hardware": {
+    "watchdog_seconds": 60,
+    "thermal_sample_seconds": 0.5,
+    "runs": {
+      "factorio": {
+        "evidence": "_provenance/experiments/20260924T092139021327Z-cleanup-queue-factorio",
+        "peak_c": 63.0
+      },
+      "cts": {
+        "evidence": "_provenance/experiments/20260924T092227295395Z-cleanup-queue-cts",
+        "peak_c": 62.25
+      },
+      "desktop": {
+        "evidence": "_provenance/experiments/20260924T092247691215Z-cleanup-queue-desktop",
+        "peak_c": 59.25
+      }
+    },
+    "cts": [
+      [
+        1563743,
+        "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_in_render_pass",
+        "Pass"
+      ],
+      [
+        1563747,
+        "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_out_of_render_pass",
+        "Pass"
+      ],
+      [
+        1563749,
+        "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_out_of_render_pass_host_query_reset_with_availability_bit",
+        "Pass"
+      ],
+      [
+        1563703,
+        "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_in_render_pass",
+        "Pass"
+      ],
+      [
+        1563707,
+        "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_out_of_render_pass",
+        "Pass"
+      ],
+      [
+        1563709,
+        "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_out_of_render_pass_host_query_reset_with_availability_bit",
+        "Pass"
+      ],
+      [
+        474877,
+        "dEQP-VK.compute.pipeline.basic.copy_ssbo_single_invocation",
+        "Pass"
+      ],
+      [
+        474875,
+        "dEQP-VK.compute.pipeline.basic.copy_ssbo_multiple_groups",
+        "Pass"
+      ],
+      [
+        474869,
+        "dEQP-VK.compute.pipeline.basic.atomic_barrier_sum_small",
+        "Pass"
+      ],
+      [
+        474873,
+        "dEQP-VK.compute.pipeline.basic.copy_image_to_ssbo_small",
+        "Pass"
+      ],
+      [
+        2155251,
+        "dEQP-VK.query_pool.statistics_query.compute_shader_invocations.32bits_primary",
+        "Pass"
+      ],
+      [
+        2155283,
+        "dEQP-VK.query_pool.statistics_query.compute_shader_invocations.64bits_secondary",
+        "Pass"
+      ]
+    ],
+    "replay": {
+      "size": [
+        2560,
+        1664
+      ],
+      "different_pixels": 0,
+      "sha256": "88594c10407e243eb0617860b8f2abc1f06c0844ec67ddba3900875d7e36796e",
+      "adaptations": "Offscreen swapchain, memory rebinding and omitted pipeline cache; not unmodified WSI proof"
+    },
+    "desktop": "Normal Hyprland autologin and live Foot window, six seconds, imported scanout inspected, child stopped afterwards"
+  },
+  "remaining": "Other M4 compute/render-job/config/init layouts and P3 shared-mechanism audit remain."
+}
