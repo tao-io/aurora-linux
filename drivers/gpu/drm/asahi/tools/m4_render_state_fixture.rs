@@ -11,7 +11,7 @@ fn main() {
  for (w,h,utile,base) in [(4,4,Utile::Pixels32,0x3000000000u64),
   (2560,1664,Utile::Pixels32,0x7000000000),(257,139,Utile::Pixels16,0x8000000000)] {
   let g = Geometry::new_layered(w,h,utile,utile,1,layers).unwrap();
-  let s = State { geometry:g,vdm:base+0x10000,tilemap:base+0x20000,tpc:base+0x30000,
+  let s = State { geometry:g,parameter_buffer_id:0,vdm:base+0x10000,tilemap:base+0x20000,tpc:base+0x30000,
    unknown:base+0x40000,preemption:[base+0x50000,base+0x60000,base+0xe0000],scratch:base+0x70000,
    merge_upper:[0x3addb3d9;2],tilebuffer_blocks:2,
    scene_list:base+0xf0000,auxiliary:base+0x80000,multisample:0x88,ppp:0x201,
