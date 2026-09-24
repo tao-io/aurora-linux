@@ -726,6 +726,11 @@ impl Runtime {
         }
         let alone = inner.inflight.len() == 1;
         let active = inner.inflight.first_mut().ok_or(EIO)?;
+        // Completion reads are sequential and the worker can be preempted
+        // between them. A snapshot begun before the deadline cannot prove
+        // that the command was still incomplete after the deadline. Take a
+        // fresh snapshot on the next poll before declaring a timeout.
+        let snapshot_after_deadline = active.started.elapsed() >= Delta::from_secs(2);
         let mut status = active.work.status()?;
         let pipe_index = active.work.pipe();
         let engine = match pipe_index { 0=>&mut inner.queue,1=>&mut inner.fragment_queue,_=>&mut inner.compute_queue };
@@ -1029,7 +1034,7 @@ impl Runtime {
             };
             inner.summary.wait_phases[pipe_index][phase] += 1;
         }
-        if active.started.elapsed() >= Delta::from_secs(2) {
+        if snapshot_after_deadline {
             dev_err!(inner.drm.as_ref(), "G16G: userspace GPU timeout job={} status={:x?} queue={:?} pipe={:?}\n",
                 active.packet.id, status, queue, pipe);
             inner.device.log_engine_state()?;
