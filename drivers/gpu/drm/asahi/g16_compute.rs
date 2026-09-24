@@ -36,6 +36,26 @@ pub(crate) const STAMP: u32 = 0x100;
 /// the RunCommand ASID generation, which changes when a context is rebound.
 pub(crate) const EVENT_GENERATION: u32 = 0;
 
+/// Persistent notifier layout, J713 / 25G83. Both queue-owned notifications,
+/// per-client engine notifications and the compute command's embedded fallback
+/// use these fields. Unknown values retain the existing qualified producer's
+/// constants; naming their offsets does not establish additional semantics.
+/// Threshold is an eight-byte firmware VA; generation/context and unknown
+/// control fields are u32. SLOT_SENTINELS is an eight-byte 0xff span.
+pub(crate) mod notification_layout {
+    pub(crate) const SIZE: usize = 0x200;
+    pub(crate) const THRESHOLD: usize = 0;
+    pub(crate) const GENERATION: usize = 8;
+    pub(crate) const UNKNOWN_10: usize = 0x10;
+    pub(crate) const CONTEXT: usize = 0x24;
+    pub(crate) const SLOT_SENTINELS: usize = 0xa8;
+    pub(crate) const SLOT_SENTINELS_SIZE: usize = 8;
+    pub(crate) const UNKNOWN_114: usize = 0x114;
+    pub(crate) const QUALIFIED_UNKNOWN_10: u32 = 0x50;
+    pub(crate) const QUALIFIED_UNKNOWN_114: u32 = 1;
+}
+
+
 /// Userspace supplies a complete CDM byte range; its terminating word is
 /// exclusive-end minus four. USC addresses remain in the client's 4 GiB window.
 #[derive(Clone, Copy)]
@@ -182,11 +202,12 @@ pub(crate) fn encode_dispatch(out: &mut [u8], a: Addresses, pool_qwords: u32,
     u32_at(out, 0xbbc, (-0x258i32) as u32);
     u32_at(out, 0xbd4, 0x40000002);
     // Independently consumed notifier and retirement stamps.
-    u64_at(out, 0xc00, threshold);
-    u32_at(out, 0xc08, EVENT_GENERATION);
-    u32_at(out, 0xc10, 0x50);
-    out[0xca8..0xcb0].fill(255);
-    u32_at(out, 0xd14, 1);
+    let notifier = 0xc00;
+    u64_at(out, notifier + notification_layout::THRESHOLD, threshold);
+    u32_at(out, notifier + notification_layout::GENERATION, EVENT_GENERATION);
+    u32_at(out, notifier + notification_layout::UNKNOWN_10, notification_layout::QUALIFIED_UNKNOWN_10);
+    out[notifier + notification_layout::SLOT_SENTINELS..notifier + notification_layout::SLOT_SENTINELS + notification_layout::SLOT_SENTINELS_SIZE].fill(255);
+    u32_at(out, notifier + notification_layout::UNKNOWN_114, notification_layout::QUALIFIED_UNKNOWN_114);
     u32_at(out, 0xee0, u32::MAX);
     u32_at(out, 0xee4, u32::MAX);
     u64_at(out, 0xf00, 1);

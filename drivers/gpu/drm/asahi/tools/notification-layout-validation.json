@@ -1,0 +1,63 @@
+{
+  "scope": "J713/25G83 notifier layout constants shared by queue-owned, per-client and embedded compute notifications. Preserve unknown values and all field widths. Other P2 layouts remain.",
+  "baseline_source": "6bbd2ec144ec",
+  "source_tree": "6036e6ad09a14d62add812512f6e4cae1314556f",
+  "module_sha256": "44a499567beb888588cc2897d22781eba063a638c67b228855d67e53ca1a694b",
+  "boot_id": "dbc952ed-0388-4be7-9853-ca05a38b86cd",
+  "host": {
+    "build": {
+      "tree": "6036e6ad09a14d62add812512f6e4cae1314556f",
+      "method": "Clean Git archive; checksum-verified source and prepared module-build output",
+      "config_sha256": "ca858c6d76b9848fd7989068c169fb13a19879a4655607262f038931645520de",
+      "result": "Pass: clean-source and matching-release Asahi modules"
+    },
+    "render_wire_variants": 6,
+    "geometry_compute_timestamp_tests": 13,
+    "binary_comparison": "Executable .text bytes identical; complete stripped modules differ in rodata, relocation addends and build ID. No whole-module equivalence claim; candidate was deployed and tested."
+  },
+  "hardware": {
+    "watchdog_seconds": 60,
+    "thermal_sample_seconds": 0.5,
+    "factorio": {
+      "images": [
+        "_provenance/experiments/20260924T055842586988Z-cleanup-layout-factorio-candidate/remote/vulkan-replay/screenshot_frame_2.png",
+        "_provenance/experiments/20260924T063119988454Z-cleanup-notification-factorio/remote/vulkan-replay/screenshot_frame_2.png"
+      ],
+      "size": [
+        2560,
+        1664
+      ],
+      "different_pixels": 0,
+      "sha256": [
+        "88594c10407e243eb0617860b8f2abc1f06c0844ec67ddba3900875d7e36796e",
+        "88594c10407e243eb0617860b8f2abc1f06c0844ec67ddba3900875d7e36796e"
+      ]
+    },
+    "replay_adaptations": "Offscreen swapchain, memory rebinding and omitted pipeline cache; not unmodified WSI proof",
+    "cts": {
+      "selected": 12,
+      "recorded": 12,
+      "completed": 12,
+      "counts": {
+        "Pass": 12
+      },
+      "classifications": {
+        "unclassified": 12
+      },
+      "elapsed_seconds": 4.802448130008997,
+      "preparation_seconds": 1.4564738960179966,
+      "runner_seconds": 3.046602005000011,
+      "jobs": 1,
+      "tests_per_group": 1,
+      "case_timeout_seconds": 10,
+      "cases_sha256": "3e5362b585253e6466ee4436f846c7b25ee4c2d39cba5b1a43466fc9d4dce53d",
+      "evidence": "/home/council/dev/dirtyroom_m4/_provenance/experiments/20260924T063210883361Z-cleanup-notification-cts",
+      "guard_verdict": "pass",
+      "command_returncode": 0,
+      "peak_temperature_c": 64.75
+    },
+    "desktop": "20260924T063320795804Z-cleanup-notification-desktop: normal Hyprland autologin and own Foot window remained live for six seconds, scanout inspected, test client stopped afterwards"
+  },
+  "evidence_root": "_provenance/driver-cleanups-20260924",
+  "harness_note": "First desktop invocation was rejected locally for missing required --expect; no hardware experiment ran. Original argument-error log retained."
+}

@@ -4,6 +4,7 @@
 //! firmware retirement; no captured addresses or globally shared user VM.
 
 use kernel::prelude::*;
+use crate::g16_compute::notification_layout as notification;
 use crate::{driver, g16_memory::{self, Buffer}, mmu};
 
 /// One scheduling context for the three engine queues of a logical queue.
@@ -62,7 +63,7 @@ impl Queue {
         if !capacity.is_power_of_two() || !(2..=65536).contains(&capacity) { return Err(EINVAL); }
         let mut queue = Self {
             capacity,
-            notification: Buffer::new(dev, vm, 0x200)?,
+            notification: Buffer::new(dev, vm, notification::SIZE)?,
             threshold: Buffer::new(dev, vm, 8)?,
             submitted: 0,
             info: Buffer::new(dev, vm, 0x24c0)?,
@@ -73,14 +74,14 @@ impl Queue {
             stamp: Buffer::new(dev, vm, 8)?,
             completion: Buffer::new(dev, vm, 8)?,
         };
-        queue.notification.u64(0, queue.threshold.va())?;
+        queue.notification.u64(notification::THRESHOLD, queue.threshold.va())?;
         // Match the zero event_generation in StartCompute/StartVertex/
         // StartFragment. The 25G83 notifier flush selects this generation;
         // a different tag leaves the dispatched work's cache lines dirty.
-        queue.notification.u32(8, crate::g16_compute::EVENT_GENERATION)?;
-        queue.notification.u32(0x10, 0x50)?;
-        queue.notification.write(0xa8, &[255; 8])?;
-        queue.notification.u32(0x114, 1)?;
+        queue.notification.u32(notification::GENERATION, crate::g16_compute::EVENT_GENERATION)?;
+        queue.notification.u32(notification::UNKNOWN_10, notification::QUALIFIED_UNKNOWN_10)?;
+        queue.notification.write(notification::SLOT_SENTINELS, &[255; notification::SLOT_SENTINELS_SIZE])?;
+        queue.notification.u32(notification::UNKNOWN_114, notification::QUALIFIED_UNKNOWN_114)?;
         queue.info.u64(0, queue.ring_state.va())?;
         queue.info.u64(8, queue.ring.va())?;
         queue.info.u64(0x10, queue.notifier.va())?;
@@ -115,7 +116,7 @@ impl Queue {
     }
     pub(crate) fn set_render_context(&mut self, context: u32) -> Result {
         if context >= 64 { return Err(EINVAL); }
-        self.notification.u32(0x24, context)
+        self.notification.u32(notification::CONTEXT, context)
     }
     pub(crate) fn advance_threshold(&mut self) -> Result {
         self.submitted = self.submitted.checked_add(1).ok_or(EOVERFLOW)?;
@@ -155,7 +156,7 @@ impl Queue {
         dump.buffer(names[0], &mut self.info, 0x24c0)?;
         dump.buffer(names[1], &mut self.ring_state, 0x60)?;
         if names[0] == "queue-compute" {
-            dump.buffer("compute-notification", &mut self.notification, 0x200)?;
+            dump.buffer("compute-notification", &mut self.notification, notification::SIZE)?;
             dump.buffer("compute-threshold", &mut self.threshold, 8)?;
             dump.buffer("compute-user-stamp", &mut self.completion, 8)?;
             dump.buffer("compute-firmware-stamp", &mut self.stamp, 8)?;
@@ -248,13 +249,13 @@ impl ClientNotifications {
         let binding = uat.bind(vm)?;
         let mut data = Buffer::new(dev, uat.kernel_vm(), 0x1000)?;
         for engine in 0..3 {
-            let offset = engine * 0x200;
-            data.u64(offset, data.va() + 0x600 + engine as u64 * 8)?;
-            data.u32(offset + 8, crate::g16_compute::EVENT_GENERATION)?;
-            data.u32(offset + 0x10, 0x50)?;
-            data.u32(offset + 0x24, binding.slot())?;
-            data.write(offset + 0xa8, &[255; 8])?;
-            data.u32(offset + 0x114, 1)?;
+            let offset = engine * notification::SIZE;
+            data.u64(offset + notification::THRESHOLD, data.va() + 0x600 + engine as u64 * 8)?;
+            data.u32(offset + notification::GENERATION, crate::g16_compute::EVENT_GENERATION)?;
+            data.u32(offset + notification::UNKNOWN_10, notification::QUALIFIED_UNKNOWN_10)?;
+            data.u32(offset + notification::CONTEXT, binding.slot())?;
+            data.write(offset + notification::SLOT_SENTINELS, &[255; notification::SLOT_SENTINELS_SIZE])?;
+            data.u32(offset + notification::UNKNOWN_114, notification::QUALIFIED_UNKNOWN_114)?;
         }
         kernel::sync::Arc::pin_init(kernel::new_mutex!(Self {
             data, _binding: binding, reserved: [0; 3], submitted: [0; 3],
@@ -264,7 +265,7 @@ impl ClientNotifications {
     pub(crate) fn notification(&self, engine: usize) -> crate::g16_compute::Notification {
         let base = self.data.va();
         crate::g16_compute::Notification {
-            address: base + engine as u64 * 0x200,
+            address: base + engine as u64 * notification::SIZE as u64,
             threshold: base + 0x600 + engine as u64 * 8,
             fw_stamp: base + 0x620 + engine as u64 * 16,
             stamp: base + 0x628 + engine as u64 * 16,
