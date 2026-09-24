@@ -170,13 +170,13 @@ impl Compute {
     /// firmware stamp advances at engine retirement, independently of the
     /// batch notifier threshold (waiting on the user stamp can deadlock).
     pub(crate) fn dependency(&mut self, firmware_stamp: u64, slot: u8, previous: u32) -> Result<u64> {
-        let mut bytes = [0; 0x40];
+        let mut bytes = [0; crate::g16_render_command::dependency::SIZE];
         crate::g16_render_command::render_dependency(&mut bytes, firmware_stamp,
             slot, previous, self.stamp).map_err(|_| EINVAL)?;
         // G16 +3c selects a strict internal dependency, homologous to
         // WorkQueue Barrier::internal_barrier_type. The zero-valued render
         // dependency permits partial-render scheduling before full retirement.
-        bytes[0x3c..0x40].copy_from_slice(&1u32.to_le_bytes());
+        bytes[crate::g16_render_command::dependency::INTERNAL..crate::g16_render_command::dependency::INTERNAL+4].copy_from_slice(&1u32.to_le_bytes());
         self.command.write(layout::DEPENDENCY, &bytes)?;
         Ok(self.command.va() + layout::DEPENDENCY as u64)
     }
@@ -284,7 +284,7 @@ impl Compute {
         Ok([self.command.read_u32(layout::FIRMWARE_STAMP)? as u64, self.command.read_u32(layout::USER_STAMP)? as u64,
             self.command.read_u64(layout::TIME_START_CELL)?, self.command.read_u64(layout::TIME_END_CELL)?,
             self.command.read_u32(layout::STATUS)? as u64, self.command.read_u64(layout::THRESHOLD)?,
-            self.command.read_u32(layout::UMA + uma_layout::CONSUMED)? as u64, self.command.read_u64(layout::TIME_AUXILIARY)?,
+            self.command.read_u32(layout::UMA + uma_layout::UNKNOWN_44)? as u64, self.command.read_u64(layout::TIME_AUXILIARY)?,
             self.command.read_u32(layout::ENGINE_STATE)? as u64, self.output.read_u32(0)? as u64])
     }
 }

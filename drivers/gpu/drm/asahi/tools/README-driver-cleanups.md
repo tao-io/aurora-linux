@@ -115,3 +115,24 @@ installed module, boot identity, watchdog timeout and actual results; failures
 stop the suite and keep the evidence. It neither deploys nor recovers hardware.
 The resulting desktop PNG still requires visual review. Replay adaptations
 remain offscreen presentation, memory rebinding and omitted pipeline cache.
+
+## Render-owned metadata and parameter records
+
+`g16_render_command::{metadata,parameter,init_buffer,dependency}` describe
+subrecords of retained render owners, parameter managers and work barriers.
+The render runtime uses these names for initialization, timestamp publication,
+attachments, dependency addresses and completion readback. Command status and
+flush fields come from each engine's Layout; UMA readback shares the compute
+layout. UMA+44 remains explicitly unknown: the consumed-page cursor used by
+`g16_memory::consumed_pages` is +20, not that diagnostic word.
+
+```
+python3 tools/check-render-owner-wire.py --kernel linux/linux-asahi --baseline 3bf194abef80 --output build/render-owner-comparison
+```
+
+The check extracts fourteen actual methods verbatim from each source version
+and executes them on checked host buffers with six varied addresses. It compares
+full buffer snapshots and returned addresses/readback after dependencies,
+attachments, stamp-flush updates, user timestamps, zero/one/eight fanout copies
+and timestamp omission. This covers runtime consumers in addition to the
+existing encoder comparator; it does not emulate allocation, locking or DMA.

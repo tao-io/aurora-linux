@@ -228,7 +228,7 @@ pub(crate) fn freelist_images(base: u64, pages: usize) -> Result<(KVec<u8>, KVec
 /// pool. A consumer beyond the populated count means recycled entries were
 /// reused; report the whole pool so the caller clears everything.
 pub(crate) fn consumed_pages(descriptor: &mut Buffer, offset: usize, pages: usize) -> Result<usize> {
-    let consumed = descriptor.read_u32(offset + 0x20)? as usize;
+    let consumed = descriptor.read_u32(offset + crate::g16_compute::uma_layout::READ_CURSOR)? as usize;
     Ok(if consumed <= pages { consumed } else { pages })
 }
 

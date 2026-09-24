@@ -526,12 +526,13 @@ pub(crate) mod uma_layout {
     pub(crate) const UNKNOWN_10: usize = 16;
     pub(crate) const POOL: usize = 0x14;
     pub(crate) const CAPACITY: usize = 0x1c;
+    pub(crate) const READ_CURSOR: usize = 0x20;
     pub(crate) const PAGES: usize = 0x24;
     pub(crate) const EMPTY_28: usize = 0x28;
     pub(crate) const PAGES_2C: usize = 0x2c;
     pub(crate) const PAGE_LIST: usize = 0x30;
     pub(crate) const UNKNOWN_40: usize = 0x40;
-    pub(crate) const CONSUMED: usize = 0x44;
+    pub(crate) const UNKNOWN_44: usize = 0x44;
     pub(crate) const PAGE_GROUP_BYTES: usize = 0x48;
     pub(crate) const SUBMITTED_POINTER: usize = 0x4c;
     pub(crate) const COMPLETED: usize = 0x54;

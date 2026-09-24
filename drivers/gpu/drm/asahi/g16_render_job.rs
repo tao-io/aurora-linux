@@ -5,6 +5,8 @@ use kernel::prelude::*;
 use crate::{driver, mmu, g16_memory::{self, Buffer, GpuBuffer}, g16_render::{self, Register, Stage},
     g16_render_state::{self as state, State, Program, DepthStencil}, g16_render_command as wire,
     g17_uapi::UapiRenderCommand};
+use wire::{metadata, dependency, init_buffer};
+use crate::g16_compute::uma_layout;
 
 const PRIVATE_BYTES: usize = 32 * 1024 * 1024;
 const PRIVATE_PAGES: usize = PRIVATE_BYTES / 4096;
@@ -62,8 +64,8 @@ impl Render {
     /// handlers OR TA+894 / FS+bdc into notifier+20 (TEXT 21944 / 22e78),
     /// making the ready-notifier path publish stamps without threshold delay.
     pub(crate) fn request_completion_flush(&mut self) -> Result {
-        self.commands[0].u32(0x894, 1)?;
-        self.commands[1].u32(0xbdc, 1)?;
+        self.commands[0].u32(wire::layout(Stage::Tiling).command_flush_stamps, 1)?;
+        self.commands[1].u32(wire::layout(Stage::Fragment).command_flush_stamps, 1)?;
         Ok(())
     }
     pub(crate) fn retain_notifier(&mut self, notifier: crate::g16_queue::Client) {
@@ -83,10 +85,10 @@ impl Render {
         // Keep allocator and command evidence together without reading user BOs.
         self.notifier()?.lock().capture_render_fault(dump)?;
         let mut parameters = self.parameters.lock();
-        dump.buffer("render-parameter-manager", &mut parameters.manager, 0xc0)?;
+        dump.buffer("render-parameter-manager", &mut parameters.manager, wire::parameter::SIZE)?;
         dump.buffer("render-parameter-ring", &mut parameters.ring, 8)?;
         drop(parameters);
-        dump.buffer("render-scene-metadata", &mut self.metadata, 0x4000)?;
+        dump.buffer("render-scene-metadata", &mut self.metadata, metadata::SIZE)?;
         dump.buffer("render-uma-descriptor", &mut self.uma, 0x300)?;
         dump.buffer("render-pool-state", &mut self.pool_state, PRIVATE_QWORDS * 8)?;
         for (i, stage) in [Stage::Tiling, Stage::Fragment].into_iter().enumerate() {
@@ -167,7 +169,7 @@ impl Render {
             let (freelist, page_list_image) = g16_memory::freelist_images(private_memory.va(), PRIVATE_PAGES)?;
             KBox::new(Self {
                 _command_views:views, commands, sequences:[fw(0x400)?,fw(0x800)?],
-                metadata:fw(0x4000)?,
+                metadata:fw(metadata::SIZE)?,
                 parameters: match shared {
                     Some(shared) => shared,
                     None => crate::g16_parameter::Parameters::new(
@@ -194,14 +196,14 @@ impl Render {
             owner.page_list.write(0, &owner.page_list_image)?;
         }
         if job.uma_submitted == 0 {
-            let mut uma = [0;0xa0];
+            let mut uma = [0;uma_layout::SIZE];
             crate::g16_compute::encode_uma(&mut uma,job.pool_state.gpu_va()?,PRIVATE_QWORDS as u32,
-                PRIVATE_PAGES as u32,job.page_list.gpu_va()?,job.metadata.va()+0x500,
+                PRIVATE_PAGES as u32,job.page_list.gpu_va()?,job.metadata.va()+metadata::UMA_SUBMITTED as u64,
                 crate::g16_compute::UmaEngine::Render).map_err(|_| EINVAL)?;
             // Compute and render owners have disjoint private-slot ranges.
             // Firmware may prepare all owners while their pools remain retained.
-            uma[8..12].copy_from_slice(&(1 + crate::g16_runtime::POOL_SLOTS as u32 + u32::from(pool_slot)).to_le_bytes());
-            uma[..8].copy_from_slice(&job.uma.va().to_le_bytes());
+            uma[uma_layout::SLOT..uma_layout::SLOT+4].copy_from_slice(&(1 + crate::g16_runtime::POOL_SLOTS as u32 + u32::from(pool_slot)).to_le_bytes());
+            uma[uma_layout::OWNER..uma_layout::OWNER+8].copy_from_slice(&job.uma.va().to_le_bytes());
             job.uma.write(0,&uma)?;
         }
         job.compute_dependency = false;
@@ -213,13 +215,13 @@ impl Render {
         // no firmware/GPU consumer can still reference its counter here.
         job.uma_submitted = job.uma_submitted.checked_add(2).ok_or(EOVERFLOW)?;
         let submitted = job.uma_submitted;
-        job.metadata.u64(0x500, submitted)?;
+        job.metadata.u64(metadata::UMA_SUBMITTED, submitted)?;
         let (parameter_manager, parameter_id, parameter_pages, shared_pool, init_parameters) = {
             let mut pool = job.parameters.lock();
             (pool.manager.va(), pool.id, pool.pages(), pool.shared, pool.claim_init())
         };
         job.init_parameters = init_parameters;
-        let mut init = [0;0x20];
+        let mut init = [0;init_buffer::SIZE];
         // This owner was rebuilt, not incrementally grown. In 25G83, a nonzero
         // InitBuffer+0x10 selects the append path (TEXT 2159c -> 2f100), which
         // returns without refreshing the hardware descriptor when the staged
@@ -229,21 +231,21 @@ impl Render {
         // its page list from the block ring and publishes the new descriptor
         // in order (TEXT 215b4 -> 2eb4c). The table is firmware-owned.
         wire::init_parameter_buffer(&mut init,job.binding.slot(),parameter_id,0,0,parameter_manager,stamp).map_err(|_| EINVAL)?;
-        job.metadata.write(0x300,&init)?;
-        let mut dependency = [0;0x40];
+        job.metadata.write(metadata::INIT_BUFFER,&init)?;
+        let mut dependency = [0;dependency::SIZE];
         wire::render_dependency(&mut dependency,notifications[0].fw_stamp,
             SLOTS[0],stamp,stamp).map_err(|_| EINVAL)?;
-        job.metadata.write(0x340,&dependency)?;
+        job.metadata.write(metadata::TILER_DEPENDENCY,&dependency)?;
         // PB scene scratch has explicit GPU and firmware aliases. Statistics
         // are a distinct retained record; firmware dereferences them on retire.
         let scratch_gpu = job.scratch.gpu_va()?;
         let scratch_fw = job.scratch.va();
-        let statistics = job.metadata.va()+0x200;
-        job.metadata.u64(0,scratch_gpu)?;
-        job.metadata.u64(8,scratch_fw)?;
+        let statistics = job.metadata.va()+metadata::STATISTICS as u64;
+        job.metadata.u64(metadata::SCRATCH_GPU,scratch_gpu)?;
+        job.metadata.u64(metadata::SCRATCH_FW,scratch_fw)?;
         let scene_list = state::compact(job.scene_list.gpu_va()?).map_err(|_| EINVAL)?;
-        job.metadata.u64(0x28,scene_list)?;
-        job.metadata.u64(0x40,statistics)?;
+        job.metadata.u64(metadata::COMPACT_SCENE_LIST,scene_list)?;
+        job.metadata.u64(metadata::STATISTICS_POINTER,statistics)?;
         let mask = if r.flags & 16 != 0 {u64::MAX} else {u32::MAX as u64};
         let program = |p:crate::g17_uapi::UapiProgram| Program {
             address:usc+u64::from(p.usc & !63), resources:p.resource_spec & mask };
@@ -271,11 +273,11 @@ impl Render {
             wire::encode(&mut work[..],&mut sequence,stage,wire::Args {
                 command:job.commands[i].va(),sku:job.sequences[i].va(),queue:queues[i],
                 stats:stats[i],
-                pb_slot:job.metadata.va(),manager:parameter_manager,pb_aux:job.metadata.va()+0x100,
+                pb_slot:job.metadata.va(),manager:parameter_manager,pb_aux:job.metadata.va()+metadata::PB_AUX as u64,
                 notifier:notifications[i].address,shared_stamp:notifications[i].fw_stamp,
                 stamp_address:notifications[i].stamp,uma:job.uma.va(),
-                uma_aux:job.uma.gpu_va()?+0x100+i as u64*0x100,
-                timestamp_storage:job.metadata.va()+0x600+i as u64*0x20,
+                uma_aux:job.uma.gpu_va()?+metadata::UMA_AUX[i] as u64,
+                timestamp_storage:job.metadata.va()+metadata::TIME_PAIRS[i] as u64,
                 context:job.binding.slot(),generation:job.binding.generation(),counter:counter + u64::from(i == 0),uuid,stamp:stamp,
                 event_slot:SLOTS[i] as u32,fragment_slot:SLOTS[1] as u32,
                 fragment_stamp:stamp,pb_id:parameter_id,pass_id:0 }).map_err(|_| EINVAL)?;
@@ -285,7 +287,7 @@ impl Render {
             registers[count] = Register { offset:if i==0 {0x10060} else {0x10068},flagged:true,value:usc };
             count+=1;
             g16_render::write_registers(&mut work[..],stage,job.commands[i].gpu_va()?,&registers[..count]).map_err(|_| EINVAL)?;
-            state::mirrors(&mut work[..],stage,&state,job.tpc.va(),job.uma.va(),job.uma.va()+0x100+i as u64*0x100,mode).map_err(|_| EINVAL)?;
+            state::mirrors(&mut work[..],stage,&state,job.tpc.va(),job.uma.va(),job.uma.va()+metadata::UMA_AUX[i] as u64,mode).map_err(|_| EINVAL)?;
             job.commands[i].write(0,&work[..stage.command_size()])?;
             job.sequences[i].write(0,&sequence[..wire::sequence_size(stage)])?;
         }
@@ -299,7 +301,9 @@ impl Render {
     pub(crate) fn set_attachments(&mut self, attachments: &[crate::g16_attachments::Attachments; 2]) -> Result {
         // StartVertex+88/count+188; StartFragment+a8/count+1a8.
         // The following UMA bindings and WFI records stay intact.
-        for (i, (start, finish_flag)) in [(0x88, 0x2ec), (0xa8, 0x32c)].into_iter().enumerate() {
+        for (i, stage) in [Stage::Tiling, Stage::Fragment].into_iter().enumerate() {
+            let layout = wire::layout(stage);
+            let (start, finish_flag) = (layout.attachments, layout.finalize_has_attachments);
             self.sequences[i].write(start, &attachments[i].0)?;
             self.sequences[i].write(finish_flag, &[u8::from(attachments[i].count() != 0)])?;
         }
@@ -341,38 +345,38 @@ impl Render {
     pub(crate) fn index(&self) -> usize { usize::from(self.stage == Stage::Fragment) }
     pub(crate) fn address(&self) -> u64 { self.commands[self.index()].va() }
     pub(crate) fn wait_for_prior(&mut self, stamp_address: u64, slot: u8, value: u32) -> Result {
-        let mut barrier = [0; 0x40];
+        let mut barrier = [0; dependency::SIZE];
         wire::render_dependency(&mut barrier, stamp_address, slot,
             value, self.stamp).map_err(|_| EINVAL)?;
-        barrier[0x3c..0x40].copy_from_slice(&1u32.to_le_bytes());
-        self.metadata.write(0x380, &barrier)?;
+        barrier[dependency::INTERNAL..dependency::INTERNAL+4].copy_from_slice(&1u32.to_le_bytes());
+        self.metadata.write(metadata::COMPUTE_DEPENDENCY, &barrier)?;
         self.compute_dependency = true;
         Ok(())
     }
     pub(crate) fn compute_dependency(&self) -> Option<u64> {
-        self.compute_dependency.then_some(self.metadata.va() + 0x380)
+        self.compute_dependency.then_some(self.metadata.va() + metadata::COMPUTE_DEPENDENCY as u64)
     }
     pub(crate) fn wait_for_prior_fragment(&mut self, stamp_address: u64,
         slot: u8, value: u32) -> Result<u64> {
-        let mut barrier = [0; 0x40];
+        let mut barrier = [0; dependency::SIZE];
         wire::render_dependency(&mut barrier, stamp_address, slot,
             value, self.stamp).map_err(|_| EINVAL)?;
-        barrier[0x3c..0x40].copy_from_slice(&1u32.to_le_bytes());
+        barrier[dependency::INTERNAL..dependency::INTERNAL+4].copy_from_slice(&1u32.to_le_bytes());
         // 0x400..0x41f contains stamps; 0x500 begins the UMA counters.
-        self.metadata.write(0x440, &barrier)?;
-        Ok(self.metadata.va() + 0x440)
+        self.metadata.write(metadata::PRIOR_FRAGMENT, &barrier)?;
+        Ok(self.metadata.va() + metadata::PRIOR_FRAGMENT as u64)
     }
     pub(crate) fn init_address(&self) -> Option<u64> {
-        self.init_parameters.then_some(self.metadata.va()+0x300)
+        self.init_parameters.then_some(self.metadata.va()+metadata::INIT_BUFFER as u64)
     }
-    pub(crate) fn fragment_dependency(&self) -> u64 { self.metadata.va()+0x340 }
+    pub(crate) fn fragment_dependency(&self) -> u64 { self.metadata.va()+metadata::TILER_DEPENDENCY as u64 }
     pub(crate) fn fragment_address(&self) -> u64 { self.commands[1].va() }
     pub(crate) fn pool_slot(&self) -> u8 { self.pool_slot }
     pub(crate) fn same_vm(&self, vm: &mmu::Vm) -> bool { self.binding.matches(vm) }
     pub(crate) fn context(&self) -> u32 { self.binding.slot() }
     pub(crate) fn uma_submitted(&self) -> u64 { self.uma_submitted }
     pub(crate) fn uma_completed(&mut self) -> Result<u64> {
-        self.uma.read_u64(0x54)
+        self.uma.read_u64(uma_layout::COMPLETED)
     }
     /// Snapshot retained firmware/GPU state without acknowledging faults or
     /// changing the in-flight pass. Keep diagnostics off the submission path.
@@ -396,11 +400,11 @@ impl Render {
             ("command-fragment", fragment_command, 0, Stage::Fragment.command_size()),
             ("sequence-ta", ta_sequence, 0, wire::sequence_size(Stage::Tiling)),
             ("sequence-fragment", fragment_sequence, 0, wire::sequence_size(Stage::Fragment)),
-            ("parameter-manager", manager, 0, 0xc0),
+            ("parameter-manager", manager, 0, wire::parameter::SIZE),
             ("parameter-ring", ring, 0, 8),
             ("scene", &mut self.metadata, 0, 0x80),
             ("scene-statistics", &mut self.scratch, 0, 0x80),
-            ("uma", &mut self.uma, 0, 0xa0),
+            ("uma", &mut self.uma, 0, uma_layout::SIZE),
         ] {
             for offset in (start..start+length).step_by(32) {
                 let count = (start+length-offset).min(32)/8;
@@ -416,9 +420,9 @@ impl Render {
     }
     pub(crate) fn status(&mut self) -> Result<[u64;4]> {
         let i = self.index();
-        Ok([self.metadata.read_u32(0x400+i*16)? as u64,self.metadata.read_u32(0x408+i*16)? as u64,
-            self.commands[i].read_u32(if i==0 {0x918} else {0xc60})? as u64,
-            self.parameters.lock().manager.read_u32(0x54)? as u64])
+        Ok([self.metadata.read_u32(metadata::LEGACY_FW_STAMPS[i])? as u64,self.metadata.read_u32(metadata::LEGACY_USER_STAMPS[i])? as u64,
+            self.commands[i].read_u32(wire::layout(self.stage).command_status)? as u64,
+            self.parameters.lock().manager.read_u32(wire::parameter::LAST_PAGE)? as u64])
     }
     pub(crate) fn set_user_timestamps(&mut self, addresses: [[u64; 2]; 2]) -> Result {
         for (i, pair) in addresses.into_iter().enumerate() {
@@ -426,7 +430,7 @@ impl Render {
             // Keep the internal timestamps separate for retirement diagnostics.
             // The packet retains each validated TimestampBuffer mapping until
             // both engines retire, including failed jobs.
-            let offset = 0x610 + i * 0x20;
+            let offset = metadata::USER_TIME_PAIRS[i];
             self.metadata.u64(offset, pair[0])?;
             self.metadata.u64(offset + 8, pair[1])?;
             let pointer = if pair == [0, 0] { 0 } else { self.metadata.va() + offset as u64 };
@@ -441,7 +445,7 @@ impl Render {
         let mut pairs = [0u64; 8];
         let mut count = 0;
         for address in addresses.into_iter().filter(|address| *address != 0) {
-            let offset = 0x700 + count * 16;
+            let offset = metadata::FANOUT_PAIRS + count * 16;
             self.metadata.u64(offset, 0)?;
             self.metadata.u64(offset + 8, address)?;
             pairs[count] = self.metadata.va() + offset as u64;
@@ -488,7 +492,7 @@ impl Render {
         Ok(())
     }
     pub(crate) fn timestamps(&mut self) -> Result<[[u64; 2]; 2]> {
-        Ok([[self.metadata.read_u64(0x600)?, self.metadata.read_u64(0x608)?],
-            [self.metadata.read_u64(0x620)?, self.metadata.read_u64(0x628)?]])
+        Ok([[self.metadata.read_u64(metadata::TIME_PAIRS[0])?, self.metadata.read_u64(metadata::TIME_PAIRS[0]+8)?],
+            [self.metadata.read_u64(metadata::TIME_PAIRS[1])?, self.metadata.read_u64(metadata::TIME_PAIRS[1]+8)?]])
     }
 }

@@ -41,7 +41,7 @@ impl Parameters {
         let blocks = bytes / BLOCK_BYTES;
         let capacity = (blocks+1).next_power_of_two();
         let mut pool = Self {
-            manager: Buffer::new(dev, uat.kernel_vm(), 0xc0)?,
+            manager: Buffer::new(dev, uat.kernel_vm(), wire::parameter::SIZE)?,
             ring: Buffer::new(dev, uat.kernel_vm(), 8)?,
             pages: Buffer::new_gpu(dev, uat.kernel_vm(), vm, pages*4)?,
             blocks: Buffer::new(dev, uat.kernel_vm(), capacity*8)?,
@@ -86,7 +86,7 @@ impl Parameters {
         self.blocks.write(0, &blocks)?;
         self.ring.u32(0, block_count.try_into()?)?;
         self.ring.u32(4, block_count.try_into()?)?;
-        let mut manager = [0;0xc0];
+        let mut manager = [0;wire::parameter::SIZE];
         wire::parameter_manager(&mut manager, wire::ParameterManager {
             pages_fw:self.pages.va(), pages_gpu:self.pages.gpu_va()?,
             blocks:self.blocks.va(), ring:self.ring.va(), counter:self.counter.va(),

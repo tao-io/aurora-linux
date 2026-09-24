@@ -1,0 +1,211 @@
+{
+  "scope": "J713/25G83 render-owned metadata, parameter-manager and barrier fields shared between constructors and consumers; no allocation, lifetime or scheduling changes.",
+  "baseline_source": "3bf194abef80",
+  "build": {
+    "tree": "178254bdb4a1172f5fe7d6242b142c0ddc249af2",
+    "config_sha256": "ca858c6d76b9848fd7989068c169fb13a19879a4655607262f038931645520de",
+    "source_export_checksum_verified": true,
+    "output": "Clean Git archive; incremental module build using prepared M4 output, not from-empty full kernel build",
+    "clean_module_sha256": "e0c83dc05e63d27e42319257faf43f325a65ab6f5c88567fcf7f9152ffc147b9",
+    "deployed_module_sha256": "e6a909dd8c30056ef073e140b661e9a731aa32c15183f0482a03bdd52079abc2"
+  },
+  "host": {
+    "encoders": {
+      "result": "pass",
+      "baseline_tree": "c1a1f42c29531e101bf166ffb78ff75846fbf599",
+      "sources": {
+        "baseline": {
+          "g16_render.rs": "1f353a8a2130b44c59de9c44d456c9a3e817cd3a433540fa3503f4517e6040a5",
+          "g16_compute.rs": "345d854ba90e410523598ee81a1a54735a2f83b0d918002e96eab813917f5cf7",
+          "g16_render_command.rs": "561baaea1203b4b0357b246bd81a5db43c3b52b1b04ff5e4ac64914b878fd2e3",
+          "fixture": "63c43f500ac57b810c45c950d6ed4ccfae814ca5e30d3128d8546e46f174b23a"
+        },
+        "candidate": {
+          "g16_render.rs": "1f353a8a2130b44c59de9c44d456c9a3e817cd3a433540fa3503f4517e6040a5",
+          "g16_compute.rs": "3c65d820ac3d64e8fd15541746b2ac1109c223805db805a608518f46d3b82dca",
+          "g16_render_command.rs": "71ae6d0b5fa2be2f0367d9b2e383c34f69ca9b872426b4e7b776ed4af1db2565",
+          "fixture": "63c43f500ac57b810c45c950d6ed4ccfae814ca5e30d3128d8546e46f174b23a"
+        }
+      },
+      "comparisons": [
+        {
+          "variant": 0,
+          "bytes": 70656,
+          "sha256": "d10bf58083142c53d4367e383ec97dae039f3c0a7c5a0df4288616bc95b7874d"
+        },
+        {
+          "variant": 1,
+          "bytes": 70656,
+          "sha256": "d76f83897e00a5e3d17b8bba23f0447dd1fa4afe18a5387305e8d4a8f8c3befa"
+        },
+        {
+          "variant": 2,
+          "bytes": 70656,
+          "sha256": "28acbe11b8deb45b129a8d13c331c897727cc5e335df5c9bc057a605b0ee2ebf"
+        },
+        {
+          "variant": 15,
+          "bytes": 70656,
+          "sha256": "a62170b289cd5bcb684171c30c2e5996150ca163ab405dd36420fb36154c0454"
+        },
+        {
+          "variant": 31,
+          "bytes": 70656,
+          "sha256": "f92e314bfc4f255cb9a5dd055a1a82f01471353a078aa23a2a46ed0327f6ed2c"
+        },
+        {
+          "variant": 63,
+          "bytes": 70656,
+          "sha256": "f4b81e8d0b823d414189458c348578b7106053df2ab6b6d83d75d675e60d5875"
+        }
+      ],
+      "rustc": "rustc 1.94.1 (e408947bf 2026-03-25)"
+    },
+    "owner_methods": {
+      "baseline_tree": "c1a1f42c29531e101bf166ffb78ff75846fbf599",
+      "sources": {
+        "baseline": {
+          "g16_render.rs": "1f353a8a2130b44c59de9c44d456c9a3e817cd3a433540fa3503f4517e6040a5",
+          "g16_compute.rs": "345d854ba90e410523598ee81a1a54735a2f83b0d918002e96eab813917f5cf7",
+          "g16_render_command.rs": "561baaea1203b4b0357b246bd81a5db43c3b52b1b04ff5e4ac64914b878fd2e3",
+          "g16_attachments.rs": "79bc0644f40745ae676780c6cc1c414162c08d5a6b2a4cbc025755fb315b27e4",
+          "g16_render_job.rs": "b71252bf8e774a5c7b45e803f239d717e16170c5ed7ffb9f2af7f4b3f356a112",
+          "extracted_fixture": "68371a2ddf6d022a5f9785ad993f4546a8c8e2c4e8640e3853aff85186234bd7"
+        },
+        "candidate": {
+          "g16_render.rs": "1f353a8a2130b44c59de9c44d456c9a3e817cd3a433540fa3503f4517e6040a5",
+          "g16_compute.rs": "3c65d820ac3d64e8fd15541746b2ac1109c223805db805a608518f46d3b82dca",
+          "g16_render_command.rs": "71ae6d0b5fa2be2f0367d9b2e383c34f69ca9b872426b4e7b776ed4af1db2565",
+          "g16_attachments.rs": "79bc0644f40745ae676780c6cc1c414162c08d5a6b2a4cbc025755fb315b27e4",
+          "g16_render_job.rs": "b7e70193367b480fa8a461517b193e479917c8113f2587e65f64107e157e02d5",
+          "extracted_fixture": "5850ca9a0aa2379f638294b664912a15c2b197ceb19ea0037700d3b984266de7"
+        }
+      },
+      "comparisons": [
+        {
+          "variant": 0,
+          "bytes": 1147576,
+          "sha256": "ad34deec90de90037a00bdee468bfa9dbf4d3ac7a29a57065d542cf0e615c2ea"
+        },
+        {
+          "variant": 1,
+          "bytes": 1147576,
+          "sha256": "ab90d58eabfc5f4fecbd6887ff5ea8009e66b2a6fc8a6822ebdb364b27952581"
+        },
+        {
+          "variant": 2,
+          "bytes": 1147576,
+          "sha256": "e8f233ea1b191b9bc2842d756541afd0b824f2001dc7a23710bfec85fc4e6629"
+        },
+        {
+          "variant": 15,
+          "bytes": 1147576,
+          "sha256": "792c74d3eb4d99bd88e464170f372d3316f57fecfd0f325dbbc70e56f82f07e9"
+        },
+        {
+          "variant": 31,
+          "bytes": 1147576,
+          "sha256": "ca9e7da9b4fc62ae2b7e916ea61e822f3f139ef99fcafd8b9760df55d1a504f8"
+        },
+        {
+          "variant": 63,
+          "bytes": 1147576,
+          "sha256": "b0188b5143c93b649584f7858c0497e498f276935a7099ded8ec973984f78594"
+        }
+      ],
+      "result": "pass"
+    },
+    "timestamp_tests": 13
+  },
+  "hardware": {
+    "boot_id": "d1bebfba-242e-440e-8ff9-39eb0f67f5fa",
+    "module_sha256": "e6a909dd8c30056ef073e140b661e9a731aa32c15183f0482a03bdd52079abc2",
+    "steps": [
+      {
+        "step": "replay",
+        "evidence": "_provenance/experiments/20260924T095534478710Z-cleanup-render-storage-replay",
+        "peak_c": 63.25,
+        "sha256": "88594c10407e243eb0617860b8f2abc1f06c0844ec67ddba3900875d7e36796e"
+      },
+      {
+        "step": "cts",
+        "evidence": "_provenance/experiments/20260924T095540596278Z-cleanup-render-storage-cts",
+        "peak_c": 63.25,
+        "cts": [
+          [
+            1563743,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_in_render_pass",
+            "Pass"
+          ],
+          [
+            1563747,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_out_of_render_pass",
+            "Pass"
+          ],
+          [
+            1563749,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_out_of_render_pass_host_query_reset_with_availability_bit",
+            "Pass"
+          ],
+          [
+            1563703,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_in_render_pass",
+            "Pass"
+          ],
+          [
+            1563707,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_out_of_render_pass",
+            "Pass"
+          ],
+          [
+            1563709,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_out_of_render_pass_host_query_reset_with_availability_bit",
+            "Pass"
+          ],
+          [
+            474877,
+            "dEQP-VK.compute.pipeline.basic.copy_ssbo_single_invocation",
+            "Pass"
+          ],
+          [
+            474875,
+            "dEQP-VK.compute.pipeline.basic.copy_ssbo_multiple_groups",
+            "Pass"
+          ],
+          [
+            474869,
+            "dEQP-VK.compute.pipeline.basic.atomic_barrier_sum_small",
+            "Pass"
+          ],
+          [
+            474873,
+            "dEQP-VK.compute.pipeline.basic.copy_image_to_ssbo_small",
+            "Pass"
+          ],
+          [
+            2155251,
+            "dEQP-VK.query_pool.statistics_query.compute_shader_invocations.32bits_primary",
+            "Pass"
+          ],
+          [
+            2155283,
+            "dEQP-VK.query_pool.statistics_query.compute_shader_invocations.64bits_secondary",
+            "Pass"
+          ]
+        ]
+      },
+      {
+        "step": "desktop",
+        "evidence": "_provenance/experiments/20260924T095544352132Z-cleanup-render-storage-desktop",
+        "peak_c": 60.75,
+        "image": "_provenance/driver-cleanups-20260924/m4-render-storage-suite/desktop.png",
+        "visual_review": "Normal Hyprland and Foot imported scanout inspected"
+      }
+    ]
+  },
+  "watchdog_seconds": 60,
+  "thermal_interval_seconds": 0.5,
+  "replay_adaptations": "Offscreen presentation, memory rebinding, omitted pipeline cache; not unmodified WSI proof.",
+  "naming_correction": "UMA diagnostic +44 is explicitly unknown. The consumed-page cursor is +20. Bytes/read behavior unchanged.",
+  "remaining": "Remaining initialization fields and final P3 audit."
+}

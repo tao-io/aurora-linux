@@ -24,6 +24,74 @@ const RENDER_MODE: u8 = 1;
 // Compute and render use the same qualified 25G83 timestamp operation.
 pub(crate) use crate::g16_compute::timestamp;
 
+/// Per-render-owner firmware metadata allocation. These are subrecords of
+/// one retained Buffer; aliases are supplied by that owner. Both timestamp
+/// pairs are distinct from optional user destination pairs and fanout storage.
+/// Legacy stamp cells remain diagnostic storage; live completion uses the
+/// queue-owned notification stamps. No allocation or scheduling policy changes.
+pub(crate) mod metadata {
+    pub const SIZE: usize = 0x4000;
+    pub const SCRATCH_GPU: usize = 0;
+    pub const SCRATCH_FW: usize = 8;
+    pub const COMPACT_SCENE_LIST: usize = 0x28;
+    pub const STATISTICS_POINTER: usize = 0x40;
+    pub const PB_AUX: usize = 0x100;
+    pub const STATISTICS: usize = 0x200;
+    pub const INIT_BUFFER: usize = 0x300;
+    pub const TILER_DEPENDENCY: usize = 0x340;
+    pub const COMPUTE_DEPENDENCY: usize = 0x380;
+    pub const LEGACY_FW_STAMPS: [usize; 2] = [0x400, 0x410];
+    pub const LEGACY_USER_STAMPS: [usize; 2] = [0x408, 0x418];
+    pub const PRIOR_FRAGMENT: usize = 0x440;
+    pub const UMA_SUBMITTED: usize = 0x500;
+    pub const TIME_PAIRS: [usize; 2] = [0x600, 0x620];
+    pub const USER_TIME_PAIRS: [usize; 2] = [0x610, 0x630];
+    pub const FANOUT_PAIRS: usize = 0x700;
+    pub const UMA_AUX: [usize; 2] = [0x100, 0x200];
+}
+/// Parameter manager byte layout, J713/25G83. Widths are explicit in the
+/// encoder; firmware/GPU aliases and physical slot identity are distinct inputs.
+pub(crate) mod parameter {
+    pub const SIZE: usize = 0xc0;
+    pub const HARDWARE_ID: usize = 0xc;
+    pub const ID: usize = 0x10;
+    pub const PAGES_FW: usize = 0x20;
+    pub const PAGES_GPU: usize = 0x28;
+    pub const LIST_BYTES: usize = 0x30;
+    pub const PAGE_COUNT: usize = 0x34;
+    pub const BLOCK_CAPACITY: usize = 0x38;
+    pub const WRITE: usize = 0x3c;
+    pub const READ: usize = 0x40;
+    pub const BLOCKS: usize = 0x44;
+    pub const RING: usize = 0x4c;
+    pub const LAST_PAGE: usize = 0x54;
+    pub const BLOCK_BYTES: usize = 0x58;
+    pub const COUNTER: usize = 0x64;
+    pub const MAX_PAGES: usize = 0x7c;
+    pub const MIN_PAGES: usize = 0x80;
+    pub const DISCARD: usize = 0x84;
+}
+pub(crate) mod dependency {
+    pub const SIZE: usize = 0x40;
+    pub const KIND: usize = 0;
+    pub const STAMP: usize = 4;
+    pub const STAMP_COPY: usize = 0xc;
+    pub const WAIT_VALUE: usize = 0x14;
+    pub const WAIT_SLOT: usize = 0x20;
+    pub const SELF_VALUE: usize = 0x24;
+    pub const INTERNAL: usize = 0x3c;
+}
+pub(crate) mod init_buffer {
+    pub const SIZE: usize = 0x20;
+    pub const KIND: usize = 0;
+    pub const CONTEXT: usize = 4;
+    pub const ID: usize = 8;
+    pub const CURSOR: usize = 0xc;
+    pub const STAGED: usize = 0x10;
+    pub const MANAGER: usize = 0x14;
+    pub const STAMP: usize = 0x1c;
+}
+
 /// Engine-specific offsets for the qualified J713/25G83 render envelope.
 /// Command offsets and microsequence offsets are deliberately separate names.
 /// Encoding, timestamp patching and relocation all consume this definition.
@@ -37,6 +105,10 @@ pub(crate) struct Layout {
     pub finalize_opcode: u32,
     pub uma_header: usize,
     pub sequence_size: usize,
+    pub command_flush_stamps: usize,
+    pub command_status: usize,
+    pub attachments: usize,
+    pub finalize_has_attachments: usize,
     finish: usize,
     job_meta: usize,
     command_time_control: usize,
@@ -51,6 +123,8 @@ pub(crate) const fn layout(stage: Stage) -> Layout {
             command_sequence: 0x770, command_sequence_size: 0x778,
             timestamp_start: 0x1cc, finalize: 0x268, finalize_restart: 0x80,
             finalize_uma_pointer: 0x78, finalize_opcode: 6, uma_header: 0x190,
+            command_flush_stamps: 0x878 + 0x1c, command_status: 0x918,
+            attachments: 0x88, finalize_has_attachments: 0x2ec,
             sequence_size: 0x300, finish: 0x94, job_meta: 0x878,
             command_time_control: 0x8c0, command_time_pair: 0x8c8,
             command_time_auxiliary: 0x928, command_context_time: 0x83c,
@@ -59,6 +133,8 @@ pub(crate) const fn layout(stage: Stage) -> Layout {
             command_sequence: 0x14, command_sequence_size: 0x1c,
             timestamp_start: 0x1ec, finalize: 0x288, finalize_restart: 0xa0,
             finalize_uma_pointer: 0x98, finalize_opcode: 8, uma_header: 0x1b0,
+            command_flush_stamps: 0xbc0 + 0x1c, command_status: 0xc60,
+            attachments: 0xa8, finalize_has_attachments: 0x32c,
             sequence_size: 0x380, finish: 0xbc, job_meta: 0xbc0,
             command_time_control: 0xc08, command_time_pair: 0xc10,
             command_time_auxiliary: 0xc70, command_context_time: 0xb84,
@@ -178,7 +254,7 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
             (0x24,a.command+0x85c,8), (0x2c,a.context as u64,4),
             (0x34,a.command+0x784,8), (0x40,a.uuid as u64,4), (0x48,a.stamp_address,8),
             (0x50,a.stamp as u64,4), (wire.finalize_uma_pointer,a.sku+uma as u64,8),
-            (wire.finalize_restart,(-(finalize as i32)) as u32 as u64,4), (0x85,a.command+0x918,8)] { put(f,off,value,size); }
+            (wire.finalize_restart,(-(finalize as i32)) as u32 as u64,4), (0x85,a.command+wire.command_status as u64,8)] { put(f,off,value,size); }
     } else {
         for (off,value,size) in [
             (4,a.uuid as u64,4), (0xc,a.stamp_address,8), (0x14,a.stamp as u64,4),
@@ -186,7 +262,7 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
             (0x38,a.command+0xbb0,8), (0x40,a.command+0xbb4,8), (0x48,a.command+0xb70,8),
             (0x50,a.queue,8), (0x58,a.command,8), (0x60,a.context as u64,4),
             (0x64,a.command+0xa58,8), (wire.finalize_uma_pointer,a.sku+uma as u64,8),
-            (wire.finalize_restart,(-(finalize as i32)) as u32 as u64,4), (0xa5,a.command+0xc60,8),
+            (wire.finalize_restart,(-(finalize as i32)) as u32 as u64,4), (0xa5,a.command+wire.command_status as u64,8),
             (0xad,1,4), (0xb2,a.event_slot as u64,4)] { put(f,off,value,size); }
     }
     f[if ta { 0x8d } else { 0xb1 }] = RENDER_MODE;
@@ -222,33 +298,33 @@ pub(crate) struct ParameterManager {
     pub max_pages: u32, pub min_pages: u32, pub id: u32,
 }
 pub(crate) fn parameter_manager(out: &mut [u8], a: ParameterManager) -> Result<(), BuildError> {
-    if out.len() < 0xc0 { return Err(BuildError::BufferTooSmall); }
+    if out.len() < parameter::SIZE { return Err(BuildError::BufferTooSmall); }
     if ![a.pages_fw,a.blocks,a.ring,a.counter].iter().all(|p| valid_fw(*p))
         || a.pages_gpu == 0 || a.pages_gpu >= 1 << 43 || a.pages == 0 || a.pages & 3 != 0
         || a.pages > a.list_bytes / 4 || a.pages / 4 >= a.block_capacity
         || a.write >= a.block_capacity || a.read >= a.block_capacity
         || a.min_pages > a.max_pages || a.max_pages > a.list_bytes / 4 { return Err(BuildError::Address); }
-    out[..0xc0].fill(0);
+    out[..parameter::SIZE].fill(0);
     // Full InitBuffer rebuild indexes hardware descriptors from manager+0xc
     // (25G83 TEXT 2eb70/2ec90), not InitBuffer+8 or RunTA+18. The runtime
     // reserves one physical slot per in-flight owner; bind that slot here.
     // Leaving this zero aliases every owner's page list in descriptor zero,
     // which serial rendering hides but overlapping TA/FS can corrupt.
     for (off,value,size) in [
-        (0xc,a.id as u64,4), (0x10,a.id as u64,4),
-        (0x20,a.pages_fw,8), (0x28,a.pages_gpu,8),
-        (0x30,a.list_bytes as u64,4), (0x34,a.pages as u64,4), (0x38,a.block_capacity as u64,4),
-        (0x3c,a.write as u64,4), (0x40,a.read as u64,4), (0x44,a.blocks,8), (0x4c,a.ring,8),
-        (0x54,(a.pages-1) as u64,4), (0x58,0x20000,4), (0x64,a.counter,8),
-        (0x7c,a.max_pages as u64,4), (0x80,a.min_pages as u64,4), (0x84,a.discard,8)] { put(out,off,value,size); }
+        (parameter::HARDWARE_ID,a.id as u64,4), (parameter::ID,a.id as u64,4),
+        (parameter::PAGES_FW,a.pages_fw,8), (parameter::PAGES_GPU,a.pages_gpu,8),
+        (parameter::LIST_BYTES,a.list_bytes as u64,4), (parameter::PAGE_COUNT,a.pages as u64,4), (parameter::BLOCK_CAPACITY,a.block_capacity as u64,4),
+        (parameter::WRITE,a.write as u64,4), (parameter::READ,a.read as u64,4), (parameter::BLOCKS,a.blocks,8), (parameter::RING,a.ring,8),
+        (parameter::LAST_PAGE,(a.pages-1) as u64,4), (parameter::BLOCK_BYTES,0x20000,4), (parameter::COUNTER,a.counter,8),
+        (parameter::MAX_PAGES,a.max_pages as u64,4), (parameter::MIN_PAGES,a.min_pages as u64,4), (parameter::DISCARD,a.discard,8)] { put(out,off,value,size); }
     Ok(())
 }
 pub(crate) fn init_parameter_buffer(out: &mut [u8], context: u32, id: u32,
     cursor: u32, staged: u32, manager: u64, stamp: u32) -> Result<(), BuildError> {
-    if out.len() < 0x20 { return Err(BuildError::BufferTooSmall); }
+    if out.len() < init_buffer::SIZE { return Err(BuildError::BufferTooSmall); }
     if context >= 64 || !valid_fw(manager) { return Err(BuildError::Address); }
-    for (off,value,size) in [(0,6,4), (4,context as u64,4), (8,id as u64,4),
-        (0xc,cursor as u64,4), (0x10,staged as u64,4), (0x14,manager,8), (0x1c,stamp as u64,4)] {
+    for (off,value,size) in [(init_buffer::KIND,6,4), (init_buffer::CONTEXT,context as u64,4), (init_buffer::ID,id as u64,4),
+        (init_buffer::CURSOR,cursor as u64,4), (init_buffer::STAGED,staged as u64,4), (init_buffer::MANAGER,manager,8), (init_buffer::STAMP,stamp as u64,4)] {
         put(out,off,value,size);
     }
     Ok(())
@@ -259,17 +335,17 @@ pub(crate) fn init_parameter_buffer(out: &mut [u8], context: u32, id: u32,
 /// schedule partial fragments before the final tiling stamp is written.
 pub(crate) fn render_dependency(out: &mut [u8], stamp_address: u64,
     wait_slot: u8, wait_value: u32, stamp_self: u32) -> Result<(), BuildError> {
-    if out.len() < 0x40 { return Err(BuildError::BufferTooSmall); }
+    if out.len() < dependency::SIZE { return Err(BuildError::BufferTooSmall); }
     if !valid_fw(stamp_address) || wait_slot >= 128 || wait_value == 0 || stamp_self == 0 {
         return Err(BuildError::Address);
     }
-    out[..0x40].fill(0);
-    put(out, 0, 4, 4);
-    put(out, 4, stamp_address, 8);
-    put(out, 0xc, stamp_address, 8);
-    put(out, 0x14, wait_value as u64, 4);
-    put(out, 0x20, wait_slot as u64, 4);
-    put(out, 0x24, stamp_self as u64, 4);
+    out[..dependency::SIZE].fill(0);
+    put(out, dependency::KIND, 4, 4);
+    put(out, dependency::STAMP, stamp_address, 8);
+    put(out, dependency::STAMP_COPY, stamp_address, 8);
+    put(out, dependency::WAIT_VALUE, wait_value as u64, 4);
+    put(out, dependency::WAIT_SLOT, wait_slot as u64, 4);
+    put(out, dependency::SELF_VALUE, stamp_self as u64, 4);
     Ok(())
 }
 
