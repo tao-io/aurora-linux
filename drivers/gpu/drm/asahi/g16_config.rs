@@ -8,45 +8,9 @@ use kernel::{c_str, device::Core, io::mem::{Mem, MemFlag}, platform, prelude::*}
 use crate::{driver, g16_initdata::{self, RootPointers}, g16_memory::{self, Buffer, KERNEL_RANGE},
     g16_firmware::Firmware, mmu, pgtable::prot};
 
-#[derive(Clone, Copy)]
-#[repr(usize)]
-enum Object {
-    Root, Brn, Runtime, Globals, Control, FirmwareData, Power, Dynamic, Main,
-    PowerPerformance, Timer, Activity254, Activity25c, Activity264, Activity26c,
-    LogState, LogEntries, LogData, Fwctl, DevctrlState, DevctrlRing,
-    KtraceState, KtraceData, StatisticsState, StatisticsData, Temperature,
-    EventState, EventData, Retention, UmaTable, ParameterTable,
-}
-const SIZES: &[usize] = &[
-    0xc8, 0x4000, 0x4b8, 0xe48, 0x20, 0xeaf0, 0x670, 0x4000, 0x2658,
-    0x6578, 0x88, 0xc18, 0x1248, 0xe10, 0x60,
-    0x1b0, 0x28800, 0x79800, 0x4000, 0x30, 0x4000,
-    0x30, 0x9000, 0x30, 0x4800, 4, 0x30, 0x4800, 0x4000, 0x4000, 0x4000,
-];
-
-// (slot, physical register range, mapped/requested length, relative tag, mode).
-// Empty slots remain zero. Virtual addresses are deliberately absent.
-const IOMAPS: &[(usize, usize, usize, usize, u64, u64)] = &[
-    (0, 0x381014000, 0x4000, 0x4000, 0, 2),
-    (3, 0x2201c4000, 0x30000, 0x18000, 0, 2),
-    (9, 0x3803d0000, 0x1000, 0x1000, 0, 2),
-    (10, 0x3803c0000, 0x2000, 0x2000, 0, 0),
-    (12, 0x50165c000, 0x4000, 0x4000, 0, 2),
-    (14, 0x380280000, 0x8000, 0x8000, 0, 0),
-    (15, 0x38c840000, 0x24000, 0x24000, 0, 0),
-    (17, 0x300000000, 0x20000, 0x20000, 0, 2),
-    (22, 0x301000000, 0x8000, 0x8000, 0, 2),
-    (26, 0x300d04000, 0x8000, 0x8000, 0xd04000, 2),
-    (27, 0x300d0d000, 0x1000, 0x1000, 0xd0d000, 2),
-    (28, 0x300d58000, 0x8000, 0x8000, 0xd58000, 2),
-    (29, 0x300d10000, 0x4000, 0x4000, 0xd10000, 2),
-    (31, 0x300d40000, 0x4000, 0x4000, 0xd40000, 2),
-    (32, 0x300d60000, 0x8000, 0x8000, 0xd60000, 2),
-    (36, 0x300e00000, 0x4000, 0x4000, 0xe00000, 0),
-    (39, 0x300e08000, 0x8000, 0x8000, 0, 2),
-    (40, 0x300e1c000, 0x4000, 0x4000, 0xe1c000, 2),
-    (41, 0x300e1f800, 0x4000, 0x4000, 0, 2),
-];
+#[path = "g16_config_layout.rs"]
+mod layout;
+use layout::{Object,OBJECTS,IOMAPS,IO_TABLE_SIZE,FirmwareVa,Protection};
 
 pub(crate) struct Config {
     objects: KVec<Buffer>,
@@ -56,7 +20,7 @@ pub(crate) struct Config {
     trace_seen: [u32; 2],
     cached_programs: Option<Buffer>,
     cached_program_cursor: usize,
-    iomap_bytes: KBox<[u8; 42 * 0x28]>,
+    iomap_bytes: KBox<[u8; IO_TABLE_SIZE]>,
     cooling: crate::g16_thermal::Cooling,
     thermal_limit: u32,
     thermal_observed: u32,
@@ -103,12 +67,12 @@ impl Config {
         // descriptor table at data+0x1332f0 is host-owned until initdata is sent.
         let loader = unsafe { Mem::try_new(resource, MemFlag::WC.into()) }?;
         let mut config = Self { objects: KVec::new(), pipes: KVec::new(), iomaps: KVec::new(),
-            loader, trace_seen: [0; 2], cached_programs: None, cached_program_cursor: 0, iomap_bytes: KBox::new([0; 42 * 0x28], GFP_KERNEL)?,
+            loader, trace_seen: [0; 2], cached_programs: None, cached_program_cursor: 0, iomap_bytes: KBox::new([0; IO_TABLE_SIZE], GFP_KERNEL)?,
             cooling: crate::g16_thermal::Cooling::new()?, thermal_limit: 0, thermal_observed: u32::MAX };
-        for (index, size) in SIZES.iter().enumerate() {
-            config.objects.push(if index == Object::UmaTable as usize || index == Object::ParameterTable as usize {
-                Buffer::new_gpu(dev, vm, gpu_vm, *size)?
-            } else { Buffer::new(dev, vm, *size)? }, GFP_KERNEL)?;
+        for object in OBJECTS {
+            config.objects.push(if object.needs_client_mapping() {
+                Buffer::new_gpu(dev, vm, gpu_vm, object.size())?
+            } else { Buffer::new(dev, vm, object.size())? }, GFP_KERNEL)?;
         }
         // Twelve firmware submission channels: TA/3D/compute at four priorities.
         // Empty independent rings avoid aliasing producer/consumer state.
@@ -116,29 +80,24 @@ impl Config {
             config.pipes.push(Buffer::new(dev, vm, 0x30)?, GFP_KERNEL)?;
             config.pipes.push(Buffer::new(dev, vm, 0x1800)?, GFP_KERNEL)?;
         }
-        for &(slot, physical, mapped, requested, tag, mode) in IOMAPS {
-            let offset = physical & mmu::UAT_PGMSK;
-            let size = (mapped + offset + mmu::UAT_PGMSK) & !mmu::UAT_PGMSK;
-            let protection = if slot == 36 { prot::PROT_FW_PROTECTED_MMIO }
-                else if mode == 0 { prot::PROT_FW_MMIO_RO } else { prot::PROT_FW_MMIO_RW };
-            // MCC slot 3 concatenates two six-page banks 32 MiB apart.
-            // Their single descriptor does not imply contiguous physical MMIO.
-            let mapping = vm.map_io_in_range(KERNEL_RANGE, physical - offset,
-                if slot == 3 { 0x18000 } else { size }, protection)?;
-            if slot == 3 {
-                let second = vm.map_io(mapping.iova() + 0x18000, physical + 0x2000000,
-                    0x18000, protection)?;
-                config.iomaps.push(second, GFP_KERNEL)?;
+        for io in IOMAPS {
+            let protection=match io.protection() {
+                Protection::Protected=>prot::PROT_FW_PROTECTED_MMIO,
+                Protection::ReadOnly=>prot::PROT_FW_MMIO_RO,
+                Protection::ReadWrite=>prot::PROT_FW_MMIO_RW,
+            };
+            let mapping=vm.map_io_in_range(KERNEL_RANGE,io.physical.page_base().try_into()?,
+                io.mapping_size().map_err(|_|EOVERFLOW)?,protection)?;
+            if let Some((offset,physical,size))=io.second_bank().map_err(|_|EOVERFLOW)? {
+                let second=vm.map_io(mapping.iova().checked_add(offset).ok_or(EOVERFLOW)?,
+                    physical.0.try_into()?,size,protection)?;
+                config.iomaps.push(second,GFP_KERNEL)?;
             }
-            let va = mapping.iova() + offset as u64;
-            let entry = &mut config.iomap_bytes[slot * 0x28..(slot + 1) * 0x28];
-            entry[0..8].copy_from_slice(&(physical as u64).to_le_bytes());
-            entry[8..16].copy_from_slice(&va.to_le_bytes());
-            entry[16..20].copy_from_slice(&(mapped as u32).to_le_bytes());
-            entry[20..24].copy_from_slice(&(requested as u32).to_le_bytes());
-            entry[24..32].copy_from_slice(&tag.to_le_bytes());
-            entry[32..40].copy_from_slice(&mode.to_le_bytes());
-            config.iomaps.push(mapping, GFP_KERNEL)?;
+            let va=FirmwareVa::new(mapping.iova().checked_add(io.physical.page_offset() as u64).ok_or(EOVERFLOW)?)
+                .map_err(|_|EINVAL)?;
+            let entry=io.encode(va).map_err(|_|EINVAL)?;
+            config.iomap_bytes[io.slot*layout::IO_ENTRY_SIZE..(io.slot+1)*layout::IO_ENTRY_SIZE].copy_from_slice(&entry);
+            config.iomaps.push(mapping,GFP_KERNEL)?;
         }
         let scratch = vm.map_io_in_range(KERNEL_RANGE, 0x300d60000, 0x8000, prot::PROT_FW_SHARED_RW)?;
         let scratch_va = scratch.iova();
@@ -334,8 +293,8 @@ impl Config {
     /// its application wait state, before sending initdata. FW never consumes
     /// this table concurrently with publication under that boot protocol.
     pub(crate) fn publish_loader(&mut self) -> Result {
-        let mut map = self.loader.iosys_map(0x1332f0, 42 * 0x28)?;
-        for index in 0..42 * 0x28 {
+        let mut map = self.loader.iosys_map(0x1332f0, IO_TABLE_SIZE)?;
+        for index in 0..IO_TABLE_SIZE {
             // SAFETY: bounded byte in retained WC firmware data reservation.
             if unsafe { map.as_ptr().add(index).read_volatile() } != 0 { return Err(EBUSY); }
         }
@@ -478,7 +437,7 @@ impl Config {
             (Activity264, "compute-engine"), (UmaTable, "uma-table"),
             (ParameterTable, "parameter-table"), (KtraceState, "trace-state"),
             (KtraceData, "trace-data")] {
-            dump.buffer(name, self.object(object), SIZES[object as usize])?;
+            dump.buffer(name, self.object(object), object.size())?;
         }
         Ok(())
     }

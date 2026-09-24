@@ -64,3 +64,25 @@ hardware and normal desktop gates remain mandatory.
 wire comparisons, guarded normal reboot, 12/12 pinned CTS, byte-identical
 2560x1664 replay and normal Hyprland/Foot capture. Every hardware segment held
 the 60-second watchdog and 0.5-second thermal monitor; peak was 63 C.
+
+## Initialization allocation and I/O mapping storage
+
+`g16_config_layout.rs` gives each of the 31 J713/25G83 allocations a named
+size and states which two also require a client GPU mapping. `Buffer` still
+owns the page-aligned allocation and mappings for the entire Config lifetime.
+The 19 board-specific I/O descriptions distinguish physical register addresses
+from allocated firmware virtual addresses. Their checked 40-byte encodings
+preserve the subpage offsets, protected slot, mode/tag values and split MCC
+banks. Empty slots in the 42-entry firmware table remain zero. Slot numbers and
+unknown mode/tag values are evidence from the qualified producer, not a claim
+that another board has the same register map.
+
+```
+python3 tools/test-config-layout.py --kernel linux/linux-asahi --baseline e8a21feb3c47 --output build/config-layout-comparison
+```
+
+This host check extracts the old allocation and I/O tables from the immutable
+baseline, checks all owners and three varied firmware-address sets, and tests
+rejected extents, slots and overflow. New records are returned by value, so
+rejection cannot alter caller bytes. It does not emulate UAT or firmware boot.
+`config-layout-validation.json` records the build and guarded boot/replay gates.

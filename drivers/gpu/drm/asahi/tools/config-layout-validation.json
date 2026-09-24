@@ -1,0 +1,114 @@
+{
+  "scope": "J713/25G83 initialization allocation ownership and I/O mapping encoding; allocation order, sizes, mapping protection and split MCC banks preserved.",
+  "baseline_source": "e8a21feb3c47",
+  "build": {
+    "tree": "f82a9ccf2633ba8694b5711c65e0082e8f48e42d",
+    "config_sha256": "ca858c6d76b9848fd7989068c169fb13a19879a4655607262f038931645520de",
+    "source_export_checksum_verified": true,
+    "output": "clean Git archive, incremental module build using previously prepared M4 output; not a new from-empty full kernel build",
+    "clean_module_sha256": "ef4c4a224bee659bc4fb8acc92dac37c9707f24429d3c49aa7c58e1f2a6b9ef3",
+    "deployed_module_sha256": "18c995a47ff582f92f16bbcf81b0854556855ca591da531c29c856f1d83afa1b"
+  },
+  "host": {
+    "inputs": {
+      "baseline_tree": "974b87fe7c4928e57f0c127c7ba8f015c7c7fdbc",
+      "baseline_sha256": "602faf2b84b5828a583864a60f58a81871fc4d331d1a6db52b72d629832acd55",
+      "layout_sha256": "d06bb9e04953d90003cd9e63027b27c0765a1856bd603967b3865e4245b49ff6",
+      "fixture_sha256": "a4c252390adbd9e6220aa63a66bda359d3b96280da85a9e97768f4758bc45c98"
+    },
+    "tests_passed": 3
+  },
+  "boot_id": "0ca9069c-b97e-45c8-bc91-6cc36838ef6f",
+  "hardware": {
+    "watchdog_seconds": 60,
+    "thermal_interval_seconds": 0.5,
+    "runs": {
+      "factorio": {
+        "evidence": "_provenance/experiments/20260924T093645948634Z-cleanup-config-layout-factorio",
+        "peak_c": 63.25
+      },
+      "cts": {
+        "evidence": "_provenance/experiments/20260924T093710975410Z-cleanup-config-layout-cts",
+        "peak_c": 73.75
+      },
+      "desktop": {
+        "evidence": "_provenance/experiments/20260924T093728655820Z-cleanup-config-layout-desktop",
+        "peak_c": 60.25
+      }
+    },
+    "cts": [
+      [
+        1563743,
+        "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_in_render_pass",
+        "Pass"
+      ],
+      [
+        1563747,
+        "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_out_of_render_pass",
+        "Pass"
+      ],
+      [
+        1563749,
+        "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_out_of_render_pass_host_query_reset_with_availability_bit",
+        "Pass"
+      ],
+      [
+        1563703,
+        "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_in_render_pass",
+        "Pass"
+      ],
+      [
+        1563707,
+        "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_out_of_render_pass",
+        "Pass"
+      ],
+      [
+        1563709,
+        "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_out_of_render_pass_host_query_reset_with_availability_bit",
+        "Pass"
+      ],
+      [
+        474877,
+        "dEQP-VK.compute.pipeline.basic.copy_ssbo_single_invocation",
+        "Pass"
+      ],
+      [
+        474875,
+        "dEQP-VK.compute.pipeline.basic.copy_ssbo_multiple_groups",
+        "Pass"
+      ],
+      [
+        474869,
+        "dEQP-VK.compute.pipeline.basic.atomic_barrier_sum_small",
+        "Pass"
+      ],
+      [
+        474873,
+        "dEQP-VK.compute.pipeline.basic.copy_image_to_ssbo_small",
+        "Pass"
+      ],
+      [
+        2155251,
+        "dEQP-VK.query_pool.statistics_query.compute_shader_invocations.32bits_primary",
+        "Pass"
+      ],
+      [
+        2155283,
+        "dEQP-VK.query_pool.statistics_query.compute_shader_invocations.64bits_secondary",
+        "Pass"
+      ]
+    ],
+    "replay": {
+      "size": [
+        2560,
+        1664
+      ],
+      "sha256": "88594c10407e243eb0617860b8f2abc1f06c0844ec67ddba3900875d7e36796e",
+      "byte_identical_to_baseline": true,
+      "adaptations": "Offscreen swapchain, memory rebinding, omitted pipeline cache; not unmodified WSI validation"
+    },
+    "desktop": "Normal Hyprland autologin with live Foot; imported scanout inspected and normal, child stopped afterwards"
+  },
+  "qualification_note": "First quiesce check observed an exiting render client immediately after loginctl terminate-user. Follow-up bounded wait confirmed no clients before install; both guarded runs retained. No module deployed until confirmation.",
+  "remaining": "Compute/render-job and remaining initialization fields, then P3 shared-mechanism audit."
+}
