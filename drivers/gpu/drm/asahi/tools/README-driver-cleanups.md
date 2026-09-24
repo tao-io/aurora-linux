@@ -136,3 +136,28 @@ full buffer snapshots and returned addresses/readback after dependencies,
 attachments, stamp-flush updates, user timestamps, zero/one/eight fanout copies
 and timestamp omission. This covers runtime consumers in addition to the
 existing encoder comparator; it does not emulate allocation, locking or DMA.
+
+## Initialization fields and root geometry
+
+The allocation-specific modules in `g16_config_layout` name runtime references,
+main hardware data, power/global selector inputs and channel geometry.
+Initialization and thermal/control readback use the same definitions; policy,
+performance tables and native unknown values are preserved. `g16_initdata`
+retains its checked RootPointers interface with explicit packed root offsets.
+
+```
+python3 tools/check-init-wire.py --kernel linux/linux-asahi --baseline 62486771d52a --output build/init-wire-comparison
+rustc --edition=2021 --test linux/linux-asahi/drivers/gpu/drm/asahi/g16_initdata.rs -o /tmp/init-tests
+/tmp/init-tests
+```
+
+The source comparator extracts the actual initializer and control methods from
+each immutable baseline/candidate pair and compares complete owned buffers,
+returned ring indices and power generations. Six address/performance variants
+exercise normal initialization, all admitted control opcodes, ring wrap,
+busy/invalid-state rejection and generation wrap. Power-table inputs come from
+each source version. UAT/MMIO and publication ordering are not emulated.
+The root tests retain the independent packed C reference and rejection checks.
+
+The final common-mechanism review and separately scoped behavioral work are in
+`shared-mechanisms.md`, with immutable source hashes in the adjacent JSON.

@@ -1,0 +1,158 @@
+{
+  "scope": "J713/25G83 allocation-scoped runtime, main, globals, power, firmware/control-channel and root offsets; native values, widths, mapping owners and thermal policy unchanged.",
+  "baseline_source": "62486771d52a",
+  "build": {
+    "tree": "9cf3d351c1e9167a67da02d19945386d8bf59462",
+    "config_sha256": "ca858c6d76b9848fd7989068c169fb13a19879a4655607262f038931645520de",
+    "source_export_checksum_verified": true,
+    "output": "Clean Git archive; incremental module build using prepared M4 output, not from-empty full kernel build",
+    "clean_module_sha256": "0355f320f38295080162631e235df307d0ef91efda7b548a1985cf10188b48c5",
+    "deployed_module_sha256": "1a860a34b05bcf0db498bc50599d973ce9634c8b081ba365b474a5756ed3ff26"
+  },
+  "host": {
+    "actual_initialization_and_control": {
+      "baseline_tree": "491ff71289125be51cde42e4814e451a9db5a36e",
+      "sources": {
+        "baseline": {
+          "g16_config.rs": "5885e8531ec7e803e306801636e223ced593950e9ae7d369d6e660cd3c2b86d9",
+          "g16_config_layout.rs": "d06bb9e04953d90003cd9e63027b27c0765a1856bd603967b3865e4245b49ff6",
+          "g16_initdata.rs": "0d86129643e2a70e8cecf0720fa7e7785ef039d9e9a0dcba7e9eb96c05b58205",
+          "g16_power.rs": "fe1987dbcfd6316a712fc61e65a5c3ec2075e372244ff987356573c4c869a069",
+          "extracted_fixture": "a0a1cb3975968310bc8f60019ff55f5e60d2c0f6b8297037d88b37792312631d"
+        },
+        "candidate": {
+          "g16_config.rs": "522ee9d40b080f9f10787a61a0a84dce48c1901039182b2e128342968e5c30a2",
+          "g16_config_layout.rs": "ab225a1575c235a4b269bd15628b816450df4fee3bdf95fff623859c3db9450d",
+          "g16_initdata.rs": "104b1e2db85ee34ef11c477aa8e23680db8feacd170738863cb0e638d284311d",
+          "g16_power.rs": "fe1987dbcfd6316a712fc61e65a5c3ec2075e372244ff987356573c4c869a069",
+          "extracted_fixture": "b5811cffc0447094c6ef6af46ae84b86c23a3e3b6011afc32bf9c075bbd0b111"
+        }
+      },
+      "comparisons": [
+        {
+          "variant": 0,
+          "bytes": 11462824,
+          "sha256": "14f5a4e97abc3f1676d422331038113ff2bad14ead370bdeee20fa353e97f076"
+        },
+        {
+          "variant": 1,
+          "bytes": 11462824,
+          "sha256": "db2969f63140dd4daa77a278989a92adf13b48e909f49cd645bad35cd3b5253c"
+        },
+        {
+          "variant": 2,
+          "bytes": 11462824,
+          "sha256": "65fa221a327055e63a295722fb263c8d8174047e7f7c18a9b9efc7b7a6237eaf"
+        },
+        {
+          "variant": 15,
+          "bytes": 11462824,
+          "sha256": "b94d586828ef7644801ef09d6a813310419d14d0e364b3eb1fdd3c4c4b654b57"
+        },
+        {
+          "variant": 31,
+          "bytes": 11462824,
+          "sha256": "bcb0b9c08cf1e215904349b22c7638004d036bc12d843cdd6c092f854fe48f25"
+        },
+        {
+          "variant": 63,
+          "bytes": 11462824,
+          "sha256": "4a647a02d3814c73b4497f8519117375da18dfb2d3f08e20aea62aaf8c040537"
+        }
+      ],
+      "result": "pass"
+    },
+    "packed_root_tests": 3
+  },
+  "hardware": {
+    "boot_id": "2165a2a2-bc62-4ea2-b424-c451eb34c527",
+    "module_sha256": "1a860a34b05bcf0db498bc50599d973ce9634c8b081ba365b474a5756ed3ff26",
+    "steps": [
+      {
+        "step": "replay",
+        "evidence": "_provenance/experiments/20260924T100442536476Z-cleanup-init-fields-replay",
+        "peak_c": 63.25,
+        "sha256": "88594c10407e243eb0617860b8f2abc1f06c0844ec67ddba3900875d7e36796e"
+      },
+      {
+        "step": "cts",
+        "evidence": "_provenance/experiments/20260924T100448835127Z-cleanup-init-fields-cts",
+        "peak_c": 64.5,
+        "cts": [
+          [
+            1563743,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_in_render_pass",
+            "Pass"
+          ],
+          [
+            1563747,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_out_of_render_pass",
+            "Pass"
+          ],
+          [
+            1563749,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.vertex_shader_stage_out_of_render_pass_host_query_reset_with_availability_bit",
+            "Pass"
+          ],
+          [
+            1563703,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_in_render_pass",
+            "Pass"
+          ],
+          [
+            1563707,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_out_of_render_pass",
+            "Pass"
+          ],
+          [
+            1563709,
+            "dEQP-VK.pipeline.monolithic.timestamp.basic_graphics_tests.fragment_shader_stage_out_of_render_pass_host_query_reset_with_availability_bit",
+            "Pass"
+          ],
+          [
+            474877,
+            "dEQP-VK.compute.pipeline.basic.copy_ssbo_single_invocation",
+            "Pass"
+          ],
+          [
+            474875,
+            "dEQP-VK.compute.pipeline.basic.copy_ssbo_multiple_groups",
+            "Pass"
+          ],
+          [
+            474869,
+            "dEQP-VK.compute.pipeline.basic.atomic_barrier_sum_small",
+            "Pass"
+          ],
+          [
+            474873,
+            "dEQP-VK.compute.pipeline.basic.copy_image_to_ssbo_small",
+            "Pass"
+          ],
+          [
+            2155251,
+            "dEQP-VK.query_pool.statistics_query.compute_shader_invocations.32bits_primary",
+            "Pass"
+          ],
+          [
+            2155283,
+            "dEQP-VK.query_pool.statistics_query.compute_shader_invocations.64bits_secondary",
+            "Pass"
+          ]
+        ]
+      },
+      {
+        "step": "desktop",
+        "evidence": "_provenance/experiments/20260924T100452736140Z-cleanup-init-fields-desktop",
+        "peak_c": 62.75,
+        "image": "_provenance/driver-cleanups-20260924/m4-init-fields-suite/desktop.png",
+        "visual_review": "Normal Hyprland and Foot imported scanout inspected"
+      }
+    ]
+  },
+  "watchdog_seconds": 60,
+  "thermal_interval_seconds": 0.5,
+  "replay_adaptations": "Offscreen presentation, memory rebinding, omitted pipeline cache; not unmodified WSI proof.",
+  "limitations": "Host allocation buffers and power-generation stub do not emulate UAT/MMIO, ordering, locking or firmware. Boot and guarded application evidence are recorded separately.",
+  "follow_up": "Representation plan completed for the qualified device paths. Unknown semantics and behavioral pool/arena/VM/concurrency work are documented in shared-mechanisms.md."
+}

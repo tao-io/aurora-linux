@@ -139,3 +139,112 @@ pub(crate) const IOMAPS:[IoMap;19]=[
     IoMap {slot:40,physical:PhysicalAddress(0x300e1c000),mapped:0x4000,requested:0x4000,tag:0xe1c000,mode:2},
     IoMap {slot:41,physical:PhysicalAddress(0x300e1f800),mapped:0x4000,requested:0x4000,tag:0x0,mode:2},
 ];
+
+// Host-owned field layout of the qualified J713/25G83 initializer. These
+// offsets are scoped to their owning allocation. Each producer/consumer keeps
+// its explicit LE width. Unknown fields and timing values retain the established
+// constructor; this does not infer new policy or firmware-version support.
+pub(crate) mod runtime {
+    pub const MAIN: usize = 0x0;
+    pub const TIMER: usize = 0x10;
+    pub const SCRATCH: usize = 0x18;
+    pub const EVENT_STATE: usize = 0x1c0;
+    pub const EVENT_DATA: usize = 0x1c8;
+    pub const LOG_STATE: usize = 0x1d0;
+    pub const LOG_ENTRIES: usize = 0x1d8;
+    pub const KTRACE_STATE: usize = 0x1e0;
+    pub const KTRACE_DATA: usize = 0x1e8;
+    pub const STATISTICS_STATE: usize = 0x1f0;
+    pub const STATISTICS_DATA: usize = 0x1f8;
+    pub const LOG_DATA: usize = 0x200;
+    pub const UNKNOWN_250: usize = 0x250;
+    pub const TILER_ENGINE: usize = 0x254;
+    pub const FRAGMENT_ENGINE: usize = 0x25c;
+    pub const COMPUTE_ENGINE: usize = 0x264;
+    pub const RECOVERY_ENGINE: usize = 0x26c;
+    pub const PARAMETER_GPU: usize = 0x2d0;
+    pub const PARAMETER_FW: usize = 0x2d8;
+    pub const UMA_GPU: usize = 0x2e0;
+    pub const UMA_FW: usize = 0x2e8;
+    pub const UNKNOWN_2F8: usize = 0x2f8;
+    pub const POWER_PERFORMANCE: usize = 0x469;
+}
+pub(crate) mod globals {
+    pub const UNKNOWN_78: usize = 0x78;
+    pub const UNKNOWN_E28: usize = 0xe28;
+    pub const PROGRESS_INTERVAL_MS: usize = 0x24;
+    pub const UNKNOWN_998: usize = 0x998;
+    pub const UNKNOWN_99C: usize = 0x99c;
+    pub const UNKNOWN_9A0: usize = 0x9a0;
+    pub const IDLE_OFF_DELAY_MS: usize = 0x9b8;
+    pub const UNKNOWN_9BC: usize = 0x9bc;
+    pub const UNKNOWN_9C0: usize = 0x9c0;
+    pub const UNKNOWN_9C8: usize = 0x9c8;
+    pub const UNKNOWN_9CC: usize = 0x9cc;
+    pub const PERFORMANCE_CEILINGS: [usize; 3] = [0x88, 0x8c, 0x98];
+}
+pub(crate) mod main_data {
+    pub const TIMESTAMP_WINDOW: usize = 0x28;
+    pub const IOMAPS: usize = 0x640;
+    pub const ACCOUNTING_ENABLE: usize = 0xea0;
+    pub const UNKNOWN_EB8: usize = 0xeb8;
+    pub const REFERENCE_CLOCK_KHZ: usize = 0xed0;
+    pub const MAINTENANCE_INTERVAL: usize = 0xed4;
+    pub const POWER_SAMPLE_INTERVAL: usize = 0xed8;
+    pub const UNKNOWN_F24: usize = 0xf24;
+    pub const CORE_POSITIONS: usize = 0xfc0;
+    pub const MAX_PSTATE: usize = 0xfc4;
+    pub const FREQUENCIES_MHZ: usize = 0xfc8;
+    pub const VOLTAGES_MV: usize = 0x1008;
+    pub const SRAM_VOLTAGES_MV: usize = 0x1408;
+    pub const AUX_FREQUENCIES_MHZ: usize = 0x1808;
+    pub const UNKNOWN_259C: usize = 0x259c;
+    pub const RETENTION: usize = 0xe88;
+    pub const ACCOUNTING_BUCKETS_ENABLE: usize = 0xee0;
+    pub const UNKNOWN_2540: usize = 0x2540;
+}
+pub(crate) mod power_data {
+    pub const TEMPERATURE_POINTER: usize = 0x3b50;
+    pub const UNKNOWN_04: usize = 0x4;
+    pub const UNKNOWN_08: usize = 0x8;
+    pub const UNKNOWN_10: usize = 0x10;
+    pub const UNKNOWN_14: usize = 0x14;
+    pub const INITIAL_ACTUAL: usize = 0x2c;
+    pub const INITIAL_TARGET: usize = 0x30;
+    pub const HARDWARE_STATE: usize = 0x38;
+    pub const PACKED_SELECTOR: usize = 0x279e;
+    // Units are hundredths of a performance state. Preserve the native
+    // power/PPM/performance/temperature controller bounds and selector inputs.
+    pub const CEILING_INPUTS: [usize; 23] = [
+        0x9f0, 0x9f4, 0xa38, // power PI bounds/output
+        0xaa8, 0xaac, 0xaf0, // PPM PI bounds/output
+        0xb78, 0xb7c, 0xb80, 0xbc0, // performance bounds/base/output
+        0x22b0, 0x22b4, 0x22f8, // temperature PI bounds/output
+        0x2210, 0x2870, 0x2a3c, // additional selector inputs
+        0x2b84, 0x2b88, 0x2b8c, 0x2bcc, // secondary performance
+        0x2c40, 0x2c44, 0x2c88, // average power PI bounds/output
+    ];
+}
+pub(crate) mod firmware_data {
+    pub const FWCTL_STATE: usize = 0x4f88;
+    pub const FWCTL_RING: usize = 0x4f90;
+    pub const UNKNOWN_4FD4: usize = 0x4fd4;
+    pub const CONSUMED_GENERATION: usize = 0xeae8;
+    pub const RECOVERY_SUMMARY: usize = 0x4ebc;
+}
+/// Twelve submission channels and the independent device-control ring.
+/// State words are u32, spaced 16 bytes; descriptors hold four firmware VAs.
+pub(crate) mod channel {
+    pub const COUNT: usize = 12;
+    pub const STATE_SIZE: usize = 0x30;
+    pub const SUBMIT_RING_SIZE: usize = 0x1800;
+    pub const RUNTIME_SUBMIT: usize = 0x20;
+    pub const DESCRIPTOR_SIZE: usize = 0x20;
+    pub const RUNTIME_CONTROL: usize = 0x1a0;
+    pub const READ: usize = 0;
+    pub const CFI: usize = 0x10;
+    pub const WRITE: usize = 0x20;
+    pub const CONTROL_RECORD_SIZE: usize = 0x40;
+    pub const CONTROL_CAPACITY: u32 = 256;
+}
+pub(crate) const LOADER_IOMAPS: usize = 0x1332f0;

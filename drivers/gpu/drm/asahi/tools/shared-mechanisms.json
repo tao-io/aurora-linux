@@ -1,0 +1,93 @@
+{
+  "trees": {
+    "m3": "fd47147e7c4d3da76ebbbd9bc694fc1e4e9c21d4",
+    "m4": "9cf3d351c1e9167a67da02d19945386d8bf59462"
+  },
+  "modules": {
+    "g16_render.rs": {
+      "sha256": {
+        "m3": "1f353a8a2130b44c59de9c44d456c9a3e817cd3a433540fa3503f4517e6040a5",
+        "m4": "1f353a8a2130b44c59de9c44d456c9a3e817cd3a433540fa3503f4517e6040a5"
+      },
+      "identical": true
+    },
+    "g16_render_state.rs": {
+      "sha256": {
+        "m3": "8b9bb44e647db106c1ab570c16a87e2c718fa50efb0b3b947ec6f24b5c58db7b",
+        "m4": "edd30aca45aa5182683fcf2ca0005292b436f508b6cd3d1e24b8f523a461660f"
+      },
+      "identical": false
+    },
+    "g16_compute.rs": {
+      "sha256": {
+        "m3": "2a25f58a171e877c901b224a37c482f0342208c91637bbcd6ad6a1dd698abf43",
+        "m4": "3c65d820ac3d64e8fd15541746b2ac1109c223805db805a608518f46d3b82dca"
+      },
+      "identical": false
+    },
+    "g16_memory.rs": {
+      "sha256": {
+        "m3": "1ac09f5674ddb02ee58c046e26678487e5028089a9ae16f8ea88ffb5f7035e40",
+        "m4": "7ca1bf89588818fc0746c4fe90084e2abc026b18696cd0f93a66f23ac6cfb806"
+      },
+      "identical": false
+    },
+    "g16_attachments.rs": {
+      "sha256": {
+        "m3": "79bc0644f40745ae676780c6cc1c414162c08d5a6b2a4cbc025755fb315b27e4",
+        "m4": "79bc0644f40745ae676780c6cc1c414162c08d5a6b2a4cbc025755fb315b27e4"
+      },
+      "identical": true
+    },
+    "g16_resources.rs": {
+      "sha256": {
+        "m3": "38e2c800cfc8355e219d37c84f83a28af21af0b1999ce6ab7b2c0864883e8408",
+        "m4": "38e2c800cfc8355e219d37c84f83a28af21af0b1999ce6ab7b2c0864883e8408"
+      },
+      "identical": true
+    },
+    "g16_dispatch.rs": {
+      "sha256": {
+        "m3": "b196aca116e37df1226bbd215eda334a9e9266d461707039a0fdd045ced44ae8",
+        "m4": "b196aca116e37df1226bbd215eda334a9e9266d461707039a0fdd045ced44ae8"
+      },
+      "identical": true
+    }
+  },
+  "selected_items": {
+    "g16_render_state.rs:compact": {
+      "sha256": {
+        "m3": "7735437941827d5094383e59fd53f5182dbbaeee6aefab1f1f0a81b96f0a2254",
+        "m4": "7735437941827d5094383e59fd53f5182dbbaeee6aefab1f1f0a81b96f0a2254"
+      },
+      "identical": true
+    },
+    "g16_render_state.rs:Program": {
+      "sha256": {
+        "m3": "4c83a91d7c77b102c2e510fa63968fa4e2307d821f8303a0bccb72b80f86a4e7",
+        "m4": "4c83a91d7c77b102c2e510fa63968fa4e2307d821f8303a0bccb72b80f86a4e7"
+      },
+      "identical": true
+    },
+    "g16_render_state.rs:DepthStencil": {
+      "sha256": {
+        "m3": "325ab5c3b388ec8d3633c333d7649d547ee677002111163276c829e292a48015",
+        "m4": "325ab5c3b388ec8d3633c333d7649d547ee677002111163276c829e292a48015"
+      },
+      "identical": true
+    },
+    "g16_memory.rs:publish": {
+      "sha256": {
+        "m3": "4ba59f2c8cb1ed9a1e82d1134aafe20f455aedb4521f08b0f72fdce093cae9e4",
+        "m4": "4ba59f2c8cb1ed9a1e82d1134aafe20f455aedb4521f08b0f72fdce093cae9e4"
+      },
+      "identical": true
+    }
+  },
+  "m3_abi_sources": {
+    "m3_compute_sequence.rs": "b256ab540c072dd5650f8c31fa9f64cbc72b1afa680b267ac22e48c5f57381c6",
+    "m3_render_sequence.rs": "993ae5d96f4a869f0b33232d221859e4d7fe148204f6120f786de78a5a70a6a6",
+    "m3_memory.rs": "f4d7af3dbaf81bade3f806e1cfe45671375e01cabd6c19e11826c9e9fcf48013"
+  },
+  "scope": "Read-only source identity audit; see shared-mechanisms.md for consumers, ABI differences and follow-up gates"
+}

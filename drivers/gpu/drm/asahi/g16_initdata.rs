@@ -6,6 +6,21 @@
 pub(crate) const ROOT_SIZE: usize = 0xc8;
 pub(crate) const ROOT_MAGIC: u64 = 0x0c89_c357_8392_04b8;
 
+/// Packed root offsets for J713/25G83, independent of Rust struct padding.
+mod layout {
+    pub const BRN: usize = 8;
+    pub const RUNTIME: usize = 0x18;
+    pub const GLOBALS: usize = 0x20;
+    pub const FLAGS: usize = 0x28;
+    pub const UAT_HEADER: usize = 0x30;
+    pub const UAT_LEVELS: usize = 0x34;
+    pub const UAT_LEVEL_SIZE: usize = 32;
+    pub const CONTROL: usize = 0xa8;
+    pub const FIRMWARE_DATA: usize = 0xb0;
+    pub const POWER: usize = 0xb8;
+    pub const DYNAMIC: usize = 0xc0;
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct RootPointers {
     pub(crate) brn: u64,
@@ -21,20 +36,20 @@ pub(crate) struct RootPointers {
 pub(crate) enum EncodeError { Size, Address }
 
 pub(crate) fn encode_root(out: &mut [u8], pointers: RootPointers) -> Result<(), EncodeError> {
-    let fields = [(0x08, pointers.brn), (0x18, pointers.runtime), (0x20, pointers.globals),
-        (0xa8, pointers.control), (0xb0, pointers.firmware_data),
-        (0xb8, pointers.power), (0xc0, pointers.dynamic)];
+    let fields = [(layout::BRN, pointers.brn), (layout::RUNTIME, pointers.runtime), (layout::GLOBALS, pointers.globals),
+        (layout::CONTROL, pointers.control), (layout::FIRMWARE_DATA, pointers.firmware_data),
+        (layout::POWER, pointers.power), (layout::DYNAMIC, pointers.dynamic)];
     if out.len() != ROOT_SIZE { return Err(EncodeError::Size); }
     if fields.iter().any(|(_, address)| address & 7 != 0 || *address < 0xffff_fc00_0000_0000) {
         return Err(EncodeError::Address);
     }
     out.fill(0);
     out[..8].copy_from_slice(&ROOT_MAGIC.to_le_bytes());
-    out[0x28..0x30].copy_from_slice(&(1u64 << 32).to_le_bytes());
+    out[layout::FLAGS..layout::FLAGS+8].copy_from_slice(&(1u64 << 32).to_le_bytes());
     // Packed UAT geometry: four-byte header, three 32-byte levels, four-byte pad.
-    out[0x30..0x34].copy_from_slice(&[0, 0x40, 14, 3]);
+    out[layout::UAT_HEADER..layout::UAT_HEADER+4].copy_from_slice(&[0, 0x40, 14, 3]);
     for (index, (shift, count)) in [(36u8, 64u16), (25, 2048), (14, 2048)].into_iter().enumerate() {
-        let start = 0x34 + index * 32;
+        let start = layout::UAT_LEVELS + index * layout::UAT_LEVEL_SIZE;
         out[start..start + 4].copy_from_slice(&[8, 14, 14, shift]);
         out[start + 4..start + 6].copy_from_slice(&count.to_le_bytes());
         out[start + 6..start + 8].copy_from_slice(&0x4000u16.to_le_bytes());

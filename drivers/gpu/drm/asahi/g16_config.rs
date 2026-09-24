@@ -11,6 +11,7 @@ use crate::{driver, g16_initdata::{self, RootPointers}, g16_memory::{self, Buffe
 #[path = "g16_config_layout.rs"]
 mod layout;
 use layout::{Object,OBJECTS,IOMAPS,IO_TABLE_SIZE,FirmwareVa,Protection};
+use layout::{runtime,channel,globals,main_data,power_data,firmware_data};
 
 pub(crate) struct Config {
     objects: KVec<Buffer>,
@@ -76,9 +77,9 @@ impl Config {
         }
         // Twelve firmware submission channels: TA/3D/compute at four priorities.
         // Empty independent rings avoid aliasing producer/consumer state.
-        for _ in 0..12 {
-            config.pipes.push(Buffer::new(dev, vm, 0x30)?, GFP_KERNEL)?;
-            config.pipes.push(Buffer::new(dev, vm, 0x1800)?, GFP_KERNEL)?;
+        for _ in 0..channel::COUNT {
+            config.pipes.push(Buffer::new(dev, vm, channel::STATE_SIZE)?, GFP_KERNEL)?;
+            config.pipes.push(Buffer::new(dev, vm, channel::SUBMIT_RING_SIZE)?, GFP_KERNEL)?;
         }
         for io in IOMAPS {
             let protection=match io.protection() {
@@ -132,7 +133,7 @@ impl Config {
         // Host ceiling inputs to the 25G83 performance selector. Keep the
         // full voltage/frequency tables and firmware-owned current state;
         // Fender/PMP performs the actual ordered voltage/clock transition.
-        for offset in [0x88, 0x8c, 0x98] {
+        for offset in globals::PERFORMANCE_CEILINGS {
             self.object(Object::Globals).u32(offset, limit * 100)?;
         }
         g16_memory::publish();
@@ -161,41 +162,41 @@ impl Config {
             power: self.va(Power), dynamic: self.va(Dynamic),
         }).map_err(|_| EINVAL)?;
         self.object(Root).write(0, &root)?;
-        for (offset, target) in [(0, Main), (0x10, Timer), (0x1c0, EventState), (0x1c8, EventData),
-            (0x1d0, LogState), (0x1d8, LogEntries), (0x1e0, KtraceState), (0x1e8, KtraceData),
-            (0x1f0, StatisticsState), (0x1f8, StatisticsData), (0x200, LogData),
-            (0x254, Activity254), (0x25c, Activity25c), (0x264, Activity264),
-            (0x26c, Activity26c), (0x469, PowerPerformance)] {
+        for (offset, target) in [(runtime::MAIN, Main), (runtime::TIMER, Timer), (runtime::EVENT_STATE, EventState), (runtime::EVENT_DATA, EventData),
+            (runtime::LOG_STATE, LogState), (runtime::LOG_ENTRIES, LogEntries), (runtime::KTRACE_STATE, KtraceState), (runtime::KTRACE_DATA, KtraceData),
+            (runtime::STATISTICS_STATE, StatisticsState), (runtime::STATISTICS_DATA, StatisticsData), (runtime::LOG_DATA, LogData),
+            (runtime::TILER_ENGINE, Activity254), (runtime::FRAGMENT_ENGINE, Activity25c), (runtime::COMPUTE_ENGINE, Activity264),
+            (runtime::RECOVERY_ENGINE, Activity26c), (runtime::POWER_PERFORMANCE, PowerPerformance)] {
             self.ptr(Runtime, offset, target, 0)?;
         }
-        self.object(Runtime).u64(0x18, scratch)?;
-        self.object(Runtime).u32(0x250, 1)?;
-        self.object(Runtime).u32(0x2f8, 4)?;
+        self.object(Runtime).u64(runtime::SCRATCH, scratch)?;
+        self.object(Runtime).u32(runtime::UNKNOWN_250, 1)?;
+        self.object(Runtime).u32(runtime::UNKNOWN_2F8, 4)?;
         let pb_gpu = self.object(ParameterTable).gpu_va()?;
-        self.object(Runtime).u64(0x2d0, pb_gpu)?;
-        self.ptr(Runtime, 0x2d8, ParameterTable, 0)?;
+        self.object(Runtime).u64(runtime::PARAMETER_GPU, pb_gpu)?;
+        self.ptr(Runtime, runtime::PARAMETER_FW, ParameterTable, 0)?;
         let uma_gpu = self.object(UmaTable).gpu_va()?;
-        self.object(Runtime).u64(0x2e0, uma_gpu)?;
-        self.ptr(Runtime, 0x2e8, UmaTable, 0)?;
+        self.object(Runtime).u64(runtime::UMA_GPU, uma_gpu)?;
+        self.ptr(Runtime, runtime::UMA_FW, UmaTable, 0)?;
         self.object(Activity25c).u32(0xc18, u32::MAX)?;
         self.object(Activity25c).u32(0xc30, u32::MAX)?;
-        for pipe in 0..12 {
+        for pipe in 0..channel::COUNT {
             let state = self.pipes[pipe * 2].va();
             let ring = self.pipes[pipe * 2 + 1].va();
-            let offset = 0x20 + pipe * 0x20;
-            for (off, va) in [(0, state), (8, state + 0x10), (16, state + 0x20), (24, ring)] {
+            let offset = channel::RUNTIME_SUBMIT + pipe * channel::DESCRIPTOR_SIZE;
+            for (off, va) in [(0, state), (8, state + channel::CFI as u64), (16, state + channel::WRITE as u64), (24, ring)] {
                 self.object(Runtime).u64(offset + off, va)?;
             }
         }
-        for (offset, target, delta) in [(0x1a0, DevctrlState, 0), (0x1a8, DevctrlState, 0x10),
-            (0x1b0, DevctrlState, 0x20), (0x1b8, DevctrlRing, 0)] {
+        for (offset, target, delta) in [(channel::RUNTIME_CONTROL, DevctrlState, channel::READ as u64), (channel::RUNTIME_CONTROL+8, DevctrlState, channel::CFI as u64),
+            (channel::RUNTIME_CONTROL+16, DevctrlState, channel::WRITE as u64), (channel::RUNTIME_CONTROL+24, DevctrlRing, 0)] {
             self.ptr(Runtime, offset, target, delta)?;
         }
-        self.ptr(FirmwareData, 0x4f88, Fwctl, 0)?;
-        self.ptr(FirmwareData, 0x4f90, Fwctl, 0x40)?;
-        self.object(FirmwareData).u32(0x4fd4, 1)?;
-        self.object(Globals).u32(0x78, 1)?;
-        self.object(Globals).u32(0xe28, 3)?;
+        self.ptr(FirmwareData, firmware_data::FWCTL_STATE, Fwctl, 0)?;
+        self.ptr(FirmwareData, firmware_data::FWCTL_RING, Fwctl, 0x40)?;
+        self.object(FirmwareData).u32(firmware_data::UNKNOWN_4FD4, 1)?;
+        self.object(Globals).u32(globals::UNKNOWN_78, 1)?;
+        self.object(Globals).u32(globals::UNKNOWN_E28, 3)?;
         // 25G83 host Globals: progress intervals and idle/context timers in
         // milliseconds. These match the common Asahi constructor roles and
         // the J713 producer. A zero-filled timer is not a disabled timer.
@@ -203,48 +204,48 @@ impl Config {
         // idle_off_delay_ms; its default is 2 and 0 means immediately).
         // Completion flushes use matching event generations, so CPU
         // visibility no longer depends on immediate power-off.
-        for (offset, value) in [(0x24, 3000), (0x998, 40), (0x99c, 10),
-            (0x9a0, 250), (0x9b8, 2), (0x9bc, 40), (0x9c0, 5),
-            (0x9c8, 40), (0x9cc, 50)] {
+        for (offset, value) in [(globals::PROGRESS_INTERVAL_MS, 3000), (globals::UNKNOWN_998, 40), (globals::UNKNOWN_99C, 10),
+            (globals::UNKNOWN_9A0, 250), (globals::IDLE_OFF_DELAY_MS, 2), (globals::UNKNOWN_9BC, 40), (globals::UNKNOWN_9C0, 5),
+            (globals::UNKNOWN_9C8, 40), (globals::UNKNOWN_9CC, 50)] {
             self.object(Globals).u32(offset, value)?;
         }
-        self.ptr(PowerPerformance, 0x3b50, Temperature, 0)?;
-        self.object(PowerPerformance).u32(4, 200000)?;
-        self.object(PowerPerformance).u32(8, 200000)?;
+        self.ptr(PowerPerformance, power_data::TEMPERATURE_POINTER, Temperature, 0)?;
+        self.object(PowerPerformance).u32(power_data::UNKNOWN_04, 200000)?;
+        self.object(PowerPerformance).u32(power_data::UNKNOWN_08, 200000)?;
         // Timestamp opcode3 at 25G83 TEXT19494 validates user result
         // pointers against this base through base+0x3fffff8, then writes ns.
-        self.object(Main).u64(0x28, g16_memory::TIMESTAMP_RANGE.start)?;
+        self.object(Main).u64(main_data::TIMESTAMP_WINDOW, g16_memory::TIMESTAMP_RANGE.start)?;
         let (objects, iomaps) = (&mut self.objects, &self.iomap_bytes);
-        objects[Main as usize].write(0x640, &iomaps[..])?;
-        self.object(Main).u32(0xea0, 1)?;
-        self.object(Main).u32(0xeb8, 1)?;
+        objects[Main as usize].write(main_data::IOMAPS, &iomaps[..])?;
+        self.object(Main).u32(main_data::ACCOUNTING_ENABLE, 1)?;
+        self.object(Main).u32(main_data::UNKNOWN_EB8, 1)?;
         // J713's reference clock and native firmware maintenance cadence.
         // 25G83 TEXT34d60 derives the scheduler timer from the clock in kHz;
         // TEXT37aa4 uses the first interval as a divisor before maintenance,
         // and TEXT37a80 uses the power sampling interval. Zero is not disabled:
         // it supplies a zero timer interval and skips scheduling updates.
-        self.object(Main).u32(0xed0, 24_000)?;
-        self.object(Main).u32(0xed4, 1)?;
-        self.object(Main).u32(0xed8, 8)?;
-        self.object(Main).u64(0xf24, 0x0000000607002004)?;
+        self.object(Main).u32(main_data::REFERENCE_CLOCK_KHZ, 24_000)?;
+        self.object(Main).u32(main_data::MAINTENANCE_INTERVAL, 1)?;
+        self.object(Main).u32(main_data::POWER_SAMPLE_INTERVAL, 8)?;
+        self.object(Main).u64(main_data::UNKNOWN_F24, 0x0000000607002004)?;
         // The physical core-position count is independent of the OPP cap.
         // Native initFirmwareData (25G83 TEXT8993918) copies the accelerator's
         // core count here. Firmware TEXT2c2ac imports it for per-core context
         // storage offsets (for example TEXT1af24 uses count * 0x1800).
-        self.object(Main).u32(0xfc0, 10)?;
+        self.object(Main).u32(main_data::CORE_POSITIONS, 10)?;
         // Publish the J713 compacted tables, including SRAM and auxiliary
         // accounting frequencies. Hardware voltage sequencing stays in firmware.
         let pstate = crate::g16_power::requested_state()?;
-        self.object(Main).u32(0xfc4, pstate)?;
+        self.object(Main).u32(main_data::MAX_PSTATE, pstate)?;
         for state in 0..=pstate as usize {
-            self.object(Main).u32(0xfc8 + state * 4,
+            self.object(Main).u32(main_data::FREQUENCIES_MHZ + state * 4,
                 crate::g16_power::FREQUENCIES_MHZ[state])?;
-            self.object(Main).u32(0x1808 + state * 4,
+            self.object(Main).u32(main_data::AUX_FREQUENCIES_MHZ + state * 4,
                 crate::g16_power::AUX_FREQUENCIES_MHZ[state])?;
             for core in 0..16 {
-                self.object(Main).u32(0x1008 + state * 64 + core * 4,
+                self.object(Main).u32(main_data::VOLTAGES_MV + state * 64 + core * 4,
                     crate::g16_power::VOLTAGES_MV[state])?;
-                self.object(Main).u32(0x1408 + state * 64 + core * 4,
+                self.object(Main).u32(main_data::SRAM_VOLTAGES_MV + state * 64 + core * 4,
                     crate::g16_power::SRAM_VOLTAGES_MV[state])?;
             }
         }
@@ -252,38 +253,30 @@ impl Config {
         // of a state. Zero-filled caps request zero duty, not an unlimited
         // controller. No captured runtime state or foreign pointers are copied.
         let units = pstate * 100;
-        for offset in [0x88, 0x8c, 0x98] {
+        for offset in globals::PERFORMANCE_CEILINGS {
             self.object(Globals).u32(offset, units)?;
         }
-        self.object(PowerPerformance).u32(0x10, 4)?;
-        self.object(PowerPerformance).u32(0x14, 0x3f800000)?;
-        self.object(PowerPerformance).u32(0x2c, pstate)?;
-        self.object(PowerPerformance).u32(0x30, pstate)?;
+        self.object(PowerPerformance).u32(power_data::UNKNOWN_10, 4)?;
+        self.object(PowerPerformance).u32(power_data::UNKNOWN_14, 0x3f800000)?;
+        self.object(PowerPerformance).u32(power_data::INITIAL_ACTUAL, pstate)?;
+        self.object(PowerPerformance).u32(power_data::INITIAL_TARGET, pstate)?;
         // Keep current hardware state at zero until firmware acknowledges
         // the real transition. Initial actual/target are constructor inputs.
-        for offset in [
-            0x9f0, 0x9f4, 0xa38, // power PI bounds/output
-            0xaa8, 0xaac, 0xaf0, // PPM PI bounds/output
-            0xb78, 0xb7c, 0xb80, 0xbc0, // performance bounds/base/output
-            0x22b0, 0x22b4, 0x22f8, // temperature PI bounds/output
-            0x2210, 0x2870, 0x2a3c, // additional selector inputs
-            0x2b84, 0x2b88, 0x2b8c, 0x2bcc, // secondary performance
-            0x2c40, 0x2c44, 0x2c88, // average power PI bounds/output
-        ] {
+        for offset in power_data::CEILING_INPUTS {
             self.object(PowerPerformance).u32(offset, units)?;
         }
-        self.object(PowerPerformance).write(0x279e, &units.to_le_bytes())?;
-        self.object(Main).u32(0x259c, 1)?;
+        self.object(PowerPerformance).write(power_data::PACKED_SELECTOR, &units.to_le_bytes())?;
+        self.object(Main).u32(main_data::UNKNOWN_259C, 1)?;
         // Fender initialization also constructs scheduler accounting buckets:
         // 25G83 imports ea0/ee0 to globals 193b48/193b7c, and its 3b614
         // path initializes the buckets only with both enabled. Disabling ee0
         // while ea0 is enabled makes the first queue submission assert.
         // Retain its save area; device-control separately disables idle power
         // off, and the runtime checks the configured performance-state ceiling.
-        self.ptr(Main, 0xe88, Retention, 0)?;
-        self.object(Main).u32(0xee0, 1)?;
+        self.ptr(Main, main_data::RETENTION, Retention, 0)?;
+        self.object(Main).u32(main_data::ACCOUNTING_BUCKETS_ENABLE, 1)?;
         for (offset, value) in [(4, 4), (8, 6), (12, 3), (16, 7), (20, 7), (40, 8), (48, 1)] {
-            self.object(Main).u32(0x2540 + offset, value)?;
+            self.object(Main).u32(main_data::UNKNOWN_2540 + offset, value)?;
         }
         self.object(Control).u32(0, 0x33)?;
         Ok(())
@@ -293,7 +286,7 @@ impl Config {
     /// its application wait state, before sending initdata. FW never consumes
     /// this table concurrently with publication under that boot protocol.
     pub(crate) fn publish_loader(&mut self) -> Result {
-        let mut map = self.loader.iosys_map(0x1332f0, IO_TABLE_SIZE)?;
+        let mut map = self.loader.iosys_map(layout::LOADER_IOMAPS, IO_TABLE_SIZE)?;
         for index in 0..IO_TABLE_SIZE {
             // SAFETY: bounded byte in retained WC firmware data reservation.
             if unsafe { map.as_ptr().add(index).read_volatile() } != 0 { return Err(EBUSY); }
@@ -309,7 +302,7 @@ impl Config {
     fn log_recovery(&mut self, dev: &driver::AsahiDevice) -> Result {
         for (object, name, offset, count) in [
             (Object::Activity26c, "engine-recovery", 0usize, 24usize),
-            (Object::FirmwareData, "recovery-summary", 0x4ebc, 64)] {
+            (Object::FirmwareData, "recovery-summary", firmware_data::RECOVERY_SUMMARY, 64)] {
             for start in (0..count).step_by(8) {
                 let mut words = [0u32; 8];
                 for (i, word) in words.iter_mut().enumerate() {
@@ -324,7 +317,7 @@ impl Config {
         // Normal draining counts late trace records without printk. Preserve
         // the most recent records on failure, even after thousands of jobs.
         // This snapshot neither moves the consumer nor acknowledges events.
-        let producer = self.object(Object::KtraceState).read_u32(0x20)?;
+        let producer = self.object(Object::KtraceState).read_u32(channel::WRITE)?;
         if producer >= 512 { return Err(EIO); }
         for age in (1..=16).rev() {
             let index = (producer + 512 - age) % 512;
@@ -370,7 +363,7 @@ impl Config {
             *word = self.object(Object::UmaTable).read_u64(32 + index * 8)?;
         }
         dev_info!(dev.as_ref(), "G16G: hardware UMA slot1={:x?}\n", uma);
-        let power = self.object(Object::PowerPerformance).read_u32(0x38)?;
+        let power = self.object(Object::PowerPerformance).read_u32(power_data::HARDWARE_STATE)?;
         dev_info!(dev.as_ref(), "G16G: firmware GPU power state={:#x}\n", power);
         for start in [0usize, 0x20, 0x40, 0xb80, 0xbc0, 0x6510, 0x6550] {
             let mut words = [0u32; 8];
@@ -389,27 +382,27 @@ impl Config {
         if !matches!(opcode, 0x1a | 0x34 | 0x0a) { return Err(EINVAL); }
         let [read, cfi, write] = self.control_indices()?;
         if read != write || cfi != write { return Err(EBUSY); }
-        let mut entry = [0; 0x40];
+        let mut entry = [0; channel::CONTROL_RECORD_SIZE];
         entry[..4].copy_from_slice(&opcode.to_le_bytes());
         entry[4..8].copy_from_slice(&payload.to_le_bytes());
-        self.object(Object::DevctrlRing).write(write as usize * 0x40, &entry)?;
+        self.object(Object::DevctrlRing).write(write as usize * channel::CONTROL_RECORD_SIZE, &entry)?;
         // All three admitted opcodes require a power assertion in the M4 ABI.
         *generation = generation.wrapping_add(1);
         device.set_power_generation(*generation)?;
         g16_memory::publish();
-        let next = (write + 1) % 256;
-        self.object(Object::DevctrlState).u32(0x20, next)?;
+        let next = (write + 1) % channel::CONTROL_CAPACITY;
+        self.object(Object::DevctrlState).u32(channel::WRITE, next)?;
         g16_memory::publish();
         Ok(next)
     }
     pub(crate) fn control_indices(&mut self) -> Result<[u32; 3]> {
         let state = self.object(Object::DevctrlState);
-        let indices = [state.read_u32(0)?, state.read_u32(0x10)?, state.read_u32(0x20)?];
-        if indices.iter().any(|index| *index >= 256) { return Err(EIO); }
+        let indices = [state.read_u32(channel::READ)?, state.read_u32(channel::CFI)?, state.read_u32(channel::WRITE)?];
+        if indices.iter().any(|index| *index >= channel::CONTROL_CAPACITY) { return Err(EIO); }
         Ok(indices)
     }
     pub(crate) fn consumed_generation(&mut self) -> Result<u32> {
-        self.object(Object::FirmwareData).read_u32(0xeae8)
+        self.object(Object::FirmwareData).read_u32(firmware_data::CONSUMED_GENERATION)
     }
     pub(crate) fn reset_trace_budget(&mut self) { self.trace_seen = [0; 2]; }
     #[cfg(CONFIG_DEV_COREDUMP)]
@@ -442,14 +435,14 @@ impl Config {
         Ok(())
     }
     pub(crate) fn rearm_scheduler(&mut self) -> Result {
-        if self.object(Object::FirmwareData).read_u32(0x4fd4)? != 0 { return Err(EBUSY); }
-        self.object(Object::FirmwareData).u32(0x4fd4, 1)?;
+        if self.object(Object::FirmwareData).read_u32(firmware_data::UNKNOWN_4FD4)? != 0 { return Err(EBUSY); }
+        self.object(Object::FirmwareData).u32(firmware_data::UNKNOWN_4FD4, 1)?;
         g16_memory::publish();
         Ok(())
     }
 
     pub(crate) fn publish_queue(&mut self, pipe: usize, queue: u64, wptr: u16, slot: u8, new: bool) -> Result<u32> {
-        if pipe >= 12 || slot >= 128 || queue & 7 != 0 { return Err(EINVAL); }
+        if pipe >= channel::COUNT || slot >= 128 || queue & 7 != 0 { return Err(EINVAL); }
         let state = &mut self.pipes[pipe * 2];
         let consumer = state.read_u32(0)?;
         let cfi = state.read_u32(0x10)?;
@@ -489,9 +482,9 @@ impl Config {
         Ok(n)
     }
     pub(crate) fn pipe_indices(&mut self, pipe: usize) -> Result<[u32; 3]> {
-        if pipe >= 12 { return Err(EINVAL); }
+        if pipe >= channel::COUNT { return Err(EINVAL); }
         let state = &mut self.pipes[pipe * 2];
-        Ok([state.read_u32(0)?, state.read_u32(0x10)?, state.read_u32(0x20)?])
+        Ok([state.read_u32(channel::READ)?, state.read_u32(channel::CFI)?, state.read_u32(channel::WRITE)?])
     }
 
     pub(crate) fn root(&self) -> u64 { self.va(Object::Root) }
