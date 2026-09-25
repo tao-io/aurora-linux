@@ -29,3 +29,13 @@ Validation on 2026-09-25:
 This proves the allocation regression and small observable draw. It does not
 prove Satisfactory DX12 or every partial-render workload; full capture replay
 and a new live game run remain separate validation.
+
+Follow-up live application validation:
+`20260925T043951391758Z-satisfactory-dx12-fixed-startup-stream` completed
+244 seconds under the guard, reaching the menu and rendering more than 100
+application frames. No allocation failures or GPU retirement faults recurred.
+The scene background remains dark and is tracked separately as a rendering
+failure; successful execution is not a visual correctness claim. This game
+build automatically fell back from D3D12 SM6 to SM5. The full startup trace,
+settings, renderer logs and fault evidence are retained in the local-only
+`gpu-replay-bench` repository (source checkpoint `2cee543`).
