@@ -28,9 +28,7 @@ pub(crate) fn geometry(r: UapiRenderCommand) -> Result<Geometry> {
     Ok(g)
 }
 pub(crate) fn bytes(g: &Geometry) -> Result<usize> {
-    let bytes = usize::try_from(g.tilemap_bytes)?.checked_mul(128).ok_or(EOVERFLOW)?;
-    Ok((4*1024*1024usize).max(bytes).checked_add(BLOCK_BYTES-1)
-        .ok_or(EOVERFLOW)? & !(BLOCK_BYTES-1))
+    Ok(g.parameter_bytes())
 }
 impl Parameters {
     pub(crate) fn new(dev: &driver::AsahiDevice, uat: &mmu::Uat, vm: &mmu::Vm,

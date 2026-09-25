@@ -45,6 +45,15 @@ pub(crate) struct Geometry {
 }
 
 impl Geometry {
+    /// Minimum parameter heap for this single-cluster GPU. As in common
+    /// Asahi's queue/render.rs, budget one 128 KiB block per 128 screen
+    /// tiles, rounded to eight blocks. This heap is reused by partial renders;
+    /// it is not a second per-layer tile table. Keep the bring-up 4 MiB floor.
+    pub(crate) fn parameter_bytes(&self) -> usize {
+        let blocks = ((self.tiles as usize).div_ceil(128) + 7) & !7;
+        (blocks * 128 * 1024).max(4 * 1024 * 1024)
+    }
+
     /// Set the sample-count part of the tile geometry. The default constructor
     /// retains 1x for existing callers; sample storage is budgeted separately.
     pub(crate) fn set_samples(&mut self, samples: u8) -> Result<(), BuildError> {
@@ -233,6 +242,26 @@ pub(crate) fn write_registers(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn parameter_heap_is_recyclable_across_layers() {
+        // VKD3D's attachmentless render reaches 16K x 16K x 32 after
+        // Mesa's existing clamp. Multiplying its tile table by 128 used
+        // to request a 5 GiB heap before publishing any work.
+        for layers in [1, 32, 2048] {
+            let g = Geometry::new_layered(16384, 16384,
+                Utile::Pixels32, Utile::Pixels32, 1, layers).unwrap();
+            assert_eq!(g.parameter_bytes(), 256 * 1024 * 1024);
+            assert_eq!(g.tilemap_bytes, 1280 * 1024 * u64::from(layers));
+            assert_eq!(g.tpc_bytes, 2 * 1024 * 1024 * u64::from(layers));
+        }
+        let four_k = Geometry::new(3840, 2160,
+            Utile::Pixels32, Utile::Pixels32, 1).unwrap();
+        assert_eq!(four_k.parameter_bytes(), 8 * 1024 * 1024);
+        let tiny = Geometry::new(1, 1,
+            Utile::Pixels16, Utile::Pixels16, 1).unwrap();
+        assert_eq!(tiny.parameter_bytes(), 4 * 1024 * 1024);
+    }
 
     #[test]
     fn executed_j713_geometry() {
