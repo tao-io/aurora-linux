@@ -110,7 +110,7 @@ pub(crate) struct Packet {
     // First error in the original userspace submission. Commands that have
     // not run must fail too, even for an allocation error with a healthy GPU.
     failure: Arc<AtomicI32>,
-    _vm_job: mmu::T8140VmJobGuard,
+    vm_job: Pin<KBox<Mutex<Option<mmu::T8140VmJobGuard>>>>,
 }
 impl Packet {
     pub(crate) fn previous_result(&self) -> Result {
@@ -130,6 +130,15 @@ impl Packet {
                 Ordering::Relaxed, Ordering::Relaxed);
             self.vm.status().record(error.to_errno());
             self.completion.set_error(error);
+        }
+        // Scheduler jobs/fences may outlive hardware retirement. Release the
+        // successful packet's active VM job before waking userspace, allowing
+        // deferred GEM closes to reclaim mappings between completed frames.
+        // An error fence does not prove retirement: failed packets retain the
+        // guard with their quarantined DMA owners until firmware has stopped.
+        if result.is_ok() {
+            let retired = self.vm_job.lock().take();
+            core::mem::drop(retired);
         }
         crate::g16_memory::publish();
         let timing = crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitTiming);
@@ -356,7 +365,8 @@ impl queue::Queue for Queue {
                 finish_claimed: AtomicBool::new(false),
                 failure: failure.clone(),
                 completion: self.fences.new_fence(0, Completion)?.into(),
-                _vm_job: self.vm.retain_t8140_job()? }, GFP_KERNEL)?;
+                vm_job: KBox::pin_init(new_mutex!(Some(self.vm.retain_t8140_job()?)),
+                    GFP_KERNEL)? }, GFP_KERNEL)?;
             jobs.push(Job { shared: self.shared.clone(), packet, dev: self.dev.clone() }, GFP_KERNEL)?;
         }
         let mut dependencies = KVec::with_capacity(in_sync_count, GFP_KERNEL)?;
