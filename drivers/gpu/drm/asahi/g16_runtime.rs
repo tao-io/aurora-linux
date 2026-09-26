@@ -579,6 +579,11 @@ impl Runtime {
             let mut cache = packet.compute_cache.lock();
             Option::as_mut(&mut *cache).and_then(|cache| {
                 cache.take(|owner| owner.pool_slot() == pool_slot && owner.same_vm(&packet.vm))
+                    // Cache entries have been displaced by a completely
+                    // retired replacement of their old hardware slot. As for
+                    // render owners, preserve their allocator while rebinding
+                    // the slot instead of allocating another private pool.
+                    .or_else(|| cache.take(|owner| owner.same_vm(&packet.vm)))
             })
         } else { None };
         let render_owner = if matches!(payload, crate::g16_submit::Payload::Render { .. }) {

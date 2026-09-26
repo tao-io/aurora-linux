@@ -4,11 +4,12 @@
 use kernel::prelude::*;
 use core::sync::atomic::{AtomicUsize, Ordering};
 
-// A render packet can need sixteen distinct 32 MiB private pools. A three-
-// owner cache constantly reallocates them. Bound the aggregate as well as
-// each queue so many browser/CTS contexts cannot multiply the larger budget.
-pub(crate) const CACHE_BYTES: usize = 768 * 1024 * 1024;
-pub(crate) const GLOBAL_CACHE_BYTES: usize = 1024 * 1024 * 1024;
+// Two packet banks can displace thirty-two distinct 32 MiB private pools,
+// plus command and geometry storage. Smaller budgets thrash on mixed engine
+// workloads. This is a lazy upper bound, not a reservation; retain the global
+// bound so browser/CTS contexts cannot multiply the per-queue allowance.
+pub(crate) const CACHE_BYTES: usize = 1280 * 1024 * 1024;
+pub(crate) const GLOBAL_CACHE_BYTES: usize = 2048 * 1024 * 1024;
 static CACHED_BYTES: AtomicUsize = AtomicUsize::new(0);
 static HITS: AtomicUsize = AtomicUsize::new(0);
 static MISSES: AtomicUsize = AtomicUsize::new(0);

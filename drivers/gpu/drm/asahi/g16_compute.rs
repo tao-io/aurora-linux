@@ -379,9 +379,33 @@ pub(crate) fn timestamp_copies(sequence: &mut [u8], pointers: &[u64]) -> Result<
     Ok(BASE + extra)
 }
 
+/// Rebind a fully displaced private allocator without resetting its cursors.
+/// The caller must prove retirement before supplying a saved descriptor.
+pub(crate) fn bind_uma_slot(bytes: &mut [u8], saved: Option<&[u8; uma_layout::SIZE]>,
+    slot: u8, owner: u64) {
+    let uma = &mut bytes[layout::UMA..layout::UMA_END];
+    if let Some(saved) = saved { uma.copy_from_slice(saved); }
+    uma[uma_layout::SLOT..uma_layout::SLOT + 4].copy_from_slice(&u32::from(slot).to_le_bytes());
+    uma[uma_layout::OWNER..uma_layout::OWNER + 8].copy_from_slice(&owner.to_le_bytes());
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn rebind_preserves_completed_allocator() {
+        let saved: [u8; uma_layout::SIZE] = core::array::from_fn(|i| (i * 37 + 19) as u8);
+        for slot in 1..=32 {
+            let mut bytes = [0x5a; SIZE];
+            bind_uma_slot(&mut bytes, Some(&saved), slot, 0xfffffc0012340000);
+            assert_eq!(&bytes[..layout::UMA], &[0x5a; layout::UMA]);
+            assert!(bytes[layout::UMA_END..].iter().all(|v| *v == 0x5a));
+            let mut expected = saved;
+            expected[uma_layout::SLOT..uma_layout::SLOT + 4].copy_from_slice(&(slot as u32).to_le_bytes());
+            expected[uma_layout::OWNER..uma_layout::OWNER + 8].copy_from_slice(&0xfffffc0012340000u64.to_le_bytes());
+            assert_eq!(&bytes[layout::UMA..layout::UMA_END], &expected);
+        }
+    }
     fn addresses() -> Addresses {
         Addresses { command: 0xfffffc2000014000, command_gpu: 0x7000100000, cdm_gpu: 0x7000500000, preemption_gpu: 0x7000600000, metrics: 0xfffffc2000050000, auxiliary_gpu: 0x7000700000,
             work_queue: 0xfffffc2000030000, stats: 0xfffffc2000060000, context_store_gpu: 0x7000800000,

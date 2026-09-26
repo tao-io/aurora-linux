@@ -59,7 +59,7 @@ impl Compute {
         // recycled, and only inside the same client GPUVM. Its GEM backing,
         // both command aliases, the 32 MiB private pool and the ASID lease
         // are retained; command records are rebuilt while USC state persists.
-        let reusable = reusable.filter(|job| control.is_some() && job.binding.matches(vm) && job.pool_slot == pool_slot);
+        let reusable = reusable.filter(|job| control.is_some() && job.binding.matches(vm));
         let mut saved_uma = [0; uma_layout::SIZE];
         let mut boxed = if let Some(mut job) = reusable {
             let owner: &mut Self = &mut *job;
@@ -73,6 +73,7 @@ impl Compute {
             for buffer in [&mut owner.command, &mut owner.output, &mut owner.preemption,
                 &mut owner.auxiliary] { buffer.clear()?; }
             owner.stamp = stamp;
+            owner.pool_slot = pool_slot;
             job
         } else {
         let uma_client = if control.is_none() { Some(config.bind_uma_table(vm)?) } else { None };
@@ -144,14 +145,15 @@ impl Compute {
         // The hardware indexes the global gUPM table with this field. A
         // distinct live pool must never claim another command's slot, even
         // when firmware has consumed both commands from the same work queue.
-        bytes[layout::UMA + uma_layout::SLOT..layout::UMA + uma_layout::SLOT + 4].copy_from_slice(&u32::from(job.pool_slot).to_le_bytes());
-        bytes[layout::UMA + uma_layout::OWNER..layout::UMA + uma_layout::OWNER + 8].copy_from_slice(&job.command.va().to_le_bytes());
         if job.uma_submitted == 0 {
             job.pool_state.write(0, &job.freelist)?;
             job.page_list.write(0, &job.page_list_image)?;
-        } else {
-            bytes[layout::UMA..layout::UMA_END].copy_from_slice(&saved_uma);
         }
+        // Restore the whole allocator first, then retarget only the slot.
+        // The old slot's replacement has already retired before this owner
+        // entered the idle cache; active/last firmware owners never enter it.
+        g16_compute::bind_uma_slot(&mut bytes[..],
+            (job.uma_submitted != 0).then_some(&saved_uma), job.pool_slot, job.command.va());
         job.command.write(0, &bytes[..])?;
         // Match firmware's UMA+54 completion count so TEXT 2b518 drains the
         // cached gUPM slot and saves its cursors before another owner is bound.
