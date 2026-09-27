@@ -31,6 +31,8 @@ struct Inner {
     gpu_pending: bool,
     #[cfg(CONFIG_DEV_COREDUMP)]
     fault_captured: bool,
+    #[cfg(CONFIG_DEV_COREDUMP)]
+    fault_reserve: Option<crate::g16_fault::Dump>,
     busy_since_ns: Option<i64>,
     command_label: u8,
     render_stamp: u32,
@@ -1091,7 +1093,8 @@ impl Runtime {
         dev_err!(inner.drm.as_ref(), "G16G: first runtime error errno={}\n", primary.to_errno());
         if let Err(error) = (|| -> Result {
             let job = inner.inflight.first().map_or(0, |active| active.packet.id);
-            let mut dump = crate::g16_fault::Dump::new(job)?;
+            let mut dump = inner.fault_reserve.take().ok_or(ENOMEM)?;
+            dump.begin(job);
             let mut cause = [0u8; 32];
             cause[..4].copy_from_slice(&1u32.to_le_bytes()); // cause ABI version
             cause[4..8].copy_from_slice(&primary.to_errno().to_le_bytes());
@@ -1140,7 +1143,15 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), idle_caches:crate::g16_owner_cache::Registry::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, #[cfg(CONFIG_DEV_COREDUMP)] fault_captured: false, busy_since_ns: None, command_label: 1, render_stamp: 0, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, last_gpu_end: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
+        #[cfg(CONFIG_DEV_COREDUMP)]
+        let fault_reserve = match crate::g16_fault::Dump::new(0) {
+            Ok(dump) => Some(dump),
+            Err(error) => {
+                dev_warn!(drm.as_ref(), "G16G: fault snapshot reserve unavailable: {:?}\n", error);
+                None
+            }
+        };
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), idle_caches:crate::g16_owner_cache::Registry::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, #[cfg(CONFIG_DEV_COREDUMP)] fault_captured: false, #[cfg(CONFIG_DEV_COREDUMP)] fault_reserve, busy_since_ns: None, command_label: 1, render_stamp: 0, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, last_gpu_end: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {
