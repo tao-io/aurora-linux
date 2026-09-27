@@ -26,6 +26,7 @@ pub(crate) struct Registered {
     shared: Shared,
     health: Arc<crate::g16_rtkit::Health>,
     _progress: Pin<KBox<kernel::debugfs::File<ProgressView>>>,
+    _memory: Pin<KBox<kernel::debugfs::File<crate::agx_memory_stats::View>>>,
 }
 
 impl Registered {
@@ -44,10 +45,12 @@ impl Registered {
         let directory = kernel::debugfs::Dir::new(c"asahi-m4");
         let progress = KBox::pin_init(directory.read_only_file(c"progress",
             ProgressView(health.clone())), GFP_KERNEL)?;
+        let memory = KBox::pin_init(directory.read_only_file(c"memory",
+            crate::agx_memory_stats::View), GFP_KERNEL)?;
         let shared = Arc::pin_init(new_mutex!(Some(runtime)), GFP_KERNEL)?;
         // Install the teardown owner before publishing the backend. On any
         // later construction failure Drop breaks the runtime -> DRM cycle.
-        let owner = Self { registration: KBox::pin_init(new_mutex!(None), GFP_KERNEL)?, shared: shared.clone(), health: health.clone(), _progress: progress };
+        let owner = Self { registration: KBox::pin_init(new_mutex!(None), GFP_KERNEL)?, shared: shared.clone(), health: health.clone(), _progress: progress, _memory: memory };
         // One executing packet and one prepared successor. The runtime still
         // serializes firmware publication, hardware slots and completion; the
         // extra credit hides CPU preparation behind the executing packet.
