@@ -65,10 +65,11 @@ impl Dump {
         self.bytes[8..12].copy_from_slice(&self.count.to_le_bytes());
         self.bytes[12..16].copy_from_slice(&1u32.to_le_bytes());
         self.bytes[32..40].copy_from_slice(&(length as u64).to_le_bytes());
+        let format = if &self.bytes[..8] == b"M4FWD001" { "M4FWD001" } else { "M3FWD001" };
         let owned = KBox::new(self, GFP_KERNEL)?;
         kernel::devcoredump::dev_coredump(dev, &crate::THIS_MODULE, owned, GFP_KERNEL,
             kernel::devcoredump::DEFAULT_TIMEOUT);
-        dev_info!(dev, "Asahi: sealed {}-byte firmware fault snapshot offered to devcoredump\n", length);
+        dev_info!(dev, "Asahi: sealed {}-byte firmware fault snapshot offered to devcoredump ({})\n", length, format);
         Ok(())
     }
 }

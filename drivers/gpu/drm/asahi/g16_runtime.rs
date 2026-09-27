@@ -1087,6 +1087,7 @@ impl Runtime {
         let inner = &mut *self.inner;
         if inner.fault_captured { return; }
         inner.fault_captured = true;
+        dev_err!(inner.drm.as_ref(), "G16G: first runtime error errno={}\n", primary.to_errno());
         if let Err(error) = (|| -> Result {
             let job = inner.inflight.first().map_or(0, |active| active.packet.id);
             let mut dump = crate::g16_fault::Dump::new(job)?;
