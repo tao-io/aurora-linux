@@ -12,10 +12,20 @@ use crate::{alloc, driver, drm_gpu::{DrmGpu, DrmGpuParams}, gem, gpu, hw, mmu, q
 pub(crate) type Shared = Arc<Mutex<Option<crate::g16_runtime::Runtime>>>;
 pub(crate) const USER_TOP: u64 = (1u64 << 42) - 2 * mmu::UAT_PGSZ as u64;
 
+struct ProgressView(Arc<crate::g16_rtkit::Health>);
+impl kernel::debugfs::Writer for ProgressView {
+    fn write(&self, f: &mut kernel::fmt::Formatter<'_>) -> kernel::fmt::Result {
+        let (generation, completed, last_ns, healthy) = self.0.progress_snapshot();
+        writeln!(f, "version=1 generation_ns={} completed={} last_completion_ns={} healthy={}",
+            generation, completed, last_ns, u8::from(healthy))
+    }
+}
+
 pub(crate) struct Registered {
     registration: Pin<KBox<Mutex<Option<drm::driver::Registration<driver::AsahiDriver>>>>>,
     shared: Shared,
     health: Arc<crate::g16_rtkit::Health>,
+    _progress: Pin<KBox<kernel::debugfs::File<ProgressView>>>,
 }
 
 impl Registered {
@@ -31,10 +41,13 @@ impl Registered {
         let drm = runtime.drm();
         let mask = runtime.core_mask();
         let health = runtime.health();
+        let directory = kernel::debugfs::Dir::new(c"asahi-m4");
+        let progress = KBox::pin_init(directory.read_only_file(c"progress",
+            ProgressView(health.clone())), GFP_KERNEL)?;
         let shared = Arc::pin_init(new_mutex!(Some(runtime)), GFP_KERNEL)?;
         // Install the teardown owner before publishing the backend. On any
         // later construction failure Drop breaks the runtime -> DRM cycle.
-        let owner = Self { registration: KBox::pin_init(new_mutex!(None), GFP_KERNEL)?, shared: shared.clone(), health: health.clone() };
+        let owner = Self { registration: KBox::pin_init(new_mutex!(None), GFP_KERNEL)?, shared: shared.clone(), health: health.clone(), _progress: progress };
         // One executing packet and one prepared successor. The runtime still
         // serializes firmware publication, hardware slots and completion; the
         // extra credit hides CPU preparation behind the executing packet.

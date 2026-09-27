@@ -108,6 +108,7 @@ pub(crate) struct Health {
     crashed: AtomicBool,
     mapped: AtomicBool,
     failed: AtomicBool,
+    progress: crate::agx_host_progress::Progress,
 }
 
 impl Health {
@@ -115,6 +116,13 @@ impl Health {
         self.mapped.load(Ordering::Acquire)
             && !self.crashed.load(Ordering::Acquire)
             && !self.failed()
+    }
+
+    pub(crate) fn record_completion(&self) { self.progress.record_completion(); }
+
+    pub(crate) fn progress_snapshot(&self) -> (u64, u64, u64, bool) {
+        let (generation, count, timestamp) = self.progress.snapshot();
+        (generation, count, timestamp, self.healthy())
     }
 
     pub(crate) fn failed(&self) -> bool { self.failed.load(Ordering::Acquire) }
@@ -133,6 +141,7 @@ impl State {
                     crashed: AtomicBool::new(false),
                     mapped: AtomicBool::new(false),
                     failed: AtomicBool::new(false),
+                    progress: crate::agx_host_progress::Progress::new(),
                 }, GFP_KERNEL)?,
                 claimed: AtomicBool::new(false),
                 event_messages: AtomicU64::new(0),

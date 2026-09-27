@@ -1001,6 +1001,7 @@ impl Runtime {
                 // Matching engine/notifier generations make the user stamp
                 // follow the firmware's cache flush. No idle-time delay is
                 // needed to make the command's writes visible to the CPU.
+                inner.state.health.record_completion();
                 packet.finish(Ok(()));
                 if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
                     inner.summary.packets[index] += 1;
