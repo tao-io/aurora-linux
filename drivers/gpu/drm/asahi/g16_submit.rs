@@ -174,6 +174,7 @@ impl sched::JobImpl for Job {
     fn timed_out(job: &mut sched::Job<Self>) -> sched::Status {
         let mut guard = job.shared.lock();
         let Some(runtime) = Option::as_mut(&mut *guard) else {
+            job.packet.finish(Err(ENODEV));
             return sched::Status::NoDevice;
         };
         // The scheduler measures the whole packet, including admission wait

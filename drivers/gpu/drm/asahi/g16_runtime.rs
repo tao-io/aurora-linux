@@ -665,10 +665,9 @@ impl Runtime {
 
     pub(crate) fn fail_job(&mut self, id: u64, error: Error) {
         let inner = &mut *self.inner;
-        if let Some(active) = inner.inflight.iter().find(|entry| entry.packet.id == id) {
-            inner.state.health.mark_failed();
-            active.packet.finish(Err(error));
+        if inner.inflight.iter().any(|entry| entry.packet.id == id) {
             dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven, job {} error {:?}; retaining DMA owners\n", id, error);
+            self.fail_all(error);
             return;
         }
         if let Some(position) = inner.pending.iter().position(|batch| batch[0].packet.id == id) {
@@ -679,23 +678,45 @@ impl Runtime {
         }
     }
 
+    /// A global GPU failure must wake every admitted packet, not just the
+    /// oldest command. Error fences do not retire hardware: all published
+    /// work and its mappings remain quarantined in `inflight`.
+    fn fail_all(&mut self, error: Error) {
+        let inner = &mut *self.inner;
+        inner.state.health.mark_failed();
+        for active in &inner.inflight {
+            active.packet.finish(Err(error));
+        }
+        for batch in &inner.pending {
+            if let Some(active) = batch.first() {
+                active.packet.finish(Err(error));
+            }
+        }
+        // Pending batches were never published. Their scheduler references
+        // may outlive the fence; those references still own their VM guards.
+        inner.pending.clear();
+    }
+
     /// Poll one completion snapshot. The worker drops the runtime mutex between
     /// snapshots, so queued ioctls and device removal can make progress.
     pub(crate) fn service_job(&mut self) -> Service {
-        if self.inner.state.health.failed() { return Service::Idle; }
+        if self.inner.state.health.failed() {
+            self.fail_all(EIO);
+            return Service::Idle;
+        }
         let inner = &mut *self.inner;
         if let Err(error) = inner.config.update_thermal_limit(&inner.drm) {
-            self.inner.state.health.mark_failed();
             dev_err!(self.inner.drm.as_ref(), "G16G: cannot publish thermal ceiling {:?}\n", error);
+            self.fail_all(error);
             return Service::Idle;
         }
         if self.inner.inflight.is_empty() {
             let inner = &mut *self.inner;
             if let Err(error) = inner.config.drain(&inner.drm) {
-                inner.state.health.mark_failed();
                 inner.gpu_pending = true;
-                let _ = inner.device.log_engine_state();
                 dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven after idle firmware error {:?}; retaining DMA owners\n", error);
+                self.fail_all(error);
+                let _ = self.inner.device.log_engine_state();
             }
             return Service::Idle;
         }
@@ -1042,12 +1063,13 @@ impl Runtime {
         if snapshot_after_deadline {
             dev_err!(inner.drm.as_ref(), "G16G: userspace GPU timeout job={} status={:x?} queue={:?} pipe={:?}\n",
                 active.packet.id, status, queue, pipe);
-            inner.device.log_engine_state()?;
-            match &mut active.work {
-                Work::Compute(c) => c.log_progress(&inner.drm)?,
-                Work::Render(r) => r.log_progress(&inner.drm)?,
-            }
-            inner.config.log_firmware_state(&inner.drm)?;
+            // Diagnostic reads must not replace the primary timeout error.
+            let _ = inner.device.log_engine_state();
+            let _ = match &mut active.work {
+                Work::Compute(c) => c.log_progress(&inner.drm),
+                Work::Render(r) => r.log_progress(&inner.drm),
+            };
+            let _ = inner.config.log_firmware_state(&inner.drm);
             return Err(ETIMEDOUT);
         }
         Ok(false)
