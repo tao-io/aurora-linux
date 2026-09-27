@@ -29,6 +29,8 @@ struct Inner {
     device: Device,
     generation: u32,
     gpu_pending: bool,
+    #[cfg(CONFIG_DEV_COREDUMP)]
+    fault_captured: bool,
     busy_since_ns: Option<i64>,
     command_label: u8,
     render_stamp: u32,
@@ -342,7 +344,7 @@ impl Runtime {
                     if let Err(restore_error) = packet.notifications.lock().restore(notifier_checkpoint) {
                         self.inner.state.health.mark_failed();
                         dev_err!(self.inner.drm.as_ref(), "G16G: reservation rollback failed {:?}\n", restore_error);
-                        return Err(restore_error);
+                        return Err(error);
                     }
                     dev_err!(self.inner.drm.as_ref(),
                         "G16G: packet preparation failed job={} bank={} index={} count={} error={:?}\n",
@@ -369,6 +371,7 @@ impl Runtime {
             }
             if let Err(error) = self.start_batch(batch) {
                 packet.finish(Err(error));
+                if self.inner.state.health.failed() { self.fail_all(error); }
                 return Err(error);
             }
         }
@@ -694,13 +697,15 @@ impl Runtime {
         }
         // Pending batches were never published. Their scheduler references
         // may outlive the fence; those references still own their VM guards.
-        inner.pending.clear();
+        #[cfg(CONFIG_DEV_COREDUMP)]
+        self.capture_fault(error);
+        self.inner.pending.clear();
     }
 
     /// Poll one completion snapshot. The worker drops the runtime mutex between
     /// snapshots, so queued ioctls and device removal can make progress.
     pub(crate) fn service_job(&mut self) -> Service {
-        if self.inner.state.health.failed() {
+        if !self.inner.state.healthy() {
             self.fail_all(EIO);
             return Service::Idle;
         }
@@ -734,8 +739,6 @@ impl Runtime {
             }
             Err(error) => {
                 let _ = self.inner.device.log_engine_state();
-                #[cfg(CONFIG_DEV_COREDUMP)]
-                self.capture_active_fault();
                 self.fail_job(id, error); Service::Idle
             }
         }
@@ -1075,16 +1078,27 @@ impl Runtime {
         Ok(false)
     }
 
-    /// Preserve non-timeout firmware/MMU failures as well as slow jobs.
-    /// Called once before fail_job marks the runtime failed; retained DMA
-    /// owners remain alive and snapshot failure cannot replace the GPU error.
+    /// One bounded first-failure snapshot, including idle/boot/thermal errors.
+    /// This runs under the runtime mutex, never in the RTKit callback. A failed
+    /// allocation is not retried by every canceled packet. Error fences are
+    /// signaled first; the snapshot cannot replace their primary error.
     #[cfg(CONFIG_DEV_COREDUMP)]
-    fn capture_active_fault(&mut self) {
+    fn capture_fault(&mut self, primary: Error) {
         let inner = &mut *self.inner;
-        let Some(active) = inner.inflight.first_mut() else { return; };
+        if inner.fault_captured { return; }
+        inner.fault_captured = true;
         if let Err(error) = (|| -> Result {
-            let mut dump = crate::g16_fault::Dump::new(active.packet.id)?;
-            active.packet.notifications.lock().capture_fault(&mut dump)?;
+            let job = inner.inflight.first().map_or(0, |active| active.packet.id);
+            let mut dump = crate::g16_fault::Dump::new(job)?;
+            let mut cause = [0u8; 32];
+            cause[..4].copy_from_slice(&1u32.to_le_bytes()); // cause ABI version
+            cause[4..8].copy_from_slice(&primary.to_errno().to_le_bytes());
+            cause[8..16].copy_from_slice(&(inner.inflight.len() as u64).to_le_bytes());
+            cause[16..24].copy_from_slice(&(inner.pending.len() as u64).to_le_bytes());
+            cause[24..32].copy_from_slice(&u64::from(inner.gpu_pending).to_le_bytes());
+            dump.record("host-first-error", 0, cause.len(), |out| {
+                out.copy_from_slice(&cause); Ok(())
+            })?;
             inner.config.capture_fault(&mut dump)?;
             inner.queue_context.capture_fault(&mut dump)?;
             inner.queue.capture_fault(&mut dump, ["queue-ta", "ring-state-ta"])?;
@@ -1092,18 +1106,19 @@ impl Runtime {
                 ["queue-fragment", "ring-state-fragment"])?;
             inner.compute_queue.capture_fault(&mut dump,
                 ["queue-compute", "ring-state-compute"])?;
-            match &mut active.work {
-                Work::Render(render) => render.capture_fault(&mut dump)?,
-                Work::Compute(compute) => compute.capture_fault(&mut dump,
-                    inner.uat.kernel_lower_vm())?,
+            if let Some(active) = inner.inflight.first_mut() {
+                active.packet.notifications.lock().capture_fault(&mut dump)?;
+                match &mut active.work {
+                    Work::Render(render) => render.capture_fault(&mut dump)?,
+                    Work::Compute(compute) => compute.capture_fault(&mut dump,
+                        inner.uat.kernel_lower_vm())?,
+                }
             }
             if let Some((compute, _)) = inner.retired_computes.last_mut() {
                 compute.capture_retired_command(&mut dump)?;
             }
             dump.publish(inner.drm.as_ref())
         })() {
-            // Snapshot allocation/read failure must not replace the GPU
-            // error or release any of the unretired command owners.
             dev_warn!(inner.drm.as_ref(), "G16G: firmware fault snapshot failed: {:?}\n", error);
         }
     }
@@ -1123,10 +1138,16 @@ impl Runtime {
         let compute = crate::g16_job::Compute::new(&drm, &uat, &mut config, compute_queue.address())?;
         let state = g16_rtkit::State::new(pdev, drm.clone(), device.firmware().resources.regions[5])?;
         let transport = rtkit::RtKit::new(pdev.as_ref(), None, 0, state.clone())?;
-        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), idle_caches:crate::g16_owner_cache::Registry::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, busy_since_ns: None, command_label: 1, render_stamp: 0, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, last_gpu_end: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
+        Ok(Self { inner: ManuallyDrop::new(Inner { transport, state, queue, compute_queue, fragment_queue, queue_context, fragment_registered:false, retired_renders:KVec::new(),retired_computes:KVec::new(), idle_caches:crate::g16_owner_cache::Registry::new(), compute, config, uat, drm, device, generation: 0, gpu_pending: false, #[cfg(CONFIG_DEV_COREDUMP)] fault_captured: false, busy_since_ns: None, command_label: 1, render_stamp: 0, compute_stamp: crate::g16_compute::STAMP, inflight: KVec::new(), pending: KVec::new(), messages_at_wait: 0, waits: 0, late_retirements: 0, wait_timeouts: 0, last_retired: None, last_gpu_end: None, summary: SubmitSummary { since_ns: <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get(), ..Default::default() } }) })
     }
 
     pub(crate) fn boot(&mut self, pdev: &platform::Device<Core>) -> Result {
+        let result = self.boot_inner(pdev);
+        if let Err(error) = result { self.fail_all(error); }
+        result
+    }
+
+    fn boot_inner(&mut self, pdev: &platform::Device<Core>) -> Result {
         self.inner.device.start_asc(pdev)?;
         Pin::new(&mut self.inner.transport).wake()?;
         if !Pin::new(&self.inner.transport).is_running() || !self.inner.state.healthy() {
@@ -1303,6 +1324,10 @@ impl Runtime {
 
 impl Drop for Runtime {
     fn drop(&mut self) {
+        // Device removal must wake waiters even if the worker cannot run again.
+        if !self.inner.inflight.is_empty() || !self.inner.pending.is_empty() {
+            self.fail_all(ENODEV);
+        }
         self.inner.state.health.mark_failed();
         if self.inner.gpu_pending {
             // Stopping ASC alone does not stop GPU DMA. Keep the complete
