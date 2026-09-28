@@ -875,6 +875,10 @@ impl Runtime {
             // GPU execution time from the command's own 24 MHz timestamps.
             let measured = gpu_span[0] != 0 && gpu_span[1] >= gpu_span[0];
             let gpu_ns = if measured { (gpu_span[1] - gpu_span[0]).saturating_mul(1000) / 24 } else { 0 };
+            inner.state.health.timing.record(matches!(&active.work, Work::Render(_)),
+                1, active.preparation_ns, active_ns, gpu_ns,
+                [render_stage_ns[0], render_stage_ns[2], render_stage_ns[1]]
+                    .map(|ns| ns.max(0) as u64));
             if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
                 if let Some((previous, packet_id, previous_engine)) = inner.last_gpu_end {
                     // Same 24 MHz counter for both engines. These gaps include

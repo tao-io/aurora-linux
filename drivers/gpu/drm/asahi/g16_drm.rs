@@ -21,12 +21,21 @@ impl kernel::debugfs::Writer for ProgressView {
     }
 }
 
+struct TimingView(Arc<crate::g16_rtkit::Health>);
+impl kernel::debugfs::Writer for TimingView {
+    fn write(&self, f: &mut kernel::fmt::Formatter<'_>) -> kernel::fmt::Result {
+        let (generation, _, _, healthy) = self.0.progress_snapshot();
+        self.0.timing.write(f, generation, healthy)
+    }
+}
+
 pub(crate) struct Registered {
     registration: Pin<KBox<Mutex<Option<drm::driver::Registration<driver::AsahiDriver>>>>>,
     shared: Shared,
     health: Arc<crate::g16_rtkit::Health>,
     _progress: Pin<KBox<kernel::debugfs::File<ProgressView>>>,
     _memory: Pin<KBox<kernel::debugfs::File<crate::agx_memory_stats::View>>>,
+    _timing: Pin<KBox<kernel::debugfs::File<TimingView>>>,
 }
 
 impl Registered {
@@ -47,10 +56,12 @@ impl Registered {
             ProgressView(health.clone())), GFP_KERNEL)?;
         let memory = KBox::pin_init(directory.read_only_file(c"memory",
             crate::agx_memory_stats::View), GFP_KERNEL)?;
+        let timing = KBox::pin_init(directory.read_only_file(c"timing",
+            TimingView(health.clone())), GFP_KERNEL)?;
         let shared = Arc::pin_init(new_mutex!(Some(runtime)), GFP_KERNEL)?;
         // Install the teardown owner before publishing the backend. On any
         // later construction failure Drop breaks the runtime -> DRM cycle.
-        let owner = Self { registration: KBox::pin_init(new_mutex!(None), GFP_KERNEL)?, shared: shared.clone(), health: health.clone(), _progress: progress, _memory: memory };
+        let owner = Self { registration: KBox::pin_init(new_mutex!(None), GFP_KERNEL)?, shared: shared.clone(), health: health.clone(), _progress: progress, _memory: memory, _timing: timing };
         // One executing packet and one prepared successor. The runtime still
         // serializes firmware publication, hardware slots and completion; the
         // extra credit hides CPU preparation behind the executing packet.
