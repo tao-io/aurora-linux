@@ -158,14 +158,21 @@ class ExperimentThermals:
             minimum = policy / 'scaling_min_freq'
             old_max, old_min = int(maximum.read_text()), int(minimum.read_text())
             available = [int(f) for f in (policy / 'scaling_available_frequencies').read_text().split()]
-            if available and requested_khz >= max(available):
+            # scaling_available_frequencies excludes CPUFREQ_BOOST_FREQ rows.
+            # With boost enabled, cpuinfo_max_freq includes those rows: a
+            # request for the highest ordinary OPP still needs an explicit cap.
+            hardware_max = int((policy / 'cpuinfo_max_freq').read_text())
+            if hardware_max <= 0:
+                raise RuntimeError(f'invalid CPU hardware maximum: {policy}')
+            hardware_max = max([hardware_max, *available])
+            if available and requested_khz >= hardware_max and old_max <= hardware_max:
                 # scaling_max_freq includes the temporary thermal QoS ceiling.
                 # Writing it back would turn throttling into a persistent user
                 # cap. A full-frequency run needs no additional cap: hardware
                 # already bounds the clock, and lower user limits stay intact.
                 self.cpu_frequency_caps.append({
                     'policy': policy.name, 'old_min_khz': old_min,
-                    'old_max_khz': old_max, 'max_khz': max(available),
+                    'old_max_khz': old_max, 'max_khz': hardware_max,
                     'effective_max_khz': old_max, 'cap_applied': False})
                 (self.result / 'cpu-frequency-caps.json').write_text(
                     json.dumps(self.cpu_frequency_caps, indent=2) + '\n')

@@ -44,3 +44,21 @@ seconds apart, no feed during an exclusive lease, and idle resumption after
 release. RGBA32 hardware oracle passed all 36,864 pixel checks under the leased
 guard, including fresh six-channel thermal samples. Forced expiry was not
 tested on this boot.
+
+
+### Boost-aware frequency ceilings (2026-09-28)
+
+The thermal guard reads `cpuinfo_max_freq` as well as the ordinary OPP list.
+Linux excludes boost entries from `scaling_available_frequencies`; on J713,
+boost enabled reports a 4,464,000 kHz hardware maximum while the ordinary list
+ends at 4,104,000. A requested 4,104,000 ceiling therefore requires an explicit
+QoS write and its existing asynchronous completion check. Skipping that write
+formerly made the guard trip before replay, followed by watchdog recovery.
+
+Fifteen host thermal tests pass. The new regression fails with the former
+implementation. A guarded 4K GPU-written UBO oracle passes on M4 with boost
+enabled and the requested ceiling verified at 4,104,000/2,892,000 kHz; boost is
+restored to its previous disabled setting after the experiment. All 132,710,400
+integer values match. No startup, thermal, staleness, progress or watchdog
+threshold is relaxed. Full-hardware-frequency requests still avoid pinning a
+temporary thermal QoS restriction into a persistent user cap.

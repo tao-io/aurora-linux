@@ -152,6 +152,7 @@ class ThermalsTest(unittest.TestCase):
         policy = self.root / 'devices/system/cpu/cpufreq/policy0'
         policy.mkdir(parents=True)
         (policy / 'scaling_available_frequencies').write_text('900000 1800000 4000000')
+        (policy / 'cpuinfo_max_freq').write_text('4000000')
         (policy / 'scaling_min_freq').write_text('900000')
         (policy / 'scaling_cur_freq').write_text('900000')
         maximum = policy / 'scaling_max_freq'
@@ -167,6 +168,43 @@ class ThermalsTest(unittest.TestCase):
         self.guard.check()
         self.assertFalse(self.stops)
 
+    def test_ordinary_maximum_still_caps_enabled_boost(self):
+        policy = self.root / 'devices/system/cpu/cpufreq/policy0'
+        policy.mkdir(parents=True)
+        (policy / 'scaling_available_frequencies').write_text('912000 1800000 4104000')
+        (policy / 'cpuinfo_max_freq').write_text('4464000')
+        (policy / 'scaling_min_freq').write_text('912000')
+        (policy / 'scaling_cur_freq').write_text('912000')
+        maximum = policy / 'scaling_max_freq'
+        maximum.write_text('4464000')
+        self.guard.cap_cpu_frequency(4104000)
+        self.assertEqual(maximum.read_text(), '4104000')
+        self.guard.start()
+        self.guard.check()
+        self.assertFalse(self.stops)
+        maximum.write_text('4464000')
+        with self.assertRaisesRegex(RuntimeError, 'cap was removed'):
+            self.guard.check()
+        self.assertEqual(self.stops, [True])
+
+    def test_full_boost_request_keeps_thermal_recovery_unpinned(self):
+        policy = self.root / 'devices/system/cpu/cpufreq/policy0'
+        policy.mkdir(parents=True)
+        (policy / 'scaling_available_frequencies').write_text('912000 1800000 4104000')
+        (policy / 'cpuinfo_max_freq').write_text('4464000')
+        (policy / 'scaling_min_freq').write_text('912000')
+        (policy / 'scaling_cur_freq').write_text('912000')
+        maximum = policy / 'scaling_max_freq'
+        maximum.write_text('1800000')
+        before = maximum.stat().st_mtime_ns
+        self.guard.cap_cpu_frequency(4464000)
+        self.assertEqual(maximum.stat().st_mtime_ns, before)
+        self.assertFalse(self.guard.cpu_frequency_caps[0]['cap_applied'])
+        self.guard.start()
+        maximum.write_text('4464000')
+        self.guard.check()
+        self.assertFalse(self.stops)
+
     def test_cpu_cap_never_raises_existing_policy_and_detects_override(self):
         policies = self.root / 'devices/system/cpu/cpufreq'
         for name, minimum, maximum in [('policy0', 900000, 4000000),
@@ -174,6 +212,7 @@ class ThermalsTest(unittest.TestCase):
             policy = policies / name
             policy.mkdir(parents=True)
             (policy / 'scaling_available_frequencies').write_text('900000 1800000 4000000')
+            (policy / 'cpuinfo_max_freq').write_text('4000000')
             (policy / 'scaling_min_freq').write_text(str(minimum))
             (policy / 'scaling_max_freq').write_text(str(maximum))
             (policy / 'scaling_cur_freq').write_text(str(minimum))
