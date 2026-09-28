@@ -21,6 +21,16 @@ impl kernel::debugfs::Writer for ProgressView {
     }
 }
 
+// Separate endpoint preserves the strict completion-v1 ABI for old guards.
+struct ActivityView(Arc<crate::g16_rtkit::Health>);
+impl kernel::debugfs::Writer for ActivityView {
+    fn write(&self, f: &mut kernel::fmt::Formatter<'_>) -> kernel::fmt::Result {
+        let (generation, epoch, healthy) = self.0.activity_snapshot();
+        writeln!(f, "version=1 generation_ns={} epoch={} pending={} healthy={}",
+            generation, epoch, epoch & 1, u8::from(healthy))
+    }
+}
+
 struct TimingView(Arc<crate::g16_rtkit::Health>);
 impl kernel::debugfs::Writer for TimingView {
     fn write(&self, f: &mut kernel::fmt::Formatter<'_>) -> kernel::fmt::Result {
@@ -34,6 +44,7 @@ pub(crate) struct Registered {
     shared: Shared,
     health: Arc<crate::g16_rtkit::Health>,
     _progress: Pin<KBox<kernel::debugfs::File<ProgressView>>>,
+    _activity: Pin<KBox<kernel::debugfs::File<ActivityView>>>,
     _memory: Pin<KBox<kernel::debugfs::File<crate::agx_memory_stats::View>>>,
     _timing: Pin<KBox<kernel::debugfs::File<TimingView>>>,
 }
@@ -54,6 +65,8 @@ impl Registered {
         let directory = kernel::debugfs::Dir::new(c"asahi-m4");
         let progress = KBox::pin_init(directory.read_only_file(c"progress",
             ProgressView(health.clone())), GFP_KERNEL)?;
+        let activity = KBox::pin_init(directory.read_only_file(c"activity",
+            ActivityView(health.clone())), GFP_KERNEL)?;
         let memory = KBox::pin_init(directory.read_only_file(c"memory",
             crate::agx_memory_stats::View), GFP_KERNEL)?;
         let timing = KBox::pin_init(directory.read_only_file(c"timing",
@@ -61,7 +74,7 @@ impl Registered {
         let shared = Arc::pin_init(new_mutex!(Some(runtime)), GFP_KERNEL)?;
         // Install the teardown owner before publishing the backend. On any
         // later construction failure Drop breaks the runtime -> DRM cycle.
-        let owner = Self { registration: KBox::pin_init(new_mutex!(None), GFP_KERNEL)?, shared: shared.clone(), health: health.clone(), _progress: progress, _memory: memory, _timing: timing };
+        let owner = Self { registration: KBox::pin_init(new_mutex!(None), GFP_KERNEL)?, shared: shared.clone(), health: health.clone(), _progress: progress, _activity: activity, _memory: memory, _timing: timing };
         // One executing packet and one prepared successor. The runtime still
         // serializes firmware publication, hardware slots and completion; the
         // extra credit hides CPU preparation behind the executing packet.

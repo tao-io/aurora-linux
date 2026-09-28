@@ -391,6 +391,7 @@ impl Runtime {
         if inner.inflight.is_empty() {
             inner.busy_since_ns = Some(<kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get());
         }
+        inner.state.health.set_gpu_pending(true);
         inner.gpu_pending = true;
         if crate::debug::debug_enabled(crate::debug::DebugFlags::SubmitSummary) {
             let tick = physical_counter();
@@ -720,6 +721,7 @@ impl Runtime {
         if self.inner.inflight.is_empty() {
             let inner = &mut *self.inner;
             if let Err(error) = inner.config.drain(&inner.drm) {
+                inner.state.health.set_gpu_pending(true);
                 inner.gpu_pending = true;
                 dev_err!(inner.drm.as_ref(), "G16G: GPU retirement unproven after idle firmware error {:?}; retaining DMA owners\n", error);
                 self.fail_all(error);
@@ -937,6 +939,7 @@ impl Runtime {
             }
             let cleanup = kernel::time::Instant::<kernel::time::Monotonic>::now();
             inner.gpu_pending = !inner.inflight.is_empty();
+            inner.state.health.set_gpu_pending(inner.gpu_pending);
             if inner.inflight.is_empty() {
                 if let Some(start) = inner.busy_since_ns.take() {
                     let end = <kernel::time::Monotonic as kernel::time::ClockSource>::ktime_get();
@@ -1261,6 +1264,7 @@ impl Runtime {
         inner.compute.log_context(&inner.drm)?;
         // Mark before the first queue publication. Even an unsuccessful
         // mailbox send can have delivered its doorbell to firmware.
+        inner.state.health.set_gpu_pending(true);
         inner.gpu_pending = true;
         let queue = inner.compute_queue.prepare_command(inner.compute.address())?;
         let next = inner.config.publish_queue(2, queue, 1, SLOT, true)?;
@@ -1288,6 +1292,7 @@ impl Runtime {
                 let completion = completed.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
                 if completion.elapsed() >= Delta::from_millis(50) {
                     inner.gpu_pending = false;
+                            inner.state.health.set_gpu_pending(false);
                     dev_info!(inner.drm.as_ref(), "G16G: owned compute store retired, stamps/timestamps={:x?} queue={:?}, firmware ready\n", status, queue);
                     return Ok(());
                 }
