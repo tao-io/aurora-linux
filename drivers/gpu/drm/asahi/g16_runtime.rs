@@ -1292,7 +1292,7 @@ impl Runtime {
                 let completion = completed.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
                 if completion.elapsed() >= Delta::from_millis(50) {
                     inner.gpu_pending = false;
-                            inner.state.health.set_gpu_pending(false);
+                    inner.state.health.set_gpu_pending(false);
                     dev_info!(inner.drm.as_ref(), "G16G: owned compute store retired, stamps/timestamps={:x?} queue={:?}, firmware ready\n", status, queue);
                     return Ok(());
                 }

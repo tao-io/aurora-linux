@@ -53,3 +53,10 @@ match exactly. Both desktops returned. These are validation durations, not FPS.
 The first process-group-only monitor missed a new-session child and failed;
 that interruption remains retained. The corrected reader follows descendants
 across sessions and rejects a replaced launcher identity.
+
+The follow-up publication fast path issues its ordering fence only on an
+idle-to-pending transition. Already-pending work changes no observer-visible
+state, so additional publication needs no duplicate marker fence. All three
+module builds and actual-source concurrent counter tests pass. This follow-up
+binary has not yet been deployed; the replay results above used the first
+activity module and do not measure a speedup from this fence change.
