@@ -338,7 +338,9 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 	        of_property_read_bool(node, "apple,j713-display-audio") &&
 	        (offset == 0x268 || offset == 0x2e0 || offset == 0x418)) &&
 	      offset != 0x278 && /* fpwm1 */
+	      offset != 0x2d0 && /* spi_p, always-on parent of qspi */
 	      offset != 0x2d8 && /* uart_p */
+	      offset != 0x3c0 && /* qspi, boot NOR */
 	      offset != 0x3d8 && /* uart0 */
 	      offset != 0x488 && offset != 0x490 &&
 	      offset != 0x530 && offset != 0x538 &&

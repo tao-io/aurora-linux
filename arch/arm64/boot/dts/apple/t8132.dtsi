@@ -326,6 +326,13 @@
 		clock-output-names = "clkref";
 	};
 
+	clk_200m: clock-200m {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <200000000>;
+		clock-output-names = "clk_200m";
+	};
+
 	soc: soc {
 		compatible = "simple-bus";
 		#address-cells = <2>;
@@ -676,6 +683,19 @@
 			#address-cells = <0x1>;
 			#size-cells = <0x0>;
 			power-domains = <&ps_i2c1>;
+			status = "disabled";
+		};
+
+		qspi: spi@3ad118000 {
+			compatible = "apple,t8132-qspi";
+			/* One aperture; the command block starts at offset 0x800. */
+			reg = <0x3 0xad118000 0x0 0x4800>;
+			interrupt-parent = <&aic>;
+			interrupts = <AIC_IRQ 1060 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&clk_200m>;
+			power-domains = <&ps_qspi>;
+			#address-cells = <1>;
+			#size-cells = <0>;
 			status = "disabled";
 		};
 

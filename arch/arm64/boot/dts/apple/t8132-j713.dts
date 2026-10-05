@@ -27,6 +27,7 @@
 		ans = &nvme;
 		ans-mbox = &ans_mbox;
 		keyboard = &keyboard;
+		nvram = &nvram;
 		pmu-primary = &pmic1;
 		pmp = &pmp;
 		sart-ans = &sart;
@@ -388,6 +389,28 @@
 				brcm,board-type = "apple,garden";
 				local-mac-address = [00 00 00 00 00 00];
 				apple,antenna-sku = "XX";
+			};
+		};
+	};
+};
+
+/* Boot NOR; ADT /arm-io/qspi/spinor, NVRAM from its anvram child. */
+&qspi {
+	status = "okay";
+
+	flash@0 {
+		compatible = "jedec,spi-nor";
+		reg = <0>;
+		spi-max-frequency = <10000000>;
+
+		partitions {
+			compatible = "fixed-partitions";
+			#address-cells = <1>;
+			#size-cells = <1>;
+
+			nvram: partition@700000 {
+				label = "nvram";
+				reg = <0x700000 0x100000>;
 			};
 		};
 	};
