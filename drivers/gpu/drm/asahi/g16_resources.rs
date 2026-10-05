@@ -81,13 +81,10 @@ pub(crate) fn from_device(
     use kernel::{c_str, prelude::*};
 
     let node = pdev.as_ref().of_node().ok_or(ENODEV)?;
-    let root = kernel::of::root().ok_or(ENODEV)?;
-    let board: KVec<u8> = root.get_property(c_str!("compatible"))?;
+    let board = crate::g16_board::get()?;
     let compatible: KVec<u8> = node.get_property(c_str!("compatible"))?;
-    if !board.split(|b| *b == 0).any(|s| s == b"apple,j713")
-        || !board.split(|b| *b == 0).any(|s| s == b"apple,t8132")
-        || compatible.as_slice() != b"apple,agx-t8132\0"
-    {
+    if compatible.as_slice() != board.gpu_compatible {
+        dev_err!(pdev.as_ref(), "G16G: {}: unexpected GPU compatible\n", board.name);
         return Err(ENODEV);
     }
 
@@ -112,10 +109,7 @@ pub(crate) fn from_device(
             return Err(EINVAL);
         }
     }
-    for (name, base, size) in [
-        (c_str!("asc"), 0x302600000, 0x4000),
-        (c_str!("sgx"), 0x300000000, 0x4000000),
-    ] {
+    for (name, (base, size)) in [(c_str!("asc"), board.asc), (c_str!("sgx"), board.sgx)] {
         let res = pdev.resource_by_name(name).ok_or(EINVAL)?;
         if res.start() != base || res.size() != size {
             return Err(EINVAL);
@@ -132,11 +126,11 @@ pub(crate) fn from_device(
     let irq_names: KVec<u8> = mbox.get_property(c_str!("interrupt-names"))?;
     let irqs: KVec<u32> = mbox.get_property(c_str!("interrupts"))?;
     let cells: u32 = mbox.get_property(c_str!("#mbox-cells"))?;
-    if compat.as_slice() != b"apple,t8132-asc-mailbox\0apple,asc-mailbox-v4\0"
-        || mbox_reg.as_slice() != [3, 0x02608000, 0, 0x4000]
+    if compat.as_slice() != board.mbox_compatible
+        || mbox_reg.as_slice() != board.mbox_reg
         || cells != 0
         || irq_names.as_slice() != b"send-empty\0send-not-empty\0recv-empty\0recv-not-empty\0"
-        || irqs.as_slice() != [0, 993, 4, 0, 994, 4, 0, 995, 4, 0, 996, 4]
+        || irqs.as_slice() != board.mbox_irqs
     {
         return Err(EINVAL);
     }
@@ -159,7 +153,7 @@ pub(crate) fn from_device(
             size: res.size(),
         };
     }
-    let version: u32 = node.get_property(c_str!("apple,g16-handoff-version"))?;
+    let version: u32 = node.get_property(board.handoff_version)?;
     let vas: KVec<u64> = node.get_property(c_str!("apple,firmware-segment-vas"))?;
     let flags: KVec<u32> = node.get_property(c_str!("apple,firmware-segment-flags"))?;
     Resources::validate(

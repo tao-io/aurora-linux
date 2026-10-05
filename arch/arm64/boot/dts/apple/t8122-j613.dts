@@ -12,6 +12,7 @@
 #include "t8122.dtsi"
 #include "t8122-usbpd-spmi.dtsi"
 #include "t8122-jxxx.dtsi"
+#include "t8122-j613-g16.dtsi"
 #include <dt-bindings/leds/common.h>
 
 / {

@@ -70,20 +70,21 @@ impl Device {
         };
         // SAFETY: PMP lifetime is linked above. Command 0xf, logical device 5
         // is the executed J713 AGX power contract; the bridge waits for ACK.
-        to_result(unsafe { bindings::apple_pmp_set_device_power(0x0f, 5, 1) })?;
+        let board = device.firmware.board;
+        to_result(unsafe { bindings::apple_pmp_set_device_power(0x0f, board.pmp_device, 1) })?;
         device.power_vote = true;
         let registers = device.sgx.access(pdev.as_ref())?;
         let version = registers.try_read32(0xd04000)?;
         let counts = registers.try_read32(0xd04010)?;
         let core_mask = registers.try_read32(0xe01500)?;
-        dev_info!(pdev.as_ref(), "G16G: power acknowledged, version={:#010x} counts={:#010x} core-mask={:#x}, firmware={}\n",
-            version, counts, core_mask, device.firmware.version());
+        dev_info!(pdev.as_ref(), "G16G: {} power acknowledged, version={:#010x} counts={:#010x} core-mask={:#x}, firmware={}\n",
+            board.name, version, counts, core_mask, device.firmware.version());
         // These words identify the qualified G16G configuration. The fused
         // core mask varies with SKU; absent cores must never be enabled.
-        if version != 0x0a021100
-            || counts != 0x0011010a
+        if version != board.sgx_version
+            || counts != board.sgx_counts
             || core_mask == 0
-            || core_mask & !0x3ff != 0
+            || core_mask & !board.core_mask != 0
         {
             return Err(ENODEV);
         }
@@ -327,7 +328,7 @@ impl Drop for Device {
             }
         }
         // SAFETY: the managed device link keeps PMP bound through remove.
-        if let Err(error) = to_result(unsafe { bindings::apple_pmp_set_device_power(0x0f, 5, 0) }) {
+        if let Err(error) = to_result(unsafe { bindings::apple_pmp_set_device_power(0x0f, self.firmware.board.pmp_device, 0) }) {
             dev_err!(
                 self.dev.as_ref(),
                 "G16G: PMP power release failed: {:?}\n",

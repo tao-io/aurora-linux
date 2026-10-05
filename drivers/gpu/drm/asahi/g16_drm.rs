@@ -171,12 +171,14 @@ impl DrmGpu for Backend {
     fn params(&self) -> Result<DrmGpuParams> {
         let mut masks = [0; uapi::DRM_ASAHI_MAX_CLUSTERS as usize];
         masks[0] = self.core_mask;
+        let board = crate::g16_board::get()?;
+        // TODO(J613): usc_generation/HAL are the G16 values; confirm G15G's before userspace use.
         Ok(DrmGpuParams {
-            gpu_generation: hw::GpuGen::G16 as u32,
+            gpu_generation: board.gpu_gen as u32,
             gpu_variant: hw::GpuVariant::G as u32,
-            gpu_revision: hw::GpuRevision::B0 as u32,
-            chip_id: 0x8132, num_dies: 1, num_clusters_total: 1,
-            num_cores_per_cluster: 10, core_masks: masks,
+            gpu_revision: board.gpu_revision as u32,
+            chip_id: board.chip_id, num_dies: 1, num_clusters_total: 1,
+            num_cores_per_cluster: board.cores, core_masks: masks,
             // Match the configured firmware performance-state ceiling.
             max_frequency_khz: crate::g16_power::frequency_khz()?, usc_generation: 3,
             gpu_hal_generation: hw::GpuHalGeneration::Hal200 as u32,

@@ -9,8 +9,8 @@ use crate::{driver, g16_initdata::{self, RootPointers}, g16_memory::{self, Buffe
     g16_firmware::Firmware, mmu, pgtable::prot};
 
 #[path = "g16_config_layout.rs"]
-mod layout;
-use layout::{Object,OBJECTS,IOMAPS,IO_TABLE_SIZE,FirmwareVa,Protection};
+pub(crate) mod layout;
+use layout::{Object,OBJECTS,IO_TABLE_SIZE,FirmwareVa,Protection};
 use layout::{runtime,channel,globals,main_data,power_data,firmware_data};
 
 pub(crate) struct Config {
@@ -22,8 +22,9 @@ pub(crate) struct Config {
     cached_programs: Option<Buffer>,
     cached_program_cursor: usize,
     iomap_bytes: KBox<[u8; IO_TABLE_SIZE]>,
-    cooling: crate::g16_thermal::Cooling,
+    cooling: Option<crate::g16_thermal::Cooling>,
     thermal_limit: u32,
+    board: &'static crate::g16_board::Board,
     thermal_observed: u32,
 }
 
@@ -60,7 +61,9 @@ impl Config {
         let resource = pdev.as_ref().of_node().ok_or(ENODEV)?
             .reserved_mem_region_to_resource_byname(c_str!("fw-data"))?;
         let data = firmware.resources.regions[5];
-        if resource.start() != data.base || resource.size() != data.size || data.size < 0x134000 {
+        let board = firmware.board;
+        let loader_end = board.firmware.loader_iomaps + board.io_slots * layout::IO_ENTRY_SIZE;
+        if resource.start() != data.base || resource.size() != data.size || (data.size as usize) < loader_end {
             return Err(EINVAL);
         }
         // SAFETY: This admitted firmware data reservation is normal no-map RAM.
@@ -69,7 +72,10 @@ impl Config {
         let loader = unsafe { Mem::try_new(resource, MemFlag::WC.into()) }?;
         let mut config = Self { objects: KVec::new(), pipes: KVec::new(), iomaps: KVec::new(),
             loader, trace_seen: [0; 2], cached_programs: None, cached_program_cursor: 0, iomap_bytes: KBox::new([0; IO_TABLE_SIZE], GFP_KERNEL)?,
-            cooling: crate::g16_thermal::Cooling::new()?, thermal_limit: 0, thermal_observed: u32::MAX };
+            cooling: if board.pmp_thermal { Some(crate::g16_thermal::Cooling::new()?) } else { None },
+            thermal_limit: 0, thermal_observed: u32::MAX, board };
+        dev_info!(pdev.as_ref(), "G16G: {} board constructor ({} I/O slots, loader DATA+{:#x}, max pstate {})\n",
+            board.name, board.io_slots, board.firmware.loader_iomaps, board.max_pstate());
         for object in OBJECTS {
             config.objects.push(if object.needs_client_mapping() {
                 Buffer::new_gpu(dev, vm, gpu_vm, object.size())?
@@ -81,7 +87,7 @@ impl Config {
             config.pipes.push(Buffer::new(dev, vm, channel::STATE_SIZE)?, GFP_KERNEL)?;
             config.pipes.push(Buffer::new(dev, vm, channel::SUBMIT_RING_SIZE)?, GFP_KERNEL)?;
         }
-        for io in IOMAPS {
+        for io in board.iomaps.iter().copied() {
             let protection=match io.protection() {
                 Protection::Protected=>prot::PROT_FW_PROTECTED_MMIO,
                 Protection::ReadOnly=>prot::PROT_FW_MMIO_RO,
@@ -100,7 +106,10 @@ impl Config {
             config.iomap_bytes[io.slot*layout::IO_ENTRY_SIZE..(io.slot+1)*layout::IO_ENTRY_SIZE].copy_from_slice(&entry);
             config.iomaps.push(mapping,GFP_KERNEL)?;
         }
-        let scratch = vm.map_io_in_range(KERNEL_RANGE, 0x300d60000, 0x8000, prot::PROT_FW_SHARED_RW)?;
+        for slot in board.empty_mode2 {
+            config.iomap_bytes[slot*layout::IO_ENTRY_SIZE+32..slot*layout::IO_ENTRY_SIZE+40].copy_from_slice(&2u64.to_le_bytes());
+        }
+        let scratch = vm.map_io_in_range(KERNEL_RANGE, board.scratch.try_into()?, 0x8000, prot::PROT_FW_SHARED_RW)?;
         let scratch_va = scratch.iova();
         config.iomaps.push(scratch, GFP_KERNEL)?;
         config.initialize(scratch_va)?;
@@ -128,7 +137,8 @@ impl Config {
     fn object(&mut self, object: Object) -> &mut Buffer { &mut self.objects[object as usize] }
 
     pub(crate) fn update_thermal_limit(&mut self, dev: &driver::AsahiDevice) -> Result {
-        let limit = self.cooling.limit().min(crate::g16_power::requested_state()?);
+        let requested = crate::g16_power::requested_state()?;
+        let limit = self.cooling.as_mut().map_or(requested, |c| c.limit()).min(requested);
         if limit == self.thermal_limit { return Ok(()); }
         // Host ceiling inputs to the 25G83 performance selector. Keep the
         // full voltage/frequency tables and firmware-owned current state;
@@ -139,14 +149,14 @@ impl Config {
         g16_memory::publish();
         self.thermal_limit = limit;
         dev_info!(dev, "G16G: thermal ceiling state={} frequency={} MHz\n",
-            limit, crate::g16_power::FREQUENCIES_MHZ[limit as usize]);
+            limit, self.board.frequencies_mhz[limit as usize]);
         Ok(())
     }
     pub(crate) fn observe_thermal_state(&mut self, dev: &driver::AsahiDevice, state: u32) {
         if state != self.thermal_observed {
             self.thermal_observed = state;
             dev_info!(dev, "G16G: thermal observed state={} ceiling={} frequency={} MHz\n",
-                state, self.thermal_limit, crate::g16_power::FREQUENCIES_MHZ[state as usize]);
+                state, self.thermal_limit, self.board.frequencies_mhz.get(state as usize).copied().unwrap_or(0));
         }
     }
     fn ptr(&mut self, owner: Object, offset: usize, target: Object, delta: u64) -> Result {
@@ -216,7 +226,8 @@ impl Config {
         // pointers against this base through base+0x3fffff8, then writes ns.
         self.object(Main).u64(main_data::TIMESTAMP_WINDOW, g16_memory::TIMESTAMP_RANGE.start)?;
         let (objects, iomaps) = (&mut self.objects, &self.iomap_bytes);
-        objects[Main as usize].write(main_data::IOMAPS, &iomaps[..])?;
+        let io_bytes = self.board.io_slots * layout::IO_ENTRY_SIZE;
+        objects[Main as usize].write(main_data::IOMAPS, &iomaps[..io_bytes])?;
         self.object(Main).u32(main_data::ACCOUNTING_ENABLE, 1)?;
         self.object(Main).u32(main_data::UNKNOWN_EB8, 1)?;
         // J713's reference clock and native firmware maintenance cadence.
@@ -227,26 +238,27 @@ impl Config {
         self.object(Main).u32(main_data::REFERENCE_CLOCK_KHZ, 24_000)?;
         self.object(Main).u32(main_data::MAINTENANCE_INTERVAL, 1)?;
         self.object(Main).u32(main_data::POWER_SAMPLE_INTERVAL, 8)?;
-        self.object(Main).u64(main_data::UNKNOWN_F24, 0x0000000607002004)?;
+        let board = self.board;
+        self.object(Main).u64(main_data::UNKNOWN_F24, board.main_f24)?;
         // The physical core-position count is independent of the OPP cap.
         // Native initFirmwareData (25G83 TEXT8993918) copies the accelerator's
         // core count here. Firmware TEXT2c2ac imports it for per-core context
         // storage offsets (for example TEXT1af24 uses count * 0x1800).
-        self.object(Main).u32(main_data::CORE_POSITIONS, 10)?;
+        self.object(Main).u32(main_data::CORE_POSITIONS, board.cores)?;
         // Publish the J713 compacted tables, including SRAM and auxiliary
         // accounting frequencies. Hardware voltage sequencing stays in firmware.
         let pstate = crate::g16_power::requested_state()?;
         self.object(Main).u32(main_data::MAX_PSTATE, pstate)?;
         for state in 0..=pstate as usize {
             self.object(Main).u32(main_data::FREQUENCIES_MHZ + state * 4,
-                crate::g16_power::FREQUENCIES_MHZ[state])?;
+                board.frequencies_mhz[state])?;
             self.object(Main).u32(main_data::AUX_FREQUENCIES_MHZ + state * 4,
-                crate::g16_power::AUX_FREQUENCIES_MHZ[state])?;
+                board.aux_frequencies_mhz[state])?;
             for core in 0..16 {
                 self.object(Main).u32(main_data::VOLTAGES_MV + state * 64 + core * 4,
-                    crate::g16_power::VOLTAGES_MV[state])?;
+                    board.voltages_mv[state])?;
                 self.object(Main).u32(main_data::SRAM_VOLTAGES_MV + state * 64 + core * 4,
-                    crate::g16_power::SRAM_VOLTAGES_MV[state])?;
+                    board.sram_voltages_mv[state])?;
             }
         }
         // Initial performance ceiling: the 25G83 selector consumes hundredths
@@ -275,8 +287,16 @@ impl Config {
         // off, and the runtime checks the configured performance-state ceiling.
         self.ptr(Main, main_data::RETENTION, Retention, 0)?;
         self.object(Main).u32(main_data::ACCOUNTING_BUCKETS_ENABLE, 1)?;
-        for (offset, value) in [(4, 4), (8, 6), (12, 3), (16, 7), (20, 7), (40, 8), (48, 1)] {
+        for (offset, value) in board.main_2540 {
             self.object(Main).u32(main_data::UNKNOWN_2540 + offset, value)?;
+        }
+        // Boards described from a macOS capture: static Main words (tables, limits and the
+        // clock-profile map) that macOS sets beyond this constructor. asahi.g16_main_overlay=0
+        // leaves them zero for an A/B against the bare constructor.
+        if *crate::module_parameters::g16_main_overlay.value() != 0 {
+            for &(offset, value) in board.main_overlay {
+                self.object(Main).u32(offset, value)?;
+            }
         }
         self.object(Control).u32(0, 0x33)?;
         Ok(())
@@ -286,12 +306,13 @@ impl Config {
     /// its application wait state, before sending initdata. FW never consumes
     /// this table concurrently with publication under that boot protocol.
     pub(crate) fn publish_loader(&mut self) -> Result {
-        let mut map = self.loader.iosys_map(layout::LOADER_IOMAPS, IO_TABLE_SIZE)?;
-        for index in 0..IO_TABLE_SIZE {
+        let io_bytes = self.board.io_slots * layout::IO_ENTRY_SIZE;
+        let mut map = self.loader.iosys_map(self.board.firmware.loader_iomaps, io_bytes)?;
+        for index in 0..io_bytes {
             // SAFETY: bounded byte in retained WC firmware data reservation.
             if unsafe { map.as_ptr().add(index).read_volatile() } != 0 { return Err(EBUSY); }
         }
-        map.write(&self.iomap_bytes[..], 0)?;
+        map.write(&self.iomap_bytes[..io_bytes], 0)?;
         g16_memory::publish();
         Ok(())
     }
@@ -333,8 +354,9 @@ impl Config {
             dev_info!(dev.as_ref(), "G16G: recent trace index={} thread={} id={:#x} phase={} args={:x?}\n",
                 index, tag >> 24, tag & 0xffffff, phase, args);
         }
-        for (address, count) in [(0x68158usize, 1usize), (0x128d60, 8),
-            (0x129b20, 4), (0x129bc8, 8), (0x129d00, 8), (0x147368, 6), (0x192900, 5), (0x1929d0, 8), (0x1935a0, 1)] {
+        let image_addresses: &[(usize, usize)] = if self.board.name == "J713" { &[(0x68158usize, 1usize), (0x128d60, 8),
+            (0x129b20, 4), (0x129bc8, 8), (0x129d00, 8), (0x147368, 6), (0x192900, 5), (0x1929d0, 8), (0x1935a0, 1)] } else { &[] };
+        for &(address, count) in image_addresses {
             let map = self.loader.iosys_map(address.checked_sub(0x60000).ok_or(EINVAL)?, count * 8)?;
             let mut words = [0u64; 8];
             for (index, word) in words[..count].iter_mut().enumerate() {
@@ -415,8 +437,9 @@ impl Config {
             if count != 0 { dump.buffer("cached-program-prefix", arena, count)?; }
         }
         // The loader mapping contains only the admitted firmware data RAM.
-        let map = self.loader.iosys_map(0, 0x13c000)?;
-        dump.record("firmware-data", 0xfffffc0000060000, 0x13c000, |out| {
+        let data_size = self.board.firmware.data_size as usize;
+        let map = self.loader.iosys_map(0, data_size)?;
+        dump.record("firmware-data", 0xfffffc0000000000 + self.board.firmware.text_size, data_size, |out| {
             for (i, byte) in out.iter_mut().enumerate() {
                 // SAFETY: bounded read of the retained WC RAM mapping above.
                 *byte = unsafe { map.as_ptr().add(i).read_volatile() };

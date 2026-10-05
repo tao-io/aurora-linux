@@ -48,6 +48,7 @@ mod g16_render_state;
 mod g16_render_job;
 mod g16_parameter;
 mod g16_resources;
+mod g16_board;
 mod g17_adt_j700;
 mod g17_asc_bringup;
 mod g17_boot;
@@ -105,9 +106,13 @@ kernel::module_platform_driver! {
             default: 8,
             description: "M4 maximum commands per scheduler packet (1..32, at most 16 per engine)",
         },
+        g16_main_overlay: u32 {
+            default: 1,
+            description: "J613: write the static Main words macOS 26 sets beyond the constructor (0 = bare constructor)",
+        },
         g16_pstate: u32 {
             default: 9,
-            description: "J713 maximum firmware performance state (1..9, 338..1470 MHz); thermal cooling may lower it",
+            description: "Maximum firmware performance state (J713 1..9, 338..1470 MHz; J613 1..8, 338..1338 MHz, clamped); thermal cooling may lower it",
         },
         fault_control: u32 {
             default: 0xb,

@@ -1219,6 +1219,11 @@ impl Runtime {
         inner.device.log_engine_state()?;
         inner.config.log_firmware_state(&inner.drm)?;
         self.check_barrier()?;
+        if !self.inner.device.firmware().board.compute_self_test {
+            dev_info!(pdev.as_ref(), "G16G: {}: compute self-test skipped (G16 shader); barrier passed\n",
+                self.inner.device.firmware().board.name);
+            return Ok(());
+        }
         self.check_compute()
     }
 

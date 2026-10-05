@@ -20,17 +20,38 @@ pub(crate) const TEXT_SHA256: [u8; 32] = [
     0xea, 0x57, 0x3a, 0xfb, 0x4e, 0x0c, 0x49, 0x6e, 0xf9, 0x95, 0xe9, 0x6a, 0xff, 0xb0, 0xd8, 0x6c,
 ];
 
-fn normalize_boot_entropy(text: &mut [u8]) -> bool {
-    const FIELDS: [(usize, &[u8; 4]); 2] = [(0x5c8df, b"GKTS"), (0x5c9c2, b"ECAP")];
-    if text.len() != TEXT_SIZE as usize
-        || text[0x22c..0x234] != [0xdf, 0xc8, 5, 0, 0x31, 2, 0, 0]
-        || FIELDS.iter().any(|(offset, key)| {
+/// The identity of one loaded firmware image: segment sizes, normalized TEXT hash and the
+/// boot-argument table header and entropy-key offsets (see g16_board::FirmwareImage).
+pub(crate) struct Image {
+    pub(crate) text_size: u64,
+    pub(crate) data_size: u64,
+    pub(crate) text_sha256: [u8; 32],
+    pub(crate) tlv_header: [u8; 8],
+    pub(crate) gkts: usize,
+    pub(crate) ecap: usize,
+}
+
+#[cfg_attr(not(test), allow(dead_code))]
+const J713_IMAGE: Image = Image {
+    text_size: TEXT_SIZE,
+    data_size: DATA_SIZE,
+    text_sha256: TEXT_SHA256,
+    tlv_header: [0xdf, 0xc8, 5, 0, 0x31, 2, 0, 0],
+    gkts: 0x5c8df,
+    ecap: 0x5c9c2,
+};
+
+fn normalize_boot_entropy(text: &mut [u8], image: &Image) -> bool {
+    let fields: [(usize, &[u8; 4]); 2] = [(image.gkts, b"GKTS"), (image.ecap, b"ECAP")];
+    if text.len() != image.text_size as usize
+        || text[0x22c..0x234] != image.tlv_header
+        || fields.iter().any(|(offset, key)| {
             text[*offset..*offset + 4] != **key || text[*offset + 4..*offset + 8] != [8, 0, 0, 0]
         })
     {
         return false;
     }
-    for (offset, _) in FIELDS {
+    for (offset, _) in fields {
         text[offset + 8..offset + 16].fill(0);
     }
     true
@@ -39,6 +60,8 @@ fn normalize_boot_entropy(text: &mut [u8]) -> bool {
 #[derive(Debug)]
 pub(crate) struct Firmware {
     pub(crate) resources: g16_resources::Resources,
+    #[cfg(not(test))]
+    pub(crate) board: &'static crate::g16_board::Board,
 }
 
 impl Firmware {
@@ -46,14 +69,15 @@ impl Firmware {
         "RTKit-3255.160.4.release"
     }
 
-    fn matching_layout(resources: &g16_resources::Resources) -> bool {
-        resources.regions[4].size == TEXT_SIZE
-            && resources.regions[5].size == DATA_SIZE
-            && resources.firmware_vas == [0xffff_fc00_0000_0000, 0xffff_fc00_0006_0000]
+    fn matching_layout(resources: &g16_resources::Resources, image: &Image) -> bool {
+        resources.regions[4].size == image.text_size
+            && resources.regions[5].size == image.data_size
+            && resources.firmware_vas == [0xffff_fc00_0000_0000, 0xffff_fc00_0000_0000 + image.text_size]
     }
 
+    #[cfg(test)]
     fn from_digest(resources: g16_resources::Resources, digest: [u8; 32]) -> Option<Self> {
-        if !Self::matching_layout(&resources) || digest != TEXT_SHA256 {
+        if !Self::matching_layout(&resources, &J713_IMAGE) || digest != J713_IMAGE.text_sha256 {
             return None;
         }
         Some(Self { resources })
@@ -73,13 +97,17 @@ pub(crate) fn identify_loaded(
         prelude::*,
     };
 
-    if !Firmware::matching_layout(&resources) {
+    let board = crate::g16_board::get()?;
+    let f = &board.firmware;
+    let image = Image { text_size: f.text_size, data_size: f.data_size, text_sha256: f.text_sha256,
+        tlv_header: f.tlv_header, gkts: f.gkts, ecap: f.ecap };
+    if !Firmware::matching_layout(&resources, &image) {
         dev_err!(pdev.as_ref(), "G16G: unsupported firmware segment layout\n");
         return Err(ENODEV);
     }
     let node = pdev.as_ref().of_node().ok_or(ENODEV)?;
     let text = node.reserved_mem_region_to_resource_byname(c_str!("fw-text"))?;
-    if text.start() != resources.regions[4].base || text.size() != TEXT_SIZE {
+    if text.start() != resources.regions[4].base || text.size() != image.text_size {
         return Err(EINVAL);
     }
     // SAFETY: from_device checked the bootloader's no-map, nonoverlapping
@@ -91,21 +119,23 @@ pub(crate) fn identify_loaded(
     let bytes = unsafe { core::slice::from_raw_parts(mapping.ptr(), mapping.size()) };
     let mut canonical = KVec::new();
     canonical.extend_from_slice(bytes, GFP_KERNEL)?;
-    if !normalize_boot_entropy(&mut canonical) {
+    if !normalize_boot_entropy(&mut canonical, &image) {
         return Err(ENODEV);
     }
     let mut digest = [0u8; 32];
     // SAFETY: the initialized private copy and distinct digest live for the
     // synchronous SHA-256 call. Normalization never writes loaded firmware.
     unsafe { bindings::sha256(canonical.as_ptr(), canonical.len(), digest.as_mut_ptr()) };
-    if digest != TEXT_SHA256 {
+    if digest != image.text_sha256 {
         dev_err!(
             pdev.as_ref(),
-            "G16G: unsupported normalized firmware SHA-256 {:02x?}\n",
-            digest
+            "G16G: {}: unsupported normalized firmware SHA-256 {:02x?}\n",
+            board.name, digest
         );
+        return Err(ENODEV);
     }
-    Firmware::from_digest(resources, digest).ok_or(ENODEV)
+    dev_info!(pdev.as_ref(), "G16G: {} firmware identified ({})\n", board.name, "RTKit-3255.160.4.release");
+    Ok(Firmware { resources, board })
 }
 
 #[cfg(test)]
@@ -150,11 +180,11 @@ mod tests {
         let mut b = a.clone();
         b[0x5c8e7..0x5c8ef].fill(1);
         b[0x5c9ca..0x5c9d2].fill(2);
-        assert!(normalize_boot_entropy(&mut a));
-        assert!(normalize_boot_entropy(&mut b));
+        assert!(normalize_boot_entropy(&mut a, &J713_IMAGE));
+        assert!(normalize_boot_entropy(&mut b, &J713_IMAGE));
         assert_eq!(a, b);
         b[0x4000] ^= 1;
-        assert!(normalize_boot_entropy(&mut b));
+        assert!(normalize_boot_entropy(&mut b, &J713_IMAGE));
         assert_ne!(a, b, "instruction changes must remain covered by the hash");
     }
 
@@ -164,10 +194,10 @@ mod tests {
             let mut bytes = image_fixture();
             bytes[offset] ^= 1;
             let original = bytes.clone();
-            assert!(!normalize_boot_entropy(&mut bytes));
+            assert!(!normalize_boot_entropy(&mut bytes, &J713_IMAGE));
             assert_eq!(bytes, original);
         }
-        assert!(!normalize_boot_entropy(&mut [0; 64]));
+        assert!(!normalize_boot_entropy(&mut [0; 64], &J713_IMAGE));
     }
 
     #[test]

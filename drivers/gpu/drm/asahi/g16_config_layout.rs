@@ -73,7 +73,7 @@ impl FirmwareVa {
         Ok(Self(value))
     }
 }
-pub(crate) const IO_SLOTS:usize=42;
+pub(crate) const IO_SLOTS:usize=crate::g16_board::MAX_IO_SLOTS;
 pub(crate) const IO_ENTRY_SIZE:usize=0x28;
 pub(crate) const IO_TABLE_SIZE:usize=IO_SLOTS*IO_ENTRY_SIZE;
 #[derive(Clone,Copy,Debug)]
@@ -84,7 +84,7 @@ pub(crate) struct IoMap {
 }
 impl IoMap {
     pub(crate) fn protection(self)->Protection {
-        if self.slot==36 {Protection::Protected}
+        if crate::g16_board::get().ok().and_then(|b|b.protected_slot)==Some(self.slot) {Protection::Protected}
         else if self.mode==0 {Protection::ReadOnly}else{Protection::ReadWrite}
     }
     pub(crate) fn mapping_size(self)->Result<usize,Error> {
@@ -118,27 +118,7 @@ impl IoMap {
         out[32..40].copy_from_slice(&self.mode.to_le_bytes());Ok(out)
     }
 }
-pub(crate) const IOMAPS:[IoMap;19]=[
-    IoMap {slot:0,physical:PhysicalAddress(0x381014000),mapped:0x4000,requested:0x4000,tag:0x0,mode:2},
-    IoMap {slot:3,physical:PhysicalAddress(0x2201c4000),mapped:0x30000,requested:0x18000,tag:0x0,mode:2},
-    IoMap {slot:9,physical:PhysicalAddress(0x3803d0000),mapped:0x1000,requested:0x1000,tag:0x0,mode:2},
-    IoMap {slot:10,physical:PhysicalAddress(0x3803c0000),mapped:0x2000,requested:0x2000,tag:0x0,mode:0},
-    IoMap {slot:12,physical:PhysicalAddress(0x50165c000),mapped:0x4000,requested:0x4000,tag:0x0,mode:2},
-    IoMap {slot:14,physical:PhysicalAddress(0x380280000),mapped:0x8000,requested:0x8000,tag:0x0,mode:0},
-    IoMap {slot:15,physical:PhysicalAddress(0x38c840000),mapped:0x24000,requested:0x24000,tag:0x0,mode:0},
-    IoMap {slot:17,physical:PhysicalAddress(0x300000000),mapped:0x20000,requested:0x20000,tag:0x0,mode:2},
-    IoMap {slot:22,physical:PhysicalAddress(0x301000000),mapped:0x8000,requested:0x8000,tag:0x0,mode:2},
-    IoMap {slot:26,physical:PhysicalAddress(0x300d04000),mapped:0x8000,requested:0x8000,tag:0xd04000,mode:2},
-    IoMap {slot:27,physical:PhysicalAddress(0x300d0d000),mapped:0x1000,requested:0x1000,tag:0xd0d000,mode:2},
-    IoMap {slot:28,physical:PhysicalAddress(0x300d58000),mapped:0x8000,requested:0x8000,tag:0xd58000,mode:2},
-    IoMap {slot:29,physical:PhysicalAddress(0x300d10000),mapped:0x4000,requested:0x4000,tag:0xd10000,mode:2},
-    IoMap {slot:31,physical:PhysicalAddress(0x300d40000),mapped:0x4000,requested:0x4000,tag:0xd40000,mode:2},
-    IoMap {slot:32,physical:PhysicalAddress(0x300d60000),mapped:0x8000,requested:0x8000,tag:0xd60000,mode:2},
-    IoMap {slot:36,physical:PhysicalAddress(0x300e00000),mapped:0x4000,requested:0x4000,tag:0xe00000,mode:0},
-    IoMap {slot:39,physical:PhysicalAddress(0x300e08000),mapped:0x8000,requested:0x8000,tag:0x0,mode:2},
-    IoMap {slot:40,physical:PhysicalAddress(0x300e1c000),mapped:0x4000,requested:0x4000,tag:0xe1c000,mode:2},
-    IoMap {slot:41,physical:PhysicalAddress(0x300e1f800),mapped:0x4000,requested:0x4000,tag:0x0,mode:2},
-];
+// The board's I/O maps: g16_board::Board::iomaps.
 
 // Host-owned field layout of the qualified J713/25G83 initializer. These
 // offsets are scoped to their owning allocation. Each producer/consumer keeps
@@ -247,4 +227,4 @@ pub(crate) mod channel {
     pub const CONTROL_RECORD_SIZE: usize = 0x40;
     pub const CONTROL_CAPACITY: u32 = 256;
 }
-pub(crate) const LOADER_IOMAPS: usize = 0x1332f0;
+// The loader table's DATA offset is per firmware image: g16_board::FirmwareImage::loader_iomaps.

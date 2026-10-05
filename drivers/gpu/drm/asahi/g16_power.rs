@@ -1,28 +1,20 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 
-//! J713/25G83 performance-state metadata and maximum performance policy.
-//! Tables are the native J713 constructor's compacted states, not PLL writes.
-//! The GPU firmware requests each transition through its PMP/Fender interface.
-//! g16_thermal lowers the firmware ceiling using the package thermal policy.
+//! 25G83 performance-state policy. The tables are per board (g16_board): the native
+//! constructor's compacted states, not PLL writes. The GPU firmware requests each transition
+//! through its PMP/Fender interface; g16_thermal (where the board has it) lowers the ceiling.
 //! Load-based DVFS remains TODO; bounded tests retain independent guards.
 
 use kernel::prelude::*;
 
-pub(crate) const FREQUENCIES_MHZ: [u32; 10] =
-    [0, 338, 618, 796, 928, 1056, 1170, 1278, 1338, 1470];
-pub(crate) const AUX_FREQUENCIES_MHZ: [u32; 10] =
-    [0, 338, 618, 796, 836, 952, 1053, 1152, 1204, 1326];
-pub(crate) const VOLTAGES_MV: [u32; 10] =
-    [125, 610, 645, 680, 725, 780, 825, 865, 895, 970];
-pub(crate) const SRAM_VOLTAGES_MV: [u32; 10] =
-    [780, 780, 780, 780, 780, 780, 825, 865, 895, 970];
-
+/// asahi.g16_pstate, clamped to the board's highest state.
 pub(crate) fn requested_state() -> Result<u32> {
-    let state = *crate::module_parameters::g16_pstate.value();
-    if !(1..FREQUENCIES_MHZ.len() as u32).contains(&state) { return Err(EINVAL); }
+    let board = crate::g16_board::get()?;
+    let state = (*crate::module_parameters::g16_pstate.value()).min(board.max_pstate());
+    if state == 0 { return Err(EINVAL); }
     Ok(state)
 }
 
 pub(crate) fn frequency_khz() -> Result<u32> {
-    Ok(FREQUENCIES_MHZ[requested_state()? as usize] * 1000)
+    Ok(crate::g16_board::get()?.frequencies_mhz[requested_state()? as usize] * 1000)
 }

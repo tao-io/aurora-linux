@@ -962,7 +962,9 @@ impl platform::Driver for AsahiDriver {
 
         let cfg = match info.ok_or(ENODEV)? {
             ProbeConfig::Supported(cfg) => *cfg,
-            ProbeConfig::Agx3Diagnostic(soc) if soc.chip_id == 0x8132 => {
+            // J713 (G16G) and J613 (G15G) on the 25G83 GPU firmware: g16_board selects the board,
+            // g16_firmware refuses any other loaded image (J613 on 14.8.3 firmware included).
+            ProbeConfig::Agx3Diagnostic(soc) if soc.chip_id == 0x8132 || soc.chip_id == 0x8122 => {
                 let runtime = crate::g16_drm::Registered::start(pdev)?;
                 return Ok(Self { runtime: AsahiRuntime::G16(runtime) });
             }
