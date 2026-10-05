@@ -64,6 +64,11 @@ pub(crate) struct Board {
     pub(crate) main_2540: [(usize, u32); 7],
     /// Static Main words written after the constructor (macOS capture), if enabled.
     pub(crate) main_overlay: &'static [(usize, u32)],
+    /// PowerPerformance words the firmware needs that the constructor leaves zero
+    /// (J613: the MTR alarm sensor mask; zero makes every alarm fatal).
+    pub(crate) power_overlay: &'static [(usize, u32)],
+    /// Map Main and PowerPerformance firmware-cacheable (atomics in the firmware's MTR path).
+    pub(crate) cached_hw_objects: bool,
     pub(crate) gpu_gen: hw::GpuGen,
     pub(crate) gpu_revision: hw::GpuRevision,
     pub(crate) chip_id: u32,
@@ -140,6 +145,8 @@ pub(crate) static J713: Board = Board {
     cores: 10,
     main_2540: [(4, 4), (8, 6), (12, 3), (16, 7), (20, 7), (40, 8), (48, 1)],
     main_overlay: &[],
+    power_overlay: &[],
+    cached_hw_objects: false,
     gpu_gen: hw::GpuGen::G16,
     gpu_revision: hw::GpuRevision::B0,
     chip_id: 0x8132,
@@ -188,6 +195,18 @@ const J613_MAIN_OVERLAY: &[(usize, u32)] = &[
     (0x2604, 0x1), (0x2634, 0x1),
 ];
 
+// macOS 26 J613 PowerPerformance thermal config (HV 903): temperature controller +0x21f0..+0x22c8,
+// SoCHot +0x2e2c..+0x2f14 (sensor mask 0x4248, alarm threshold 125 C), MTR mask/enable +0x3b58/+0x3b60. 38 words.
+const J613_POWER_OVERLAY: &[(usize, u32)] = &[
+    (0x21f0, 0x47800000), (0x21f4, 0x41f00000), (0x21f8, 0x44480000), (0x21fc, 0x53a), (0x2208, 0x10000), (0x2210, 0x320),
+    (0x2218, 0x42c80000), (0x221c, 0x320), (0x2224, 0x3f4ccccd), (0x2228, 0x3e4ccccd), (0x2264, 0x1469), (0x2268, 0x4248),
+    (0x2270, 0x1f40), (0x2278, 0x4), (0x228c, 0x3f800000), (0x2294, 0x406fffff), (0x22a0, 0x47800000), (0x22a4, 0x42080000),
+    (0x22b0, 0x1e), (0x22b4, 0x320), (0x22b8, 0x320), (0x22c4, 0x2af8), (0x22c8, 0x1469), (0x2e2c, 0x4),
+    (0x2e38, 0x3f780000), (0x2e40, 0x3d000000), (0x2e48, 0x40a00000), (0x2e54, 0x47800000), (0x2e58, 0x41700000), (0x2e64, 0x2bc),
+    (0x2e68, 0x320), (0x2e6c, 0x320), (0x2e78, 0x320), (0x2f08, 0x4248), (0x2f10, 0x7d), (0x2f14, 0x1),
+    (0x3b58, 0x4b48), (0x3b60, 0x1),
+];
+
 pub(crate) static J613: Board = Board {
     name: "J613",
     root_compatible: [b"apple,j613", b"apple,t8122"],
@@ -229,6 +248,8 @@ pub(crate) static J613: Board = Board {
     cores: 10,
     main_2540: [(4, 4), (8, 6), (12, 3), (16, 7), (20, 7), (40, 10), (48, 1)],
     main_overlay: J613_MAIN_OVERLAY,
+    power_overlay: J613_POWER_OVERLAY,
+    cached_hw_objects: true,
     gpu_gen: hw::GpuGen::G15,
     gpu_revision: hw::GpuRevision::C0,
     chip_id: 0x8122,

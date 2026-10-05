@@ -61,6 +61,11 @@ impl Buffer {
         size: usize) -> Result<Self> {
         Self::allocate(dev, vm, size, prot::PROT_FW_PRIV_RW)
     }
+    /// Firmware-cacheable mapping for objects the firmware updates with atomics (J613 G15G:
+    /// its MTR alarm handler's ldset faults on an uncached mapping, as on 14.8.3 HwDataA).
+    pub(crate) fn new_cached(dev: &driver::AsahiDevice, vm: &mmu::Vm, size: usize) -> Result<Self> {
+        Self::allocate(dev, vm, size, prot::PROT_FW_PRIV_RW)
+    }
     fn allocate(dev: &driver::AsahiDevice, vm: &mmu::Vm, size: usize,
         protection: prot::Prot) -> Result<Self> {
         if size == 0 || size.checked_add(mmu::UAT_PGMSK).is_none() { return Err(EINVAL); }

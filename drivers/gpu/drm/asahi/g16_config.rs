@@ -77,8 +77,12 @@ impl Config {
         dev_info!(pdev.as_ref(), "G16G: {} board constructor ({} I/O slots, loader DATA+{:#x}, max pstate {})\n",
             board.name, board.io_slots, board.firmware.loader_iomaps, board.max_pstate());
         for object in OBJECTS {
+            let cached = board.cached_hw_objects
+                && matches!(object, Object::Main | Object::PowerPerformance);
             config.objects.push(if object.needs_client_mapping() {
                 Buffer::new_gpu(dev, vm, gpu_vm, object.size())?
+            } else if cached {
+                Buffer::new_cached(dev, vm, object.size())?
             } else { Buffer::new(dev, vm, object.size())? }, GFP_KERNEL)?;
         }
         // Twelve firmware submission channels: TA/3D/compute at four priorities.
@@ -297,6 +301,9 @@ impl Config {
             for &(offset, value) in board.main_overlay {
                 self.object(Main).u32(offset, value)?;
             }
+        }
+        for &(offset, value) in board.power_overlay {
+            self.object(PowerPerformance).u32(offset, value)?;
         }
         self.object(Control).u32(0, 0x33)?;
         Ok(())
