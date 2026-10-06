@@ -1322,10 +1322,19 @@ impl Runtime {
     fn wait_control(&mut self, next: u32) -> Result {
         let start = kernel::time::Instant::<kernel::time::Monotonic>::now();
         let mut completed = None;
+        let mut kicked = false;
         loop {
             let inner = &mut *self.inner;
             inner.config.drain(&inner.drm)?;
             inner.device.check_pstate()?;
+            // J613 25G83 trace: macOS follows initdata with device-control
+            // doorbells only (EP 0x21 type 0x84), never 0x83/0x11.
+            if !kicked && completed.is_none() && start.elapsed() >= Delta::from_millis(300) {
+                kicked = true;
+                let indices = inner.config.control_indices()?;
+                dev_info!(inner.drm.as_ref(), "G16G: device-control {} not retired after 300 ms, indices={:?}; ringing 0x84 doorbell\n", next, indices);
+                Pin::new(&mut inner.transport).send_message(0x21, 0x0084000000000011)?;
+            }
             if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
             let indices = inner.config.control_indices()?;
             // The startup NOP is retired without incrementing fw-data+0xeae8;
@@ -1339,9 +1348,10 @@ impl Runtime {
                     return Ok(());
                 }
             } else if completed.is_some() { return Err(EIO); }
-            if start.elapsed() >= Delta::from_secs(2) {
+            if start.elapsed() >= Delta::from_secs(4) {
                 dev_err!(inner.drm.as_ref(), "G16G: device-control timeout indices={:?} expected={} power-generation={}/{}\n",
                     indices, next, inner.config.consumed_generation()?, inner.generation);
+                inner.config.log_firmware_state(&inner.drm)?;
                 return Err(ETIMEDOUT);
             }
             fsleep(Delta::from_millis(10));
