@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 //! J613/25G83 controller inputs. Offsets are scoped to this firmware ABI.
-//! DT tunables mirror the J613 ADT; OPP power is bootloader fuse-derived.
+//! DT tunables mirror the J613 ADT; native power budget covers absent OPP powers.
 //! Only constructor inputs are written: no live controller output, demand
 //! floor, current hardware state, or clock/voltage register is overridden.
 use kernel::{c_str, prelude::*};
@@ -63,6 +63,8 @@ pub(crate) fn inputs(dev: &driver::AsahiDevice) -> Result<KVec<(Object, usize, u
     let perf_kp = f!("apple,perf-proportional-gain");
     let perf_kp2 = f!("apple,perf-proportional-gain2");
     let util = u!("apple,perf-tgt-utilization");
+    // Optional in J613 ADT; same default as PowerConfig::load.
+    let perf_reset: u32 = node.get_property(c_str!("apple,perf-reset-iters")).unwrap_or(6);
     let mut words = KVec::new();
     macro_rules! w { ($owner:expr, $offset:expr, $value:expr) => { words.push(($owner, $offset, $value), GFP_KERNEL)? }; }
     macro_rules! wf { ($owner:expr, $offset:expr, $value:expr) => {{
@@ -87,7 +89,7 @@ pub(crate) fn inputs(dev: &driver::AsahiDevice) -> Result<KVec<(Object, usize, u
         (0xa70,ppm_periods*4),(0xaa8,duty),(0xaac,max*100),(0xabc,max_power),
         (0xac8,ppm_ms),(0xad0,ppm_periods*period*24000),
         (0xb28,util),(0xb30,u!("apple,perf-boost-min-util")),
-        (0xb34,u!("apple,perf-boost-ce-step")),(0xb38,u!("apple,perf-reset-iters")),
+        (0xb34,u!("apple,perf-boost-ce-step")),(0xb38,perf_reset),
         (0xb40,6),(0xb44,1),(0xb48,u!("apple,perf-filter-drop-threshold")),
         (0xb78,base*100),(0xb7c,max*100),(0xb80,base*100),(0xb8c,util),(0xbc0,base*100),
         (0x21fc,crate::g16_board::get()?.frequencies_mhz[max as usize]),
