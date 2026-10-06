@@ -76,6 +76,10 @@ pub(crate) fn inputs(dev: &driver::AsahiDevice) -> Result<KVec<(Object, usize, u
     // (800 at max=8), then remains firmware-owned. This is not a lower
     // bound: PP+0x9f0 stays at DT duty30. PP+0x221c is a maximum
     // performance bound, not a duty-cycle field (native909 pre-init800).
+    // Inactive limiter outputs need an initial ceiling, as in the common
+    // Asahi constructor: zero is a real cap, not a disabled controller.
+    // Firmware owns subsequent writes; lower bounds remain native DT values.
+    for o in [0xaf0, 0x22f8, 0x2870, 0x2a3c, 0x2c88] { w!(PP,o,max*100); }
     // Shared host power inputs. The update flags stay zero, as in native905.
     // T8122 uses the per-SoC 110/80 C constants (not ADT's 88 C target).
     for (o,v) in [(0xc8,11000),(0xcc,8000),(0x10,avg_periods),(0x1c,avg_duty),
