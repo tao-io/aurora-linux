@@ -1250,7 +1250,37 @@ impl Runtime {
             }
             let inner = &mut *self.inner;
             inner.config.log_control_publication(&inner.drm)?;
-            dev_info!(pdev.as_ref(), "G16G: J613 native startup diagnostic complete; stopping before GPU work (intentional -ENOTSUPP)\n");
+            // Native907: type83/value0a wakes compute pipe2/group2;
+            // type87/value10 signals performance event36 (idle notification).
+            // Both are mailbox messages, not device-control opcodes. Keep
+            // generation zero: native0x14 releases a registered context later.
+            Pin::new(&mut inner.transport).send_message(0x21, 0x008300000000000a)?;
+            fsleep(Delta::from_millis(100));
+            inner.config.drain(&inner.drm)?;
+            let before = inner.device.check_pstate()?;
+            Pin::new(&mut inner.transport).send_message(0x21, 0x0087000000000010)?;
+            let idle_start = kernel::time::Instant::<kernel::time::Monotonic>::now();
+            let mut off_since = None;
+            loop {
+                inner.config.drain(&inner.drm)?;
+                if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
+                let state = inner.device.check_pstate()?;
+                if state == 0 {
+                    let off = off_since.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
+                    if off.elapsed() >= Delta::from_millis(50) {
+                        dev_info!(pdev.as_ref(), "G16G: J613 native empty-channel wake/idle passed pstate={}->0 indices={:?} generation={}/{}; stopping before barrier (intentional -ENOTSUPP)\n",
+                            before, inner.config.control_indices()?, inner.config.consumed_generation()?, inner.generation);
+                        break;
+                    }
+                } else { off_since = None; }
+                if idle_start.elapsed() >= Delta::from_secs(2) {
+                    dev_err!(pdev.as_ref(), "G16G: J613 native idle timeout pstate={} before={} generation={}/{}\n",
+                        state, before, inner.config.consumed_generation()?, inner.generation);
+                    inner.config.log_firmware_state(&inner.drm)?;
+                    return Err(ETIMEDOUT);
+                }
+                fsleep(Delta::from_millis(10));
+            }
             return Err(ENOTSUPP);
         }
         self.wait_control(1)?;
