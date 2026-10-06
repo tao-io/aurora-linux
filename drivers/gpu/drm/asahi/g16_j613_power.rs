@@ -9,13 +9,19 @@ use crate::{driver, float::F32, g16_config::layout::Object, f32};
 pub(crate) fn inputs(dev: &driver::AsahiDevice) -> Result<KVec<(Object, usize, u32)>> {
     use Object::{Power, PowerPerformance as PP, Globals, Main};
     let node = dev.as_ref().of_node().ok_or(ENODEV)?;
-    let opps = node.parse_phandle(c_str!("operating-points-v2"), 0).ok_or(EINVAL)?;
     let mut max_power = 0u32;
-    for opp in opps.children() {
-        let uw: u32 = opp.get_property(c_str!("opp-microwatt"))?;
-        max_power = max_power.max(uw / 1000);
+    if let Some(opps) = node.parse_phandle(c_str!("operating-points-v2"), 0) {
+        for opp in opps.children() {
+            let uw: u32 = opp.get_property(c_str!("opp-microwatt"))?;
+            max_power = max_power.max(uw / 1000);
+        }
     }
-    if max_power == 0 { return Err(EINVAL); }
+    // The current J613 bootloader leaves its OPP powers zero. Use the
+    // board-native power budget, independently present in native905 Power
+    // +12c and native909 pre-init PP +a04/+abc/+28c8: 22044 mW. This is a
+    // captured controller budget, not a claimed fuse-derived power estimate.
+    // A future populated OPP table supersedes it. Gains still require DT.
+    if max_power == 0 { max_power = 22044; }
     macro_rules! u { ($name:literal) => { node.get_property::<u32>(c_str!($name))? }; }
     macro_rules! f { ($name:literal) => { node.get_property::<F32>(c_str!($name))? }; }
     let period = u!("apple,power-sample-period");
