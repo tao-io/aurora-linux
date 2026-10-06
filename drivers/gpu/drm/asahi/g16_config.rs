@@ -219,7 +219,7 @@ impl Config {
         // Completion flushes use matching event generations, so CPU
         // visibility no longer depends on immediate power-off.
         for (offset, value) in [(globals::PROGRESS_INTERVAL_MS, 3000), (globals::UNKNOWN_998, 40), (globals::UNKNOWN_99C, 10),
-            (globals::UNKNOWN_9A0, 250), (globals::IDLE_OFF_DELAY_MS, if self.board.chip_id == 0x8122 { 10000 } else { 2 }), (globals::UNKNOWN_9BC, 40), (globals::UNKNOWN_9C0, 5),
+            (globals::UNKNOWN_9A0, 250), (globals::IDLE_OFF_DELAY_MS, 2), (globals::UNKNOWN_9BC, 40), (globals::UNKNOWN_9C0, 5),
             (globals::UNKNOWN_9C8, 40), (globals::UNKNOWN_9CC, 50)] {
             self.object(Globals).u32(offset, value)?;
         }
@@ -310,7 +310,9 @@ impl Config {
         let trace = if self.board.name == "J613" {
             *crate::module_parameters::g16_trace_mask.value()
         } else { 0 };
-        self.object(Control).u32(0, 0x33 | (trace & 0xff))?;
+        // J613 A/B: omit diagnostic tracing before the first power-up dispatch.
+        let base_trace = if self.board.chip_id == 0x8122 { 0 } else { 0x33 };
+        self.object(Control).u32(0, base_trace | (trace & 0xff))?;
         Ok(())
     }
 
