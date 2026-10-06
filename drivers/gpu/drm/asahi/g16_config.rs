@@ -324,6 +324,21 @@ impl Config {
         Ok(())
     }
 
+    /// J613 25G83 diagnostic: OR `asahi.g16_trace_mask` into the firmware
+    /// trace mask byte (firmware VA 0xfffffc00001823a4). Returns (before, after).
+    pub(crate) fn apply_trace_mask(&mut self) -> Result<Option<(u8, u8)>> {
+        let bits = *crate::module_parameters::g16_trace_mask.value() as u8;
+        if bits == 0 || self.board.name != "J613" { return Ok(None); }
+        let map = self.loader.iosys_map(0x1823a4 - 0x60000, 1)?;
+        // SAFETY: one byte inside the retained firmware data reservation.
+        let before = unsafe { map.as_ptr().read_volatile() };
+        // SAFETY: as above; the firmware only reads this byte.
+        unsafe { (map.as_ptr() as *mut u8).write_volatile(before | bits) };
+        g16_memory::publish();
+        // SAFETY: as above.
+        Ok(Some((before, unsafe { map.as_ptr().read_volatile() })))
+    }
+
     /// Snapshot only admitted firmware-data RAM, never a GPU register bank.
     /// These 25G83 globals describe engine issue and power accounting. Values
     /// are diagnostics; neither a cached snapshot nor a stamp proves DMA done.
@@ -347,7 +362,7 @@ impl Config {
         // This snapshot neither moves the consumer nor acknowledges events.
         let producer = self.object(Object::KtraceState).read_u32(channel::WRITE)?;
         if producer >= 512 { return Err(EIO); }
-        for age in (1..=16).rev() {
+        for age in (1..=48).rev() {
             let index = (producer + 512 - age) % 512;
             let mut record = [0u8; 0x48];
             self.object(Object::KtraceData).read(index as usize * 0x48, &mut record)?;

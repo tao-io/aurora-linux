@@ -110,6 +110,10 @@ kernel::module_platform_driver! {
             default: 1,
             description: "J613: write the static Main words macOS 26 sets beyond the constructor (0 = bare constructor)",
         },
+        g16_trace_mask: u32 {
+            default: 0,
+            description: "J613 25G83 diagnostic: bits OR-ed into the firmware trace mask byte (DATA 0x1823a4) before initdata",
+        },
         g16_pstate: u32 {
             default: 9,
             description: "Maximum firmware performance state (J713 1..9, 338..1470 MHz; J613 1..8, 338..1338 MHz, clamped); thermal cooling may lower it",

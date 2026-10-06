@@ -1189,6 +1189,9 @@ impl Runtime {
             inner.config.enqueue_control(0x1a, 0, &mut inner.generation, &inner.device)?;
         }
         self.inner.config.publish_loader()?;
+        if let Some((before, after)) = self.inner.config.apply_trace_mask()? {
+            dev_info!(pdev.as_ref(), "G16G: firmware trace mask {:#x} -> {:#x}\n", before, after);
+        }
         let root = self.inner.config.root();
         dev_info!(pdev.as_ref(), "G16G: sending relocated GEM initdata root={:#x}\n", root);
         Pin::new(&mut self.inner.transport).send_message(0x20, 0x0081000000000000 | (root & ((1u64 << 44) - 1)))?;
@@ -1200,6 +1203,9 @@ impl Runtime {
             if !inner.state.healthy() { return Err(EIO); }
             if inner.config.ready()? {
                 dev_info!(pdev.as_ref(), "G16G: firmware accepted relocated GEM initdata, control-ready=1; no GPU work queued\n");
+                if let Some((before, after)) = inner.config.apply_trace_mask()? {
+                    dev_info!(pdev.as_ref(), "G16G: firmware trace mask after ready {:#x} -> {:#x}\n", before, after);
+                }
                 break;
             }
             if start.elapsed() >= Delta::from_secs(5) { return Err(ETIMEDOUT); }
