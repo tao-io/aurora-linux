@@ -484,7 +484,7 @@ impl Render {
         }
         let mut bytes = [0u8; 0x380];
         self.sequences[1].read(0, &mut bytes)?;
-        let size = wire::j613_fragment_start(&mut bytes).map_err(|_| EINVAL)?;
+        let size = wire::j613_fragment_program(&mut bytes).map_err(|_| EINVAL)?;
         self.sequences[1].write(0, &bytes)?;
         self.commands[1].u32(wire.command_sequence_size, size.try_into()?)?;
         g16_memory::publish();

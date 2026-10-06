@@ -273,12 +273,13 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
 /// J613/25G83 StartFragment consumes an opcode plus 0x1e0 payload
 /// bytes (TEXT1907c,19b64,18a18), rather than the M4 0x1ec record.
 /// G49's saved fragment cursor hit zero at +0x1e8 after interpreting
-/// the M4 tail at +0x1e4 as WFI. Shorten only this start record; keep
-/// timestamp and finalize bytes intact. Serialize after all patching.
+/// the M4 tail at +0x1e4 as WFI. FinalizeFragment advances 0xb4 from the opcode
+/// (TEXT1b154 -> 189f4 -> 18a14), eight bytes shorter than M4.
+/// Shorten these two tails; retain timestamp/pointer bytes. Serialize last.
 /// Unknown and diagnostic shapes reject without modifying the input.
-pub(crate) fn j613_fragment_start(sequence: &mut [u8]) -> Result<usize, BuildError> {
+pub(crate) fn j613_fragment_program(sequence: &mut [u8]) -> Result<usize, BuildError> {
     const OLD: usize = 0x380;
-    const SIZE: usize = OLD - 8;
+    const SIZE: usize = OLD - 16;
     if sequence.len() < OLD { return Err(BuildError::BufferTooSmall); }
     let word = |o| u32::from_le_bytes(sequence[o..o+4].try_into().unwrap());
     if sequence.len() != OLD || word(0) != 7 || word(0x1ec) != 0x80000003
@@ -288,7 +289,8 @@ pub(crate) fn j613_fragment_start(sequence: &mut [u8]) -> Result<usize, BuildErr
     }
     let mut image = [0u8; OLD];
     image[..0x1e4].copy_from_slice(&sequence[..0x1e4]);
-    image[0x1e4..SIZE].copy_from_slice(&sequence[0x1ec..OLD]);
+    image[0x1e4..0x334].copy_from_slice(&sequence[0x1ec..0x33c]);
+    image[0x334..SIZE].copy_from_slice(&sequence[0x344..OLD]);
     put(&mut image, 0x280 + 0xa0, (-0x280i32) as u32 as u64, 4);
     sequence.copy_from_slice(&image);
     Ok(SIZE)
