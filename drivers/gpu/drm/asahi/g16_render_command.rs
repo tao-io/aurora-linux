@@ -270,6 +270,30 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
     Ok(())
 }
 
+/// J613/25G83 StartFragment consumes an opcode plus 0x1e0 payload
+/// bytes (TEXT1907c,19b64,18a18), rather than the M4 0x1ec record.
+/// G49's saved fragment cursor hit zero at +0x1e8 after interpreting
+/// the M4 tail at +0x1e4 as WFI. Shorten only this start record; keep
+/// timestamp and finalize bytes intact. Serialize after all patching.
+/// Unknown and diagnostic shapes reject without modifying the input.
+pub(crate) fn j613_fragment_start(sequence: &mut [u8]) -> Result<usize, BuildError> {
+    const OLD: usize = 0x380;
+    const SIZE: usize = OLD - 8;
+    if sequence.len() < OLD { return Err(BuildError::BufferTooSmall); }
+    let word = |o| u32::from_le_bytes(sequence[o..o+4].try_into().unwrap());
+    if sequence.len() != OLD || word(0) != 7 || word(0x1ec) != 0x80000003
+        || word(0x238) != 1 || word(0x23c) != 3 || word(0x288) != 8
+        || word(0x328) != (-0x288i32) as u32 || word(0x344) != 0x40000002 {
+        return Err(BuildError::Address);
+    }
+    let mut image = [0u8; OLD];
+    image[..0x1e4].copy_from_slice(&sequence[..0x1e4]);
+    image[0x1e4..SIZE].copy_from_slice(&sequence[0x1ec..OLD]);
+    put(&mut image, 0x280 + 0xa0, (-0x280i32) as u32 as u64, 4);
+    sequence.copy_from_slice(&image);
+    Ok(SIZE)
+}
+
 /// Relocate a complete native program while preserving all external pointers.
 /// Finalize's UMA header pointer is the only absolute self-reference; its
 /// relative restart and repeated timestamp records remain byte-identical.

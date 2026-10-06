@@ -474,6 +474,22 @@ impl Render {
         }
         Ok(())
     }
+    /// Last serialization step for the normal J613 fragment program.
+    pub(crate) fn select_fragment_start_abi(&mut self, chip: u32) -> Result {
+        if chip != 0x8122 { return Ok(()); }
+        let wire = wire::layout(Stage::Fragment);
+        if self.commands[1].read_u64(wire.command_sequence)? != self.sequences[1].va()
+            || self.commands[1].read_u32(wire.command_sequence_size)? != 0x380 {
+            return Err(EINVAL);
+        }
+        let mut bytes = [0u8; 0x380];
+        self.sequences[1].read(0, &mut bytes)?;
+        let size = wire::j613_fragment_start(&mut bytes).map_err(|_| EINVAL)?;
+        self.sequences[1].write(0, &bytes)?;
+        self.commands[1].u32(wire.command_sequence_size, size.try_into()?)?;
+        g16_memory::publish();
+        Ok(())
+    }
     pub(crate) fn cache_programs(&mut self, config: &mut crate::g16_config::Config,
         dev: &driver::AsahiDevice, vm: &mmu::Vm) -> Result {
         // Diagnostic modes have different layouts; reject their combination.
