@@ -302,6 +302,14 @@ impl Device {
         Ok([state, sgx.try_read32(0xe1c014)?, sgx.try_read32(0xe1c800)?, sgx.try_read32(0xe1e01c)?])
     }
 
+    /// Log only after polling, avoiding console latency in the measured ramp.
+    pub(crate) fn log_clock_transitions(&self, transitions: &[(u64, [u32; 4])], overflow: u32) {
+        for &(elapsed, sample) in transitions {
+            dev_info!(self.dev.as_ref(), "G16G: J613 load-following transition elapsed_ns={} pstate={} clkgen14={:#x} nibble={:#x} profile_word={:#x} pll={:#x}\n", elapsed, sample[0], sample[1], sample[1]&15, sample[2], sample[3]);
+        }
+        dev_info!(self.dev.as_ref(), "G16G: J613 transition overflow={} (idle disabled during clock MMIO only)\n", overflow);
+    }
+
     pub(crate) fn log_clock_census(&self, samples: &[[u32; 4]], counts: &[u32], overflow: u32) {
         for (sample, count) in samples.iter().zip(counts) {
             dev_info!(self.dev.as_ref(), "G16G: J613 compute clock census pstate={} clkgen+14={:#010x} low-nibble={:#x} +800={:#010x} +201c={:#010x} count={}\n",

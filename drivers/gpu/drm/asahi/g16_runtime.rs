@@ -1254,7 +1254,7 @@ impl Runtime {
             // enable it and require retirement, retaining the off check.
             let next = {
                 let inner = &mut *self.inner;
-                inner.config.enqueue_j613_idle_policy(&mut inner.generation)?
+                inner.config.enqueue_j613_idle_policy(&mut inner.generation, true)?
             };
             Pin::new(&mut self.inner.transport).send_message(0x21, 0x0084000000000011)?;
             self.wait_control(next)?;
@@ -1299,7 +1299,42 @@ impl Runtime {
             // this context registered for compute and the DRM runtime;
             // native907 also retains generation0 throughout its GPU work.
             if !self.inner.device.firmware().board.compute_self_test { return Err(ENOTSUPP); }
+            // Clock MMIO must not race an asynchronous power-domain idle.
+            // This hold is qualification-only; it does not pin a pstate or
+            // change controller bounds. Restore native idle policy after
+            // proven retirement, then observe idle using the always-on SGX
+            // state register only. Normal startup never enters this block.
+            let next = {
+                let inner = &mut *self.inner;
+                inner.config.enqueue_j613_idle_policy(&mut inner.generation, false)?
+            };
+            Pin::new(&mut self.inner.transport).send_message(0x21, 0x0084000000000011)?;
+            self.wait_control(next)?;
+            dev_info!(pdev.as_ref(), "G16G: J613 qualification clock-read hold idle_off=0 index={}\n", next);
             self.check_compute()?;
+            let next = {
+                let inner = &mut *self.inner;
+                inner.config.enqueue_j613_idle_policy(&mut inner.generation, true)?
+            };
+            Pin::new(&mut self.inner.transport).send_message(0x21, 0x0084000000000011)?;
+            self.wait_control(next)?;
+            let idle_start = kernel::time::Instant::<kernel::time::Monotonic>::now();
+            let mut off_since = None;
+            loop {
+                let inner = &mut *self.inner;
+                inner.config.drain(&inner.drm)?;
+                if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
+                let state = inner.device.check_pstate()?;
+                if state == 0 {
+                    let off = off_since.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
+                    if off.elapsed() >= Delta::from_millis(50) {
+                        dev_info!(pdev.as_ref(), "G16G: J613 post-load idle passed pstate=0 idle_off=1 generation={}/{}\n", inner.config.consumed_generation()?, inner.generation);
+                        break;
+                    }
+                } else { off_since = None; }
+                if idle_start.elapsed() >= Delta::from_secs(2) { return Err(ETIMEDOUT); }
+                fsleep(Delta::from_millis(1));
+            }
             dev_info!(pdev.as_ref(), "G16G: J613 compute self-test complete; continuing to DRM registration\n");
             return Ok(());
         }
@@ -1380,12 +1415,18 @@ impl Runtime {
         let mut clock_used = 0usize;
         let mut clock_overflow = 0u32;
         let mut last_clock_state = u32::MAX;
+        let mut transitions = [(0u64, [0u32; 4]); 64];
+        let mut transition_used = 0usize;
+        let mut transition_overflow = 0u32;
         loop {
             let inner = &mut *self.inner;
             if capture_clock {
                 let sample = inner.device.clock_state()?;
                 if sample[0] != last_clock_state {
-                    dev_info!(inner.drm.as_ref(), "G16G: J613 load-following transition elapsed_ns={} pstate={} clkgen14={:#x} nibble={:#x} profile_word={:#x} pll={:#x}\n", start.elapsed().as_nanos(), sample[0], sample[1], sample[1]&15, sample[2], sample[3]);
+                    if transition_used < transitions.len() {
+                        transitions[transition_used] = (start.elapsed().as_nanos() as u64, sample);
+                        transition_used += 1;
+                    } else { transition_overflow += 1; }
                     last_clock_state = sample[0];
                 }
                 if let Some(index) = clock_samples[..clock_used].iter().position(|seen| *seen == sample) {
@@ -1401,11 +1442,11 @@ impl Runtime {
             let queue = inner.compute_queue.status()?;
             if let Err(error) = inner.config.drain(&inner.drm) {
                 dev_err!(inner.drm.as_ref(), "G16G: compute firmware error pipe={:?} queue={:?} status={:x?}\n", pipe, queue, status);
-                if capture_clock { inner.device.log_clock_census(&clock_samples[..clock_used], &clock_counts[..clock_used], clock_overflow); }
+                if capture_clock { inner.device.log_clock_census(&clock_samples[..clock_used], &clock_counts[..clock_used], clock_overflow); inner.device.log_clock_transitions(&transitions[..transition_used], transition_overflow); }
                 return Err(error);
             }
             if !inner.state.healthy() || !inner.config.ready()? {
-                if capture_clock { inner.device.log_clock_census(&clock_samples[..clock_used], &clock_counts[..clock_used], clock_overflow); }
+                if capture_clock { inner.device.log_clock_census(&clock_samples[..clock_used], &clock_counts[..clock_used], clock_overflow); inner.device.log_clock_transitions(&transitions[..transition_used], transition_overflow); }
                 return Err(EIO);
             }
             inner.device.check_pstate()?;
@@ -1423,13 +1464,13 @@ impl Runtime {
                     inner.gpu_pending = false;
                     inner.state.health.set_gpu_pending(false);
                     dev_info!(inner.drm.as_ref(), "G16G: owned compute store retired, stamps/timestamps={:x?} queue={:?}, firmware ready\n", status, queue);
-                    if capture_clock { inner.device.log_clock_census(&clock_samples[..clock_used], &clock_counts[..clock_used], clock_overflow); }
+                    if capture_clock { inner.device.log_clock_census(&clock_samples[..clock_used], &clock_counts[..clock_used], clock_overflow); inner.device.log_clock_transitions(&transitions[..transition_used], transition_overflow); }
                     return Ok(());
                 }
             } else if completed.is_some() { return Err(EIO); }
             if start.elapsed() >= Delta::from_secs(2) {
                 dev_err!(inner.drm.as_ref(), "G16G: compute timeout pipe={:?} queue={:?} status={:x?}\n", pipe, queue, status);
-                if capture_clock { inner.device.log_clock_census(&clock_samples[..clock_used], &clock_counts[..clock_used], clock_overflow); }
+                if capture_clock { inner.device.log_clock_census(&clock_samples[..clock_used], &clock_counts[..clock_used], clock_overflow); inner.device.log_clock_transitions(&transitions[..transition_used], transition_overflow); }
                 inner.config.log_firmware_state(&inner.drm)?;
                 inner.compute.log_progress(&inner.drm)?;
                 return Err(ETIMEDOUT);

@@ -470,15 +470,18 @@ impl Config {
     /// c000 TEXT4680 (opcode0xa): enable ordinary idle power-off.
     /// Generation flag1 at TEXT59300+a; use packed J613 host assertion,
     /// not an AP Fender generation write, and do not write Power+66c.
-    pub(crate) fn enqueue_j613_idle_policy(&mut self, generation: &mut u32) -> Result<u32> {
+    pub(crate) fn enqueue_j613_idle_policy(&mut self, generation: &mut u32, enable: bool) -> Result<u32> {
         if self.board.chip_id != 0x8122 { return Err(EINVAL); }
         let [read, cfi, write] = self.control_indices()?;
         if read != write || cfi != write { return Err(EBUSY); }
         let mut entry = [0; channel::CONTROL_RECORD_SIZE];
         entry[..4].copy_from_slice(&0x0au32.to_le_bytes());
-        entry[4..8].copy_from_slice(&1u32.to_le_bytes());
+        entry[4..8].copy_from_slice(&(enable as u32).to_le_bytes());
         self.object(Object::DevctrlRing).write(write as usize * channel::CONTROL_RECORD_SIZE, &entry)?;
-        *generation = generation.checked_add(1).ok_or(EOVERFLOW)?;
+        // Opcode0xa has the static generation-bearing flag in TEXT59300
+        // for both boolean payloads. Queue/barrier work may have advanced
+        // the consumed generation since the last device control.
+        *generation = (*generation).max(self.consumed_generation()?).checked_add(1).ok_or(EOVERFLOW)?;
         self.object(Object::Globals).write(0xe41, &generation.to_le_bytes())?;
         g16_memory::publish();
         let next = (write + 1) % channel::CONTROL_CAPACITY;
