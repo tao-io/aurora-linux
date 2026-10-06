@@ -474,24 +474,6 @@ impl Render {
         }
         Ok(())
     }
-    /// Final board-specific serialization of the patched TA program.
-    /// Cached/minimal diagnostic programs have different owners/shapes and
-    /// fail closed here; they are not part of the admitted normal retry.
-    pub(crate) fn select_tiling_program_abi(&mut self, chip: u32) -> Result {
-        if chip != 0x8122 { return Ok(()); }
-        let wire = wire::layout(Stage::Tiling);
-        if self.commands[0].read_u64(wire.command_sequence)? != self.sequences[0].va()
-            || self.commands[0].read_u32(wire.command_sequence_size)? != 0x300 {
-            return Err(EINVAL);
-        }
-        let mut bytes = [0u8; 0x300];
-        self.sequences[0].read(0, &mut bytes)?;
-        let size = wire::j613_tiling_program(&mut bytes).map_err(|_| EINVAL)?;
-        self.sequences[0].write(0, &bytes)?;
-        self.commands[0].u32(wire.command_sequence_size, size.try_into()?)?;
-        g16_memory::publish();
-        Ok(())
-    }
     pub(crate) fn cache_programs(&mut self, config: &mut crate::g16_config::Config,
         dev: &driver::AsahiDevice, vm: &mmu::Vm) -> Result {
         // Diagnostic modes have different layouts; reject their combination.
