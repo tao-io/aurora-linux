@@ -274,8 +274,13 @@ impl Config {
         }
         self.object(PowerPerformance).u32(power_data::UNKNOWN_10, 4)?;
         self.object(PowerPerformance).u32(power_data::UNKNOWN_14, 0x3f800000)?;
-        self.object(PowerPerformance).u32(power_data::INITIAL_ACTUAL, pstate)?;
-        self.object(PowerPerformance).u32(power_data::INITIAL_TARGET, pstate)?;
+        // J613 25G83 attempt 908, before initdata forwarding: the native
+        // performance worker starts with actual/target = 1/1, while its
+        // pstate ceiling remains 8. Isolate that bootstrap input from the
+        // ceiling; do not copy firmware-owned current state (+0x38).
+        let initial_pstate = if board.name == "J613" { 1 } else { pstate };
+        self.object(PowerPerformance).u32(power_data::INITIAL_ACTUAL, initial_pstate)?;
+        self.object(PowerPerformance).u32(power_data::INITIAL_TARGET, initial_pstate)?;
         // Keep current hardware state at zero until firmware acknowledges
         // the real transition. Initial actual/target are constructor inputs.
         for offset in power_data::CEILING_INPUTS {
