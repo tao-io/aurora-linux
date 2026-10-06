@@ -4,12 +4,24 @@
 #include <linux/export.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
+#include <linux/delay.h>
+#include <linux/jiffies.h>
 #include <linux/soc/apple/pmp.h>
 
 /* Serialize the untagged power reply stream and join callers on removal. */
 static DEFINE_MUTEX(pmp_lock);
 static const void *pmp_data;
 static struct device *pmp_device;
+static unsigned long pmp_registered_at;
+
+/*
+ * The PMP firmware still sets itself up for about 100 ms after its endpoint
+ * comes up; a power request in that window crashes it (J613: a GPU vote
+ * 0.03 ms after the endpoint, PC=0). Wait for the setup and the PTD ready bit.
+ */
+#define PMP_SETUP_MS		250
+#define PMP_READY_TIMEOUT_MS	5000
+int apple_pmp_report_wait_ready(unsigned int timeout_ms);
 
 int apple_pmp_register(struct device *dev, const void *data)
 {
@@ -20,6 +32,7 @@ int apple_pmp_register(struct device *dev, const void *data)
 	else {
 		pmp_data = data;
 		pmp_device = dev;
+		pmp_registered_at = jiffies;
 	}
 	mutex_unlock(&pmp_lock);
 	return ret;
@@ -65,6 +78,24 @@ int apple_pmp_set_device_power(u8 command, u16 device_id, u32 enabled)
 	if ((command != 0x0e && command != 0x0f) || device_id > 15 || enabled > 1)
 		return -EINVAL;
 	mutex_lock(&pmp_lock);
+	if (pmp_data) {
+		unsigned long ready = pmp_registered_at + msecs_to_jiffies(PMP_SETUP_MS);
+		struct device *dev = pmp_device;
+
+		mutex_unlock(&pmp_lock);
+		if (time_before(jiffies, ready)) {
+			dev_info(dev, "waiting %u ms for PMP setup before power request\n",
+				 jiffies_to_msecs(ready - jiffies));
+			msleep(jiffies_to_msecs(ready - jiffies) + 1);
+		}
+		ret = apple_pmp_report_wait_ready(PMP_READY_TIMEOUT_MS);
+		/* The status word is unverified on every SoC: only defer is fatal. */
+		if (ret == -EPROBE_DEFER)
+			return ret;
+		if (ret)
+			dev_warn(dev, "PMP ready bit not seen (%d); sending power request anyway\n", ret);
+		mutex_lock(&pmp_lock);
+	}
 	ret = pmp_data ? apple_pmp_send_power_command(pmp_data, command,
 						     device_id, enabled) : -ENODEV;
 	mutex_unlock(&pmp_lock);

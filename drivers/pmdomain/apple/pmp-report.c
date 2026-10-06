@@ -61,6 +61,34 @@ struct apple_pmp_report {
 };
 
 
+static struct apple_pmp_report *apple_pmp_report_primary;
+
+/*
+ * apple_pmp_report_wait_ready() - wait until the PMP reports ready in the PTD
+ *
+ * Returns 0 once the status word has PMP_REPORT_READY, or at once if no report
+ * device exists; -EPROBE_DEFER while one is described but not yet probed.
+ */
+int apple_pmp_report_wait_ready(unsigned int timeout_ms)
+{
+	struct apple_pmp_report *rep = READ_ONCE(apple_pmp_report_primary);
+	struct device_node *np;
+	u64 val;
+
+	if (!rep) {
+		for_each_compatible_node(np, NULL, "apple,t8122-pmp-v2-report") {
+			if (of_device_is_available(np)) {
+				of_node_put(np);
+				return -EPROBE_DEFER;
+			}
+		}
+		return 0;
+	}
+	return readq_poll_timeout(rep->base + rep->offsets->status, val,
+				  val & PMP_REPORT_READY, 1000, timeout_ms * 1000);
+}
+EXPORT_SYMBOL_GPL(apple_pmp_report_wait_ready);
+
 static umode_t apple_pmp_temp_is_visible(const void *data,
 					 enum hwmon_sensor_types type, u32 attr,
 					 int channel)
@@ -154,6 +182,8 @@ static int apple_pmp_report_probe(struct platform_device *pdev)
 		return PTR_ERR(rep->base);
 	rep->offsets = of_device_get_match_data(dev);
 	dev_set_drvdata(dev, rep);
+	if (!READ_ONCE(apple_pmp_report_primary))
+		WRITE_ONCE(apple_pmp_report_primary, rep);
 	if (of_device_is_compatible(np, "apple,t8132-pmp-v2-report")) {
 		ret = apple_pmp_temp_register(rep);
 		if (ret)
