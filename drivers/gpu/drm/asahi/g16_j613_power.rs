@@ -1,8 +1,9 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
 //! J613/25G83 controller inputs. Offsets are scoped to this firmware ABI.
 //! DT tunables mirror the J613 ADT; native power budget covers absent OPP powers.
-//! Only constructor inputs are written: no live controller output, demand
-//! floor, current hardware state, or clock/voltage register is overridden.
+//! Inputs and cold-start accumulator/ceiling seeds are written once.
+//! Firmware owns subsequent outputs; no demand floor, current hardware
+//! state, or clock/voltage register is overridden.
 use kernel::{c_str, prelude::*};
 use crate::{driver, float::F32, g16_config::layout::Object, f32};
 
