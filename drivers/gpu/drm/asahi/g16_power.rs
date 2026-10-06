@@ -3,7 +3,7 @@
 //! 25G83 performance-state policy. The tables are per board (g16_board): the native
 //! constructor's compacted states, not PLL writes. The GPU firmware requests each transition
 //! through its PMP/Fender interface; g16_thermal (where the board has it) lowers the ceiling.
-//! Load-based DVFS remains TODO; bounded tests retain independent guards.
+//! J613 supplies native DT controller inputs; firmware follows load below this ceiling.
 
 use kernel::prelude::*;
 

@@ -1259,8 +1259,10 @@ impl Runtime {
             Pin::new(&mut self.inner.transport).send_message(0x21, 0x0084000000000011)?;
             self.wait_control(next)?;
             dev_info!(pdev.as_ref(), "G16G: J613 idle power-off enabled opcode=0xa value=1 index={}\n", next);
+            if *crate::module_parameters::g16_qualify.value() == 0 {
+                return Ok(());
+            }
             let inner = &mut *self.inner;
-            inner.config.log_control_publication(&inner.drm)?;
             // Native907: type83/value0a wakes compute pipe2/group2;
             // type87/value10 signals performance event36 (idle notification).
             // Both are mailbox messages, not device-control opcodes. Keep
@@ -1377,10 +1379,15 @@ impl Runtime {
         let mut clock_counts = [0u32; 32];
         let mut clock_used = 0usize;
         let mut clock_overflow = 0u32;
+        let mut last_clock_state = u32::MAX;
         loop {
             let inner = &mut *self.inner;
             if capture_clock {
                 let sample = inner.device.clock_state()?;
+                if sample[0] != last_clock_state {
+                    dev_info!(inner.drm.as_ref(), "G16G: J613 load-following transition elapsed_ns={} pstate={} clkgen14={:#x} nibble={:#x} profile_word={:#x} pll={:#x}\n", start.elapsed().as_nanos(), sample[0], sample[1], sample[1]&15, sample[2], sample[3]);
+                    last_clock_state = sample[0];
+                }
                 if let Some(index) = clock_samples[..clock_used].iter().position(|seen| *seen == sample) {
                     clock_counts[index] += 1;
                 } else if clock_used < clock_samples.len() {

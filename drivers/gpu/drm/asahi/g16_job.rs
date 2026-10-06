@@ -167,7 +167,7 @@ impl Compute {
         // and retirement path. 128 direct launches, 1048576 global threads
         // per launch in groups of32; each performs1024 dependent identity
         // FMAs and stores the independently checked original value.
-        if control.is_none() && crate::g16_board::get()?.chip_id == 0x8122 {
+        if *crate::module_parameters::g16_qualify.value() != 0 && control.is_none() && crate::g16_board::get()?.chip_id == 0x8122 {
             let mut image = KBox::new([0u8; 0x4000], GFP_KERNEL)?;
             image[..0x400].copy_from_slice(&g16_dispatch::image(job.output.gpu_va()?).map_err(|_| EINVAL)?);
             let original = g16_dispatch::shader(job.output.gpu_va()?).map_err(|_| EINVAL)?;

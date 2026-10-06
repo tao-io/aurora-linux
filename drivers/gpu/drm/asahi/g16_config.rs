@@ -117,6 +117,12 @@ impl Config {
         let scratch_va = scratch.iova();
         config.iomaps.push(scratch, GFP_KERNEL)?;
         config.initialize(scratch_va)?;
+        if board.chip_id == 0x8122 {
+            for (object, offset, value) in crate::g16_j613_power::inputs(dev)? {
+                config.object(object).u32(offset, value)?;
+            }
+            g16_memory::publish();
+        }
         Ok(config)
     }
 
@@ -211,17 +217,6 @@ impl Config {
         self.object(FirmwareData).u32(firmware_data::UNKNOWN_4FD4, 1)?;
         self.object(Globals).u32(globals::UNKNOWN_78, 1)?;
         self.object(Globals).u32(globals::UNKNOWN_E28, 3)?;
-        // J613/25G83 native905 root+0xb8 Power object, +c8=11000
-        // centidegrees, +cc=8000. TEXT24bbc imports these as temperature
-        // target/release; the existing native PP gains/sensor mask remain.
-        // Leaving both zero falsely triggers the thermal PI at room temp.
-        // Restore this native threshold pair, not a cap/output override.
-        // Source mapping: TEXT339fc stores root+b8 to DATA188a00.
-        if self.board.name == "J613" {
-            self.object(Power).u32(0xc8, 11000)?;
-            self.object(Power).u32(0xcc, 8000)?;
-        }
-
         // 25G83 host Globals: progress intervals and idle/context timers in
         // milliseconds. These match the common Asahi constructor roles and
         // the J713 producer. A zero-filled timer is not a disabled timer.
@@ -237,12 +232,6 @@ impl Config {
         self.ptr(PowerPerformance, power_data::TEMPERATURE_POINTER, Temperature, 0)?;
         self.object(PowerPerformance).u32(power_data::UNKNOWN_04, 200000)?;
         self.object(PowerPerformance).u32(power_data::UNKNOWN_08, 200000)?;
-        // J613 g21 traces repeatedly dispatch event20 (bit0x100000).
-        // TEXT3ec68 reads PP+0x62a8, scales it by1000, and rearms
-        // timer182228 while the active mask is nonzero. Zero requests
-        // immediate expiry; native909 publishes1 before initdata.
-        // Change only this constructor input, keeping polling and caps.
-        if self.board.name == "J613" { self.object(PowerPerformance).u32(0x62a8, 1)?; }
         // Timestamp opcode3 at 25G83 TEXT19494 validates user result
         // pointers against this base through base+0x3fffff8, then writes ns.
         self.object(Main).u64(main_data::TIMESTAMP_WINDOW, g16_memory::TIMESTAMP_RANGE.start)?;
@@ -300,10 +289,14 @@ impl Config {
         self.object(PowerPerformance).u32(power_data::INITIAL_TARGET, initial_pstate)?;
         // Keep current hardware state at zero until firmware acknowledges
         // the real transition. Initial actual/target are constructor inputs.
-        for offset in power_data::CEILING_INPUTS {
-            self.object(PowerPerformance).u32(offset, units)?;
+        // J713 retains its qualified fixed-performance policy. J613 uses
+        // DT controller bounds and firmware-owned outputs, built separately.
+        if board.chip_id != 0x8122 {
+            for offset in power_data::CEILING_INPUTS {
+                self.object(PowerPerformance).u32(offset, units)?;
+            }
+            self.object(PowerPerformance).write(power_data::PACKED_SELECTOR, &units.to_le_bytes())?;
         }
-        self.object(PowerPerformance).write(power_data::PACKED_SELECTOR, &units.to_le_bytes())?;
         self.object(Main).u32(main_data::UNKNOWN_259C, 1)?;
         // Fender initialization also constructs scheduler accounting buckets:
         // 25G83 imports ea0/ee0 to globals 193b48/193b7c, and its 3b614

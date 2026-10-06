@@ -35,6 +35,7 @@ mod g16_initdata;
 mod g16_memory;
 mod g16_config;
 mod g16_power;
+mod g16_j613_power;
 mod g16_thermal;
 mod g16_thermal_policy;
 mod g16_queue;
@@ -109,6 +110,10 @@ kernel::module_platform_driver! {
         g16_main_overlay: u32 {
             default: 1,
             description: "J613: write the static Main words macOS 26 sets beyond the constructor (0 = bare constructor)",
+        },
+        g16_qualify: u32 {
+            default: 0,
+            description: "Opt-in bounded J613 boot compute and clock qualification (normal boot: 0)",
         },
         g16_trace_mask: u32 {
             default: 0,
