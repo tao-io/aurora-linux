@@ -1248,6 +1248,17 @@ impl Runtime {
                     dev_info!(pdev.as_ref(), "G16G: J613 native control retired opcode=0x1b pipe={} kind={} index={}\n", pipe, kind, next);
                 }
             }
+            // Native905 firmware DATA1823d0=1; our g31 has0 and stays
+            // powered at state8 during the empty-channel idle qualification.
+            // TEXT4680 opcode0xa/+4 boolean is the identified policy API;
+            // enable it and require retirement, retaining the off check.
+            let next = {
+                let inner = &mut *self.inner;
+                inner.config.enqueue_j613_idle_policy(&mut inner.generation)?
+            };
+            Pin::new(&mut self.inner.transport).send_message(0x21, 0x0084000000000011)?;
+            self.wait_control(next)?;
+            dev_info!(pdev.as_ref(), "G16G: J613 idle power-off enabled opcode=0xa value=1 index={}\n", next);
             let inner = &mut *self.inner;
             inner.config.log_control_publication(&inner.drm)?;
             // Native907: type83/value0a wakes compute pipe2/group2;

@@ -406,7 +406,7 @@ impl Config {
                 index, tag >> 24, tag & 0xffffff, phase, args);
         }
         let image_addresses: &[(usize, usize)] = if self.board.name == "J713" { &[(0x68158usize, 1usize), (0x128d60, 8),
-            (0x129b20, 4), (0x129bc8, 8), (0x129d00, 8), (0x147368, 6), (0x192900, 5), (0x1929d0, 8), (0x1935a0, 1)] } else { &[] };
+            (0x129b20, 4), (0x129bc8, 8), (0x129d00, 8), (0x147368, 6), (0x192900, 5), (0x1929d0, 8), (0x1935a0, 1)] } else { &[(0x1823d0, 1)] };
         for &(address, count) in image_addresses {
             let map = self.loader.iosys_map(address.checked_sub(0x60000).ok_or(EINVAL)?, count * 8)?;
             let mut words = [0u64; 8];
@@ -467,6 +467,26 @@ impl Config {
         entry[4..8].copy_from_slice(&pipe.to_le_bytes());
         entry[8..12].copy_from_slice(&kind.to_le_bytes());
         self.object(Object::DevctrlRing).write(write as usize * channel::CONTROL_RECORD_SIZE, &entry)?;
+        g16_memory::publish();
+        let next = (write + 1) % channel::CONTROL_CAPACITY;
+        self.object(Object::DevctrlState).u32(channel::WRITE, next)?;
+        g16_memory::publish();
+        Ok(next)
+    }
+
+    /// c000 TEXT4680 (opcode0xa): enable ordinary idle power-off.
+    /// Generation flag1 at TEXT59300+a; use packed J613 host assertion,
+    /// not an AP Fender generation write, and do not write Power+66c.
+    pub(crate) fn enqueue_j613_idle_policy(&mut self, generation: &mut u32) -> Result<u32> {
+        if self.board.chip_id != 0x8122 { return Err(EINVAL); }
+        let [read, cfi, write] = self.control_indices()?;
+        if read != write || cfi != write { return Err(EBUSY); }
+        let mut entry = [0; channel::CONTROL_RECORD_SIZE];
+        entry[..4].copy_from_slice(&0x0au32.to_le_bytes());
+        entry[4..8].copy_from_slice(&1u32.to_le_bytes());
+        self.object(Object::DevctrlRing).write(write as usize * channel::CONTROL_RECORD_SIZE, &entry)?;
+        *generation = generation.checked_add(1).ok_or(EOVERFLOW)?;
+        self.object(Object::Globals).write(0xe41, &generation.to_le_bytes())?;
         g16_memory::publish();
         let next = (write + 1) % channel::CONTROL_CAPACITY;
         self.object(Object::DevctrlState).u32(channel::WRITE, next)?;
