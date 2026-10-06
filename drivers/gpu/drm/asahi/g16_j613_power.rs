@@ -134,7 +134,12 @@ pub(crate) fn inputs(dev: &driver::AsahiDevice) -> Result<KVec<(Object, usize, u
         (0x2b58,one-se_a),(0x2b5c,one-se_a1),(0x2b60,se_a),(0x2b64,se_a1),
         (0x2b68,f!("apple,se-ki")*dt),(0x2b6c,f!("apple,se-ki-1")*dt),
         (0x2b74,f32!(65536.0)),(0x2b78,f!("apple,se-kp")),(0x2b7c,f!("apple,se-kp-1")),
-        (0x2b94,f32!(8000.0)),(0x2bc0,f32!(65536.0)),(0x2c30,f32!(65536.0))] { wf!(PP,o,v); }
+        (0x2b94,f32!(8000.0)),(0x2bc0,f32!(65536.0)),(0x2bc4,f32!(65536.0)),(0x2c30,f32!(65536.0))] { wf!(PP,o,v); }
+    // Cold-start SE integral: TEXT164c8/164d0 and TEXT28cc8/28cd0 reset
+    // both +2bc0/+2bc4 to +2b74 (65536) on timer/engagement changes.
+    // Seeding that firmware reset value once avoids a cold zero cap while
+    // the ADT engagement criterion counts up; bounds remain 100..800 and
+    // firmware owns every subsequent update.
     // No demand floor. Firmware owns all PI outputs, including +2210/+22f8.
     w!(Globals,0xe4,0); w!(Globals,0xe8,0);
     dev_info!(dev.as_ref(),"G16G: J613 DT controllers sample_ms={} max_power_mw={} base={} ceiling={} thermal_target/release=11000/8000 fast_ki_dt_bits={:#x}\n",period,max_power,base,max,unsafe { core::mem::transmute::<F32,u32>(fast_ki) });
