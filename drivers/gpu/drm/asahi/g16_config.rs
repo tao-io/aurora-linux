@@ -226,6 +226,12 @@ impl Config {
         self.ptr(PowerPerformance, power_data::TEMPERATURE_POINTER, Temperature, 0)?;
         self.object(PowerPerformance).u32(power_data::UNKNOWN_04, 200000)?;
         self.object(PowerPerformance).u32(power_data::UNKNOWN_08, 200000)?;
+        // J613 g21 traces repeatedly dispatch event20 (bit0x100000).
+        // TEXT3ec68 reads PP+0x62a8, scales it by1000, and rearms
+        // timer182228 while the active mask is nonzero. Zero requests
+        // immediate expiry; native909 publishes1 before initdata.
+        // Change only this constructor input, keeping polling and caps.
+        if self.board.name == "J613" { self.object(PowerPerformance).u32(0x62a8, 1)?; }
         // Timestamp opcode3 at 25G83 TEXT19494 validates user result
         // pointers against this base through base+0x3fffff8, then writes ns.
         self.object(Main).u64(main_data::TIMESTAMP_WINDOW, g16_memory::TIMESTAMP_RANGE.start)?;
