@@ -1268,7 +1268,7 @@ impl Runtime {
                 if state == 0 {
                     let off = off_since.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
                     if off.elapsed() >= Delta::from_millis(50) {
-                        dev_info!(pdev.as_ref(), "G16G: J613 native empty-channel wake/idle passed pstate={}->0 indices={:?} generation={}/{}; stopping before barrier (intentional -ENOTSUPP)\n",
+                        dev_info!(pdev.as_ref(), "G16G: J613 native empty-channel wake/idle passed pstate={}->0 indices={:?} generation={}/{}; continuing to barrier\n",
                             before, inner.config.control_indices()?, inner.config.consumed_generation()?, inner.generation);
                         break;
                     }
@@ -1281,6 +1281,8 @@ impl Runtime {
                 }
                 fsleep(Delta::from_millis(10));
             }
+            self.check_barrier()?;
+            dev_info!(pdev.as_ref(), "G16G: J613 barrier diagnostic complete; stopping before compute (intentional -ENOTSUPP)\n");
             return Err(ENOTSUPP);
         }
         self.wait_control(1)?;
