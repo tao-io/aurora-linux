@@ -1195,7 +1195,11 @@ impl Runtime {
         let root = self.inner.config.root();
         dev_info!(pdev.as_ref(), "G16G: sending relocated GEM initdata root={:#x}\n", root);
         Pin::new(&mut self.inner.transport).send_message(0x20, 0x0081000000000000 | (root & ((1u64 << 44) - 1)))?;
-        Pin::new(&mut self.inner.transport).send_message(0x21, 0x0083000000000011)?;
+        // J613's native 25G83 sequence uses device-control doorbells after
+        // initdata, without the J713 work-channel kick (0x83/0x11).
+        if self.inner.device.firmware().board.chip_id != 0x8122 {
+            Pin::new(&mut self.inner.transport).send_message(0x21, 0x0083000000000011)?;
+        }
         let start = kernel::time::Instant::<kernel::time::Monotonic>::now();
         loop {
             let inner = &mut *self.inner;
@@ -1210,6 +1214,10 @@ impl Runtime {
             }
             if start.elapsed() >= Delta::from_secs(5) { return Err(ETIMEDOUT); }
             fsleep(Delta::from_millis(10));
+        }
+        if self.inner.device.firmware().board.chip_id == 0x8122 {
+            dev_info!(pdev.as_ref(), "G16G: J613 startup device-control kick 0x84/0x11 after ready\n");
+            Pin::new(&mut self.inner.transport).send_message(0x21, 0x0084000000000011)?;
         }
         self.wait_control(1)?;
         self.send_control(0x34)?;
