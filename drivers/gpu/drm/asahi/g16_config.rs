@@ -219,7 +219,7 @@ impl Config {
         // Completion flushes use matching event generations, so CPU
         // visibility no longer depends on immediate power-off.
         for (offset, value) in [(globals::PROGRESS_INTERVAL_MS, 3000), (globals::UNKNOWN_998, 40), (globals::UNKNOWN_99C, 10),
-            (globals::UNKNOWN_9A0, 250), (globals::IDLE_OFF_DELAY_MS, 2), (globals::UNKNOWN_9BC, 40), (globals::UNKNOWN_9C0, 5),
+            (globals::UNKNOWN_9A0, 250), (globals::IDLE_OFF_DELAY_MS, if self.board.chip_id == 0x8122 { 10000 } else { 2 }), (globals::UNKNOWN_9BC, 40), (globals::UNKNOWN_9C0, 5),
             (globals::UNKNOWN_9C8, 40), (globals::UNKNOWN_9CC, 50)] {
             self.object(Globals).u32(offset, value)?;
         }
