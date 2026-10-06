@@ -34,6 +34,16 @@ impl Context {
         self.data.read(context::REGISTRATION, &mut state)?;
         Ok(state[0] != 255 && state[1] != 255 && state[2] == 4)
     }
+    /// Native J613 0x14 releases a registered scheduler context. Construct
+    /// the payload from this owned context, never from a captured address.
+    pub(crate) fn release_args(&mut self) -> Result<([u8; 4], u64)> {
+        if !self.registered()? { return Err(EINVAL); }
+        let mut registration = [0u8; 3];
+        let mut weight = [0u8; 1];
+        self.data.read(context::REGISTRATION, &mut registration)?;
+        self.data.read(context::SCHEDULING_WEIGHT, &mut weight)?;
+        Ok(([weight[0], registration[0], registration[1], registration[2]], self.data.va()))
+    }
     #[cfg(CONFIG_DEV_COREDUMP)]
     pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
         dump.buffer("queue-context", &mut self.data, context::SIZE)

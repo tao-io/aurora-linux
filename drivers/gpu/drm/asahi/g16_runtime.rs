@@ -1282,7 +1282,36 @@ impl Runtime {
                 fsleep(Delta::from_millis(10));
             }
             self.check_barrier()?;
-            dev_info!(pdev.as_ref(), "G16G: J613 barrier diagnostic complete; stopping before compute (intentional -ENOTSUPP)\n");
+            // Barrier retirement registers the owned context. Test native
+            // release only now, after every referring queue is idle.
+            let inner = &mut *self.inner;
+            let (args, pointer) = inner.queue_context.release_args()?;
+            let next = inner.config.enqueue_j613_context_release(args, pointer, &mut inner.generation)?;
+            dev_info!(pdev.as_ref(), "G16G: J613 native context release published args={:x?} pointer={:#x} index={} generation={}\n",
+                args, pointer, next, inner.generation);
+            Pin::new(&mut inner.transport).send_message(0x21, 0x0084000000000011)?;
+            self.wait_control(next)?;
+            let inner = &mut *self.inner;
+            if inner.config.consumed_generation()? != inner.generation { return Err(EIO); }
+            Pin::new(&mut inner.transport).send_message(0x21, 0x0087000000000010)?;
+            let start = kernel::time::Instant::<kernel::time::Monotonic>::now();
+            let mut off_since = None;
+            loop {
+                inner.config.drain(&inner.drm)?;
+                if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
+                let state = inner.device.check_pstate()?;
+                if state == 0 {
+                    let off = off_since.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
+                    if off.elapsed() >= Delta::from_millis(50) { break; }
+                } else { off_since = None; }
+                if start.elapsed() >= Delta::from_secs(2) {
+                    dev_err!(pdev.as_ref(), "G16G: J613 released-context idle timeout pstate={}\n", state);
+                    return Err(ETIMEDOUT);
+                }
+                fsleep(Delta::from_millis(10));
+            }
+            dev_info!(pdev.as_ref(), "G16G: J613 context release retired indices={:?} generation={}/{} pstate=0; stopping before compute (intentional -ENOTSUPP)\n",
+                inner.config.control_indices()?, inner.config.consumed_generation()?, inner.generation);
             return Err(ENOTSUPP);
         }
         self.wait_control(1)?;

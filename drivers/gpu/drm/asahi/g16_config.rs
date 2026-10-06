@@ -463,6 +463,31 @@ impl Config {
         Ok(next)
     }
 
+    /// Native907's first generation-bearing command is context release.
+    /// TEXT3c08 consumes the registered group/slot, weight and owned pointer;
+    /// TEXT4d20 increments consumed generation because opcode14's flag is1.
+    /// Publish packed Globals+e41 as the native AP assertion. Native907 has
+    /// no observed Fender+d60000 AP write; do not add the J713 write here.
+    pub(crate) fn enqueue_j613_context_release(&mut self, args: [u8; 4], pointer: u64,
+        generation: &mut u32) -> Result<u32> {
+        if self.board.chip_id != 0x8122 || args[1] == 255 || args[2] == 255
+            || args[3] != 4 || pointer & 7 != 0 { return Err(EINVAL); }
+        let [read, cfi, write] = self.control_indices()?;
+        if read != write || cfi != write { return Err(EBUSY); }
+        let mut entry = [0; channel::CONTROL_RECORD_SIZE];
+        entry[..4].copy_from_slice(&0x14u32.to_le_bytes());
+        entry[8..12].copy_from_slice(&args);
+        entry[12..20].copy_from_slice(&pointer.to_le_bytes());
+        self.object(Object::DevctrlRing).write(write as usize * channel::CONTROL_RECORD_SIZE, &entry)?;
+        *generation = generation.checked_add(1).ok_or(EOVERFLOW)?;
+        self.object(Object::Globals).write(0xe41, &generation.to_le_bytes())?;
+        g16_memory::publish();
+        let next = (write + 1) % channel::CONTROL_CAPACITY;
+        self.object(Object::DevctrlState).u32(channel::WRITE, next)?;
+        g16_memory::publish();
+        Ok(next)
+    }
+
     pub(crate) fn enqueue_control(&mut self, opcode: u32, payload: u32,
         generation: &mut u32, device: &crate::g16_device::Device) -> Result<u32> {
         if !matches!(opcode, 0x1a | 0x34 | 0x0a) { return Err(EINVAL); }
