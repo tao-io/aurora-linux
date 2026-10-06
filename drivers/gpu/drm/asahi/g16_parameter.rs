@@ -46,7 +46,10 @@ impl Parameters {
             blocks: Buffer::new(dev, uat.kernel_vm(), capacity*8)?,
             memory: Buffer::new_gpu_aligned(dev, uat.kernel_vm(), vm, bytes, BLOCK_BYTES as u64)?,
             counter: Buffer::new(dev, uat.kernel_vm(), 0x40)?, id, shared, claimed:false,
-            layout: wire::ParameterLayout::for_chip(uat.chip_id()),
+            // The common UAT uses T8132 geometry on J613 too; its config ID
+            // is not the detected board identity. Select the firmware ABI
+            // from the admitted board without changing the UAT handoff.
+            layout: wire::ParameterLayout::for_chip(crate::g16_board::get()?.chip_id),
         };
         pool.rebuild(dev, uat, vm, bytes)?;
         Arc::pin_init(kernel::new_mutex!(pool), GFP_KERNEL)
