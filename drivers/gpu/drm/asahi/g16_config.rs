@@ -438,6 +438,11 @@ impl Config {
         // All three admitted opcodes require a power assertion in the M4 ABI.
         *generation = generation.wrapping_add(1);
         device.set_power_generation(*generation)?;
+        if self.board.chip_id == 0x8122 {
+            // c000 TEXT 0x383c/0x38c0 reads this packed Globals field,
+            // not Fender SRAM, to compare against consumed generation.
+            self.object(Object::Globals).write(0xe41, &generation.to_le_bytes())?;
+        }
         g16_memory::publish();
         let next = (write + 1) % channel::CONTROL_CAPACITY;
         self.object(Object::DevctrlState).u32(channel::WRITE, next)?;
@@ -449,6 +454,16 @@ impl Config {
         let indices = [state.read_u32(channel::READ)?, state.read_u32(channel::CFI)?, state.read_u32(channel::WRITE)?];
         if indices.iter().any(|index| *index >= channel::CONTROL_CAPACITY) { return Err(EIO); }
         Ok(indices)
+    }
+    pub(crate) fn log_control_publication(&mut self, dev: &driver::AsahiDevice) -> Result {
+        let mut packed = [0u8; 4];
+        self.object(Object::Globals).read(0xe41, &mut packed)?;
+        let mut entry = [0u8; 8];
+        self.object(Object::DevctrlRing).read(0, &mut entry)?;
+        dev_info!(dev.as_ref(), "G16G: device-control publication Globals+0xe41={} entry0={:x?} state={:#x} ring={:#x}\n",
+            u32::from_le_bytes(packed), entry, self.object(Object::DevctrlState).va(),
+            self.object(Object::DevctrlRing).va());
+        Ok(())
     }
     pub(crate) fn consumed_generation(&mut self) -> Result<u32> {
         self.object(Object::FirmwareData).read_u32(firmware_data::CONSUMED_GENERATION)
@@ -479,7 +494,8 @@ impl Config {
             (Activity254, "vertex-engine"), (Activity25c, "fragment-engine"),
             (Activity264, "compute-engine"), (UmaTable, "uma-table"),
             (ParameterTable, "parameter-table"), (KtraceState, "trace-state"),
-            (KtraceData, "trace-data")] {
+            (KtraceData, "trace-data"), (DevctrlState, "device-control-state"),
+            (DevctrlRing, "device-control-ring")] {
             dump.buffer(name, self.object(object), object.size())?;
         }
         Ok(())

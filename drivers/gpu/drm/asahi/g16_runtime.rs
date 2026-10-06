@@ -1365,6 +1365,7 @@ impl Runtime {
             if start.elapsed() >= Delta::from_secs(4) {
                 dev_err!(inner.drm.as_ref(), "G16G: device-control timeout indices={:?} expected={} power-generation={}/{}\n",
                     indices, next, inner.config.consumed_generation()?, inner.generation);
+                inner.config.log_control_publication(&inner.drm)?;
                 inner.device.log_power_handshake()?;
                 inner.config.log_firmware_state(&inner.drm)?;
                 return Err(ETIMEDOUT);
