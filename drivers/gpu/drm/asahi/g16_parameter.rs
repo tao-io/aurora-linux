@@ -18,6 +18,7 @@ pub(crate) struct Parameters {
     pub(crate) id: u32,
     pub(crate) shared: bool,
     claimed: bool,
+    layout: wire::ParameterLayout,
 }
 
 pub(crate) fn geometry(r: UapiRenderCommand) -> Result<Geometry> {
@@ -45,6 +46,7 @@ impl Parameters {
             blocks: Buffer::new(dev, uat.kernel_vm(), capacity*8)?,
             memory: Buffer::new_gpu_aligned(dev, uat.kernel_vm(), vm, bytes, BLOCK_BYTES as u64)?,
             counter: Buffer::new(dev, uat.kernel_vm(), 0x40)?, id, shared, claimed:false,
+            layout: wire::ParameterLayout::for_chip(uat.chip_id()),
         };
         pool.rebuild(dev, uat, vm, bytes)?;
         Arc::pin_init(kernel::new_mutex!(pool), GFP_KERNEL)
@@ -85,16 +87,19 @@ impl Parameters {
         self.ring.u32(0, block_count.try_into()?)?;
         self.ring.u32(4, block_count.try_into()?)?;
         let mut manager = [0;wire::parameter::SIZE];
-        wire::parameter_manager(&mut manager, wire::ParameterManager {
+        wire::parameter_manager_for_layout(&mut manager, wire::ParameterManager {
             pages_fw:self.pages.va(), pages_gpu:self.pages.gpu_va()?,
             blocks:self.blocks.va(), ring:self.ring.va(), counter:self.counter.va(),
             discard:0, list_bytes:(page_count*4).try_into()?, pages:page_count.try_into()?,
             block_capacity:capacity.try_into()?, write:block_count.try_into()?, read:0,
             min_pages:page_count.try_into()?, max_pages:page_count.try_into()?, id:self.id,
-        }).map_err(|_| EINVAL)?;
+        }, self.layout).map_err(|_| EINVAL)?;
         self.manager.write(0, &manager)?;
         self.claimed = false;
         Ok(())
+    }
+    pub(crate) fn last_page(&mut self) -> Result<u32> {
+        self.manager.read_u32(self.layout.last_page())
     }
     pub(crate) fn pages(&self) -> usize { self.memory.size() / 32768 }
     pub(crate) fn resident_bytes(&self) -> usize {

@@ -3084,6 +3084,7 @@ impl Drop for VmInner {
 }
 
 impl Uat {
+    pub(crate) fn chip_id(&self) -> u32 { self.cfg.chip_id }
     /// Map a bootloader-preallocated memory region
     fn map_region(
         dev: &device::Device,

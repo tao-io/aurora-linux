@@ -422,7 +422,7 @@ impl Render {
         let i = self.index();
         Ok([self.metadata.read_u32(metadata::LEGACY_FW_STAMPS[i])? as u64,self.metadata.read_u32(metadata::LEGACY_USER_STAMPS[i])? as u64,
             self.commands[i].read_u32(wire::layout(self.stage).command_status)? as u64,
-            self.parameters.lock().manager.read_u32(wire::parameter::LAST_PAGE)? as u64])
+            self.parameters.lock().last_page()? as u64])
     }
     pub(crate) fn set_user_timestamps(&mut self, addresses: [[u64; 2]; 2]) -> Result {
         for (i, pair) in addresses.into_iter().enumerate() {

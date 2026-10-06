@@ -297,7 +297,35 @@ pub(crate) struct ParameterManager {
     pub block_capacity: u32, pub write: u32, pub read: u32,
     pub max_pages: u32, pub min_pages: u32, pub id: u32,
 }
+/// G15G/25G83 lacks the M4 word preceding the page-list pointers.
+/// Keep a complete explicit layout: firmware TEXT31170 reads RING+4,
+/// TEXT3117c/31278 read the two page-list aliases, TEXT311bc reads BLOCKS,
+/// and TEXT311e4/31460 read block size/discard. This is not a render-command
+/// or microsequence relocation; those envelopes are unchanged in this cycle.
+#[derive(Clone, Copy)]
+pub(crate) enum ParameterLayout { M4, J613 }
+impl ParameterLayout {
+    pub(crate) fn for_chip(chip: u32) -> Self {
+        if chip == 0x8122 { Self::J613 } else { Self::M4 }
+    }
+    pub(crate) fn last_page(self) -> usize {
+        match self { Self::M4 => parameter::LAST_PAGE, Self::J613 => 0x50 }
+    }
+    fn offsets(self) -> [usize; 17] {
+        match self {
+            Self::M4 => [0x0c,0x10,0x20,0x28,0x30,0x34,0x38,0x3c,0x40,
+                0x44,0x4c,0x54,0x58,0x64,0x7c,0x80,0x84],
+            Self::J613 => [0x08,0x0c,0x1c,0x24,0x2c,0x30,0x34,0x38,0x3c,
+                0x40,0x48,0x50,0x54,0x60,0x78,0x7c,0x80],
+        }
+    }
+}
 pub(crate) fn parameter_manager(out: &mut [u8], a: ParameterManager) -> Result<(), BuildError> {
+    parameter_manager_for_layout(out, a, ParameterLayout::M4)
+}
+pub(crate) fn parameter_manager_for_layout(out: &mut [u8], a: ParameterManager,
+    layout: ParameterLayout) -> Result<(), BuildError> {
+
     if out.len() < parameter::SIZE { return Err(BuildError::BufferTooSmall); }
     if ![a.pages_fw,a.blocks,a.ring,a.counter].iter().all(|p| valid_fw(*p))
         || a.pages_gpu == 0 || a.pages_gpu >= 1 << 43 || a.pages == 0 || a.pages & 3 != 0
@@ -310,13 +338,15 @@ pub(crate) fn parameter_manager(out: &mut [u8], a: ParameterManager) -> Result<(
     // reserves one physical slot per in-flight owner; bind that slot here.
     // Leaving this zero aliases every owner's page list in descriptor zero,
     // which serial rendering hides but overlapping TA/FS can corrupt.
-    for (off,value,size) in [
-        (parameter::HARDWARE_ID,a.id as u64,4), (parameter::ID,a.id as u64,4),
-        (parameter::PAGES_FW,a.pages_fw,8), (parameter::PAGES_GPU,a.pages_gpu,8),
-        (parameter::LIST_BYTES,a.list_bytes as u64,4), (parameter::PAGE_COUNT,a.pages as u64,4), (parameter::BLOCK_CAPACITY,a.block_capacity as u64,4),
-        (parameter::WRITE,a.write as u64,4), (parameter::READ,a.read as u64,4), (parameter::BLOCKS,a.blocks,8), (parameter::RING,a.ring,8),
-        (parameter::LAST_PAGE,(a.pages-1) as u64,4), (parameter::BLOCK_BYTES,0x20000,4), (parameter::COUNTER,a.counter,8),
-        (parameter::MAX_PAGES,a.max_pages as u64,4), (parameter::MIN_PAGES,a.min_pages as u64,4), (parameter::DISCARD,a.discard,8)] { put(out,off,value,size); }
+    let values = [
+        (a.id as u64,4), (a.id as u64,4), (a.pages_fw,8), (a.pages_gpu,8),
+        (a.list_bytes as u64,4), (a.pages as u64,4), (a.block_capacity as u64,4),
+        (a.write as u64,4), (a.read as u64,4), (a.blocks,8), (a.ring,8),
+        ((a.pages-1) as u64,4), (0x20000,4), (a.counter,8),
+        (a.max_pages as u64,4), (a.min_pages as u64,4), (a.discard,8)];
+    for (off, (value,size)) in layout.offsets().into_iter().zip(values) {
+        put(out,off,value,size);
+    }
     Ok(())
 }
 pub(crate) fn init_parameter_buffer(out: &mut [u8], context: u32, id: u32,
