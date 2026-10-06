@@ -270,6 +270,34 @@ pub(crate) fn encode(command: &mut [u8], sku: &mut [u8], stage: Stage, a: Args) 
     Ok(())
 }
 
+/// J613 c000 dispatch advances StartTA by 0x1c8 (TEXT196b0),
+/// timestamps by 0x48 (TEXT19dc4), WFI by 4 (TEXT18a74), and
+/// FinalizeTA by 0x94 (TEXT1a1fc). Compact the owned M4 program only
+/// after timestamp/attachment patching, before any firmware publication.
+/// External cells and the UMA header at +0x190 retain their addresses.
+/// Reject diagnostic/unknown shapes without partially modifying the input.
+pub(crate) fn j613_tiling_program(sequence: &mut [u8]) -> Result<usize, BuildError> {
+    const OLD: usize = 0x300;
+    const FINALIZE: usize = 0x25c;
+    const SIZE: usize = 0x2f4;
+    if sequence.len() < OLD { return Err(BuildError::BufferTooSmall); }
+    let word = |o| u32::from_le_bytes(sequence[o..o+4].try_into().unwrap());
+    if sequence.len() != OLD || word(0) != 5 || word(0x1cc) != 0x80000003
+        || word(0x218) != 1 || word(0x21c) != 3 || word(0x268) != 6
+        || word(0x2e8) != (-0x268i32) as u32 || word(0x2fc) != 0x40000002 {
+        return Err(BuildError::Address);
+    }
+    let mut image = [0u8; OLD];
+    image[..0x1c8].copy_from_slice(&sequence[..0x1c8]);
+    image[0x1c8..0x210].copy_from_slice(&sequence[0x1cc..0x214]);
+    image[0x210..0x214].copy_from_slice(&sequence[0x218..0x21c]);
+    image[0x214..FINALIZE].copy_from_slice(&sequence[0x21c..0x264]);
+    image[FINALIZE..SIZE].copy_from_slice(&sequence[0x268..OLD]);
+    put(&mut image, FINALIZE + 0x80, (- (FINALIZE as i32)) as u32 as u64, 4);
+    sequence.copy_from_slice(&image);
+    Ok(SIZE)
+}
+
 /// Relocate a complete native program while preserving all external pointers.
 /// Finalize's UMA header pointer is the only absolute self-reference; its
 /// relative restart and repeated timestamp records remain byte-identical.

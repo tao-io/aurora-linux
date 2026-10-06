@@ -659,6 +659,7 @@ impl Runtime {
                     render.omit_internal_timestamps([pairs[0] == [0, 0],
                         pairs[1] == [0, 0] && packet.commands[index].end_copy_addresses() == [0; 8]])?;
                 }
+                render.select_tiling_program_abi(inner.device.firmware().board.chip_id)?;
             }
         }
         inner.command_label = label;
