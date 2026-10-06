@@ -1112,6 +1112,24 @@ impl Runtime {
                 out.copy_from_slice(&cause); Ok(())
             })?;
             inner.config.capture_fault(&mut dump)?;
+            // g18 diagnostic: only after the unchanged J613 startup timed out,
+            // and after preserving its pre-probe configuration/RAM. The admitted
+            // c000/25G83 EP1 handler recognizes 0x22 as RTKit dump-and-stop.
+            // This is not a boot input or a GPU command. Never replace the
+            // original timeout with a diagnostic send/capture error.
+            if inner.device.firmware().board.chip_id == 0x8122 && primary == ETIMEDOUT
+                && inner.inflight.is_empty() && !inner.gpu_pending {
+                dev_info!(inner.drm.as_ref(), "G18_PROBE: preserved timeout RAM; requesting RTKit EP1 0x22 dump-and-stop\n");
+                match Pin::new(&mut inner.transport).send_message(1, 0x22) {
+                    Ok(()) => {
+                        fsleep(Delta::from_millis(1000));
+                        if let Err(error) = inner.config.capture_probe_data(&mut dump) {
+                            dev_warn!(inner.drm.as_ref(), "G18_PROBE: RAM capture failed: {:?}\n", error);
+                        }
+                    }
+                    Err(error) => dev_warn!(inner.drm.as_ref(), "G18_PROBE: send failed: {:?}\n", error),
+                }
+            }
             inner.queue_context.capture_fault(&mut dump)?;
             inner.queue.capture_fault(&mut dump, ["queue-ta", "ring-state-ta"])?;
             inner.fragment_queue.capture_fault(&mut dump,

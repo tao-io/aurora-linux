@@ -500,6 +500,20 @@ impl Config {
         self.object(Object::FirmwareData).read_u32(firmware_data::CONSUMED_GENERATION)
     }
     pub(crate) fn reset_trace_budget(&mut self) { self.trace_seen = [0; 2]; }
+    /// Diagnostic only: read admitted firmware RAM after an RTKit dump request.
+    #[cfg(CONFIG_DEV_COREDUMP)]
+    pub(crate) fn capture_probe_data(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
+        let size = self.board.firmware.data_size as usize;
+        let map = self.loader.iosys_map(0, size)?;
+        dump.record("firmware-data-post-probe", 0xfffffc0000000000 + self.board.firmware.text_size,
+            size, |out| {
+                for (i, byte) in out.iter_mut().enumerate() {
+                    // SAFETY: bounded read of the retained WC firmware RAM mapping.
+                    *byte = unsafe { map.as_ptr().add(i).read_volatile() };
+                }
+                Ok(())
+            })
+    }
     #[cfg(CONFIG_DEV_COREDUMP)]
     pub(crate) fn capture_fault(&mut self, dump: &mut crate::g16_fault::Dump) -> Result {
         use Object::*;
