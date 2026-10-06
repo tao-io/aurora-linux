@@ -72,6 +72,10 @@ pub(crate) fn inputs(dev: &driver::AsahiDevice) -> Result<KVec<(Object, usize, u
         // SAFETY: F32 is repr(transparent) over u32; this copies its IEEE bits.
         w!($owner, $offset, unsafe { core::mem::transmute::<F32, u32>(value) });
     }}; }
+    // PP+0xa38 is seeded once to the native pre-init power-PI output
+    // (800 at max=8), then remains firmware-owned. This is not a lower
+    // bound: PP+0x9f0 stays at DT duty30. PP+0x221c is a maximum
+    // performance bound, not a duty-cycle field (native909 pre-init800).
     // Shared host power inputs. The update flags stay zero, as in native905.
     // T8122 uses the per-SoC 110/80 C constants (not ADT's 88 C target).
     for (o,v) in [(0xc8,11000),(0xcc,8000),(0x10,avg_periods),(0x1c,avg_duty),
@@ -85,7 +89,7 @@ pub(crate) fn inputs(dev: &driver::AsahiDevice) -> Result<KVec<(Object, usize, u
     w!(PP,0x8,u!("apple,pwr-sample-period-aic-clks")); w!(PP,0x62a8,1);
     for (o,v) in [(0x40,base*100),(0x44,1),(0x48,max*100),(0x50,100),
         (0x60,4),(0x6c,1),(0x70,1),(0x80,base*100),(0x84,1),(0x88,max*100),(0x90,100),
-        (0x9b8,625),(0x9f0,duty),(0x9f4,max*100),(0x9f8,max*100),(0xa04,max_power),
+        (0x9b8,625),(0x9f0,duty),(0x9f4,max*100),(0x9f8,max*100),(0xa04,max_power),(0xa38,max*100),
         (0xa70,ppm_periods*4),(0xaa8,duty),(0xaac,max*100),(0xabc,max_power),
         (0xac8,ppm_ms),(0xad0,ppm_periods*period*24000),
         (0xb28,util),(0xb30,u!("apple,perf-boost-min-util")),
@@ -93,7 +97,7 @@ pub(crate) fn inputs(dev: &driver::AsahiDevice) -> Result<KVec<(Object, usize, u
         (0xb40,6),(0xb44,1),(0xb48,u!("apple,perf-filter-drop-threshold")),
         (0xb78,base*100),(0xb7c,max*100),(0xb80,base*100),(0xb8c,util),(0xbc0,base*100),
         (0x21fc,crate::g16_board::get()?.frequencies_mhz[max as usize]),
-        (0x221c,duty),(0x2220,max*100),
+        (0x221c,max*100),
         (0x2270,8000),(0x22b0,duty),(0x22b4,max*100),(0x22b8,max*100),(0x22c4,11000),
         (0x28c0,1),(0x28c8,max_power),(0x28cc,max_power),(0x28d0,max_power),
         (0x28e4,avg_target_tc*4),(0x28e8,period*avg_target_tc),(0x28ec,period*avg_target_tc*24000),
