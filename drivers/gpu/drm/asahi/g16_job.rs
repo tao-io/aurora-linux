@@ -178,11 +178,16 @@ impl Compute {
             job.shader.write(0, &image[..])?;
             let mut launch = g16_dispatch::cdm(job.esl.gpu_va()?).map_err(|_| EINVAL)?;
             launch[16..20].copy_from_slice(&1048576u32.to_le_bytes());
+            // G34: change only gridY1->16, keeping qualified gridX/localX,
+            // launch count, shader, output, allocations and2s timeout.
+            // g32 retired this workload in80.49ms at profile13;16x encoded
+            // work targets1.29s, below the unchanged2s deadline.
+            launch[20..24].copy_from_slice(&16u32.to_le_bytes());
             launch[28..32].copy_from_slice(&32u32.to_le_bytes());
             for i in 0..128 { job.cdm.write(i*44, &launch[..44])?; }
             job.cdm.u32(128*44, 0x40000000)?;
             job.command.u64(layout::CDM_LAST, job.cdm.gpu_va()? + (128*44) as u64)?;
-            dev_info!(dev.as_ref(), "G16G: J613 bounded burn launches=128 global=1048576 local=32 dependent_ffma=1024 total_lane_ffma=137438953472 watchdog_ms=2000\n");
+            dev_info!(dev.as_ref(), "G16G: J613 bounded burn launches=128 global_x=1048576 global_y=16 local=32 dependent_ffma=1024 total_lane_ffma=2199023255552 watchdog_ms=2000\n");
         }
         job.output.u32(0, g16_dispatch::SENTINEL)?;
         g16_memory::publish();
