@@ -163,6 +163,27 @@ impl Compute {
         job.shader.write(0, &g16_dispatch::image(job.output.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.esl.write(0, &g16_dispatch::esl(job.shader.gpu_va()?).map_err(|_| EINVAL)?)?;
         job.cdm.write(0, &g16_dispatch::cdm(job.esl.gpu_va()?).map_err(|_| EINVAL)?)?;
+        // J613 diagnostic: immutable bounded load, same owned shader/store
+        // and retirement path. 128 direct launches, 1048576 global threads
+        // per launch in groups of32; each performs1024 dependent identity
+        // FMAs and stores the independently checked original value.
+        if control.is_none() && crate::g16_board::get()?.chip_id == 0x8122 {
+            let mut image = KBox::new([0u8; 0x4000], GFP_KERNEL)?;
+            image[..0x400].copy_from_slice(&g16_dispatch::image(job.output.gpu_va()?).map_err(|_| EINVAL)?);
+            let original = g16_dispatch::shader(job.output.gpu_va()?).map_err(|_| EINVAL)?;
+            let start = g16_dispatch::ENTRY;
+            image[start..start+24].copy_from_slice(&original[..24]);
+            for i in 0..1024 { image[start+24+i*8..start+32+i*8].copy_from_slice(&[0x29,5,6,0xb0,0x21,0x80,0,2]); }
+            image[start+24+8192..start+42+8192].copy_from_slice(&original[24..]);
+            job.shader.write(0, &image[..])?;
+            let mut launch = g16_dispatch::cdm(job.esl.gpu_va()?).map_err(|_| EINVAL)?;
+            launch[16..20].copy_from_slice(&1048576u32.to_le_bytes());
+            launch[28..32].copy_from_slice(&32u32.to_le_bytes());
+            for i in 0..128 { job.cdm.write(i*44, &launch[..44])?; }
+            job.cdm.u32(128*44, 0x40000000)?;
+            job.command.u64(layout::CDM_LAST, job.cdm.gpu_va()? + (128*44) as u64)?;
+            dev_info!(dev.as_ref(), "G16G: J613 bounded burn launches=128 global=1048576 local=32 dependent_ffma=1024 total_lane_ffma=137438953472 watchdog_ms=2000\n");
+        }
         job.output.u32(0, g16_dispatch::SENTINEL)?;
         g16_memory::publish();
         job.log_context(dev)?;

@@ -1400,6 +1400,8 @@ impl Runtime {
                 && status[9] == crate::g16_dispatch::VALUE as u64 {
                 let completion = completed.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
                 if completion.elapsed() >= Delta::from_millis(50) {
+                    dev_info!(inner.drm.as_ref(), "G16G: bounded compute timing host_ns={} raw_gpu_ticks={} (timestamp timebase not assumed)\n", start.elapsed().as_nanos(), status[3] - status[2]);
+                    inner.config.log_firmware_state(&inner.drm)?;
                     inner.gpu_pending = false;
                     inner.state.health.set_gpu_pending(false);
                     dev_info!(inner.drm.as_ref(), "G16G: owned compute store retired, stamps/timestamps={:x?} queue={:?}, firmware ready\n", status, queue);
