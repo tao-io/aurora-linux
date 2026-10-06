@@ -87,7 +87,11 @@ pub(crate) fn inputs(dev: &driver::AsahiDevice) -> Result<KVec<(Object, usize, u
     wf!(Power,0x14,avg_ki); wf!(Power,0x18,avg_kp);
     wf!(Power,0xd8,fast_kp); wf!(Power,0xdc,fast_ki);
     wf!(Power,0x130,ppm_kp); wf!(Power,0x134,ppm_ki);
-    // The max-power Globals offset is still inferred; do not populate it.
+    // 25G83 TEXT256c0 loads Globals+84 (DATA1889f8), copies it to
+    // PP+28d0 and bounds the average-power target with it at TEXT257f0.
+    // A zero Globals budget drives target PP+2a08 to zero, regardless of
+    // the native PP+28c8 budget. This read site verifies the survey mapping.
+    w!(Globals,0x84,max_power);
     // Reference/maintenance and secondary timers are native constructor inputs.
     w!(Main,0xed8,period); w!(PP,0x4,u!("apple,pwr-sample-period-aic-clks"));
     w!(PP,0x8,u!("apple,pwr-sample-period-aic-clks")); w!(PP,0x62a8,1);
@@ -124,7 +128,7 @@ pub(crate) fn inputs(dev: &driver::AsahiDevice) -> Result<KVec<(Object, usize, u
         (0xb74,F32::from(max-base)/f32!(0.95)),
         (0x21f0,f32!(65536.0)),(0x21f4,F32::from(duty)),(0x21f8,F32::from(max*100)),
         (0x2218,f32!(100.0)),(0x2294,fast_ki),(0x22a4,fast_kp),
-        (0x28d8,one-avg_target_a),(0x28e0,avg_target_a),
+        (0x28dc,one-avg_target_a),(0x28e0,avg_target_a),
         (0x29c8,one-avg_a),(0x29d0,avg_a),(0x29d8,avg_ki),(0x29e4,f32!(65536.0)),
         (0x29e8,avg_kp),(0x2a04,F32::from(max_power)),
         (0x2b58,one-se_a),(0x2b5c,one-se_a1),(0x2b60,se_a),(0x2b64,se_a1),
