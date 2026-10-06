@@ -271,6 +271,14 @@ impl Device {
     /// Read-only snapshot. Do not select or acknowledge fault banks here;
     /// the firmware owns those registers until recovery is ported.
     pub(crate) fn log_engine_state(&self) -> Result {
+        // With adaptive J613 DVFS a powered SGX state does not prove that
+        // each engine register bank is clocked. G43 stopped after the MMU
+        // read at state1, before any compute publication. Retain shared
+        // firmware snapshots; never sweep partially gated physical banks.
+        if self.firmware.board.chip_id == 0x8122 {
+            dev_info!(self.dev.as_ref(), "G16G: J613 adaptive DVFS: physical engine snapshot skipped; firmware buffers retained\n");
+            return Ok(());
+        }
         let sgx = self.sgx.try_access().ok_or(ENODEV)?;
         let pstate = sgx.try_read32(0xe01000)? & 0xf;
         if pstate == 0 {
