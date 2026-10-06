@@ -1183,8 +1183,12 @@ impl Runtime {
         self.inner.uat.kernel_vm().context_roots(&mut roots)?;
         dev_info!(pdev.as_ref(), "G16G: RTKit IOP/AP running with owned common UAT, context0=[{:#x},{:#x}]; application endpoints started, no initdata sent\n", roots[0].0, roots[0].1);
         self.inner.device.check_pstate()?;
-        self.inner.device.set_power_generation(0)?;
-        {
+        let j613 = self.inner.device.firmware().board.chip_id == 0x8122;
+        if j613 {
+            self.inner.config.enqueue_j613_native_control(0x16, 0, 0)?;
+            dev_info!(pdev.as_ref(), "G16G: J613 native pre-initdata control opcode=0x16 generation=0\n");
+        } else {
+            self.inner.device.set_power_generation(0)?;
             let inner = &mut *self.inner;
             inner.config.enqueue_control(0x1a, 0, &mut inner.generation, &inner.device)?;
         }
@@ -1215,9 +1219,21 @@ impl Runtime {
             if start.elapsed() >= Delta::from_secs(5) { return Err(ETIMEDOUT); }
             fsleep(Delta::from_millis(10));
         }
-        if self.inner.device.firmware().board.chip_id == 0x8122 {
-            dev_info!(pdev.as_ref(), "G16G: J613 startup device-control kick 0x84/0x11 after ready\n");
-            Pin::new(&mut self.inner.transport).send_message(0x21, 0x0084000000000011)?;
+        if j613 {
+            // HV 907: the first entry retires with initdata, without a kick.
+            self.wait_control(1)?;
+            for pipe in 0..3 {
+                for kind in 1..=2 {
+                    let next = self.inner.config.enqueue_j613_native_control(0x1b, pipe, kind)?;
+                    Pin::new(&mut self.inner.transport).send_message(0x21, 0x0084000000000011)?;
+                    self.wait_control(next)?;
+                    dev_info!(pdev.as_ref(), "G16G: J613 native control retired opcode=0x1b pipe={} kind={} index={}\n", pipe, kind, next);
+                }
+            }
+            let inner = &mut *self.inner;
+            inner.config.log_control_publication(&inner.drm)?;
+            dev_info!(pdev.as_ref(), "G16G: J613 native startup diagnostic complete; stopping before GPU work (intentional -ENOTSUPP)\n");
+            return Err(ENOTSUPP);
         }
         self.wait_control(1)?;
         self.send_control(0x34)?;

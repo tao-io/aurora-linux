@@ -428,6 +428,30 @@ impl Config {
 
     /// Serialized device-control producer. Ring geometry is a firmware ABI
     /// constraint; no queue or allocation count is limited by a lab pool.
+    /// HV 907, J613/25G83: one pre-initdata 0x16, then six 0x1b
+    /// pipe/kind pairs. All 64-byte records have zero reserved bytes and
+    /// publish with Globals+0xe41 still zero, without an SGX generation write.
+    pub(crate) fn enqueue_j613_native_control(&mut self, opcode: u32,
+        pipe: u32, kind: u32) -> Result<u32> {
+        if self.board.chip_id != 0x8122 ||
+            !((opcode == 0x16 && pipe == 0 && kind == 0) ||
+              (opcode == 0x1b && pipe < 3 && matches!(kind, 1 | 2))) {
+            return Err(EINVAL);
+        }
+        let [read, cfi, write] = self.control_indices()?;
+        if read != write || cfi != write { return Err(EBUSY); }
+        let mut entry = [0; channel::CONTROL_RECORD_SIZE];
+        entry[..4].copy_from_slice(&opcode.to_le_bytes());
+        entry[4..8].copy_from_slice(&pipe.to_le_bytes());
+        entry[8..12].copy_from_slice(&kind.to_le_bytes());
+        self.object(Object::DevctrlRing).write(write as usize * channel::CONTROL_RECORD_SIZE, &entry)?;
+        g16_memory::publish();
+        let next = (write + 1) % channel::CONTROL_CAPACITY;
+        self.object(Object::DevctrlState).u32(channel::WRITE, next)?;
+        g16_memory::publish();
+        Ok(next)
+    }
+
     pub(crate) fn enqueue_control(&mut self, opcode: u32, payload: u32,
         generation: &mut u32, device: &crate::g16_device::Device) -> Result<u32> {
         if !matches!(opcode, 0x1a | 0x34 | 0x0a) { return Err(EINVAL); }
