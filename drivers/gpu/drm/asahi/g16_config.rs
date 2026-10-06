@@ -211,6 +211,17 @@ impl Config {
         self.object(FirmwareData).u32(firmware_data::UNKNOWN_4FD4, 1)?;
         self.object(Globals).u32(globals::UNKNOWN_78, 1)?;
         self.object(Globals).u32(globals::UNKNOWN_E28, 3)?;
+        // J613/25G83 native905 root+0xb8 Power object, +c8=11000
+        // centidegrees, +cc=8000. TEXT24bbc imports these as temperature
+        // target/release; the existing native PP gains/sensor mask remain.
+        // Leaving both zero falsely triggers the thermal PI at room temp.
+        // Restore this native threshold pair, not a cap/output override.
+        // Source mapping: TEXT339fc stores root+b8 to DATA188a00.
+        if self.board.name == "J613" {
+            self.object(Power).u32(0xc8, 11000)?;
+            self.object(Power).u32(0xcc, 8000)?;
+        }
+
         // 25G83 host Globals: progress intervals and idle/context timers in
         // milliseconds. These match the common Asahi constructor roles and
         // the J713 producer. A zero-filled timer is not a disabled timer.
@@ -427,7 +438,7 @@ impl Config {
         dev_info!(dev.as_ref(), "G16G: hardware UMA slot1={:x?}\n", uma);
         let power = self.object(Object::PowerPerformance).read_u32(power_data::HARDWARE_STATE)?;
         dev_info!(dev.as_ref(), "G16G: firmware GPU power state={:#x}\n", power);
-        for start in [0usize, 0x20, 0x40, 0xb80, 0xbc0, 0x6510, 0x6550] {
+        for start in [0usize, 0x20, 0x40, 0xb80, 0xbc0, 0x21f0, 0x2208, 0x2260, 0x2270, 0x22c0, 0x22e0, 0x22f0, 0x6510, 0x6550] {
             let mut words = [0u32; 8];
             for (index, word) in words.iter_mut().enumerate() {
                 *word = self.object(Object::PowerPerformance).read_u32(start + index * 4)?;
