@@ -258,7 +258,7 @@ pub(crate) static J613: Board = Board {
     gpu_revision: hw::GpuRevision::C0,
     chip_id: 0x8122,
     pmp_thermal: false,
-    compute_self_test: false,
+    compute_self_test: true,
 };
 
 static CURRENT: core::sync::atomic::AtomicPtr<Board> = core::sync::atomic::AtomicPtr::new(core::ptr::null_mut());

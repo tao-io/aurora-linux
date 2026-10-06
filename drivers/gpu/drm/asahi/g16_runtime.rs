@@ -1282,37 +1282,13 @@ impl Runtime {
                 fsleep(Delta::from_millis(10));
             }
             self.check_barrier()?;
-            // Barrier retirement registers the owned context. Test native
-            // release only now, after every referring queue is idle.
-            let inner = &mut *self.inner;
-            let (args, pointer) = inner.queue_context.release_args()?;
-            let next = inner.config.enqueue_j613_context_release(args, pointer, &mut inner.generation)?;
-            dev_info!(pdev.as_ref(), "G16G: J613 native context release published args={:x?} pointer={:#x} index={} generation={}\n",
-                args, pointer, next, inner.generation);
-            Pin::new(&mut inner.transport).send_message(0x21, 0x0084000000000011)?;
-            self.wait_control(next)?;
-            let inner = &mut *self.inner;
-            if inner.config.consumed_generation()? != inner.generation { return Err(EIO); }
-            Pin::new(&mut inner.transport).send_message(0x21, 0x0087000000000010)?;
-            let start = kernel::time::Instant::<kernel::time::Monotonic>::now();
-            let mut off_since = None;
-            loop {
-                inner.config.drain(&inner.drm)?;
-                if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
-                let state = inner.device.check_pstate()?;
-                if state == 0 {
-                    let off = off_since.get_or_insert(kernel::time::Instant::<kernel::time::Monotonic>::now());
-                    if off.elapsed() >= Delta::from_millis(50) { break; }
-                } else { off_since = None; }
-                if start.elapsed() >= Delta::from_secs(2) {
-                    dev_err!(pdev.as_ref(), "G16G: J613 released-context idle timeout pstate={}\n", state);
-                    return Err(ETIMEDOUT);
-                }
-                fsleep(Delta::from_millis(10));
-            }
-            dev_info!(pdev.as_ref(), "G16G: J613 context release retired indices={:?} generation={}/{} pstate=0; stopping before compute (intentional -ENOTSUPP)\n",
-                inner.config.control_indices()?, inner.config.consumed_generation()?, inner.generation);
-            return Err(ENOTSUPP);
+            // Native context release was verified separately by g25. Keep
+            // this context registered for compute and the DRM runtime;
+            // native907 also retains generation0 throughout its GPU work.
+            if !self.inner.device.firmware().board.compute_self_test { return Err(ENOTSUPP); }
+            self.check_compute()?;
+            dev_info!(pdev.as_ref(), "G16G: J613 compute self-test complete; continuing to DRM registration\n");
+            return Ok(());
         }
         self.wait_control(1)?;
         self.send_control(0x34)?;
@@ -1385,16 +1361,35 @@ impl Runtime {
         Pin::new(&mut inner.transport).send_message(0x21, 0x0083000000000002)?;
         let start = kernel::time::Instant::<kernel::time::Monotonic>::now();
         let mut completed = None;
+        let capture_clock = inner.device.firmware().board.chip_id == 0x8122;
+        let mut clock_samples = [[0u32; 4]; 32];
+        let mut clock_counts = [0u32; 32];
+        let mut clock_used = 0usize;
+        let mut clock_overflow = 0u32;
         loop {
             let inner = &mut *self.inner;
+            if capture_clock {
+                let sample = inner.device.clock_state()?;
+                if let Some(index) = clock_samples[..clock_used].iter().position(|seen| *seen == sample) {
+                    clock_counts[index] += 1;
+                } else if clock_used < clock_samples.len() {
+                    clock_samples[clock_used] = sample;
+                    clock_counts[clock_used] = 1;
+                    clock_used += 1;
+                } else { clock_overflow += 1; }
+            }
             let status = inner.compute.status()?;
             let pipe = inner.config.pipe_indices(2)?;
             let queue = inner.compute_queue.status()?;
             if let Err(error) = inner.config.drain(&inner.drm) {
                 dev_err!(inner.drm.as_ref(), "G16G: compute firmware error pipe={:?} queue={:?} status={:x?}\n", pipe, queue, status);
+                if capture_clock { inner.device.log_clock_census(&clock_samples[..clock_used], &clock_counts[..clock_used], clock_overflow); }
                 return Err(error);
             }
-            if !inner.state.healthy() || !inner.config.ready()? { return Err(EIO); }
+            if !inner.state.healthy() || !inner.config.ready()? {
+                if capture_clock { inner.device.log_clock_census(&clock_samples[..clock_used], &clock_counts[..clock_used], clock_overflow); }
+                return Err(EIO);
+            }
             inner.device.check_pstate()?;
             // The two firmware stores have different producers: notifier
             // completion and in-order engine-node retirement. Require both,
@@ -1408,11 +1403,13 @@ impl Runtime {
                     inner.gpu_pending = false;
                     inner.state.health.set_gpu_pending(false);
                     dev_info!(inner.drm.as_ref(), "G16G: owned compute store retired, stamps/timestamps={:x?} queue={:?}, firmware ready\n", status, queue);
+                    if capture_clock { inner.device.log_clock_census(&clock_samples[..clock_used], &clock_counts[..clock_used], clock_overflow); }
                     return Ok(());
                 }
             } else if completed.is_some() { return Err(EIO); }
             if start.elapsed() >= Delta::from_secs(2) {
                 dev_err!(inner.drm.as_ref(), "G16G: compute timeout pipe={:?} queue={:?} status={:x?}\n", pipe, queue, status);
+                if capture_clock { inner.device.log_clock_census(&clock_samples[..clock_used], &clock_counts[..clock_used], clock_overflow); }
                 inner.config.log_firmware_state(&inner.drm)?;
                 inner.compute.log_progress(&inner.drm)?;
                 return Err(ETIMEDOUT);

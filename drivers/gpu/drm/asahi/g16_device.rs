@@ -292,6 +292,24 @@ impl Device {
 
     }
 
+    /// Read-only J613 clock observation through the already-owned SGX
+    /// aperture (base290000000). Avoid clock-bank reads while powered off.
+    pub(crate) fn clock_state(&self) -> Result<[u32; 4]> {
+        if self.firmware.board.chip_id != 0x8122 { return Err(ENOTSUPP); }
+        let sgx = self.sgx.try_access().ok_or(ENODEV)?;
+        let state = sgx.try_read32(0xe01000)? & 0xf;
+        if state == 0 { return Ok([0; 4]); }
+        Ok([state, sgx.try_read32(0xe1c014)?, sgx.try_read32(0xe1c800)?, sgx.try_read32(0xe1e01c)?])
+    }
+
+    pub(crate) fn log_clock_census(&self, samples: &[[u32; 4]], counts: &[u32], overflow: u32) {
+        for (sample, count) in samples.iter().zip(counts) {
+            dev_info!(self.dev.as_ref(), "G16G: J613 compute clock census pstate={} clkgen+14={:#010x} low-nibble={:#x} +800={:#010x} +201c={:#010x} count={}\n",
+                sample[0], sample[1], sample[1] & 0xf, sample[2], sample[3], count);
+        }
+        dev_info!(self.dev.as_ref(), "G16G: J613 compute clock census overflow={} (bounded polling observation, ceiling unchanged)\n", overflow);
+    }
+
     pub(crate) fn firmware(&self) -> &Firmware { &self.firmware }
 
     pub(crate) fn require_stopped(&self, pdev: &platform::Device<Core>) -> Result {
