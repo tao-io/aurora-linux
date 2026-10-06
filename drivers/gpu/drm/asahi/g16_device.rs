@@ -248,6 +248,17 @@ impl Device {
         Ok(())
     }
 
+    /// Bounded read-only performance handshake snapshot while the PMP vote is held.
+    pub(crate) fn log_power_handshake(&self) -> Result {
+        let sgx = self.sgx.try_access().ok_or(ENODEV)?;
+        for offset in [0xe01000, 0xe01004, 0xe01008, 0xe0100c, 0xe01010, 0xe01014,
+            0xe01018, 0xe0101c, 0xe01500] {
+            dev_info!(self.dev.as_ref(), "G16G: power handshake SGX +{:#x}={:#010x}\n",
+                offset, sgx.try_read32(offset)?);
+        }
+        Ok(())
+    }
+
     pub(crate) fn check_pstate(&self) -> Result<u32> {
         let value = self.sgx.try_access().ok_or(ENODEV)?.try_read32(0xe01000)?;
         if value & 0xf > crate::g16_power::requested_state()? {

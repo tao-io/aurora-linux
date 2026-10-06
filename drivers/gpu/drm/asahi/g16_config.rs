@@ -305,7 +305,12 @@ impl Config {
         for &(offset, value) in board.power_overlay {
             self.object(PowerPerformance).u32(offset, value)?;
         }
-        self.object(Control).u32(0, 0x33)?;
+        // Firmware imports this mask during initdata, before power-up dispatch.
+        // A post-ready OR misses the transition that can already be blocked.
+        let trace = if self.board.name == "J613" {
+            *crate::module_parameters::g16_trace_mask.value()
+        } else { 0 };
+        self.object(Control).u32(0, 0x33 | (trace & 0xff))?;
         Ok(())
     }
 
