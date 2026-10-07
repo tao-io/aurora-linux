@@ -54,6 +54,7 @@
 #include <linux/workqueue.h>
 
 #include <drm/drm_atomic.h>
+#include <drm/drm_color_mgmt.h>
 #include <drm/drm_fb_dma_helper.h>
 #include <drm/drm_fourcc.h>
 #include <drm/drm_framebuffer.h>
@@ -227,6 +228,10 @@ struct apple_dcp_v14 {
 
 	/* Owns the RPC stream: start, swaps and idle callbacks. */
 	struct mutex lock;
+	bool ctm_valid;
+	u64 ctm_calls;
+	u32 ctm_status, ctm_get_status;
+	u64 ctm_readback[9];
 	struct work_struct idle_work;
 	bool failed;
 	bool started;
@@ -1261,6 +1266,9 @@ static int dcp_v14_status_show(struct seq_file *m, void *unused)
 	seq_printf(m, "backlight %d max %u\nbrightness requested %u sent %u owned %d off %d pending %d swaps %llu\n",
 		   !!READ_ONCE(v14->bl_dev), v14->bl_max, v14->bl_nits, v14->bl_sent,
 		   v14->bl_owned, v14->bl_off, v14->bl_pending, v14->bl_swaps);
+	seq_printf(m, "ctm valid %d calls %llu setter %#x getter %#x\n", v14->ctm_valid, v14->ctm_calls, v14->ctm_status, v14->ctm_get_status);
+        for (i = 0; i < 9; i++)
+                seq_printf(m, "ctm_readback[%u] %#llx\n", i, v14->ctm_readback[i]);
 	mutex_unlock(&v14->lock);
 	return 0;
 }
@@ -1546,11 +1554,60 @@ static void dcp_v14_brightness_done(struct apple_dcp_v14 *v14, u64 token)
  * Swap start, then the swap; returns once the firmware completed that swap,
  * with @completed set to when its completion came in.
  */
+/* Matched UUID ABI: location 9, packed 80-byte request, signed Q32. */
+static int dcp_v14_ctm_locked(struct apple_dcp_v14 *v14,
+                          const struct drm_crtc_state *state)
+{
+        u8 request[80] = {}, readback[76] = {};
+        __le32 status = 0;
+        const struct drm_color_ctm *ctm;
+        int i, ret;
+
+        if (!state || (v14->ctm_valid && !state->color_mgmt_changed &&
+                       !state->mode_changed && !state->active_changed))
+                return 0;
+        ctm = state->ctm ? state->ctm->data : NULL;
+        put_unaligned_le32(9, request);
+        for (i = 0; i < 9; i++) {
+                u64 coefficient = ctm ? ctm->matrix[i] :
+                                  ((i == 0 || i == 4 || i == 8) ? 1ULL << 32 : 0);
+                u64 magnitude = coefficient & ~(1ULL << 63);
+                u64 signed_q32 = coefficient & (1ULL << 63) ? -magnitude : magnitude;
+
+                put_unaligned_le64(signed_q32, request + 4 + 8 * i);
+        }
+        ret = dcp_v14_call(v14, A(421), request, sizeof(request),
+                       &status, sizeof(status), 0);
+        v14->ctm_calls++;
+        v14->ctm_status = le32_to_cpu(status);
+        v14->ctm_valid = false;
+        if (ret || v14->ctm_status) {
+                dev_err(v14->dev, "CTM setter transport=%d status=%#x\n",
+                        ret, v14->ctm_status);
+                return ret ? ret : -EIO;
+        }
+        /* Independent firmware getter, before the swap and on the same lock. */
+        memset(request + 4, 0, 76);
+        ret = dcp_v14_call(v14, A(420), request, sizeof(request),
+                       readback, sizeof(readback), 0);
+        v14->ctm_get_status = get_unaligned_le32(readback + 72);
+        for (i = 0; i < 9; i++)
+                v14->ctm_readback[i] = get_unaligned_le64(readback + i * 8);
+        dev_info(v14->dev, "CTM call %llu setter=%#x getter_transport=%d getter=%#x diagonal=%#llx,%#llx,%#llx\n",
+                 v14->ctm_calls, v14->ctm_status, ret, v14->ctm_get_status,
+                 v14->ctm_readback[0], v14->ctm_readback[4], v14->ctm_readback[8]);
+        if (ret || v14->ctm_get_status)
+                return ret ? ret : -EIO;
+        v14->ctm_valid = true;
+        return 0;
+}
+
 static int dcp_v14_swap(struct apple_dcp_v14 *v14, const u8 *surface, u64 iova,
-			u32 width, u32 height, u32 dst_y, ktime_t *completed)
+			u32 width, u32 height, u32 dst_y, ktime_t *completed,
+                        const struct drm_crtc_state *ctm_state)
 {
 	struct dcp_v14_present_record rec = {};
-	__le32 start[4] = {}, started[2], result[3];
+	__le32 start[4] = {}, started[2] = {}, result[3];
 	u64 brightness = 0;
 	u8 *swap;
 	u32 id;
@@ -1566,6 +1623,8 @@ static int dcp_v14_swap(struct apple_dcp_v14 *v14, const u8 *surface, u64 iova,
 	mutex_lock(&v14->lock);
 	rec.surface = !!surface;
 	rec.start = ktime_get();
+	ret = dcp_v14_ctm_locked(v14, ctm_state);
+	if (!ret)
 	ret = dcp_v14_call(v14, A(406), start, sizeof(start), started, sizeof(started), 0);
 	if (!ret && le32_to_cpu(started[1]))
 		ret = -EIO;
@@ -1609,7 +1668,7 @@ static int dcp_v14_swap(struct apple_dcp_v14 *v14, const u8 *surface, u64 iova,
  * @presented, if set, gets the time the firmware reported the swap complete.
  */
 static bool dcp_v14_present(struct apple_dcp_v14 *v14, struct drm_framebuffer *fb, u32 dst_y,
-			    ktime_t *presented)
+			    ktime_t *presented, const struct drm_crtc_state *ctm_state)
 {
 	u8 surface[DCP_V14_SURFACE_SIZE];
 	struct drm_framebuffer *old;
@@ -1627,7 +1686,7 @@ static bool dcp_v14_present(struct apple_dcp_v14 *v14, struct drm_framebuffer *f
 	}
 	start = ktime_get_ns();
 	ret = dcp_v14_swap(v14, fb ? surface : NULL, iova, fb ? fb->width : 0,
-			   fb ? fb->height : 0, dst_y, &completed);
+			   fb ? fb->height : 0, dst_y, &completed, ctm_state);
 	elapsed = ktime_get_ns() - start;
 	if (ret) {
 		/* Either framebuffer may still be scanned out: keep both. */
@@ -1738,12 +1797,15 @@ void iomfb_v14_7_flush(struct apple_dcp *dcp, struct drm_crtc *crtc,
 	struct drm_plane_state *p = drm_atomic_get_new_plane_state(state, crtc->primary);
 	struct drm_framebuffer *fb;
 	ktime_t presented;
+	struct drm_crtc_state *cs = drm_atomic_get_new_crtc_state(state, crtc);
 
+	if (!cs)
+		cs = crtc->state;
 	if (!p)
 		p = crtc->primary->state;
 	fb = p && p->visible ? p->fb : NULL;
 	dcp->swap_start = ktime_get();
-	if (!dcp->v14 || !dcp_v14_present(dcp->v14, fb, dcp->notch_height, &presented)) {
+	if (!dcp->v14 || !dcp_v14_present(dcp->v14, fb, dcp->notch_height, &presented, cs)) {
 		dcp_v14_cancel_event(dcp);
 		return;
 	}
@@ -1894,6 +1956,6 @@ void iomfb_v14_7_poweroff(struct apple_dcp *dcp)
 	/* Blank to black; the panel and the DCP stay powered. */
 	if (dcp->v14 && dcp->v14->started) {
 		dcp_v14_brightness_power(dcp->v14, false);
-		dcp_v14_present(dcp->v14, NULL, 0, NULL);
+		dcp_v14_present(dcp->v14, NULL, 0, NULL, NULL);
 	}
 }
