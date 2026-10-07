@@ -314,10 +314,13 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 	 */
 	t8132 = of_device_is_compatible(node,
 					"apple,t8132-pmgr-pwrstate");
-	retained_display = t8132 && of_machine_is_compatible("apple,j713") &&
+	retained_display = of_property_read_bool(node, "apple,inherited-on") &&
 		!of_property_read_u32(node, "reg", &offset) &&
-		apple_pmgr_j713_display_domain(offset) &&
-		of_property_read_bool(node, "apple,inherited-on");
+		((t8132 && of_machine_is_compatible("apple,j713") &&
+		  apple_pmgr_j713_display_domain(offset)) ||
+		 (of_device_is_compatible(node, "apple,t8122-pmgr-pwrstate") &&
+		  of_machine_is_compatible("apple,j613") &&
+		  (offset == 0x1d8 || offset == 0x208 || offset == 0x10000)));
 	gfx = t8132 && of_machine_is_compatible("apple,j713") &&
 		!of_property_read_u32(node, "reg", &offset) && offset == 0x250;
 	if (gfx) {
@@ -366,7 +369,9 @@ static int apple_pmgr_ps_probe(struct platform_device *pdev)
 		APPLE_PMGR_RESET_TIME;
 	ps->needs_reset_idle_wait = t8132;
 	/* m1n1 leaves automatic power gating disabled on T8132 domains. */
-	ps->no_auto_enable = t8132 && !gfx;
+	/* Inherited display domains must not be handed to automatic PM: the
+	 * running coprocessor must retain its boot-loader power state. */
+	ps->no_auto_enable = (t8132 && !gfx) || retained_display;
 	ps->inherited_on = of_property_read_bool(node, "apple,inherited-on");
 	ps->retained_display = retained_display;
 
