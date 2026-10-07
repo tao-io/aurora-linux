@@ -670,6 +670,7 @@ static struct platform_driver apple_platform_driver = {
 
 static int __init appledrm_register(void)
 {
+	int ret;
 	if (drm_firmware_drivers_only())
 		return -ENODEV;
 
@@ -677,9 +678,14 @@ static int __init appledrm_register(void)
 	dcp_audio_register();
 #endif
 	dcp_register();
-	platform_driver_register(&apple_platform_driver);
-
-	return 0;
+ret = platform_driver_register(&apple_platform_driver);
+	if (ret)
+		return ret;
+	/* Register before enabling nodes, so ordinary coldplug sees the driver. */
+	ret = apple_j613_25g83_coldplug();
+	if (ret)
+		pr_err("J613/25G83 coldplug gate rejected: %d\n", ret);
+	return ret;
 }
 
 static void __exit appledrm_unregister(void)

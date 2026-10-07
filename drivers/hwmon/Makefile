@@ -253,4 +253,4 @@ obj-$(CONFIG_PMBUS)		+= pmbus/
 
 ccflags-$(CONFIG_HWMON_DEBUG_CHIP) := -DDEBUG
 
-obj-$(CONFIG_APPLE_PMP_J613_HWMON) += apple-pmp-j613-hwmon.o
+obj-$(CONFIG_APPLE_PMP) += apple-pmp-j613-hwmon.o

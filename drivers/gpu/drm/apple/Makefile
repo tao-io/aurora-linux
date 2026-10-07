@@ -25,4 +25,4 @@ obj-$(CONFIG_DRM_APPLE_KUNIT_TEST) += iomfb-surface-test.o
 
 appledrm-y += iomfb_v26_6.o iomfb_v26_6_link.o
 
-obj-$(CONFIG_DRM_APPLE_J613_25G83_ACTIVATE) += j613_dcp_activate.o
+appledrm-y += j613_dcp_activate.o

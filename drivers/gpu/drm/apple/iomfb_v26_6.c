@@ -132,9 +132,6 @@ static const struct dcp_v26_board dcp_v26_board_j613 = {
 static const struct dcp_v26_board *const dcp_v26_boards[] = {
 	&dcp_v26_board_j613,
 };
-static unsigned int j613_25g83_display_clock_hz;
-module_param(j613_25g83_display_clock_hz, uint, 0400);
-MODULE_PARM_DESC(j613_25g83_display_clock_hz, "Guarded same-boot ADT display clock; required for experimental 25G83 activation");
 
 struct dcp_v26_property {
 	u32 service;
@@ -1091,7 +1088,7 @@ int iomfb_v26_6_bind(struct apple_dcp *dcp)
 		return dev_err_probe(dev, ret,
 				     "%s display not started: no usable boot framebuffer\n",
 				     v26->board->name);
-	v26->clock_rate = j613_25g83_display_clock_hz;
+	v26->clock_rate = apple_j613_25g83_clock_hz();
 	if (!v26->clock_rate)
 		return dev_err_probe(dev, -EINVAL, "J613/25G83 same-boot clock observation required\n");
 

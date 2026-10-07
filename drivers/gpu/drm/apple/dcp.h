@@ -79,3 +79,6 @@ void __init dcp_audio_register(void);
 void __exit dcp_audio_unregister(void);
 
 #endif
+
+unsigned int apple_j613_25g83_clock_hz(void);
+int apple_j613_25g83_coldplug(void);

@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only OR MIT
-/* Explicit runtime gate for the guarded, otherwise disabled J613/25G83 DT.
+/* Automatic coldplug gate for the guarded, otherwise disabled J613/25G83 DT.
  * No firmware messages, reset, compatible aliases, or teardown. Reboot to
  * discard the activation and retained DART/RTKit resources.
  */
@@ -7,13 +7,16 @@
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/io.h>
+#include "dcp.h"
 
 static unsigned int display_clock_hz;
-module_param(display_clock_hz, uint, 0400);
-MODULE_PARM_DESC(display_clock_hz, "Required same-boot proxy ADT observation");
+unsigned int apple_j613_25g83_clock_hz(void)
+{
+	return display_clock_hz;
+}
 static struct of_changeset gate;
 
-static int __init activate(void)
+int __init apple_j613_25g83_coldplug(void)
 {
 	const char *paths[] = { "/soc/iommu@28d30c000", "/soc/iommu@28d304000",
 		"/soc/mailbox@28ec08000", "/soc/display-subsystem",
@@ -23,11 +26,19 @@ static int __init activate(void)
 	const char *s;
 	void __iomem *cpu;
 	char path[128];
-	u32 marker, version[3];
+	u32 marker, version[3], witness[5];
 	int i, ret = -ENODEV;
 
-	if (!display_clock_hz || !of_machine_is_compatible("apple,j613"))
-		return ret;
+	if (!of_machine_is_compatible("apple,j613"))
+		return 0;
+	np = of_find_node_by_path("/chosen");
+	ret = np ? of_property_read_u32_array(np,
+		"apple,j613-25g83-display-clock-adt", witness, 5) : -ENODEV;
+	of_node_put(np);
+	if (ret || witness[0] != 1 || witness[1] != 345 || witness[2] != 416 ||
+	    !witness[3] || witness[4])
+		return -EPERM;
+	display_clock_hz = witness[3];
 	for (i = 0; i < ARRAY_SIZE(domains); i++) {
 		snprintf(path, sizeof(path), "/soc/power-management@2d0700000/power-controller@%s", domains[i]);
 		np = of_find_node_by_path(path);
@@ -71,14 +82,10 @@ static int __init activate(void)
 	if (ret)
 		of_changeset_destroy(&gate);
 	else {
-		__module_get(THIS_MODULE);
-		pr_info("J613/25G83 guarded appledrm activation; ADT clock %u; retained until reboot\n", display_clock_hz);
+		pr_info("J613/25G83 guarded appledrm coldplug; ADT clock %u; retained until reboot\n", display_clock_hz);
 	}
 out:
 	for (i = 0; i < ARRAY_SIZE(nodes); i++)
 		of_node_put(nodes[i]);
 	return ret;
 }
-module_init(activate);
-MODULE_LICENSE("Dual MIT/GPL");
-MODULE_DESCRIPTION("Explicit guarded J613/25G83 appledrm runtime activation");

@@ -26,6 +26,7 @@ config DRM_APPLE_M4_DCPEXT_AUDIO
 config DRM_APPLE
 	tristate "DRM Support for Apple display controllers"
 	depends on DRM && OF && ARM64
+	depends on TYPEC
 	depends on ARCH_APPLE || COMPILE_TEST
 	depends on APPLE_RTKIT
 	depends on OF_ADDRESS
