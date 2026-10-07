@@ -12,6 +12,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
+#include <linux/suspend.h>
 #include <linux/reset.h>
 
 #include "glue.h"
@@ -106,6 +107,10 @@ struct dwc3_apple {
 	struct mutex lock;
 
 	enum dwc3_apple_state state;
+
+	/* Role torn down for system sleep, restored after it (see dwc3_apple_pm_notify). */
+	struct notifier_block pm_nb;
+	enum dwc3_apple_state sleep_state;
 };
 
 #define to_dwc3_apple(d) container_of((d), struct dwc3_apple, dwc)
@@ -377,6 +382,49 @@ static int dwc3_apple_exit(struct dwc3_apple *appledwc)
 	return 0;
 }
 
+/*
+ * The controller, its PIPE handler and the ATC PHY do not keep their state across s2idle, and
+ * nothing in this driver or the PHY driver restores it: after resume every dwc3/xHCI register
+ * reads 0, and the first command xHCI issues (e.g. for a device that dropped off the bus) never
+ * completes, hanging the hub workqueue and shutdown. Tear dwc3 down before the system sleeps,
+ * exactly as for a cable removal, and bring it back in the same role afterwards; devices
+ * re-enumerate. A cable change during sleep reaches the role switch after this as usual.
+ */
+static int dwc3_apple_pm_notify(struct notifier_block *nb, unsigned long action, void *data)
+{
+	struct dwc3_apple *appledwc = container_of(nb, struct dwc3_apple, pm_nb);
+	enum dwc3_apple_state state;
+	int ret;
+
+	guard(mutex)(&appledwc->lock);
+
+	switch (action) {
+	case PM_SUSPEND_PREPARE:
+	case PM_HIBERNATION_PREPARE:
+		appledwc->sleep_state = appledwc->state;
+		if (appledwc->state != DWC3_APPLE_HOST && appledwc->state != DWC3_APPLE_DEVICE)
+			break;
+		ret = dwc3_apple_exit(appledwc);
+		if (ret)
+			dev_err(appledwc->dev, "Failed to stop dwc3 for system sleep, err=%d\n", ret);
+		break;
+	case PM_POST_SUSPEND:
+	case PM_POST_HIBERNATION:
+	case PM_POST_RESTORE:
+		state = appledwc->sleep_state;
+		appledwc->sleep_state = DWC3_APPLE_NO_CABLE;
+		if ((state != DWC3_APPLE_HOST && state != DWC3_APPLE_DEVICE) ||
+		    appledwc->state != DWC3_APPLE_NO_CABLE)
+			break;
+		ret = dwc3_apple_init(appledwc, state);
+		if (ret)
+			dev_err(appledwc->dev, "Failed to restart dwc3 after system sleep, err=%d\n", ret);
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
 static int dwc3_usb_role_switch_set(struct usb_role_switch *sw, enum usb_role role)
 {
 	struct dwc3_apple *appledwc = usb_role_switch_get_drvdata(sw);
@@ -517,6 +565,12 @@ static int dwc3_apple_probe(struct platform_device *pdev)
 	if (ret)
 		return dev_err_probe(&pdev->dev, ret, "Failed to setup role switch\n");
 
+	appledwc->sleep_state = DWC3_APPLE_NO_CABLE;
+	appledwc->pm_nb.notifier_call = dwc3_apple_pm_notify;
+	ret = register_pm_notifier(&appledwc->pm_nb);
+	if (ret)
+		dev_warn(dev, "Failed to register PM notifier, err=%d\n", ret);
+
 	return 0;
 }
 
@@ -524,6 +578,8 @@ static void dwc3_apple_remove(struct platform_device *pdev)
 {
 	struct dwc3 *dwc = platform_get_drvdata(pdev);
 	struct dwc3_apple *appledwc = to_dwc3_apple(dwc);
+
+	unregister_pm_notifier(&appledwc->pm_nb);
 
 	guard(mutex)(&appledwc->lock);
 

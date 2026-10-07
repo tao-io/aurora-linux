@@ -497,7 +497,7 @@ enum atcphy_lane_mode {
 #define PIPEHANDLER_T8132_USB2_CONFIG 0x44
 #define PIPEHANDLER_T8132_USB2_CONFIG_EN BIT(2)
 
-#define PIPEHANDLER_LOCK_ACK_TIMEOUT_US 1000
+#define PIPEHANDLER_LOCK_ACK_TIMEOUT_US 10000
 
 /* USB2 PHY regs */
 #define USB2PHY_USBCTL 0x00
@@ -1350,6 +1350,8 @@ static int atcphy_configure_pipehandler(struct apple_atcphy *atcphy, bool host)
 			 "ATCPHY_PIPEHANDLER_STATE_USB4 not implemented; falling back to USB2\n");
 		fallthrough;
 	case ATCPHY_PIPEHANDLER_STATE_DUMMY:
+		if (!atcphy->pipehandler_up)
+			return 0;
 		ret = atcphy_configure_pipehandler_dummy(atcphy);
 		atcphy->pipehandler_up = false;
 		break;
@@ -2133,7 +2135,9 @@ static int atcphy_usb3_power_off(struct phy *phy)
 
 	guard(mutex)(&atcphy->lock);
 
-	ret = atcphy_configure_pipehandler_dummy(atcphy);
+	ret = 0;
+	if (atcphy->pipehandler_up)
+		ret = atcphy_configure_pipehandler_dummy(atcphy);
 	if (ret) {
 		dev_warn(atcphy->dev, "Failed to switch pipe to dummy: %d", ret);
 		if (atcphy->t8132_atc)
@@ -2334,8 +2338,7 @@ static int atcphy_dwc3_reset_assert(struct reset_controller_dev *rcdev, unsigned
 
 	guard(mutex)(&atcphy->lock);
 
-	_atcphy_dwc3_reset_assert(atcphy);
-
+	/* Keep DWC3 out of reset until the PIPE lock handshake completes. */
 	if (atcphy->pipehandler_up) {
 		ret = atcphy_configure_pipehandler_dummy(atcphy);
 		if (ret)
@@ -2344,6 +2347,7 @@ static int atcphy_dwc3_reset_assert(struct reset_controller_dev *rcdev, unsigned
 			atcphy->pipehandler_up = false;
 	}
 
+	_atcphy_dwc3_reset_assert(atcphy);
 	atcphy_usb2_power_off(atcphy);
 
 	return 0;
@@ -2458,6 +2462,8 @@ static int atcphy_mux_set(struct typec_mux_dev *mux, struct typec_mux_state *sta
 
 	if (state->mode == TYPEC_STATE_SAFE) {
 		target_mode = APPLE_ATCPHY_MODE_OFF;
+	} else if (!state->alt && state->mode == TYPEC_MODE_USB2) {
+		target_mode = APPLE_ATCPHY_MODE_USB2;
 	} else if (state->mode == TYPEC_STATE_USB) {
 		target_mode = atcphy->hw->has_full_atc || atcphy->t8132_atc ?
 			APPLE_ATCPHY_MODE_USB3 : APPLE_ATCPHY_MODE_USB2;

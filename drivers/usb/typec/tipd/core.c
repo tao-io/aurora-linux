@@ -285,6 +285,8 @@ static int tps6598x_connect(struct tps6598x *tps, u32 status)
 
 static void tps6598x_disconnect(struct tps6598x *tps, u32 status)
 {
+	/* Quiesce DWC3 before mux callbacks power down its PHY. */
+	usb_role_switch_set_role(tps->role_sw, USB_ROLE_NONE);
 	if (!IS_ERR(tps->partner))
 		typec_unregister_partner(tps->partner);
 	tps->partner = NULL;
@@ -378,6 +380,13 @@ static int tps6598x_dr_set(struct typec_port *port, enum typec_data_role role)
 	struct tps6598x *tps = typec_get_drvdata(port);
 	u32 status;
 	int ret;
+
+	/* SWDF/SWUF can remain busy indefinitely on the J613 SN201202x.
+	 * Preserve negotiated roles without wedging the command mailbox.
+	 */
+	if (of_machine_is_compatible("apple,j613") &&
+	    device_is_compatible(tps->dev, "apple,sn201202x"))
+		return -EOPNOTSUPP;
 
 	mutex_lock(&tps->lock);
 
@@ -645,10 +654,12 @@ static int cd321x_typec_update_mode(struct tps6598x *tps, struct cd321x_status *
 		if (ret)
 			return ret;
 	} else {
-		if (cd321x->state.alt == NULL && cd321x->state.mode == TYPEC_STATE_USB)
+		unsigned long mode = (st->data_status & TPS_DATA_STATUS_USB3_CONNECTION) ?
+			TYPEC_STATE_USB : TYPEC_MODE_USB2;
+		if (cd321x->state.alt == NULL && cd321x->state.mode == mode)
 			return 0;
 		state.alt = NULL;
-		state.mode = TYPEC_STATE_USB;
+		state.mode = mode;
 		state.data = NULL;
 		ret = typec_mux_set(cd321x->mux, &state);
 		if (ret)
@@ -661,6 +672,27 @@ static int cd321x_typec_update_mode(struct tps6598x *tps, struct cd321x_status *
 	return 0;
 }
 
+/* A manually rebound DWC3 registers a new switch. The old referenced switch
+ * stays allocated but rejects role changes, so refresh it before touching the mux.
+ */
+static int cd321x_refresh_role_switch(struct tps6598x *tps)
+{
+	struct fwnode_handle *fwnode;
+	struct usb_role_switch *sw;
+
+	fwnode = device_get_named_child_node(tps->dev, "connector");
+	sw = fwnode_usb_role_switch_get(fwnode);
+	fwnode_handle_put(fwnode);
+	if (IS_ERR(sw))
+		return PTR_ERR(sw);
+	if (!sw)
+		return -ENODEV;
+
+	usb_role_switch_put(tps->role_sw);
+	tps->role_sw = sw;
+	return 0;
+}
+
 static void cd321x_update_work(struct work_struct *work)
 {
 	struct cd321x *cd321x = container_of(to_delayed_work(work),
@@ -670,6 +702,12 @@ static void cd321x_update_work(struct work_struct *work)
 	int ret;
 
 	guard(mutex)(&tps->lock);
+
+	ret = cd321x_refresh_role_switch(tps);
+	if (ret) {
+		dev_err_ratelimited(tps->dev, "USB role switch unavailable: %d\n", ret);
+		return;
+	}
 
 	st = cd321x->update_status;
 	cd321x->update_status.status_changed = 0;
@@ -687,7 +725,7 @@ static void cd321x_update_work(struct work_struct *work)
 	enum typec_orientation orientation = TYPEC_ORIENTATION_NONE;
 
 	if (usb_connection) {
-		if (tps->data_status & TPS_DATA_STATUS_USB_DATA_ROLE)
+		if (st.data_status & TPS_DATA_STATUS_USB_DATA_ROLE)
 			new_role = USB_ROLE_DEVICE;
 		else
 			new_role = USB_ROLE_HOST;
@@ -705,9 +743,29 @@ static void cd321x_update_work(struct work_struct *work)
 		 (is_pd && memcmp(&st.partner_identity,
 				  &cd321x->cur_partner_identity, sizeof(struct usb_pd_identity))));
 
+	/* DebugUSB may remove SuperSpeed while keeping CC and the data role.
+	 * Quiesce DWC3 before the USB3 -> USB2 mux change, just as for unplug.
+	 */
+	bool plain_usb = st.data_status & TPS_DATA_STATUS_DATA_CONNECTION &&
+		!(st.data_status & (TPS_DATA_STATUS_DP_CONNECTION |
+			TPS_DATA_STATUS_TBT_CONNECTION | CD321X_DATA_STATUS_USB4_CONNECTION));
+	unsigned long usb_mode = (st.data_status & TPS_DATA_STATUS_USB3_CONNECTION) ?
+		TYPEC_STATE_USB : TYPEC_MODE_USB2;
+	bool usb_mux_changed = plain_usb &&
+		(cd321x->state.alt || cd321x->state.mode != usb_mode);
+
 	/* If we are switching from an active role, transition to USB_ROLE_NONE first */
-	if (old_role != USB_ROLE_NONE && (new_role != old_role || was_disconnected))
-		usb_role_switch_set_role(tps->role_sw, USB_ROLE_NONE);
+	if (old_role != USB_ROLE_NONE &&
+	    (new_role != old_role || was_disconnected || usb_mux_changed)) {
+		ret = usb_role_switch_set_role(tps->role_sw, USB_ROLE_NONE);
+		if (ret == -EBUSY || ret == -EAGAIN)
+			goto retry_route;
+		if (ret) {
+			dev_err(tps->dev, "Failed to quiesce USB role: %d\n", ret);
+			return;
+		}
+	}
+
 
 	/* Process partner disconnection or change */
 	if (!new_connected || partner_changed) {
@@ -775,6 +833,8 @@ static void cd321x_update_work(struct work_struct *work)
 	ret = usb_role_switch_set_role(tps->role_sw, new_role);
 	if (ret == -EBUSY || ret == -EAGAIN)
 		goto retry_route;
+	if (ret)
+		dev_err(tps->dev, "Failed to activate USB role %u: %d\n", new_role, ret);
 	cd321x->route_retries = 0;
 	power_supply_changed(tps->psy);
 	return;
