@@ -11,6 +11,7 @@ appledrm-y += ibootep.o
 appledrm-y += iomfb_v12_3.o
 appledrm-y += iomfb_v13_3.o
 appledrm-y += iomfb_h17p.o
+appledrm-y += iomfb_v14_7.o iomfb_v14_7_link.o
 appledrm-y += epic/dpavservep.o
 appledrm-y += plane.o
 
@@ -21,3 +22,7 @@ obj-$(CONFIG_DRM_APPLE) += appledrm.o
 obj-$(CONFIG_DRM_APPLE_KUNIT_TEST) += dcp-lifecycle-test.o
 obj-$(CONFIG_DRM_APPLE_KUNIT_TEST) += dcp-link-test.o
 obj-$(CONFIG_DRM_APPLE_KUNIT_TEST) += iomfb-surface-test.o
+
+appledrm-y += iomfb_v26_6.o iomfb_v26_6_link.o
+
+obj-$(CONFIG_DRM_APPLE_J613_25G83_ACTIVATE) += j613_dcp_activate.o

@@ -61,6 +61,11 @@ static bool show_notch;
 module_param(show_notch, bool, 0644);
 MODULE_PARM_DESC(show_notch, "Use the full display height and shows the notch");
 
+static bool t6030_show_notch;
+module_param(t6030_show_notch, bool, 0444);
+MODULE_PARM_DESC(t6030_show_notch,
+		 "T6030 internal display: use the full height and show the notch (show_notch does not apply there)");
+
 bool hdmi_audio;
 module_param(hdmi_audio, bool, 0644);
 MODULE_PARM_DESC(hdmi_audio, "Enable unstable HDMI audio support");
@@ -371,6 +376,9 @@ int dcp_crtc_atomic_check(struct drm_crtc *crtc, struct drm_atomic_state *state)
 	struct drm_crtc_state *crtc_state;
 	bool needs_modeset;
 
+	if ((dcp->fw_compat == DCP_FIRMWARE_V_14_7 || dcp->fw_compat == DCP_FIRMWARE_V_26_6))
+		return (dcp->fw_compat == DCP_FIRMWARE_V_26_6 ? iomfb_v26_6_atomic_check(dcp, crtc, state) : iomfb_v14_7_atomic_check(dcp, crtc, state));
+
 	if (dcp->crashed)
 		return -EINVAL;
 
@@ -530,6 +538,13 @@ bool dcp_fw_compat_is_12_x(struct platform_device *pdev)
 	return dcp->fw_compat == DCP_FIRMWARE_V_12_3;
 }
 
+bool dcp_fw_compat_is_14_7(struct platform_device *pdev)
+{
+	struct apple_dcp *dcp = platform_get_drvdata(pdev);
+
+	return (dcp->fw_compat == DCP_FIRMWARE_V_14_7 || dcp->fw_compat == DCP_FIRMWARE_V_26_6);
+}
+
 const u32 *dcp_get_iomfb_surfaces(struct platform_device *pdev, u32 *count)
 {
 	struct apple_dcp *dcp = platform_get_drvdata(pdev);
@@ -544,6 +559,10 @@ int dcp_start(struct platform_device *pdev)
 	int ret;
 
 	init_completion(&dcp->start_done);
+
+	/* The T6030 variant talks to the IOMFB endpoint only, synchronously. */
+	if ((dcp->fw_compat == DCP_FIRMWARE_V_14_7 || dcp->fw_compat == DCP_FIRMWARE_V_26_6))
+		return (dcp->fw_compat == DCP_FIRMWARE_V_26_6 ? iomfb_v26_6_start(dcp) : iomfb_v14_7_start(dcp));
 
 	/* start RTKit endpoints */
 	ret = systemep_init(dcp);
@@ -622,6 +641,10 @@ static void _dcp_poweroff(struct apple_dcp *dcp)
 	case DCP_FIRMWARE_H17P:
 		iomfb_poweroff_h17p(dcp);
 		break;
+	case DCP_FIRMWARE_V_26_6:
+	case DCP_FIRMWARE_V_14_7:
+		(dcp->fw_compat == DCP_FIRMWARE_V_26_6 ? iomfb_v26_6_poweroff(dcp) : iomfb_v14_7_poweroff(dcp));
+		break;
 	default:
 		WARN_ONCE(true, "Unexpected firmware version: %u\n", dcp->fw_compat);
 		break;
@@ -684,6 +707,10 @@ static void __maybe_unused dcp_sleep(struct apple_dcp *dcp)
 	case DCP_FIRMWARE_H17P:
 		iomfb_sleep_h17p(dcp);
 		break;
+	case DCP_FIRMWARE_V_26_6:
+	case DCP_FIRMWARE_V_14_7:
+		(dcp->fw_compat == DCP_FIRMWARE_V_26_6 ? iomfb_v26_6_poweroff(dcp) : iomfb_v14_7_poweroff(dcp));
+		break;
 	default:
 		WARN_ONCE(true, "Unexpected firmware version: %u\n", dcp->fw_compat);
 		break;
@@ -711,6 +738,10 @@ void dcp_poweron(struct platform_device *pdev)
 		break;
 	case DCP_FIRMWARE_H17P:
 		iomfb_poweron_h17p(dcp);
+		break;
+	case DCP_FIRMWARE_V_26_6:
+	case DCP_FIRMWARE_V_14_7:
+		(dcp->fw_compat == DCP_FIRMWARE_V_26_6 ? iomfb_v26_6_poweron(dcp) : iomfb_v14_7_poweron(dcp));
 		break;
 	default:
 		WARN_ONCE(true, "Unexpected firmware version: %u\n", dcp->fw_compat);
@@ -1001,12 +1032,36 @@ static int dcp_read_fw_version(struct device *dev, const char *name,
 
 static enum dcp_firmware_version dcp_check_firmware_version(struct device *dev)
 {
+	const struct dcp_v14_board *v14_board;
 	char compat_str[DCP_FW_VERSION_STR_LEN];
 	char fw_str[DCP_FW_VERSION_STR_LEN];
 	int ret;
 
+    if (of_device_is_compatible(dev->of_node, "apple,t8122-dcp") &&
+        of_machine_is_compatible("apple,j613")) {
+        const char *uuid;
+        u32 version[3];
+        if (!of_property_read_string(dev->of_node, "apple,firmware-uuid", &uuid) &&
+            !strcmp(uuid, "C042E95C-B9D8-3F0E-94B3-582A08AA6FDD") &&
+            !of_property_read_u32_array(dev->of_node, "apple,firmware-compat", version, 3) &&
+            version[0] == 26 && version[1] == 6 && version[2] == 2)
+            return DCP_FIRMWARE_V_26_6;
+    }
 	if (of_device_is_compatible(dev->of_node, "apple,t8140-dcp"))
 		return DCP_FIRMWARE_H17P;
+
+	/* The T6030 and J613 internal displays: macOS 14.x IOMFB only. */
+	v14_board = iomfb_v14_7_board(dev);
+	if (IS_ERR(v14_board))
+		return DCP_FIRMWARE_UNKNOWN;
+	if (v14_board) {
+		ret = dcp_read_fw_version(dev, "apple,firmware-compat", compat_str);
+		if (ret >= 0 && !strcmp(compat_str, "14.7.0"))
+			return DCP_FIRMWARE_V_14_7;
+		dev_err(dev, "%s display not started: DCP firmware-compat %s is not 14.7.0\n",
+			iomfb_v14_7_board_name(v14_board), compat_str);
+		return DCP_FIRMWARE_UNKNOWN;
+	}
 
 	/* firmware version is just informative */
 	dcp_read_fw_version(dev, "apple,firmware-version", fw_str);
@@ -1058,6 +1113,28 @@ static void apple_dcp_stop_fresh_boot_cpu(struct apple_dcp *dcp)
 
 	dev_info(dcp->dev, "DCP takeover: display CPU stopped control=%#x\n",
 		 control);
+}
+
+/*
+ * Distributions set show_notch system wide for the M1/M2 laptops. The T6030
+ * display has its own switch, so it hides the notch unless asked to show it,
+ * whatever show_notch says. The J613 display (same 14.x IOMFB path) shares
+ * that switch.
+ */
+static bool dcp_show_notch(struct apple_dcp *dcp)
+{
+	const struct dcp_v14_board *board;
+
+	if ((dcp->fw_compat != DCP_FIRMWARE_V_14_7 && dcp->fw_compat != DCP_FIRMWARE_V_26_6))
+		return show_notch;
+	if (dcp->fw_compat == DCP_FIRMWARE_V_26_6)
+		return t6030_show_notch;
+	board = iomfb_v14_7_board(dcp->dev);
+	if (show_notch && !t6030_show_notch && !IS_ERR_OR_NULL(board))
+		dev_info(dcp->dev,
+			 "show_notch does not apply to the %s display; appledrm.t6030_show_notch=1 shows the notch\n",
+			 iomfb_v14_7_board_name(board));
+	return t6030_show_notch;
 }
 
 static int dcp_comp_bind(struct device *dev, struct device *main, void *data)
@@ -1137,7 +1214,7 @@ static int dcp_comp_bind(struct device *dev, struct device *main, void *data)
 			 dcp->index, dcp->dptx_phy, dcp->dptx_die);
 	mutex_init(&dcp->hpd_mutex);
 
-	if (!show_notch)
+	if (!dcp_show_notch(dcp))
 		ret = of_property_read_u32(dev->of_node, "apple,notch-height",
 					   &dcp->notch_height);
 
@@ -1182,6 +1259,10 @@ static int dcp_comp_bind(struct device *dev, struct device *main, void *data)
 		dcp->connector_type = DRM_MODE_CONNECTOR_USB;
 	else
 		dcp->connector_type = DRM_MODE_CONNECTOR_Unknown;
+
+	/* The running firmware is adopted as is: no PIODMA, clock or boot handling here. */
+	if ((dcp->fw_compat == DCP_FIRMWARE_V_14_7 || dcp->fw_compat == DCP_FIRMWARE_V_26_6))
+		return (dcp->fw_compat == DCP_FIRMWARE_V_26_6 ? iomfb_v26_6_bind(dcp) : iomfb_v14_7_bind(dcp));
 
 	if (is_t8140 && apple_dcp_needs_fresh_boot(start_mode)) {
 		iop_vbar = readq_relaxed(dcp->iop_vbar_reg);
@@ -1321,6 +1402,12 @@ static void dcp_comp_unbind(struct device *dev, struct device *main, void *data)
 	if (!dcp)
 		return;
 
+	/* Never shut the firmware down: it keeps what it has been given. */
+	if ((dcp->fw_compat == DCP_FIRMWARE_V_14_7 || dcp->fw_compat == DCP_FIRMWARE_V_26_6)) {
+		(dcp->fw_compat == DCP_FIRMWARE_V_26_6 ? iomfb_v26_6_unbind(dcp) : iomfb_v14_7_unbind(dcp));
+		return;
+	}
+
 	if (dcp->hdmi_hpd_irq)
 		disable_irq(dcp->hdmi_hpd_irq);
 
@@ -1397,9 +1484,10 @@ static int dcp_platform_probe(struct platform_device *pdev)
 
 	/* Check for "apple,bw-scratch" to avoid probing appledrm with outdated
 	 * device trees. This prevents replacing simpledrm and ending up without
-	 * display.
+	 * display. The T6030 variant declines the bandwidth service.
 	 */
-	if (!of_property_present(dev->of_node, "apple,bw-scratch"))
+	if ((fw_compat != DCP_FIRMWARE_V_14_7 && fw_compat != DCP_FIRMWARE_V_26_6) &&
+	    !of_property_present(dev->of_node, "apple,bw-scratch"))
 		return dev_err_probe(dev, -ENODEV, "Incompatible devicetree! "
 			"Use devicetree matching this kernel.\n");
 
@@ -1411,7 +1499,11 @@ static int dcp_platform_probe(struct platform_device *pdev)
 	dcp->dev = dev;
 	dcp->hw = *(struct apple_dcp_hw_data *)of_device_get_match_data(dev);
 
-	if (!of_property_present(dev->of_node, "apple,iomfb-surfaces")) {
+	if ((fw_compat == DCP_FIRMWARE_V_14_7 || fw_compat == DCP_FIRMWARE_V_26_6)) {
+		/* One primary plane, on the layer the firmware was qualified with. */
+		surface_ids[0] = 0;
+		ret = apple_dcp_surface_order_init(&dcp->iomfb_surfaces, surface_ids, 1);
+	} else if (!of_property_present(dev->of_node, "apple,iomfb-surfaces")) {
 		ret = apple_dcp_surface_order_init(&dcp->iomfb_surfaces, NULL, 0);
 	} else {
 		num_surfaces = of_property_count_u32_elems(dev->of_node,
@@ -1434,6 +1526,13 @@ static int dcp_platform_probe(struct platform_device *pdev)
 				     "invalid apple,iomfb-surfaces order\n");
 
 	platform_set_drvdata(pdev, dcp);
+
+	/* Firmware identity and the PMP's display acknowledgment come first. */
+	if ((fw_compat == DCP_FIRMWARE_V_14_7 || fw_compat == DCP_FIRMWARE_V_26_6)) {
+		ret = (dcp->fw_compat == DCP_FIRMWARE_V_26_6 ? iomfb_v26_6_probe(dcp) : iomfb_v14_7_probe(dcp));
+		if (ret)
+			return ret;
+	}
 
 	dcp->phy = devm_phy_optional_get(dev, "dp-phy");
 	if (IS_ERR(dcp->phy)) {
@@ -1527,6 +1626,12 @@ static void dcp_platform_remove(struct platform_device *pdev)
 
 static void dcp_platform_shutdown(struct platform_device *pdev)
 {
+	struct apple_dcp *dcp = platform_get_drvdata(pdev);
+
+	/* The T6030 firmware is left running, showing the last frame. */
+	if (dcp && (dcp->fw_compat == DCP_FIRMWARE_V_14_7 || dcp->fw_compat == DCP_FIRMWARE_V_26_6))
+		return;
+
 	component_del(&pdev->dev, &dcp_comp_ops);
 }
 
@@ -1582,6 +1687,14 @@ static const struct apple_dcp_hw_data apple_dcp_hw_t8140 = {
 	.adopt_running_coprocessor = true,
 };
 
+static const struct apple_dcp_hw_data apple_dcp_hw_t6030 = {
+	.num_dptx_ports = 0,
+};
+
+static const struct apple_dcp_hw_data apple_dcp_hw_t8122 = {
+	.num_dptx_ports = 0,
+};
+
 static const struct apple_dcp_hw_data apple_dcp_hw_dcp = {
 	.num_dptx_ports = 0,
 };
@@ -1594,6 +1707,8 @@ static const struct of_device_id of_match[] = {
 	{ .compatible = "apple,t6020-dcp", .data = &apple_dcp_hw_t6020,  },
 	{ .compatible = "apple,t8112-dcp", .data = &apple_dcp_hw_t8112,  },
 	{ .compatible = "apple,t8140-dcp", .data = &apple_dcp_hw_t8140,  },
+	{ .compatible = "apple,t6030-dcp", .data = &apple_dcp_hw_t6030,  },
+	{ .compatible = "apple,t8122-dcp", .data = &apple_dcp_hw_t8122,  },
 	{ .compatible = "apple,dcp",       .data = &apple_dcp_hw_dcp,    },
 	{ .compatible = "apple,dcpext",    .data = &apple_dcp_hw_dcpext, },
 	{}

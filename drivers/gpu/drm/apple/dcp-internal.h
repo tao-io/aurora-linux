@@ -20,6 +20,8 @@
 #include "iomfb_h17p.h"
 #include "iomfb_v12_3.h"
 #include "iomfb_v13_3.h"
+#include "iomfb_v14_7.h"
+#include "iomfb_v26_6.h"
 #include "iomfb-surface.h"
 #include "epic/dpavservep.h"
 
@@ -35,6 +37,9 @@ enum dcp_firmware_version {
 	DCP_FIRMWARE_V_12_3,
 	DCP_FIRMWARE_V_13_5,
 	DCP_FIRMWARE_H17P,
+	/* T6030 internal display, macOS 14.x IOMFB over DCPLink */
+	DCP_FIRMWARE_V_14_7,
+	DCP_FIRMWARE_V_26_6,
 };
 
 enum {
@@ -140,6 +145,9 @@ struct apple_dcp {
 	void __iomem *iop_vbar_reg;
 	bool fresh_boot_cpu_started;
 	bool adopted_session;
+	/* DCP_FIRMWARE_V_14_7 state; outlives this device once RTKit runs. */
+	struct apple_dcp_v14 *v14;
+	struct apple_dcp_v26 *v26;
 
 	/* DCP has crashed */
 	bool crashed;

@@ -61,3 +61,12 @@ config DRM_APPLE_KUNIT_TEST
 	  Build focused unit tests for Apple display lifecycle helpers and DCPLink
 	  message encoders. The tests do not access display hardware. If in doubt,
 	  say "N".
+
+config DRM_APPLE_J613_25G83_ACTIVATE
+	tristate "Guarded J613 25G83 display activation module"
+	depends on DRM_APPLE && OF_DYNAMIC
+	help
+	  Manual experimental activation of the already audited J613 mapping
+	  handoff. Requires the real firmware identity, inherited power state,
+	  DCP RUN and a same-boot ADT display clock. Nodes remain disabled until
+	  explicit module load. No coldplug alias or hot teardown is provided.

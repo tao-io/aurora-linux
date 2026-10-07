@@ -976,6 +976,10 @@ int dcp_crtc_atomic_modeset(struct drm_crtc *crtc,
 	case DCP_FIRMWARE_H17P:
 		ret = iomfb_modeset_h17p(dcp, crtc_state);
 		break;
+	case DCP_FIRMWARE_V_26_6:
+	case DCP_FIRMWARE_V_14_7:
+		ret = (dcp->fw_compat == DCP_FIRMWARE_V_26_6 ? iomfb_v26_6_modeset(dcp, crtc_state) : iomfb_v14_7_modeset(dcp, crtc_state));
+		break;
 	default:
 		WARN_ONCE(true, "Unexpected firmware version: %u\n",
 			  dcp->fw_compat);
@@ -1002,6 +1006,11 @@ void dcp_flush(struct drm_crtc *crtc, struct drm_atomic_state *state)
 {
 	struct platform_device *pdev = to_apple_crtc(crtc)->dcp;
 	struct apple_dcp *dcp = platform_get_drvdata(pdev);
+
+	if ((dcp->fw_compat == DCP_FIRMWARE_V_14_7 || dcp->fw_compat == DCP_FIRMWARE_V_26_6)) {
+		(dcp->fw_compat == DCP_FIRMWARE_V_26_6 ? iomfb_v26_6_flush(dcp, crtc, state) : iomfb_v14_7_flush(dcp, crtc, state));
+		return;
+	}
 
 	if (dcp_channel_busy(&dcp->ch_cmd))
 	{
@@ -1108,6 +1117,10 @@ void iomfb_shutdown(struct apple_dcp *dcp)
 		break;
 	case DCP_FIRMWARE_H17P:
 		iomfb_shutdown_h17p(dcp);
+		break;
+	case DCP_FIRMWARE_V_26_6:
+	case DCP_FIRMWARE_V_14_7:
+		/* The firmware session is kept until reboot. */
 		break;
 	default:
 		WARN_ONCE(true, "Unexpected firmware version: %u\n", dcp->fw_compat);

@@ -282,9 +282,13 @@ static int apple_probe_per_dcp(struct device *dev,
 	iomfb_surfaces = dcp_get_iomfb_surfaces(dcp, &num_surfaces);
 	for (zpos = 0; zpos < num_surfaces; zpos++) {
 		type = zpos ? DRM_PLANE_TYPE_OVERLAY : DRM_PLANE_TYPE_PRIMARY;
-		planes[zpos] = apple_plane_init(drm, 1U << num,
-						 iomfb_surfaces[zpos],
-						 supports_l10r, type);
+		if (dcp_fw_compat_is_14_7(dcp))
+			planes[zpos] = apple_plane_init_v14_7(drm, 1U << num,
+							      iomfb_surfaces[zpos], type);
+		else
+			planes[zpos] = apple_plane_init(drm, 1U << num,
+							iomfb_surfaces[zpos],
+							supports_l10r, type);
 		if (IS_ERR(planes[zpos]))
 			return PTR_ERR(planes[zpos]);
 		ret = drm_plane_create_zpos_immutable_property(planes[zpos], zpos);
@@ -374,6 +378,8 @@ err:
 static const struct of_device_id apple_dcp_id_tbl[] = {
 	{ .compatible = "apple,dcp" },
 	{ .compatible = "apple,dcpext" },
+	{ .compatible = "apple,t6030-dcp" },
+	{ .compatible = "apple,t8122-dcp" },
 	{},
 };
 
@@ -615,6 +621,8 @@ static void apple_platform_remove(struct platform_device *pdev)
 
 static const struct of_device_id of_match[] = {
 	{ .compatible = "apple,display-subsystem" },
+	{ .compatible = "apple,t6030-display-subsystem" },
+	{ .compatible = "apple,t8122-display-subsystem" },
 	{}
 };
 MODULE_DEVICE_TABLE(of, of_match);
