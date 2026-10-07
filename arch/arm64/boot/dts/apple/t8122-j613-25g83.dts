@@ -1,0 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/* Isolated J613 25G83 topology-only variant; do not replace the daily 14.7 DT. */
+#include "t8122-j613.dts"
+#include "t8122-j613-dcp-25g83.dtsi"

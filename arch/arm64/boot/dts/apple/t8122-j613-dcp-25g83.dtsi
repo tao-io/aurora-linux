@@ -1,0 +1,121 @@
+// SPDX-License-Identifier: GPL-2.0+ OR MIT
+/*
+ * J613/T8122 25G83 DCP port, stage 1: disabled hardware topology.
+ * Derived from the live 25G83 ADT and the separately qualified 14.7 J613
+ * topology. The register/IRQ/stream wiring agrees; the firmware ABI does not.
+ *
+ * Live firmware UUID C042E95C-B9D8-3F0E-94B3-582A08AA6FDD, RTKit 3255.160.4.
+ * Every active device, including PIODMA, remains disabled. No old 14.7
+ * handoff marker, firmware-compat override, inherited mapping or driver
+ * fallback is supplied. The simple framebuffer is unchanged.
+ *
+ * Future activation requires a distinct, verified 25G83 IOMFB board record,
+ * a transactional loader handoff from this boot's actual nub and DART page
+ * tables, inherited PM-domain preservation and a matching display gate.
+ * D201 output16, D590 input1840 and D576 input4/output0 independently
+ * disqualify the 14.x table. The H17P table also places swap-info at D589.
+ * Clock programming and PMP/display bandwidth remain separate prerequisites;
+ * no unmeasured fixed-clock rate is asserted in this topology-only step.
+ */
+
+/ {
+	aliases {
+		dcp = &dcp;
+		disp0 = &display;
+		disp0-piodma = &disp0_piodma;
+		/* Current boot loaders look up the underscore form. */
+		disp0_piodma = &disp0_piodma;
+	};
+
+
+};
+
+&{/soc} {
+	dcp_mbox: mailbox@28ec08000 {
+		compatible = "apple,t8122-asc-mailbox", "apple,asc-mailbox-v4";
+		reg = <0x2 0x8ec08000 0x0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 0x219 IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 0x21a IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 0x21b IRQ_TYPE_LEVEL_HIGH>,
+			     <AIC_IRQ 0x21c IRQ_TYPE_LEVEL_HIGH>;
+		interrupt-names = "send-empty", "send-not-empty",
+				  "recv-empty", "recv-not-empty";
+		power-domains = <&ps_disp_cpu>;
+		#mbox-cells = <0>;
+		status = "disabled";
+	};
+
+	/*
+	 * Both DARTs are locked by the boot loader with the mappings the DCP
+	 * firmware and the scanout engine are using. The firmware addresses
+	 * them through the 1 TiB alias of a 64 GiB aperture.
+	 */
+	dcp_dart: iommu@28d30c000 {
+		compatible = "apple,t8122-dart", "apple,t8110-dart";
+		reg = <0x2 0x8d30c000 0x0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 0x22d IRQ_TYPE_LEVEL_HIGH>;
+		#iommu-cells = <1>;
+		apple,dma-range = <0x100 0x0 0x10 0x0>;
+		status = "disabled";
+	};
+
+	disp0_dart: iommu@28d304000 {
+		compatible = "apple,t8122-dart", "apple,t8110-dart";
+		reg = <0x2 0x8d304000 0x0 0x4000>;
+		interrupt-parent = <&aic>;
+		interrupts = <AIC_IRQ 0x22d IRQ_TYPE_LEVEL_HIGH>;
+		#iommu-cells = <1>;
+		apple,dma-range = <0x100 0x0 0x10 0x0>;
+		status = "disabled";
+	};
+
+	dcp: dcp@28ec00000 {
+		compatible = "apple,t8122-dcp";
+		/* This property records the port stage; it does not authorize a driver. */
+		apple,j613-25g83-port-stage = "topology-only";
+		mboxes = <&dcp_mbox>;
+		mbox-names = "mbox";
+		iommus = <&dcp_dart 5>;
+		reg-names = "coproc", "disp-0", "disp-1", "disp-2", "disp-3",
+			    "disp-4", "disp-5", "iop-vbar";
+		reg = <0x2 0x8ec00000 0x0 0x4000>,
+		      <0x2 0x8c000000 0x0 0x690000>,
+		      <0x2 0x8c800000 0x0 0x690000>,
+		      <0x2 0x8d320000 0x0 0x4000>,
+		      <0x2 0x8d344000 0x0 0x4000>,
+		      <0x2 0x8e800000 0x0 0x800000>,
+		      <0x2 0xd03d0000 0x0 0x4000>,
+		      <0x2 0x8e850000 0x0 0x4000>;
+		power-domains = <&ps_disp_cpu>;
+		/* The PIODMA child carries 64-bit addresses and sizes. */
+		#address-cells = <2>;
+		#size-cells = <2>;
+		status = "disabled";
+
+		panel: panel {
+			compatible = "apple,panel-j613", "apple,panel";
+			/*
+			 * 2560x1664 at 224 ppi (ADT disp0 dot-pitch); 181 mm
+			 * without the 64 notch rows, as on the J413.
+			 */
+			width-mm = <290>;
+			height-mm = <189>;
+			adj-height-mm = <181>;
+			/* ADT /backlight LmaxProduct: 525 nits. */
+			apple,max-brightness = <525>;
+		};
+
+		disp0_piodma: piodma {
+			status = "disabled";
+			iommus = <&disp0_dart 4>;
+		};
+	};
+
+	display: display-subsystem {
+		compatible = "apple,t8122-display-subsystem";
+		iommus = <&disp0_dart 0>;
+		status = "disabled";
+	};
+};
