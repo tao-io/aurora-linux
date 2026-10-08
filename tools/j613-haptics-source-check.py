@@ -10,5 +10,5 @@ assert '#define SPIHID_MAX_DEVICES 4' in s and 'struct spihid_interface aux;' in
 assert 'reportnum != idev->id' not in s and '0x51, buf[0]' in s,'Missing 0003'
 m=(k/'drivers/hid/hid-magicmouse.c').read_text();a=(k/'drivers/hid/hid-apple-mtp-haptic.c').read_text()
 for token in ('magicmouse_haptic_forget_mode','haptic_deep_release_threshold','haptic_deep_waveform','Force Click'):assert token in m,token
-assert 'actuator_set_mode' in a and 'HID_HAPTIC_MODE_DEVICE' in a
+assert 'apple_taptic_switch_modes(haptic_hdev, false)' in a
 print('D3 haptics transport and force-stage source checks PASS')
