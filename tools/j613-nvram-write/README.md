@@ -41,3 +41,37 @@ the pinned asahi-nvram v3 writer serializes old invalidation before replacement.
 Rotation writes a newer bank header before its complete payload; no bank-wide
 checksum or commit marker establishes payload completion. Qualification must
 review the actual private-file trace before any physical mutation.
+
+
+2026-10-08 packaging correction: the exact D3h `M=` build reproducibly emits
+an unusable distilled `.BTF.base` (ambiguous `device`). Shipping uses the
+explicit no-BTF fallback, removing `.BTF` and `.BTF.base`; `build-module.py`
+records the transformation tool version. GNU objcopy 2.46.0 reproduces the
+shipped module already loaded read-only on D3h. This is a BTF bypass, not a
+claim that module BTF validates. See the qualification receipt for exact hashes.
+
+`package.py` verifies identical module bytes in the root payload and initramfs,
+and retains the original D3h rollback module. `install-root.py` remains plan-only
+unless explicitly applied in an owner window. Root installation must precede
+RAM qualification because switch-root may load the root copy. Its extra apply
+flag is `J613_CANDIDATE_ROOT_INSTALL_APPROVED=1`; the other owner/rig/haptics
+flags still apply. The bundled `check-d3h-root.py` includes the Mesa wrapper
+exception, and uses the installed original D3h manifest. Both baseline and
+candidate root checks preserve all other D3h expectations. ESP apply requires
+the same candidate root hash plus a matching RAM receipt. No install or reboot
+was performed for this packaging correction.
+
+`ram-observe.py` now requires the candidate root hash before boot and waits for
+parameter mode 0644 and the exact loaded module note, never `test -w`.
+
+`dry-run-bless.py` requires private paths, uses independent regular-file copies,
+and runs installed asahi-bless inside bwrap mount/PID/network namespaces with
+MTD nodes hidden and capabilities dropped. The only exposed device nodes are
+the inventory NVMe nodes used read-only by upstream; the preload shim denies
+writable device opens and writes. Synthetic tracer tests exercise this denial.
+All tool stdout/stderr stays private; only TRACE metadata is exported.
+`summarize-dry-run.py` compares v3 snapshots privately and emits changed-key
+names, offsets, counts, generation deltas, and byte/page ranges without values.
+The refreshed current-baseline rehearsal succeeded, with a one-page append and
+no erase or generation change. This does not qualify physical NOR programming
+or power-loss recovery.

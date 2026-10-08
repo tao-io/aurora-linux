@@ -27,10 +27,11 @@ int main(void)
 	assert(ioctl(fd, MEMERASE, &e) == -1);
 	assert(lseek(fd, 0xfffff, SEEK_SET) == 0xfffff);
 	assert(write(fd, "aa", 2) == -1);
-	int null = open("/dev/null", O_RDWR);
+	assert(open("/dev/null", O_RDWR) == -1);
+	int null = open("/dev/null", O_RDONLY);
 	assert(null >= 0);
 	assert(ioctl(null, MEMGETINFO, &info) == -1);
 	close(null);
 	close(fd);
-	puts("PASS: private file MTD tracer, 0->1 refusal, erase/bounds, non-target passthrough");
+	puts("PASS: private file MTD tracer, 0->1 refusal, erase/bounds, device write denial/read-only passthrough");
 }

@@ -81,8 +81,14 @@ int ioctl(int fd, unsigned long req, ...)
 }
 ssize_t write(int fd, const void *buf, size_t n)
 {
-	if (!target(fd))
+	if (!target(fd)) {
+		struct stat st;
+		if (!fstat(fd, &st) && (S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode))) {
+			errno = EPERM;
+			return -1;
+		}
 		return real_write(fd, buf, n);
+	}
 	off_t p = lseek(fd, 0, SEEK_CUR);
 	const uint8_t *b = buf;
 	uint8_t old[256];
@@ -104,4 +110,31 @@ ssize_t write(int fd, const void *buf, size_t n)
 	dprintf(2, "TRACE write offset=0x%lx length=0x%zx\n", (unsigned long)p,
 		n);
 	return real_write(fd, buf, n);
+}
+
+/* Inventory devices are readable only. Reject writable opens before opening a
+ * block/character node; /dev in the namespace is immutable to this process. */
+static int writable_device(const char *path, int flags)
+{
+ struct stat st;
+ return (flags & (O_WRONLY | O_RDWR | O_TRUNC)) && !stat(path, &st) &&
+        (S_ISBLK(st.st_mode) || S_ISCHR(st.st_mode));
+}
+int open64(const char *path, int flags, ...)
+{
+ static int (*fn)(const char *, int, ...);
+ mode_t mode = 0;
+ if (flags & O_CREAT) { va_list ap; va_start(ap, flags); mode=va_arg(ap, int); va_end(ap); }
+ if (writable_device(path, flags)) { errno=EPERM; return -1; }
+ if (!fn) fn=dlsym(RTLD_NEXT, "open64");
+ return fn(path, flags, mode);
+}
+int open(const char *path, int flags, ...)
+{
+ static int (*fn)(const char *, int, ...);
+ mode_t mode = 0;
+ if (flags & O_CREAT) { va_list ap; va_start(ap, flags); mode=va_arg(ap, int); va_end(ap); }
+ if (writable_device(path, flags)) { errno=EPERM; return -1; }
+ if (!fn) fn=dlsym(RTLD_NEXT, "open");
+ return fn(path, flags, mode);
 }
