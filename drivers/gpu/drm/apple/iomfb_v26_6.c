@@ -937,7 +937,12 @@ static int keep_display_power(struct device *dev)
 	const u8 *table;
 	int length, ret = -EINVAL;
 
-	node = of_find_node_by_path("/soc/pmp@2d0500000");
+	/* The power API is exported before the firmware supplier has probed.
+	 * Link to the DT supplier first so coldplug defers and removal is ordered. */
+	ret = apple_pmp_link_device(dev);
+	if (ret)
+		return ret;
+	node = of_parse_phandle(dev->of_node, "apple,pmp", 0);
 	if (!node)
 		return -ENODEV;
 	table = of_get_property(node, "apple,tunable-soc-device", &length);

@@ -89,6 +89,8 @@
 		      <0x2 0xd03d0000 0x0 0x4000>,
 		      <0x2 0x8e850000 0x0 0x4000>;
 		power-domains = <&ps_disp_cpu>;
+		/* The DISP power vote goes through the PMP: probe after it. */
+		apple,pmp = <&pmp>;
 		/* The PIODMA child carries 64-bit addresses and sizes. */
 		#address-cells = <2>;
 		#size-cells = <2>;
