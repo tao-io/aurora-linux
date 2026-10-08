@@ -137,7 +137,9 @@ config SPI_APPLE_QSPI
 	  This enables support for Apple's command-FIFO QSPIMC controller.
 	  Unlike the ordinary Apple SPIMC block, QSPIMC accepts packed SPI
 	  memory descriptors and is used for the boot NOR (and its NVRAM)
-	  on T8132 (M4) and T8140 systems.
+	  on T8122 (J613 25G83), T8132 (M4) and T8140 systems. The driver
+	  defaults read-only. Only the pinned J613 NVRAM layout can enable
+	  bounded writes through an explicit root runtime opt-in.
 
 config SPI_AR934X
 	tristate "Qualcomm Atheros AR934X/QCA95XX SPI controller driver"
