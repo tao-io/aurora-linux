@@ -384,6 +384,9 @@ impl Render {
         dev_info!(dev.as_ref(), "G16G: stalled render stage={:?} context={}\n",
             self.stage, self.context());
         dev_info!(dev.as_ref(), "G16G: render GPU timestamps={:x?}\n", self.timestamps()?);
+        let completed = self.uma_completed()?;
+        dev_info!(dev.as_ref(), "G16G: render private UMA submitted={} completed={}\n",
+            self.uma_submitted, completed);
         for (stage, offset) in [("ta", 0x100), ("fragment", 0x200)] {
             let mut words = [0u64; 4];
             for (index, word) in words.iter_mut().enumerate() {

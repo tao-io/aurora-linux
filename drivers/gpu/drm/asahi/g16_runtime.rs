@@ -1077,6 +1077,8 @@ impl Runtime {
         if snapshot_after_deadline {
             dev_err!(inner.drm.as_ref(), "G16G: userspace GPU timeout job={} status={:x?} queue={:?} pipe={:?}\n",
                 active.packet.id, status, queue, pipe);
+            dev_err!(inner.drm.as_ref(), "G16G: retirement witness expected={:#x} notifier_fw={:#x} notifier_user={:#x} queue_done={} pipe_done={} private_done={} alone={}\n",
+                active.work.stamp(), firmware, shared, queue_done, pipe_done, private_done, alone);
             // Diagnostic reads must not replace the primary timeout error.
             let _ = inner.device.log_engine_state();
             let _ = match &mut active.work {
