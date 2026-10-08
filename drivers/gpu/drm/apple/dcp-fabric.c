@@ -2076,19 +2076,30 @@ static int dcp_tb_split_locked(struct apple_dcp_typec_port *port,
 	port->split_dcp = dcp;
 	/* T602X points the DP IN at its pipeline before DCP probes AUX */
 	ret = dcp_dpxbar_tunnel_select_source(xbar, state);
-	if (ret && ret != -EOPNOTSUPP)
+	if (ret && ret != -EOPNOTSUPP) {
 		dev_warn(dcp->dev, "tiled: dpin1 source select failed: %d\n", ret);
+		goto err_teardown;
+	}
 	ret = dcp_dpxbar_preselect(xbar, state);
-	if (ret && ret != -EOPNOTSUPP)
+	if (ret && ret != -EOPNOTSUPP) {
 		dev_warn(dcp->dev, "tiled: dpin1 crossbar preselect failed: %d\n", ret);
+		goto err_teardown;
+	}
+
+	ret = dcp_dptx_connect(dcp, 1);
+	if (ret) {
+		dev_warn(dcp->dev, "tiled: DPTX port 1 connect failed: %d\n", ret);
+		goto err_teardown;
+	}
 	dev_info(dcp->dev,
 		 "tiled: dpin1 joins dpin0 on DPTX port 1 (crossbar state %d)\n",
 		 state);
-
-	ret = dcp_dptx_connect(dcp, 1);
-	if (ret)
-		dev_warn(dcp->dev, "tiled: DPTX port 1 connect failed: %d\n", ret);
 	return 0;
+
+err_teardown:
+	dcp_tb_split_teardown_locked(port);
+	/* -EOPNOTSUPP is reserved for a sink that is not tiled. */
+	return ret == -EOPNOTSUPP ? -EIO : ret;
 }
 
 static int dcp_tb_dispatch(void *data, const struct dcp_fabric_port *found)
