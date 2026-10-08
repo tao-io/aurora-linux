@@ -6,6 +6,9 @@ assert B.name=='j613-d3-nvram-write-20261007'
 ps=subprocess.check_output(['ps','-eo','args'],text=True)
 assert not any(x.startswith(('make ', '/usr/bin/make ', 'ninja ')) for x in ps.splitlines()),'Shared build active; coordinate first'
 assert (K/'include/config/kernel.release').read_text().strip()=='7.1.9-eryk-m4j613-j613-d3h'
+# A previously stripped .ko must not satisfy make's up-to-date check.
+# Only this external module output is removed; the shared kernel tree is untouched.
+(B/'spi-apple-qspi.ko').unlink(missing_ok=True)
 cmd=['make','-C',str(K),'M='+str(B),'ARCH=arm64','LLVM=1','LOCALVERSION=-j613-d3h','modules']
 r=subprocess.run(cmd,capture_output=True,text=True);(B/'module-build.log').write_text(r.stdout+r.stderr);r.check_returncode()
 # The exact D3h M= output has a distilled-base ambiguity on D3h.
