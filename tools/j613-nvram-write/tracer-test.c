@@ -12,7 +12,8 @@ int main(void)
 	assert(fd >= 0);
 	struct mtd_info_user info;
 	assert(!ioctl(fd, MEMGETINFO, &info));
-	assert(info.size == 0x100000 && info.erasesize == 4096);
+	assert(info.type == MTD_NORFLASH && info.flags == MTD_CAP_NORFLASH);
+	assert(info.size == 0x100000 && info.erasesize == 4096 && info.writesize == 1);
 	unsigned char aa = 0xaa, ff = 0xff, got = 0;
 	assert(write(fd, &aa, 1) == 1);
 	assert(lseek(fd, 0, SEEK_SET) == 0);

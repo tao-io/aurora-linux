@@ -26,7 +26,11 @@ typedef uint8_t u8; typedef uint32_t u32; typedef uint64_t u64;
 #define msecs_to_jiffies(x) (x)
 #define time_after_eq(a,b) ((a)>=(b))
 #define usleep_range(a,b) (jiffies++)
-static void mock_dev_err(void *d,const char *f,...) {(void)d;(void)f;}
+static char warning[512];
+static void mock_dev_err(void *d,const char *f,...) {
+ (void)d;va_list ap;va_start(ap,f);vsnprintf(warning,sizeof(warning),f,ap);va_end(ap);
+}
+#define dev_warn_ratelimited(d,f,...) mock_dev_err((void*)(d),f,__VA_ARGS__)
 #define dev_err(d,f,...) mock_dev_err((void*)(d),f,__VA_ARGS__)
 #define mutex_lock(x) ((void)0)
 #define mutex_unlock(x) ((void)0)
@@ -122,6 +126,9 @@ int main(void) {
  struct spi_mem_op wren=SPI_MEM_OP(SPI_MEM_OP_CMD(6,1),SPI_MEM_OP_NO_ADDR,SPI_MEM_OP_NO_DUMMY,SPI_MEM_OP_NO_DATA);
  reset();read_only=true;assert(apple_qspi_exec_op(&mem,&pp)==-EACCES);assert(!wrens);
  reset();qspi.nvram_write_candidate=false;assert(apple_qspi_exec_op(&mem,&pp)==-EACCES);assert(!wrens);
+ assert(strstr(warning,"reason=layout opcode=02"));
+ assert(apple_qspi_exec_op(&mem,&wren)==-EACCES && !wrens);
+ assert(strstr(warning,"reason=layout opcode=06 addr=0 addr_bytes=0 len=0 width=1"));
  reset();assert(!apple_qspi_exec_op(&mem,&wren));assert(!wrens);
  for(int op=0;op<256;op++) if(op!=4&&op!=6) {
   reset();wren.cmd.opcode=op;assert(apple_qspi_exec_op(&mem,&wren));assert(!wrens);

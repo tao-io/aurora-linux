@@ -761,6 +761,7 @@ static int apple_qspi_exec_op(struct spi_mem *mem, const struct spi_mem_op *op)
 {
 	struct apple_qspi *qspi = spi_controller_get_devdata(mem->spi->controller);
 	struct apple_qspi_op_shape shape;
+	const char *denial = "modify-status";
 	int ret;
 
 	if (!apple_qspi_supports_op(mem, op) || apple_qspi_shape_op(op, &shape))
@@ -772,15 +773,22 @@ static int apple_qspi_exec_op(struct spi_mem *mem, const struct spi_mem_op *op)
 		goto out;
 	}
 	ret = -EACCES;
-	if (read_only || !qspi->nvram_write_candidate || qspi->write_fault)
+	if (read_only || !qspi->nvram_write_candidate || qspi->write_fault) {
+		denial = read_only ? "read-only" :
+			 !qspi->nvram_write_candidate ? "layout" : "write-fault";
 		goto out;
+	}
 	/* Single-wire, three-byte addressing only: no mode/status/OTP commands. */
-	if (shape.width != 1 || op->addr.buswidth > 1 || op->dummy.nbytes)
+	if (shape.width != 1 || op->addr.buswidth > 1 || op->dummy.nbytes) {
+		denial = "shape";
 		goto out;
+	}
 	if (!apple_qspi_mutation_allowed(op->cmd.opcode, op->addr.nbytes,
 					op->addr.val, op->data.nbytes,
-					op->data.dir == SPI_MEM_DATA_OUT))
+					op->data.dir == SPI_MEM_DATA_OUT)) {
+		denial = "mutation-policy";
 		goto out;
+	}
 	/* SPI-NOR's WREN/WRDI are virtual. WEL is never left armed by a request. */
 	if (op->cmd.opcode == 0x06 || op->cmd.opcode == 0x04) {
 		ret = 0;
@@ -788,6 +796,13 @@ static int apple_qspi_exec_op(struct spi_mem *mem, const struct spi_mem_op *op)
 	}
 	ret = apple_qspi_nvram_modify(mem, op);
 out:
+	if (ret == -EACCES)
+		dev_warn_ratelimited(&mem->spi->dev,
+			"NVRAM denied: reason=%s opcode=%02x addr=%#llx addr_bytes=%u len=%u width=%u addr_width=%u dummy=%u dir=%u ro=%u candidate=%u fault=%u\n",
+			denial, op->cmd.opcode, (unsigned long long)op->addr.val,
+			op->addr.nbytes, op->data.nbytes, shape.width,
+			op->addr.buswidth, op->dummy.nbytes, op->data.dir,
+			read_only, qspi->nvram_write_candidate, qspi->write_fault);
 	mutex_unlock(&apple_qspi_policy_lock);
 	return ret;
 }
@@ -806,7 +821,8 @@ static bool apple_qspi_nvram_layout(struct device_node *node)
 	const char *label;
 	bool found = false;
 
-	flash = of_get_child_by_name(node, "flash@0");
+	/* OF name matching excludes the unit address (@0); reg pins CS0. */
+	flash = of_get_child_by_name(node, "flash");
 	if (!flash)
 		return false;
 	if (!of_device_is_compatible(flash, "jedec,spi-nor") ||
@@ -860,6 +876,7 @@ static int apple_qspi_probe(struct platform_device *pdev)
 
 	qspi->nvram_write_candidate &= res->start == 0x2a1118000ULL &&
 		apple_qspi_nvram_layout(dev->of_node);
+	dev_info(dev, "NVRAM layout candidate: %u\n", qspi->nvram_write_candidate);
 	qspi->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(qspi->base))
 		return PTR_ERR(qspi->base);

@@ -50,6 +50,7 @@ int ioctl(int fd, unsigned long req, ...)
 	va_end(ap);
 	if (!target(fd))
 		return real_ioctl(fd, req, arg);
+	dprintf(2, "TRACE ioctl request=0x%lx\n", req);
 	if (req == MEMGETINFO) {
 		struct mtd_info_user *m = arg;
 		*m = (struct mtd_info_user){ .type = MTD_NORFLASH,

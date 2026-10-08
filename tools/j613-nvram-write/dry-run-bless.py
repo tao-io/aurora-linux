@@ -38,6 +38,6 @@ with (out/'trace-metadata.txt').open('w') as log:
 assert sha(src)==before,'Source changed!'
 summary=dict(returncode=r.returncode,source_sha256=before,copy_sha256=sha(dst),source_unchanged=True,regular_file_only=True,hardware_write=False,mtd_devices_hidden=True,capabilities_dropped=True,bless_sha256=sha(Path(shutil.which('asahi-bless'))))
 # Retain any tool output privately; publish only tracer-generated metadata.
-(out/'trace-sanitized.txt').write_text(''.join(line for line in (out/'trace-metadata.txt').read_text().splitlines(True) if re.fullmatch(r'TRACE (write|erase) offset=0x[0-9a-f]+ length=0x[0-9a-f]+\n?',line)))
+(out/'trace-sanitized.txt').write_text(''.join(line for line in (out/'trace-metadata.txt').read_text().splitlines(True) if re.fullmatch(r'TRACE ((write|erase) offset=0x[0-9a-f]+ length=0x[0-9a-f]+|ioctl request=0x[0-9a-f]+)\n?',line)))
 (out/'summary.json').write_text(json.dumps(summary,indent=2)+'\n');print(json.dumps(summary,indent=2))
 raise SystemExit(r.returncode)
