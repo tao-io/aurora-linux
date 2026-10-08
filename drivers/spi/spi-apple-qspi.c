@@ -521,6 +521,15 @@ static int apple_qspi_transfer_op(struct spi_mem *mem,
 	mode = apple_qspi_width_mode(shape.width);
 	if (op->data.dir == SPI_MEM_DATA_IN)
 		mode |= APPLE_QSPI_CMD_RX;
+	/* 25G83 AppleARMSPIDevice::transferData and QSPIMC builder encode
+	 * TX-only transfers as one byte stream, including opcode/address.
+	 * Preserve the qualified read header/data split for RX transfers.
+	 */
+	if (op->data.dir != SPI_MEM_DATA_IN) {
+		shape.shared_count = 0;
+		shape.multi_count = 0;
+	}
+
 	descriptor = FIELD_PREP(APPLE_QSPI_CMD_MODE, mode) |
 		     APPLE_QSPI_CMD_FRAME_A | APPLE_QSPI_CMD_FRAME_B |
 		     FIELD_PREP(APPLE_QSPI_CMD_TAG, qspi->tag++ & 0xf) |
@@ -543,7 +552,8 @@ static int apple_qspi_transfer_op(struct spi_mem *mem,
 	qspi->rx_left = op->data.dir == SPI_MEM_DATA_IN ? op->data.nbytes : 0;
 	qspi->active = true;
 	apple_qspi_p_write(qspi, APPLE_QSPI_P_TXFIFO, descriptor);
-	apple_qspi_p_write(qspi, APPLE_QSPI_P_TXFIFO, op->data.nbytes);
+	apple_qspi_p_write(qspi, APPLE_QSPI_P_TXFIFO,
+			   op->data.dir == SPI_MEM_DATA_IN ? op->data.nbytes : tx_len);
 	apple_qspi_fill_tx(qspi);
 	spin_unlock_irqrestore(&qspi->lock, flags);
 
@@ -906,6 +916,61 @@ static int apple_qspi_probe(struct platform_device *pdev)
 	return 0;
 }
 
+/* Fixed read-only diagnostic: no user-selected opcode, address or payload. */
+static int apple_qspi_match_cs0(struct device *dev, const void *unused)
+{
+	return dev->bus == &spi_bus_type &&
+		!spi_get_chipselect(to_spi_device(dev), 0);
+}
+
+static ssize_t flash_status_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	static const u8 opcodes[] = { 0x9f, 0x05, 0x35, 0x15 };
+	struct spi_controller *ctlr = dev_get_drvdata(dev);
+	struct spi_mem mem = { };
+	struct device *child;
+	u8 *data;
+	int i, ret;
+
+	child = device_find_child(&ctlr->dev, NULL, apple_qspi_match_cs0);
+	if (!child)
+		return -ENODEV;
+	mem.spi = to_spi_device(child);
+	data = kzalloc(6, GFP_KERNEL);
+	if (!data) {
+		ret = -ENOMEM;
+		goto out_put;
+	}
+
+	/* spi-mem supplies queue, bus and I/O serialization for each read.
+	 * These are sequential samples, not an atomic protection snapshot.
+	 */
+	for (i = 0; i < ARRAY_SIZE(opcodes); i++) {
+		struct spi_mem_op op = SPI_MEM_OP(SPI_MEM_OP_CMD(opcodes[i], 1),
+			SPI_MEM_OP_NO_ADDR, SPI_MEM_OP_NO_DUMMY,
+			SPI_MEM_OP_DATA_IN(i ? 1 : 3, data + (i ? i + 2 : 0), 1));
+
+		ret = spi_mem_exec_op(&mem, &op);
+		if (ret)
+			goto out_free;
+	}
+	ret = sysfs_emit(buf, "jedec=%02x%02x%02x sr1=%02x sr2=%02x sr3=%02x\n",
+			 data[0], data[1], data[2], data[3], data[4], data[5]);
+out_free:
+	kfree(data);
+out_put:
+	put_device(child);
+	return ret;
+}
+static DEVICE_ATTR_RO(flash_status);
+
+static struct attribute *apple_qspi_attrs[] = {
+	&dev_attr_flash_status.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(apple_qspi);
+
 static const struct of_device_id apple_qspi_of_match[] = {
 	{ .compatible = "apple,t8122-qspi" },
 	{ .compatible = "apple,t8132-qspi" },
@@ -918,6 +983,7 @@ static struct platform_driver apple_qspi_driver = {
 	.probe = apple_qspi_probe,
 	.driver = {
 		.name = "apple-qspi",
+		.dev_groups = apple_qspi_groups,
 		.of_match_table = apple_qspi_of_match,
 	},
 };

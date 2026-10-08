@@ -22,3 +22,22 @@ The authoritative qualification ladder, exact hashes, upstream/native evidence, 
 `machines/m3-air/research/2026-10-07-d3-nvram-write/QUALIFICATION.md`.
 
 Do not claim the same TahoeResearch value makes every mis-write benign. Do not claim bank generations guarantee iBoot fallback after every torn write. No NVRAM writes, rig changes, ESP writes, root installation or reboots were performed for this preparation.
+
+Evidence-pass update: the controller platform device now exposes `flash_status`
+(read-only sysfs). It sends only fixed RDID/RDSR1/RDSR2/RDSR3 reads through
+spi-mem serialization, with no input or store callback. It returns raw register
+bytes without claiming an exact ef6517 status-bit interpretation. Samples are
+sequential. Read it only in the later owner-supervised candidate RAM window;
+the running D3h does not expose this file and must not be reloaded tonight.
+
+25G83 static analysis corrected TX-only descriptors: shared/multi count zero,
+word 1 includes opcode, address and payload. WREN/WRDI use count 1, SE count 4,
+PP count 4+payload length. The D3h RX header/data split remains unchanged.
+`python3 tools/j613-nvram-write/descriptor-test.py` compiles the actual descriptor
+block and checks it against native PIO samples; this is not a wire test.
+
+Torn-write recovery is not guaranteed. Published XNU appends before invalidating;
+the pinned asahi-nvram v3 writer serializes old invalidation before replacement.
+Rotation writes a newer bank header before its complete payload; no bank-wide
+checksum or commit marker establishes payload completion. Qualification must
+review the actual private-file trace before any physical mutation.
